@@ -20,6 +20,10 @@ $OpenMWSource = Resolve-NikamiPath `
 if (-not (Test-Path -LiteralPath (Join-Path $OpenMWSource ".git"))) {
     throw "Not a git checkout: $OpenMWSource"
 }
+if (-not [System.IO.Path]::IsPathRooted($SeriesPath)) {
+    $SeriesPath = Join-Path $script:NikamiRepoRoot $SeriesPath
+}
+
 if (-not (Test-Path -LiteralPath $SeriesPath)) {
     throw "Missing patch series: $SeriesPath"
 }
