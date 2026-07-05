@@ -196,7 +196,8 @@ function New-GeneratedProfile {
     param(
         [object]$World,
         [string]$ProfilePath,
-        [string]$ResourcesPath
+        [string]$ResourcesPath,
+        [string[]]$AdditionalConfigLines = @()
     )
 
     $profileDir = Split-Path -Parent $ProfilePath
@@ -205,13 +206,18 @@ function New-GeneratedProfile {
     $userDataDir = Join-Path $profileDir "userdata"
     New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
     $userDataDirFull = Convert-ToForwardSlash (Resolve-Path -LiteralPath $userDataDir).Path
+    $dataLocalDir = Join-Path $userDataDir "data"
+    New-Item -ItemType Directory -Force -Path $dataLocalDir | Out-Null
+    $dataLocalDirFull = Convert-ToForwardSlash (Resolve-Path -LiteralPath $dataLocalDir).Path
 
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("replace=data")
+    $lines.Add("replace=data-local")
     $lines.Add("replace=fallback-archive")
     $lines.Add("replace=content")
     $lines.Add("")
     $lines.Add("user-data=$userDataDirFull")
+    $lines.Add("data-local=$dataLocalDirFull")
 
     if ($ResourcesPath) {
         $lines.Add("resources=$(Convert-ToForwardSlash $ResourcesPath)")
@@ -232,12 +238,19 @@ function New-GeneratedProfile {
     }
     $lines.Add("")
     $lines.Add("encoding=$($World.defaultEncoding)")
+    if ($AdditionalConfigLines.Count -gt 0) {
+        $lines.Add("")
+        foreach ($line in ($AdditionalConfigLines | Select-Object -Unique)) {
+            $lines.Add($line)
+        }
+    }
 
     Set-Content -LiteralPath $ProfilePath -Value $lines -Encoding ASCII
 
     return [ordered]@{
         profileDirectory = $profileDirFull
         userDataDirectory = $userDataDirFull
+        dataLocalDirectory = $dataLocalDirFull
     }
 }
 
@@ -380,10 +393,12 @@ foreach ($definition in $definitions) {
 
     $dataPaths = @()
     $profileConfig = $null
+    $additionalProfileConfigLines = @()
     $fnvRoot = if ($definition.id -eq "fallout_new_vegas" -and $configuredFnvRoots.Count -gt 0) { $configuredFnvRoots[0] } else { "" }
     $fnvProfileConfig = if ($fnvRoot) { Join-Path $fnvRoot "openmw-config/openmw.cfg" } else { "" }
     if ($definition.id -eq "fallout_new_vegas" -and $fnvProfileConfig -and (Test-Path -LiteralPath $fnvProfileConfig)) {
         $profileConfig = Convert-ToForwardSlash (Resolve-Path -LiteralPath $fnvProfileConfig).Path
+        $additionalProfileConfigLines = @(Get-Content -LiteralPath $fnvProfileConfig | Where-Object { $_ -match '^\s*fallback\s*=' })
         $fnvOverlayData = Join-Path $fnvRoot "openmw-config/data"
         if (Test-Path -LiteralPath $fnvOverlayData) {
             $dataPaths += Convert-ToForwardSlash (Resolve-Path -LiteralPath $fnvOverlayData).Path
@@ -453,7 +468,7 @@ foreach ($definition in $definitions) {
             }
             contentStatus = $contentStatus
             defaultEncoding = $cap.defaultEncoding
-        }) -ProfilePath $generatedProfile -ResourcesPath $OpenMWResources
+        }) -ProfilePath $generatedProfile -ResourcesPath $OpenMWResources -AdditionalConfigLines $additionalProfileConfigLines
         $settingsInfo = New-GeneratedSettings -WorldId $definition.id -ProfilePath $generatedProfile -SettingsCatalog $settingsCatalog
         $profileDirectory = $profileInfo.profileDirectory
         $userDataDirectory = $profileInfo.userDataDirectory
@@ -492,9 +507,11 @@ foreach ($definition in $definitions) {
         viewerArchiveFiles = $viewerArchiveFiles
         isolationGuards = if ($generatedProfile) { @(
             "launch with --replace config --config $profileDirectory",
-            "profile openmw.cfg replaces data, fallback-archive, and content",
+            "profile openmw.cfg replaces data, data-local, fallback-archive, and content",
             "profile user-data is $userDataDirectory",
-            "profile settings are $generatedSettings"
+            "profile data-local is profile-local to prevent global OpenMW loose-file bleed",
+            "profile settings are $generatedSettings",
+            $(if ($additionalProfileConfigLines.Count -gt 0) { "profile imports $($additionalProfileConfigLines.Count) fallback lines from existing local config" } else { "profile has no imported local fallback lines" })
         ) } else { @() }
         notes = $cap.notes
     }

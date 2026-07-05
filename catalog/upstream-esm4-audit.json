@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-05",
+  "purpose": "Public-safe audit of upstream and VR-side work relevant to Nikami Worlds before inventing local ESM4 viewer fixes.",
+  "officialOpenMW": {
+    "latestStable": "0.51.0",
+    "latestStableSource": "https://openmw.org/downloads/",
+    "beyondMorrowindAnnouncement": "https://openmw.org/2025/openmw-0-49-0-released/",
+    "announcedPrototypeWorlds": [
+      "Oblivion",
+      "Skyrim",
+      "Fallout 3",
+      "Fallout: New Vegas",
+      "Fallout 4"
+    ],
+    "notAnnouncedForOpenMWPrototype": [
+      "Starfield"
+    ]
+  },
+  "localVrRemote": {
+    "remote": "https://gitlab.com/madsbuvi/openmw",
+    "relevantHeadsObserved": [
+      "openmw-vr",
+      "openmw-vr-51",
+      "openmw-vr-0.50.1",
+      "esm4-texture",
+      "bc7-terrain-fix",
+      "NiFltAnimationNode"
+    ],
+    "localBranchNote": "Local openmw-vr branch contains Nikami-specific face, hands, Pip-Boy, sky, proof, and FNVXR commits; compare and port against openmw-vr-51 before assuming it is current."
+  },
+  "upstreamMergeRequestsToReview": [
+    {
+      "iid": 5270,
+      "state": "opened",
+      "title": "Fix terrain normal map blending for post-processing normal buffer",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/5270",
+      "whyItMatters": "May affect terrain/normal visibility and purple or wrong shader output."
+    },
+    {
+      "iid": 5246,
+      "state": "merged",
+      "title": "Visual regression fixes",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/5246",
+      "whyItMatters": "Recent visual fixes may already solve part of the bad proof frames."
+    },
+    {
+      "iid": 5135,
+      "state": "merged",
+      "title": "Change the texture asset origin convention to top-left (#6885)",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/5135",
+      "whyItMatters": "Texture origin handling can directly affect ESM4 terrain/material correctness."
+    },
+    {
+      "iid": 4990,
+      "state": "closed",
+      "title": "Draft: Fix ESM4 object activation, better item support",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/4990",
+      "whyItMatters": "Relevant to the eventual selector/activation/inventory-map workflow."
+    },
+    {
+      "iid": 4984,
+      "state": "closed",
+      "title": "Add Fallout 3 detection to ESM4 NPC records",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/4984",
+      "whyItMatters": "Relevant to Fallout 3 NPC/actor loading and FaceGen paths."
+    },
+    {
+      "iid": 4799,
+      "state": "merged",
+      "title": "ESM4 landscape texturing",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/4799",
+      "whyItMatters": "Core terrain texture work for later Bethesda worlds."
+    },
+    {
+      "iid": 4770,
+      "state": "merged",
+      "title": "Object paging in ESM4 worldspaces",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/4770",
+      "whyItMatters": "Core world visibility and distant reference loading."
+    },
+    {
+      "iid": 4318,
+      "state": "closed",
+      "title": "[Draft] Enable terrain textures in ESM4 cells",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/4318",
+      "whyItMatters": "Earlier terrain texture prototype with notes from cc9cii; useful for understanding remaining gaps."
+    },
+    {
+      "iid": 4094,
+      "state": "merged",
+      "title": "Parse all official Oblivion, Fallout 3 and New Vegas KF files",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/4094",
+      "whyItMatters": "Animation parsing baseline for Oblivion/Fallout 3/New Vegas."
+    },
+    {
+      "iid": 3810,
+      "state": "opened",
+      "title": "Draft: Read ESM4 terminal items, and expose them to lua",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/3810",
+      "whyItMatters": "Relevant for Fallout terminal/Pip-Boy data surfaces later."
+    },
+    {
+      "iid": 3809,
+      "state": "opened",
+      "title": "Draft: Load ESM4 Notes, and add lua bindings for them",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/3809",
+      "whyItMatters": "Relevant for Fallout note/text records and UI surfaces."
+    },
+    {
+      "iid": 3032,
+      "state": "merged",
+      "title": "Initial support for ESM4 terrain",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/3032",
+      "whyItMatters": "Baseline ESM4 terrain implementation."
+    }
+  ],
+  "archiveWork": [
+    {
+      "iid": 3392,
+      "state": "merged",
+      "title": "Support Starfield BA2s",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/3392",
+      "whyItMatters": "Confirms upstream can parse Starfield archive format pieces; this is not the same as loading Starfield records or rendering Starfield worlds."
+    },
+    {
+      "iid": 4055,
+      "state": "merged",
+      "title": "BA2 support fixes",
+      "url": "https://gitlab.com/OpenMW/openmw/-/merge_requests/4055",
+      "whyItMatters": "Later BA2 fixes may matter for Fallout 4/Fallout 76/Starfield archive reads."
+    },
+    {
+      "iid": 7228,
+      "state": "opened",
+      "title": "BA2 file format reading/writing",
+      "url": "https://gitlab.com/OpenMW/openmw/-/issues/7228",
+      "whyItMatters": "Fallout 4 and Starfield archive handling; Starfield remains research-only until records/assets are proven."
+    }
+  ],
+  "communitySignals": [
+    {
+      "dateObserved": "2026-07-05",
+      "title": "Recent Reddit discussion showing Fallout: New Vegas in OpenMW/VR progress",
+      "url": "https://www.reddit.com/r/Fallout/comments/1u5yir1/here_is_a_preview_the_openmw_engine_and_its/",
+      "note": "Public chatter confirms people are discussing FNV-in-OpenMW/VR, but this is not a public reusable branch by itself."
+    },
+    {
+      "dateObserved": "2026-07-05",
+      "title": "Recent Reddit discussion of more Fallout: New Vegas OpenMW progress",
+      "url": "https://www.reddit.com/r/OpenMW/comments/1u1aix0/more_fallout_new_vegas_in_openmw_progress/",
+      "note": "Useful signal to keep watching community work; no complete all-world viewer implementation found from it."
+    }
+  ],
+  "workingRules": [
+    "Do not assume current local OpenMW is latest; compare with official OpenMW 0.51.0 and madsbuvi openmw-vr-51.",
+    "Prefer porting relevant upstream ESM4 work before creating local equivalents.",
+    "Keep Starfield out of the supported-world promise until an OpenMW-compatible record/archive/rendering path is proven.",
+    "Any world proof must include screenshot quality metrics plus OpenMW telemetry, not just an image path."
+  ]
+}

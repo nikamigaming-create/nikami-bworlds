@@ -101,6 +101,62 @@
         "thumbstick auto run": false
       }
     },
+    "esm4_world_viewer_first_frame": {
+      "Camera": {
+        "field of view": 91,
+        "viewing distance": 65536,
+        "small feature culling": false,
+        "small feature culling pixel size": 0.5
+      },
+      "Cells": {
+        "preload enabled": false,
+        "preload num threads": 2,
+        "preload exterior grid": false,
+        "preload fast travel": false,
+        "preload doors": false,
+        "preload distance": 4096,
+        "preload instances": false,
+        "cell cache min": 8,
+        "cell cache max": 24,
+        "cell expiry delay": 5,
+        "prediction time": 0.25,
+        "cache expiry delay": 30,
+        "target framerate": 90,
+        "pointers cache size": 100
+      },
+      "Terrain": {
+        "distant terrain": false,
+        "object paging": false,
+        "object paging active grid": false,
+        "object paging min size": 0.1
+      },
+      "Models": {
+        "load unsupported nif files": true,
+        "skyatmosphere": "meshes/sky/atmosphere.nif",
+        "skyclouds": "meshes/sky/clouds.nif",
+        "skynight01": "meshes/sky/stars.nif",
+        "skynight02": "meshes/sky/stars_oblivion.nif"
+      },
+      "General": {
+        "anisotropy": 8
+      },
+      "Video": {
+        "antialiasing": 0
+      },
+      "Map": {
+        "global": true,
+        "local map hud fog of war": false
+      },
+      "Navigator": {
+        "wait until min distance to player": 0,
+        "enable nav mesh disk cache": false,
+        "write to navmeshdb": false
+      },
+      "Input": {
+        "always run": false,
+        "thumbstick auto run": false
+      }
+    },
     "fo4_ba2_research": {
       "Camera": {
         "field of view": 91,
@@ -176,7 +232,7 @@
       }
     },
     "fallout3": {
-      "preset": "esm4_world_viewer_high_detail",
+      "preset": "esm4_world_viewer_first_frame",
       "sections": {
         "Saves": {
           "character": "world-viewer-fallout3"
@@ -222,7 +278,7 @@
       }
     },
     "skyrim_vr": {
-      "preset": "esm4_world_viewer_high_detail",
+      "preset": "esm4_world_viewer_first_frame",
       "sections": {
         "Saves": {
           "character": "world-viewer-skyrim-vr"
@@ -230,7 +286,7 @@
       }
     },
     "fallout4": {
-      "preset": "fo4_ba2_research",
+      "preset": "esm4_world_viewer_first_frame",
       "sections": {
         "Saves": {
           "character": "world-viewer-fallout4"
@@ -238,7 +294,7 @@
       }
     },
     "fallout4_vr": {
-      "preset": "fo4_ba2_research",
+      "preset": "esm4_world_viewer_first_frame",
       "sections": {
         "Saves": {
           "character": "world-viewer-fallout4-vr"

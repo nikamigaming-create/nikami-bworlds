@@ -3,8 +3,8 @@
   "asOf": "2026-07-05",
   "purpose": "Best-known flat start cells for screenshot smoke tests. These are intentionally conservative and can be replaced by generated cell catalogs later.",
   "defaults": {
-    "runSeconds": 28,
-    "screenshotFrames": "240",
+    "runSeconds": 90,
+    "screenshotFrames": "120,300,600,1200",
     "extraArgs": [
       "--no-sound"
     ]
@@ -16,23 +16,158 @@
     },
     "oblivion": {
       "startCell": "ICPalace03",
-      "label": "Imperial City Palace exterior"
+      "label": "Imperial City Palace exterior",
+      "anchor": {
+        "source": "Oblivion.esm CELL ICPalace03, street/palace static cluster",
+        "position": {
+          "x": 28672,
+          "y": 63424,
+          "z": 3600
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 1.5707964
+        },
+        "camera": {
+          "mode": "static",
+          "position": {
+            "x": 25000,
+            "y": 60000,
+            "z": 6500
+          },
+          "target": {
+            "x": 28672,
+            "y": 63424,
+            "z": 3700
+          }
+        },
+        "dry": true
+      }
     },
     "fallout3": {
       "startCell": "Vault101Exterior",
-      "label": "Vault 101 exterior"
+      "label": "Vault 101 exterior",
+      "anchor": {
+        "source": "Fallout3.esm CELL Vault101Exterior, local exterior static cluster",
+        "position": {
+          "x": -13488,
+          "y": -14112,
+          "z": 14180
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 2.2
+        },
+        "camera": {
+          "mode": "static",
+          "position": {
+            "x": -11500,
+            "y": -19000,
+            "z": 16000
+          },
+          "target": {
+            "x": -13488,
+            "y": -14112,
+            "z": 14250
+          }
+        },
+        "dry": true
+      }
     },
     "fallout_new_vegas": {
       "startCell": "Goodsprings",
-      "label": "Goodsprings exterior"
+      "label": "Goodsprings exterior",
+      "anchor": {
+        "source": "Local FNV proof bootstrap Goodsprings position",
+        "position": {
+          "x": -67735,
+          "y": 3204,
+          "z": 8425
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": -0.6981317
+        },
+        "camera": {
+          "mode": "static",
+          "position": {
+            "x": -67600,
+            "y": -2200,
+            "z": 10550
+          },
+          "target": {
+            "x": -71300,
+            "y": 2900,
+            "z": 8450
+          }
+        },
+        "dry": true
+      }
     },
     "skyrim_vr": {
-      "startCell": "Riverwood",
-      "label": "Riverwood exterior"
+      "startCell": "Riverwood01",
+      "label": "Riverwood exterior",
+      "anchor": {
+        "source": "Skyrim.esm CELL Riverwood01 COCMarkerHeading",
+        "position": {
+          "x": 20051.375,
+          "y": -42984.742,
+          "z": -48
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 5.081004
+        },
+        "camera": {
+          "mode": "static",
+          "position": {
+            "x": 17000,
+            "y": -46000,
+            "z": 1800
+          },
+          "target": {
+            "x": 20051.375,
+            "y": -42984.742,
+            "z": 100
+          }
+        },
+        "dry": true
+      }
     },
     "fallout4_vr": {
       "startCell": "SanctuaryExt",
-      "label": "Sanctuary Hills exterior"
+      "label": "Sanctuary Hills exterior",
+      "anchor": {
+        "source": "Fallout4.esm CELL SanctuaryExt COC/marker cluster",
+        "position": {
+          "x": -80352,
+          "y": 89600,
+          "z": 7820
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0.7853982
+        },
+        "camera": {
+          "mode": "static",
+          "position": {
+            "x": -83500,
+            "y": 86000,
+            "z": 9800
+          },
+          "target": {
+            "x": -80352,
+            "y": 89600,
+            "z": 7900
+          }
+        },
+        "dry": true
+      }
     }
   }
 }

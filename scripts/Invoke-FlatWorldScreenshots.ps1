@@ -8,6 +8,11 @@ param(
     [string]$ScreenshotFrames = "",
     [string]$StartCellOverride = "",
     [int]$WindowCaptureSeconds = 0,
+    [int]$TelemetryInterval = 30,
+    [int]$Esm4GridRadius = 0,
+    [switch]$NoTelemetry,
+    [switch]$AllowBadScreenshots,
+    [switch]$ShowGui,
     [switch]$DryRun,
     [switch]$KeepRunning
 )
@@ -35,6 +40,75 @@ function Get-PropertyValue($Object, [string]$Name) {
     return $property.Value
 }
 
+function Set-ProcessEnvValue([string]$Name, $Value) {
+    if ($null -eq $Value) {
+        [Environment]::SetEnvironmentVariable($Name, $null, "Process")
+        return
+    }
+
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        [Environment]::SetEnvironmentVariable($Name, $null, "Process")
+        return
+    }
+
+    [Environment]::SetEnvironmentVariable($Name, $text, "Process")
+}
+
+function New-ProofRunConfig($World, [string]$WorldRunDir, [string]$UserDataDir) {
+    $sourceConfigDir = [string]$World.profileDirectory
+    if ([string]::IsNullOrWhiteSpace($sourceConfigDir) -or -not (Test-Path -LiteralPath $sourceConfigDir)) {
+        throw "$($World.id): missing generated profile directory $sourceConfigDir"
+    }
+
+    $runConfigDir = Join-Path $WorldRunDir "config"
+    $dataLocalDir = Join-Path $UserDataDir "data"
+    New-Item -ItemType Directory -Force -Path $runConfigDir, $UserDataDir, $dataLocalDir | Out-Null
+
+    foreach ($name in @("openmw.cfg", "settings.cfg", "shaders.yaml")) {
+        $source = Join-Path $sourceConfigDir $name
+        if (Test-Path -LiteralPath $source) {
+            Copy-Item -LiteralPath $source -Destination (Join-Path $runConfigDir $name) -Force
+        }
+    }
+
+    $cfgPath = Join-Path $runConfigDir "openmw.cfg"
+    if (-not (Test-Path -LiteralPath $cfgPath)) {
+        throw "$($World.id): copied proof config is missing openmw.cfg"
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $hasReplaceDataLocal = $false
+    foreach ($line in Get-Content -LiteralPath $cfgPath) {
+        if ($line -match '^\s*replace\s*=\s*data-local\s*$') {
+            $hasReplaceDataLocal = $true
+        }
+        if ($line -match '^\s*(user-data|data-local)\s*=') {
+            continue
+        }
+        $lines.Add($line)
+    }
+    if (-not $hasReplaceDataLocal) {
+        $insertAt = 0
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\s*replace\s*=') {
+                $insertAt = $i + 1
+            }
+        }
+        $lines.Insert($insertAt, "replace=data-local")
+    }
+    $lines.Add("")
+    $lines.Add("user-data=$(Convert-ToForwardSlash $UserDataDir)")
+    $lines.Add("data-local=$(Convert-ToForwardSlash $dataLocalDir)")
+    Set-Content -LiteralPath $cfgPath -Value $lines -Encoding ASCII
+
+    [pscustomobject][ordered]@{
+        configDirectory = (Resolve-Path -LiteralPath $runConfigDir).Path
+        dataLocalDirectory = (Resolve-Path -LiteralPath $dataLocalDir).Path
+        openmwCfg = (Resolve-Path -LiteralPath $cfgPath).Path
+    }
+}
+
 function Copy-LatestScreenshot([string]$ScreenshotDir, [string]$DestinationDir, [string]$WorldId) {
     if (-not (Test-Path -LiteralPath $ScreenshotDir)) {
         return $null
@@ -50,101 +124,444 @@ function Copy-LatestScreenshot([string]$ScreenshotDir, [string]$DestinationDir, 
     return (Resolve-Path -LiteralPath $destination).Path
 }
 
-function Ensure-WindowCaptureTypes {
-    if ("Win32OpenMWCapture" -as [type]) {
-        return
-    }
-
+function Ensure-DrawingAssembly {
     Add-Type -AssemblyName System.Drawing
-    Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-
-public static class Win32OpenMWCapture
-{
-    [StructLayout(LayoutKind.Sequential)]
-    public struct RECT
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct POINT
-    {
-        public int X;
-        public int Y;
-    }
-
-    [DllImport("user32.dll")]
-    public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
-
-    [DllImport("user32.dll")]
-    public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
-
-    [DllImport("user32.dll")]
-    public static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-}
-"@
 }
 
-function Wait-ProcessMainWindow($Process, [int]$TimeoutSeconds) {
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while ((Get-Date) -lt $deadline) {
-        $Process.Refresh()
-        if ($Process.MainWindowHandle -ne [IntPtr]::Zero) {
-            return $Process.MainWindowHandle
-        }
-        Start-Sleep -Milliseconds 250
-    }
-    return [IntPtr]::Zero
-}
-
-function Save-ProcessWindowScreenshot($Process, [string]$DestinationPath) {
-    Ensure-WindowCaptureTypes
-
-    $handle = Wait-ProcessMainWindow -Process $Process -TimeoutSeconds 8
-    if ($handle -eq [IntPtr]::Zero) {
-        return $false
+function Get-ScreenshotQuality([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return $null
     }
 
-    [void][Win32OpenMWCapture]::ShowWindow($handle, 9)
-    [void][Win32OpenMWCapture]::SetForegroundWindow($handle)
-    Start-Sleep -Milliseconds 750
-
-    $rect = New-Object Win32OpenMWCapture+RECT
-    if (-not [Win32OpenMWCapture]::GetClientRect($handle, [ref]$rect)) {
-        return $false
-    }
-
-    $width = $rect.Right - $rect.Left
-    $height = $rect.Bottom - $rect.Top
-    if ($width -le 0 -or $height -le 0) {
-        return $false
-    }
-
-    $point = New-Object Win32OpenMWCapture+POINT
-    $point.X = 0
-    $point.Y = 0
-    if (-not [Win32OpenMWCapture]::ClientToScreen($handle, [ref]$point)) {
-        return $false
-    }
-
-    $bitmap = New-Object System.Drawing.Bitmap($width, $height)
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    Ensure-DrawingAssembly
+    $bitmap = New-Object System.Drawing.Bitmap($Path)
     try {
-        $graphics.CopyFromScreen($point.X, $point.Y, 0, 0, (New-Object System.Drawing.Size($width, $height)))
-        $bitmap.Save($DestinationPath, [System.Drawing.Imaging.ImageFormat]::Png)
-        return $true
+        $width = $bitmap.Width
+        $height = $bitmap.Height
+        if ($width -le 0 -or $height -le 0) {
+            return [pscustomobject][ordered]@{
+                width = $width
+                height = $height
+                sampledPixels = 0
+                acceptable = $false
+                reasons = @("empty image")
+            }
+        }
+
+        $targetSamples = 30000.0
+        $step = [Math]::Max(1, [int][Math]::Floor([Math]::Sqrt(($width * $height) / $targetSamples)))
+        $sampled = 0
+        $brightnessSum = 0.0
+        $brightnessSquaredSum = 0.0
+        $dark = 0
+        $magenta = 0
+        $purple = 0
+        $brightLowSaturation = 0
+        $blueSkyLike = 0
+
+        for ($y = 0; $y -lt $height; $y += $step) {
+            for ($x = 0; $x -lt $width; $x += $step) {
+                $pixel = $bitmap.GetPixel($x, $y)
+                $brightness = (0.2126 * $pixel.R) + (0.7152 * $pixel.G) + (0.0722 * $pixel.B)
+                $maxChannel = [Math]::Max($pixel.R, [Math]::Max($pixel.G, $pixel.B))
+                $minChannel = [Math]::Min($pixel.R, [Math]::Min($pixel.G, $pixel.B))
+                $channelSpread = $maxChannel - $minChannel
+                $brightnessSum += $brightness
+                $brightnessSquaredSum += ($brightness * $brightness)
+                $sampled++
+
+                if ($brightness -lt 20) {
+                    $dark++
+                }
+                if ($pixel.R -gt 180 -and $pixel.B -gt 180 -and $pixel.G -lt 110 -and ($pixel.R - $pixel.G) -gt 70 -and ($pixel.B - $pixel.G) -gt 70) {
+                    $magenta++
+                }
+                if ($pixel.R -gt 110 -and $pixel.B -gt 130 -and $pixel.G -lt 105 -and ($pixel.B - $pixel.G) -gt 45) {
+                    $purple++
+                }
+                if ($brightness -gt 145 -and $channelSpread -lt 45) {
+                    $brightLowSaturation++
+                }
+                if ($brightness -gt 80 -and $pixel.B -gt ($pixel.R + 20) -and $pixel.B -gt ($pixel.G + 15)) {
+                    $blueSkyLike++
+                }
+            }
+        }
+
+        if ($sampled -le 0) {
+            return [pscustomobject][ordered]@{
+                width = $width
+                height = $height
+                sampledPixels = 0
+                acceptable = $false
+                reasons = @("no sampled pixels")
+            }
+        }
+
+        $mean = $brightnessSum / $sampled
+        $variance = [Math]::Max(0.0, ($brightnessSquaredSum / $sampled) - ($mean * $mean))
+        $stddev = [Math]::Sqrt($variance)
+        $darkRatio = $dark / $sampled
+        $magentaRatio = $magenta / $sampled
+        $purpleRatio = $purple / $sampled
+        $brightLowSaturationRatio = $brightLowSaturation / $sampled
+        $blueSkyLikeRatio = $blueSkyLike / $sampled
+        $reasons = New-Object System.Collections.Generic.List[string]
+
+        if ($mean -lt 18 -or $darkRatio -gt 0.92) {
+            $reasons.Add("too dark or blank")
+        }
+        if ($stddev -lt 4 -and $mean -lt 35) {
+            $reasons.Add("low-variance loading/blank frame")
+        }
+        if ($magentaRatio -gt 0.005 -or $purpleRatio -gt 0.04) {
+            $reasons.Add("purple/magenta fallback pixels detected")
+        }
+        if ($brightLowSaturationRatio -gt 0.55) {
+            $reasons.Add("large bright low-saturation fallback/void surface")
+        }
+        if ($blueSkyLikeRatio -gt 0.8) {
+            $reasons.Add("mostly sky/blue void")
+        }
+
+        [pscustomobject][ordered]@{
+            width = $width
+            height = $height
+            sampledPixels = $sampled
+            meanBrightness = [Math]::Round($mean, 2)
+            brightnessStdDev = [Math]::Round($stddev, 2)
+            darkRatio = [Math]::Round($darkRatio, 4)
+            magentaRatio = [Math]::Round($magentaRatio, 4)
+            purpleRatio = [Math]::Round($purpleRatio, 4)
+            brightLowSaturationRatio = [Math]::Round($brightLowSaturationRatio, 4)
+            blueSkyLikeRatio = [Math]::Round($blueSkyLikeRatio, 4)
+            acceptable = ($reasons.Count -eq 0)
+            reasons = @($reasons)
+        }
     }
     finally {
-        $graphics.Dispose()
         $bitmap.Dispose()
+    }
+}
+
+function Get-ProofLogSummary([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return $null
+    }
+
+    $specs = @(
+        [pscustomobject]@{ Name = "renderFailures"; Pattern = "failed to render|failed to load|Error loading|cannot load" },
+        [pscustomobject]@{ Name = "missingAssets"; Pattern = "not found|missing|does not exist|cannot find|could not find" },
+        [pscustomobject]@{ Name = "unsupportedAssets"; Pattern = "unsupported|not supported|unhandled" },
+        [pscustomobject]@{ Name = "shaderIssues"; Pattern = "shader|purple|magenta|fallback" },
+        [pscustomobject]@{ Name = "actorIssues"; Pattern = "actor|npc|creature|skeleton|bone|animation|rig" },
+        [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:" }
+    )
+
+    $categories = [ordered]@{}
+    foreach ($spec in $specs) {
+        $categories[$spec.Name] = [ordered]@{
+            count = 0
+            examples = New-Object System.Collections.Generic.List[string]
+        }
+    }
+
+    $lineCount = 0
+    $warningCount = 0
+    $errorCount = 0
+    foreach ($line in Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue) {
+        $lineCount++
+        if ($line -match "\bWarning\b|WARN|warning:") {
+            $warningCount++
+        }
+        if ($line -match "\bError\b|ERROR|error:|failed") {
+            $errorCount++
+        }
+
+        foreach ($spec in $specs) {
+            if ($line -match $spec.Pattern) {
+                $entry = $categories[$spec.Name]
+                $entry.count++
+                if ($entry.examples.Count -lt 20) {
+                    $entry.examples.Add($line)
+                }
+            }
+        }
+    }
+
+    $normalized = [ordered]@{}
+    foreach ($spec in $specs) {
+        $entry = $categories[$spec.Name]
+        $normalized[$spec.Name] = [pscustomobject][ordered]@{
+            count = $entry.count
+            examples = @($entry.examples)
+        }
+    }
+
+    [pscustomobject][ordered]@{
+        totalLines = $lineCount
+        warnings = $warningCount
+        errors = $errorCount
+        categories = $normalized
+    }
+}
+
+function Convert-WorldViewerTelemetryValue([string]$Value) {
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    $text = $Value.Trim()
+    if ($text.Length -ge 2 -and $text.StartsWith('"') -and $text.EndsWith('"')) {
+        return $text.Substring(1, $text.Length - 2)
+    }
+    if ($text.Length -ge 2 -and $text.StartsWith('(') -and $text.EndsWith(')')) {
+        return $text
+    }
+    if ($text -eq '<none>') {
+        return $text
+    }
+    if ($text -match '^0x[0-9a-fA-F]+$') {
+        return $text
+    }
+
+    $intValue = 0
+    if ([int]::TryParse($text, [ref]$intValue)) {
+        return $intValue
+    }
+
+    $doubleValue = 0.0
+    if ([double]::TryParse($text, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$doubleValue)) {
+        return $doubleValue
+    }
+
+    return $text
+}
+
+function Convert-WorldViewerFlag($Value) {
+    if ($null -eq $Value) {
+        return $false
+    }
+    if ($Value -is [bool]) {
+        return $Value
+    }
+    if ($Value -is [int] -or $Value -is [long] -or $Value -is [double]) {
+        return ([double]$Value) -ne 0.0
+    }
+
+    $text = ([string]$Value).Trim()
+    return -not ([string]::IsNullOrWhiteSpace($text) -or $text -eq "0" -or $text -ieq "false" -or $text -ieq "no" -or $text -ieq "off")
+}
+
+function Convert-WorldViewerInt($Value) {
+    if ($null -eq $Value) {
+        return 0
+    }
+    $intValue = 0
+    if ([int]::TryParse(([string]$Value), [ref]$intValue)) {
+        return $intValue
+    }
+    return 0
+}
+
+function Convert-WorldViewerDouble($Value) {
+    if ($null -eq $Value) {
+        return 0.0
+    }
+    $doubleValue = 0.0
+    if ([double]::TryParse(([string]$Value), [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$doubleValue)) {
+        return $doubleValue
+    }
+    return 0.0
+}
+
+function Parse-WorldViewerKeyValues([string]$Text) {
+    $values = [ordered]@{}
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return [pscustomobject]$values
+    }
+
+    $matches = [regex]::Matches($Text, '([A-Za-z][A-Za-z0-9_]*)=("[^"]*"|\([^)]*\)|0x[0-9a-fA-F]+|[^\s]+)')
+    foreach ($match in $matches) {
+        $values[$match.Groups[1].Value] = Convert-WorldViewerTelemetryValue $match.Groups[2].Value
+    }
+    return [pscustomobject]$values
+}
+
+function Get-WorldViewerTelemetrySummary([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return $null
+    }
+
+    $cells = New-Object System.Collections.Generic.List[object]
+    $rays = New-Object System.Collections.Generic.List[object]
+    $problemRefs = New-Object System.Collections.Generic.List[object]
+    $refsByType = [ordered]@{}
+    $rayKinds = [ordered]@{}
+    $latestTelemetry = $null
+    $refDumpTruncated = $null
+
+    $cellRefs = 0
+    $cellEnabled = 0
+    $cellRendered = 0
+    $cellMissingRenderNode = 0
+    $cellActors = 0
+    $cellRenderedActors = 0
+    $cellDoors = 0
+    $cellDeleted = 0
+    $loggedRefs = 0
+    $loggedRenderedRefs = 0
+    $loggedActorRefs = 0
+    $loggedRenderedActorRefs = 0
+    $rayHits = 0
+    $groundRayHits = 0
+    $centerRenderHits = 0
+    $actorRayHits = 0
+    $actorRayActorHits = 0
+
+    foreach ($line in Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue) {
+        $telemetryIndex = $line.IndexOf("World viewer telemetry:")
+        if ($telemetryIndex -ge 0) {
+            $body = $line.Substring($telemetryIndex + "World viewer telemetry:".Length).Trim()
+            if ($body -match '^ref dump truncated') {
+                $refDumpTruncated = Parse-WorldViewerKeyValues $body
+            }
+            elseif ($body -match '\bframe=') {
+                $latestTelemetry = Parse-WorldViewerKeyValues $body
+            }
+            continue
+        }
+
+        $cellIndex = $line.IndexOf("World viewer cell:")
+        if ($cellIndex -ge 0) {
+            $cell = Parse-WorldViewerKeyValues ($line.Substring($cellIndex + "World viewer cell:".Length).Trim())
+            $cellRefs += Convert-WorldViewerInt (Get-PropertyValue $cell "refs")
+            $cellEnabled += Convert-WorldViewerInt (Get-PropertyValue $cell "enabled")
+            $cellRendered += Convert-WorldViewerInt (Get-PropertyValue $cell "rendered")
+            $cellMissingRenderNode += Convert-WorldViewerInt (Get-PropertyValue $cell "missingRenderNode")
+            $cellActors += Convert-WorldViewerInt (Get-PropertyValue $cell "actors")
+            $cellRenderedActors += Convert-WorldViewerInt (Get-PropertyValue $cell "renderedActors")
+            $cellDoors += Convert-WorldViewerInt (Get-PropertyValue $cell "doors")
+            $cellDeleted += Convert-WorldViewerInt (Get-PropertyValue $cell "deleted")
+            if ($cells.Count -lt 80) {
+                $cells.Add($cell)
+            }
+            continue
+        }
+
+        $refIndex = $line.IndexOf("World viewer ref:")
+        if ($refIndex -ge 0) {
+            $ref = Parse-WorldViewerKeyValues ($line.Substring($refIndex + "World viewer ref:".Length).Trim())
+            $loggedRefs++
+            $typeValue = Get-PropertyValue $ref "type"
+            $typeName = if ($null -ne $typeValue) { [string]$typeValue } else { "<unknown>" }
+            if (-not $refsByType.Contains($typeName)) {
+                $refsByType[$typeName] = 0
+            }
+            $refsByType[$typeName]++
+
+            $rendered = Convert-WorldViewerFlag (Get-PropertyValue $ref "rendered")
+            $actor = Convert-WorldViewerFlag (Get-PropertyValue $ref "actor")
+            if ($rendered) {
+                $loggedRenderedRefs++
+            }
+            if ($actor) {
+                $loggedActorRefs++
+                if ($rendered) {
+                    $loggedRenderedActorRefs++
+                }
+            }
+            if ((-not $rendered -or ($actor -and -not $rendered)) -and $problemRefs.Count -lt 40) {
+                $problemRefs.Add($ref)
+            }
+            continue
+        }
+
+        $rayIndex = $line.IndexOf("World viewer ray:")
+        if ($rayIndex -ge 0) {
+            $ray = Parse-WorldViewerKeyValues ($line.Substring($rayIndex + "World viewer ray:".Length).Trim())
+            $kindValue = Get-PropertyValue $ray "kind"
+            $kind = if ($null -ne $kindValue) { [string]$kindValue } else { "<unknown>" }
+            if (-not $rayKinds.Contains($kind)) {
+                $rayKinds[$kind] = 0
+            }
+            $rayKinds[$kind]++
+
+            $hit = Convert-WorldViewerFlag (Get-PropertyValue $ray "hit")
+            $actorHit = Convert-WorldViewerFlag (Get-PropertyValue $ray "actorHit")
+            if ($hit) {
+                $rayHits++
+            }
+            if ($hit -and ($kind -eq "playerGround" -or $kind -eq "cameraGround")) {
+                $groundRayHits++
+            }
+            if ($hit -and $kind -eq "cameraCenterRender") {
+                $centerRenderHits++
+            }
+            if ($hit -and ($kind -eq "cameraActorRender" -or $kind -eq "actorCrossPhysics")) {
+                $actorRayHits++
+            }
+            if ($actorHit -and ($kind -eq "cameraActorRender" -or $kind -eq "actorCrossPhysics")) {
+                $actorRayActorHits++
+            }
+            if ($rays.Count -lt 120) {
+                $rays.Add($ray)
+            }
+            continue
+        }
+    }
+
+    [pscustomobject][ordered]@{
+        latestTelemetry = $latestTelemetry
+        cellCount = $cells.Count
+        cellRefs = $cellRefs
+        cellEnabled = $cellEnabled
+        cellRendered = $cellRendered
+        cellMissingRenderNode = $cellMissingRenderNode
+        cellActors = $cellActors
+        cellRenderedActors = $cellRenderedActors
+        cellDoors = $cellDoors
+        cellDeleted = $cellDeleted
+        loggedRefs = $loggedRefs
+        loggedRenderedRefs = $loggedRenderedRefs
+        loggedActorRefs = $loggedActorRefs
+        loggedRenderedActorRefs = $loggedRenderedActorRefs
+        refsByType = [pscustomobject]$refsByType
+        refDumpTruncated = $refDumpTruncated
+        rayCount = $rays.Count
+        rayHits = $rayHits
+        groundRayHits = $groundRayHits
+        centerRenderHits = $centerRenderHits
+        actorRayHits = $actorRayHits
+        actorRayActorHits = $actorRayActorHits
+        rayKinds = [pscustomobject]$rayKinds
+        cells = @($cells.ToArray())
+        rays = @($rays.ToArray())
+        problemRefs = @($problemRefs.ToArray())
+    }
+}
+
+function Get-OpenMwCrashDumpInfo([string[]]$Roots, [datetime]$Since) {
+    $candidates = New-Object System.Collections.Generic.List[object]
+    foreach ($root in $Roots) {
+        if ([string]::IsNullOrWhiteSpace($root) -or -not (Test-Path -LiteralPath $root)) {
+            continue
+        }
+
+        Get-ChildItem -LiteralPath $root -File -Filter "openmw-crash*.dmp" -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $Since } |
+            ForEach-Object { $candidates.Add($_) }
+    }
+
+    $dump = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($null -eq $dump) {
+        return $null
+    }
+
+    [pscustomobject][ordered]@{
+        path = Convert-ToForwardSlash -Path $dump.FullName
+        length = $dump.Length
+        lastWriteTime = $dump.LastWriteTime.ToString("o")
     }
 }
 
@@ -198,8 +615,40 @@ if ([string]::IsNullOrWhiteSpace($ScreenshotFrames)) {
 }
 $defaultExtraArgs = @($starts.defaults.extraArgs)
 
+$viewerStartEnvNames = @(
+    "OPENMW_WORLD_VIEWER_START_POS_X",
+    "OPENMW_WORLD_VIEWER_START_POS_Y",
+    "OPENMW_WORLD_VIEWER_START_POS_Z",
+    "OPENMW_WORLD_VIEWER_START_ROT_X",
+    "OPENMW_WORLD_VIEWER_START_ROT_Y",
+    "OPENMW_WORLD_VIEWER_START_ROT_Z",
+    "OPENMW_WORLD_VIEWER_START_DRY",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_MODE",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_DISTANCE",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_PITCH",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_YAW",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_POS_X",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Y",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z"
+)
+
+$viewerProofEnvNames = @(
+    "OPENMW_WORLD_VIEWER_TELEMETRY",
+    "OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL",
+    "OPENMW_WORLD_VIEWER_REF_TELEMETRY",
+    "OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT",
+    "OPENMW_WORLD_VIEWER_RAY_TELEMETRY",
+    "OPENMW_WORLD_VIEWER_RAY_DISTANCE",
+    "OPENMW_WORLD_VIEWER_ACTOR_RAY_LIMIT",
+    "OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS",
+    "OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED"
+)
+
 $previousEnv = @{}
-foreach ($name in @("OPENMW_PROOF_SCREENSHOT_FRAME", "OPENMW_FNV_BOOTSTRAP_HOUR")) {
+foreach ($name in @("OPENMW_PROOF_SCREENSHOT_FRAME", "OPENMW_FNV_BOOTSTRAP_HOUR", "OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI", "OPENMW_PROOF_HIDE_GUI") + $viewerStartEnvNames + $viewerProofEnvNames) {
     $previousEnv[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
 }
 
@@ -208,8 +657,37 @@ $results = New-Object System.Collections.Generic.List[object]
 try {
     [Environment]::SetEnvironmentVariable("OPENMW_PROOF_SCREENSHOT_FRAME", $ScreenshotFrames, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_BOOTSTRAP_HOUR", "12", "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI", "1", "Process")
+    if ($ShowGui) {
+        [Environment]::SetEnvironmentVariable("OPENMW_PROOF_HIDE_GUI", $null, "Process")
+    }
+    else {
+        [Environment]::SetEnvironmentVariable("OPENMW_PROOF_HIDE_GUI", "1", "Process")
+    }
+    if (-not $NoTelemetry) {
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_TELEMETRY", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL", [string]$TelemetryInterval, "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REF_TELEMETRY", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT", "500", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_RAY_DISTANCE", "200000", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ACTOR_RAY_LIMIT", "8", "Process")
+    }
+    else {
+        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY")) {
+            [Environment]::SetEnvironmentVariable($name, $null, "Process")
+        }
+    }
+    if ($Esm4GridRadius -ge 0) {
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS", [string]$Esm4GridRadius, "Process")
+    }
+    [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED", "1", "Process")
 
     foreach ($world in $selected) {
+        foreach ($name in $viewerStartEnvNames) {
+            [Environment]::SetEnvironmentVariable($name, $null, "Process")
+        }
+
         $start = Get-PropertyValue $starts.worlds $world.id
         $startCell = if ($null -ne $start) { [string]$start.startCell } else { "" }
         $label = if ($null -ne $start) { [string]$start.label } else { "" }
@@ -225,15 +703,23 @@ try {
         $stdoutLog = Join-Path $logsDir "$($world.id).stdout.log"
         $stderrLog = Join-Path $logsDir "$($world.id).stderr.log"
         $windowCapture = Join-Path $screensDir "$($world.id).window.png"
-        New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
+        New-Item -ItemType Directory -Force -Path $worldRunDir | Out-Null
+        $runConfig = New-ProofRunConfig -World $world -WorldRunDir $worldRunDir -UserDataDir $userDataDir
+        $resourcesDir = Join-Path $BinaryRoot "resources"
 
         $argsList = New-Object System.Collections.Generic.List[string]
         $argsList.Add("--replace")
         $argsList.Add("config")
         $argsList.Add("--config")
-        $argsList.Add($world.profileDirectory)
+        $argsList.Add($runConfig.configDirectory)
         $argsList.Add("--user-data")
         $argsList.Add($userDataDir)
+        $argsList.Add("--data-local")
+        $argsList.Add($runConfig.dataLocalDirectory)
+        if (Test-Path -LiteralPath $resourcesDir) {
+            $argsList.Add("--resources")
+            $argsList.Add($resourcesDir)
+        }
         $argsList.Add("--skip-menu")
         if (-not [string]::IsNullOrWhiteSpace($startCell)) {
             $argsList.Add("--start")
@@ -256,35 +742,115 @@ try {
         $exitCode = $null
         $screenshot = $null
         $windowScreenshot = $null
-        $profileLog = Join-Path $world.profileDirectory "openmw.log"
+        $candidateScreenshots = New-Object System.Collections.Generic.List[object]
+        $seenNativeScreenshots = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        $nativeScreenshotDir = Join-Path $userDataDir "screenshots"
+        $profileLog = Join-Path $runConfig.configDirectory "openmw.log"
         $userDataLog = Join-Path $userDataDir "openmw.log"
+        $copiedOpenMwLog = Join-Path $logsDir "$($world.id).openmw.log"
         $notes = New-Object System.Collections.Generic.List[string]
+        $screenshotQuality = $null
+        $logSummary = $null
+        $worldViewerTelemetry = $null
+        $crashDump = $null
+
+        $anchor = Get-PropertyValue $start "anchor"
+        if ($null -ne $anchor) {
+            $position = Get-PropertyValue $anchor "position"
+            $rotation = Get-PropertyValue $anchor "rotation"
+            $camera = Get-PropertyValue $anchor "camera"
+
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_POS_X" (Get-PropertyValue $position "x")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_POS_Y" (Get-PropertyValue $position "y")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_POS_Z" (Get-PropertyValue $position "z")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_ROT_X" (Get-PropertyValue $rotation "x")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_ROT_Y" (Get-PropertyValue $rotation "y")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_ROT_Z" (Get-PropertyValue $rotation "z")
+            if ((Get-PropertyValue $anchor "dry") -ne $false) {
+                Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_DRY" "1"
+            }
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_MODE" (Get-PropertyValue $camera "mode")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_DISTANCE" (Get-PropertyValue $camera "distance")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_PITCH" (Get-PropertyValue $camera "pitch")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_YAW" (Get-PropertyValue $camera "yaw")
+            $cameraPosition = Get-PropertyValue $camera "position"
+            $cameraTarget = Get-PropertyValue $camera "target"
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_POS_X" (Get-PropertyValue $cameraPosition "x")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Y" (Get-PropertyValue $cameraPosition "y")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z" (Get-PropertyValue $cameraPosition "z")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X" (Get-PropertyValue $cameraTarget "x")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y" (Get-PropertyValue $cameraTarget "y")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z" (Get-PropertyValue $cameraTarget "z")
+            $notes.Add("used explicit local start anchor")
+        }
 
         if ($DryRun) {
             $status = "dry-run"
         }
         else {
+            $worldStartedAt = Get-Date
             $process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory (Split-Path -Parent $binary) -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
             if (-not $KeepRunning) {
-                $captureDelay = $WindowCaptureSeconds
-                if ($captureDelay -gt 0) {
-                    $captureDelay = [Math]::Min($captureDelay, $RunSeconds)
-                    if (-not $process.WaitForExit($captureDelay * 1000)) {
-                        if (Save-ProcessWindowScreenshot -Process $process -DestinationPath $windowCapture) {
-                            $windowScreenshot = (Resolve-Path -LiteralPath $windowCapture).Path
-                            $notes.Add("captured process window after $captureDelay seconds")
+                $captureDelay = 0
+                if ($WindowCaptureSeconds -gt 0) {
+                    $notes.Add("window capture disabled; native OpenMW screenshot required")
+                }
+
+                $deadline = (Get-Date).AddSeconds([Math]::Max(1, $RunSeconds - $captureDelay))
+                $sawNativeScreenshot = $false
+                $acceptedNativeScreenshot = $false
+                while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
+                    if (Test-Path -LiteralPath $nativeScreenshotDir) {
+                        $shots = @(Get-ChildItem -LiteralPath $nativeScreenshotDir -File -Filter "screenshot*.png" -ErrorAction SilentlyContinue |
+                            Where-Object { $_.LastWriteTime -ge $worldStartedAt.AddSeconds(-2) } |
+                            Sort-Object LastWriteTime)
+                        foreach ($shot in $shots) {
+                            if (-not $seenNativeScreenshots.Add($shot.FullName)) {
+                                continue
+                            }
+                            $sawNativeScreenshot = $true
+                            Start-Sleep -Milliseconds 750
+                            $candidateIndex = $candidateScreenshots.Count + 1
+                            $candidatePath = Join-Path $screensDir ("{0}.candidate-{1:000}.png" -f $world.id, $candidateIndex)
+                            Copy-Item -LiteralPath $shot.FullName -Destination $candidatePath -Force
+                            $candidateQuality = Get-ScreenshotQuality -Path $candidatePath
+                            $candidateAccepted = $AllowBadScreenshots -or ($null -ne $candidateQuality -and $candidateQuality.acceptable)
+                            $candidateScreenshots.Add([pscustomobject][ordered]@{
+                                path = (Convert-ToForwardSlash -Path $candidatePath)
+                                capturedAt = $shot.LastWriteTime.ToString("o")
+                                secondsAfterStart = [Math]::Round(($shot.LastWriteTime - $worldStartedAt).TotalSeconds, 1)
+                                quality = $candidateQuality
+                                accepted = [bool]$candidateAccepted
+                            })
+                            if ($candidateAccepted) {
+                                $acceptedNativeScreenshot = $true
+                                $screenshot = $candidatePath
+                                $screenshotQuality = $candidateQuality
+                                $notes.Add("accepted native screenshot candidate $candidateIndex after $([Math]::Round(((Get-Date) - $worldStartedAt).TotalSeconds, 1)) seconds")
+                                break
+                            }
+                            elseif ($null -ne $candidateQuality) {
+                                $notes.Add("rejected native screenshot candidate ${candidateIndex}: $($candidateQuality.reasons -join '; ')")
+                            }
                         }
-                        else {
-                            $notes.Add("window capture failed after $captureDelay seconds")
+                        if ($acceptedNativeScreenshot) {
+                            break
                         }
                     }
+                    Start-Sleep -Milliseconds 500
+                    $process.Refresh()
                 }
 
                 $process.Refresh()
                 if (-not $process.HasExited) {
-                    $remainingMs = [Math]::Max(0, ($RunSeconds - $captureDelay) * 1000)
-                    if (-not $process.WaitForExit($remainingMs)) {
-                        Stop-Process -Id $process.Id -Force
+                    Stop-Process -Id $process.Id -Force
+                    if ($acceptedNativeScreenshot) {
+                        $notes.Add("stopped after accepted native screenshot")
+                    }
+                    elseif ($sawNativeScreenshot) {
+                        $notes.Add("stopped after $RunSeconds seconds with only rejected native screenshots")
+                    }
+                    else {
                         $notes.Add("stopped after $RunSeconds seconds")
                     }
                 }
@@ -296,7 +862,14 @@ try {
             }
 
             Start-Sleep -Milliseconds 750
-            $screenshot = Copy-LatestScreenshot -ScreenshotDir (Join-Path $userDataDir "screenshots") -DestinationDir $screensDir -WorldId $world.id
+            if (-not $screenshot -and $candidateScreenshots.Count -gt 0) {
+                $lastCandidate = $candidateScreenshots[$candidateScreenshots.Count - 1]
+                $screenshot = $lastCandidate.path
+                $screenshotQuality = $lastCandidate.quality
+            }
+            if (-not $screenshot) {
+                $screenshot = Copy-LatestScreenshot -ScreenshotDir $nativeScreenshotDir -DestinationDir $screensDir -WorldId $world.id
+            }
             if ($screenshot) {
                 $status = "screenshot"
             }
@@ -312,13 +885,62 @@ try {
             }
 
             if (Test-Path -LiteralPath $profileLog) {
-                Copy-Item -LiteralPath $profileLog -Destination (Join-Path $logsDir "$($world.id).openmw.log") -Force
+                Copy-Item -LiteralPath $profileLog -Destination $copiedOpenMwLog -Force
             }
             elseif (Test-Path -LiteralPath $userDataLog) {
-                Copy-Item -LiteralPath $userDataLog -Destination (Join-Path $logsDir "$($world.id).openmw.log") -Force
+                Copy-Item -LiteralPath $userDataLog -Destination $copiedOpenMwLog -Force
             }
             else {
                 $notes.Add("no openmw.log found")
+            }
+
+            if ($screenshot -and $null -eq $screenshotQuality) {
+                $screenshotQuality = Get-ScreenshotQuality -Path $screenshot
+            }
+            if ($screenshot) {
+                if ($null -ne $screenshotQuality -and -not $screenshotQuality.acceptable -and -not $AllowBadScreenshots) {
+                    $status = if ($status -eq "window-screenshot") { "rejected-window-screenshot" } else { "rejected-screenshot" }
+                    $notes.Add("rejected screenshot quality: $($screenshotQuality.reasons -join '; ')")
+                }
+            }
+
+            $logSummary = Get-ProofLogSummary -Path $copiedOpenMwLog
+            $worldViewerTelemetry = Get-WorldViewerTelemetrySummary -Path $copiedOpenMwLog
+            $crashDump = Get-OpenMwCrashDumpInfo -Roots @($runConfig.configDirectory, $userDataDir) -Since $worldStartedAt.AddSeconds(-2)
+            if ($null -ne $crashDump) {
+                $notes.Add("crash dump detected: $($crashDump.path)")
+                if ($status -eq "no-screenshot") {
+                    $status = "crash-dump-no-screenshot"
+                }
+            }
+
+            if ($screenshot -and -not $NoTelemetry -and -not $AllowBadScreenshots -and ($status -eq "screenshot" -or $status -eq "window-screenshot")) {
+                $telemetryRejectReasons = New-Object System.Collections.Generic.List[string]
+                if ($null -eq $worldViewerTelemetry -or $null -eq $worldViewerTelemetry.latestTelemetry) {
+                    $telemetryRejectReasons.Add("missing world viewer frame telemetry")
+                }
+                else {
+                    if ($worldViewerTelemetry.cellRendered -le 0 -and $worldViewerTelemetry.loggedRenderedRefs -le 0) {
+                        $telemetryRejectReasons.Add("telemetry found no rendered refs")
+                    }
+                    if ($worldViewerTelemetry.groundRayHits -le 0) {
+                        $telemetryRejectReasons.Add("ground ray did not hit world/heightmap/water")
+                    }
+                    if ($worldViewerTelemetry.centerRenderHits -le 0) {
+                        $telemetryRejectReasons.Add("center render ray hit nothing")
+                    }
+                    if ($worldViewerTelemetry.cellActors -gt 0 -and $worldViewerTelemetry.cellRenderedActors -le 0) {
+                        $telemetryRejectReasons.Add("actor-populated cell rendered zero actor nodes")
+                    }
+                    if ($worldViewerTelemetry.cellRenderedActors -gt 0 -and $worldViewerTelemetry.actorRayActorHits -le 0) {
+                        $telemetryRejectReasons.Add("rendered actor nodes present but actor ray probes hit no actors")
+                    }
+                }
+
+                if ($telemetryRejectReasons.Count -gt 0) {
+                    $status = "rejected-telemetry-screenshot"
+                    $notes.Add("rejected screenshot telemetry: $($telemetryRejectReasons -join '; ')")
+                }
             }
         }
 
@@ -331,9 +953,16 @@ try {
             status = $status
             exitCode = $exitCode
             screenshot = if ($screenshot) { (Convert-ToForwardSlash -Path $screenshot) } else { $null }
+            screenshotQuality = $screenshotQuality
+            candidateScreenshots = @($candidateScreenshots.ToArray())
             windowScreenshot = if ($windowScreenshot) { (Convert-ToForwardSlash -Path $windowScreenshot) } else { $null }
             runDirectory = (Convert-ToForwardSlash -Path $worldRunDir)
-            openmwLog = (Convert-ToForwardSlash -Path (Join-Path $logsDir "$($world.id).openmw.log"))
+            configDirectory = (Convert-ToForwardSlash -Path $runConfig.configDirectory)
+            dataLocalDirectory = (Convert-ToForwardSlash -Path $runConfig.dataLocalDirectory)
+            openmwLog = (Convert-ToForwardSlash -Path $copiedOpenMwLog)
+            openmwLogSummary = $logSummary
+            worldViewerTelemetry = $worldViewerTelemetry
+            crashDump = $crashDump
             processLog = (Convert-ToForwardSlash -Path $stdoutLog)
             processErrorLog = (Convert-ToForwardSlash -Path $stderrLog)
             command = $commandLine
@@ -354,6 +983,11 @@ $manifest = [ordered]@{
     runSeconds = $RunSeconds
     screenshotFrames = $ScreenshotFrames
     windowCaptureSeconds = $WindowCaptureSeconds
+    telemetry = (-not $NoTelemetry)
+    telemetryInterval = $TelemetryInterval
+    esm4GridRadius = $Esm4GridRadius
+    allowBadScreenshots = [bool]$AllowBadScreenshots
+    showGui = [bool]$ShowGui
     proofDirectory = (Convert-ToForwardSlash -Path $absProofDir)
     results = @($results.ToArray())
 }

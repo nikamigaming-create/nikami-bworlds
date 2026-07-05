@@ -219,6 +219,9 @@ class ESM4Catalog:
                     "matches": [],
                     "matchedRefs": [],
                     "matchedRefCount": 0,
+                    "actorRefCount": 0,
+                    "creatureRefCount": 0,
+                    "actorRefs": [],
                 }
                 cell["matches"] = self.record_matches_terms(cell)
                 self.cells[rec_form] = cell
@@ -249,14 +252,36 @@ class ESM4Catalog:
 
         base_matches = {int(record["id"], 16): record for record in term_records}
         for placement in self.placements:
+            cell_int = int(placement["parentCell"], 16)
+            cell = self.cells.get(cell_int)
+            if cell is not None and placement["type"] in ("ACHR", "ACRE"):
+                if placement["type"] == "ACHR":
+                    cell["actorRefCount"] += 1
+                else:
+                    cell["creatureRefCount"] += 1
+                if len(cell["actorRefs"]) < 40:
+                    base = placement.get("base")
+                    base_record = self.records.get(int(base, 16)) if base else None
+                    cell["actorRefs"].append(
+                        {
+                            "ref": placement["id"],
+                            "openmwRef": placement["openmwId"],
+                            "type": placement["type"],
+                            "base": base,
+                            "openmwBase": placement.get("openmwBase"),
+                            "baseEditorId": base_record.get("editorId", "") if base_record else "",
+                            "baseFullName": base_record.get("fullName", "") if base_record else "",
+                            "pos": placement.get("pos"),
+                            "rot": placement.get("rot"),
+                        }
+                    )
+
             base = placement.get("base")
             if not base:
                 continue
             base_int = int(base, 16)
             if base_int not in base_matches:
                 continue
-            cell_int = int(placement["parentCell"], 16)
-            cell = self.cells.get(cell_int)
             if cell is None:
                 continue
             ref = {
@@ -273,7 +298,8 @@ class ESM4Catalog:
 
         for cell in self.cells.values():
             cell["matchedRefCount"] = len(cell["matchedRefs"])
-            cell["score"] = len(cell["matches"]) * 50 + cell["matchedRefCount"]
+            cell["actorTotalRefCount"] = cell["actorRefCount"] + cell["creatureRefCount"]
+            cell["score"] = len(cell["matches"]) * 50 + cell["matchedRefCount"] + cell["actorTotalRefCount"] * 5
             if cell["isExterior"]:
                 cell["score"] += 10
             if cell["matchedRefs"]:
@@ -288,9 +314,16 @@ class ESM4Catalog:
                     )
             if len(cell["matchedRefs"]) > 20:
                 cell["matchedRefs"] = cell["matchedRefs"][:20]
+            if len(cell["actorRefs"]) > 20:
+                cell["actorRefs"] = cell["actorRefs"][:20]
 
         cells = sorted(self.cells.values(), key=lambda c: (c["score"], c["matchedRefCount"]), reverse=True)
         top_cells = [cell for cell in cells if cell["score"] > 0][:200]
+        top_actor_cells = sorted(
+            (cell for cell in self.cells.values() if cell["actorTotalRefCount"] > 0),
+            key=lambda c: (c["actorTotalRefCount"], c["actorRefCount"], c["score"]),
+            reverse=True,
+        )[:200]
         worlds = sorted(self.worlds.values(), key=lambda w: w.get("editorId", ""))
         return {
             "schemaVersion": 1,
@@ -309,6 +342,7 @@ class ESM4Catalog:
             "worlds": worlds,
             "termRecords": term_records[:1000],
             "topCells": top_cells,
+            "topActorCells": top_actor_cells,
         }
 
 
