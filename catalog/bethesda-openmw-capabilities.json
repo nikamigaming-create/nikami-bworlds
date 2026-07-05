@@ -1,0 +1,264 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-05",
+  "sources": [
+    {
+      "label": "OpenMW downloads page",
+      "url": "https://openmw.org/downloads/",
+      "summary": "As of 2026-07-05, the latest official release listed by OpenMW is 0.51.0."
+    },
+    {
+      "label": "OpenMW 0.51.0 release notes",
+      "url": "https://openmw.org/2026/openmw-0-51-0-released/",
+      "summary": "Released 2026-06-19. Focused on OpenMW scripting, editor terrain vertex painting, Lua crash fixes, gamepad menu fixes, and Morrowind-facing improvements."
+    },
+    {
+      "label": "OpenMW 0.49.0 release notes",
+      "url": "https://openmw.org/2025/openmw-0-49-0-released/",
+      "summary": "Introduced prototype support for Oblivion, Skyrim, Fallout 3, Fallout: New Vegas, and Fallout 4 as very basic walking-simulator functionality."
+    },
+    {
+      "label": "OpenMW 0.50.0 release notes",
+      "url": "https://openmw.org/2025/openmw-0-50-0-released/",
+      "summary": "Improved beyond-Morrowind terrain texturing and distant object rendering."
+    },
+    {
+      "label": "OpenMW 0.50.0 release notes",
+      "url": "https://openmw.org/2025/openmw-0-50-0-released/",
+      "summary": "Improved beyond-Morrowind terrain texturing and distant object rendering."
+    }
+  ],
+  "supportTiers": {
+    "full": "Playable in OpenMW as a game/runtime.",
+    "walking-sim": "World/cell loading is realistic; gameplay, actors, quests, scripts, and animation are partial or missing.",
+    "asset-research": "Archives or assets may be inspectable, but a connected world viewer is not a clean target yet.",
+    "future-research": "Not currently supported enough for the world picker."
+  },
+  "games": [
+    {
+      "id": "morrowind",
+      "displayName": "The Elder Scrolls III: Morrowind",
+      "engineFamily": "ESM3/Gamebryo",
+      "supportTier": "full",
+      "openmwTarget": true,
+      "defaultEncoding": "win1252",
+      "content": [
+        "Morrowind.esm",
+        "Tribunal.esm",
+        "Bloodmoon.esm"
+      ],
+      "archives": [
+        "Morrowind.bsa",
+        "Tribunal.bsa",
+        "Bloodmoon.bsa"
+      ],
+      "notes": "The only target in this catalog that should be advertised as fully playable."
+    },
+    {
+      "id": "oblivion",
+      "displayName": "The Elder Scrolls IV: Oblivion",
+      "engineFamily": "TES4/ESM4",
+      "supportTier": "walking-sim",
+      "openmwTarget": true,
+      "defaultEncoding": "win1252",
+      "content": [
+        "Oblivion.esm"
+      ],
+      "archives": [
+        "Oblivion - Meshes.bsa",
+        "Oblivion - Textures - Compressed.bsa",
+        "Oblivion - Sounds.bsa",
+        "Oblivion - Voices1.bsa",
+        "Oblivion - Voices2.bsa",
+        "Oblivion - Misc.bsa"
+      ],
+      "notes": "Good first ESM4 world-picker target because the upstream prototype explicitly calls out Oblivion terrain/world loading."
+    },
+    {
+      "id": "fallout3",
+      "displayName": "Fallout 3",
+      "engineFamily": "FO3/ESM4",
+      "supportTier": "walking-sim",
+      "openmwTarget": true,
+      "defaultEncoding": "win1252",
+      "content": [
+        "Fallout3.esm"
+      ],
+      "archives": [
+        "Fallout - Meshes.bsa",
+        "Fallout - Misc.bsa",
+        "Fallout - Sound.bsa",
+        "Fallout - Textures.bsa",
+        "Fallout - Voices.bsa"
+      ],
+      "notes": "Expected to share much of the New Vegas path, with less custom local proof than FNV."
+    },
+    {
+      "id": "fallout_new_vegas",
+      "displayName": "Fallout: New Vegas",
+      "engineFamily": "FNV/ESM4",
+      "supportTier": "walking-sim",
+      "openmwTarget": true,
+      "defaultEncoding": "win1252",
+      "content": [
+        "FalloutNV.esm",
+        "DeadMoney.esm",
+        "HonestHearts.esm",
+        "OldWorldBlues.esm",
+        "LonesomeRoad.esm",
+        "GunRunnersArsenal.esm",
+        "CaravanPack.esm",
+        "ClassicPack.esm",
+        "MercenaryPack.esm",
+        "TribalPack.esm",
+        "FNVR.esp"
+      ],
+      "archives": [
+        "Fallout - Meshes.bsa",
+        "Fallout - Misc.bsa",
+        "Fallout - Sound.bsa",
+        "Fallout - Textures.bsa",
+        "Fallout - Textures2.bsa",
+        "Fallout - Voices1.bsa",
+        "DeadMoney - Main.bsa",
+        "DeadMoney - Sounds.bsa",
+        "HonestHearts - Main.bsa",
+        "HonestHearts - Sounds.bsa",
+        "OldWorldBlues - Main.bsa",
+        "OldWorldBlues - Sounds.bsa",
+        "LonesomeRoad - Main.bsa",
+        "LonesomeRoad - Sounds.bsa",
+        "GunRunnersArsenal - Main.bsa",
+        "GunRunnersArsenal - Sounds.bsa",
+        "CaravanPack - Main.bsa",
+        "ClassicPack - Main.bsa",
+        "MercenaryPack - Main.bsa",
+        "TribalPack - Main.bsa",
+        "Update.bsa"
+      ],
+      "notes": "Local work has gone farthest here. Still not a full runtime: quests, scripts, dialogue INFO, combat, radio, and persistence are not cleanly proven."
+    },
+    {
+      "id": "skyrim_2011",
+      "displayName": "The Elder Scrolls V: Skyrim",
+      "engineFamily": "TES5/ESM4",
+      "supportTier": "walking-sim",
+      "openmwTarget": true,
+      "defaultEncoding": "win1252",
+      "content": [
+        "Skyrim.esm",
+        "Update.esm"
+      ],
+      "archives": [
+        "Skyrim - Meshes.bsa",
+        "Skyrim - Textures.bsa",
+        "Skyrim - Misc.bsa",
+        "Skyrim - Sounds.bsa",
+        "Skyrim - Voices.bsa"
+      ],
+      "notes": "Upstream notes distinguish 2011 Skyrim from Skyrim Special Edition/VR. SE/VR assets are harder because collision/skinned geometry support is weaker."
+    },
+    {
+      "id": "skyrim_vr",
+      "displayName": "The Elder Scrolls V: Skyrim VR",
+      "engineFamily": "Skyrim SE/VR ESM4",
+      "supportTier": "walking-sim",
+      "openmwTarget": true,
+      "defaultEncoding": "win1252",
+      "content": [
+        "Skyrim.esm",
+        "Update.esm",
+        "Dawnguard.esm",
+        "HearthFires.esm",
+        "Dragonborn.esm",
+        "SkyrimVR.esm"
+      ],
+      "archives": [
+        "Skyrim - Animations.bsa",
+        "Skyrim - Interface.bsa",
+        "Skyrim - Meshes0.bsa",
+        "Skyrim - Meshes1.bsa",
+        "Skyrim - Misc.bsa",
+        "Skyrim - Sounds.bsa",
+        "Skyrim - Textures0.bsa",
+        "Skyrim - Voices_en0.bsa",
+        "Skyrim_VR - Main.bsa"
+      ],
+      "notes": "Installed locally. Treat as more experimental than 2011 Skyrim; useful for world browsing, not animation/collision claims."
+    },
+    {
+      "id": "fallout4",
+      "displayName": "Fallout 4",
+      "engineFamily": "FO4/ESM4+BA2",
+      "supportTier": "walking-sim",
+      "openmwTarget": true,
+      "defaultEncoding": "win1252",
+      "content": [
+        "Fallout4.esm"
+      ],
+      "archives": [
+        "Fallout4 - Meshes.ba2",
+        "Fallout4 - Materials.ba2",
+        "Fallout4 - Textures1.ba2",
+        "Fallout4 - Misc.ba2",
+        "Fallout4 - Startup.ba2"
+      ],
+      "notes": "OpenMW can read FO4/next-gen/FO76 BA2s and has basic FO4 material support, but collision is not generated for FO4/76 in upstream notes."
+    },
+    {
+      "id": "fallout4_vr",
+      "displayName": "Fallout 4 VR",
+      "engineFamily": "FO4 VR/ESM4+BA2",
+      "supportTier": "walking-sim",
+      "openmwTarget": true,
+      "defaultEncoding": "win1252",
+      "content": [
+        "Fallout4.esm",
+        "Fallout4_VR.esm"
+      ],
+      "archives": [
+        "Fallout4 - Meshes.ba2",
+        "Fallout4 - Materials.ba2",
+        "Fallout4 - Textures1.ba2",
+        "Fallout4 - Misc.ba2",
+        "Fallout4_VR - Main.ba2"
+      ],
+      "notes": "Installed locally. Treat as a Fallout 4 content variant for browsing, not as native Fallout 4 VR gameplay."
+    },
+    {
+      "id": "fallout76",
+      "displayName": "Fallout 76",
+      "engineFamily": "FO76/BA2",
+      "supportTier": "asset-research",
+      "openmwTarget": false,
+      "defaultEncoding": "win1252",
+      "content": [],
+      "archives": [],
+      "notes": "OpenMW release notes mention FO76 BA2/NIF file handling, not a Fallout 76 world-runtime target."
+    },
+    {
+      "id": "starfield",
+      "displayName": "Starfield",
+      "engineFamily": "Creation Engine 2",
+      "supportTier": "future-research",
+      "openmwTarget": false,
+      "defaultEncoding": "utf8",
+      "content": [
+        "Starfield.esm"
+      ],
+      "archives": [],
+      "notes": "Not an official OpenMW prototype target. Local source has Starfield BA2 enum handling, but archive access alone is not enough for cells/worldspaces/NIF/materials/runtime."
+    },
+    {
+      "id": "oblivion_remastered",
+      "displayName": "The Elder Scrolls IV: Oblivion Remastered",
+      "engineFamily": "Unreal Engine",
+      "supportTier": "future-research",
+      "openmwTarget": false,
+      "defaultEncoding": "utf8",
+      "content": [],
+      "archives": [],
+      "notes": "Not an OpenMW target; OpenMW is not an Unreal Engine reimplementation."
+    }
+  ]
+}

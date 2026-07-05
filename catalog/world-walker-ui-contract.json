@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-05",
+  "purpose": "First-cut contract for the native OpenMW/OpenMW VR world walker menu.",
+  "views": [
+    {
+      "id": "world-select",
+      "lifetime": "before-runtime-profile-load",
+      "description": "Choose a generated world profile and restart or launch OpenMW/OpenMW VR with that profile."
+    },
+    {
+      "id": "world-walker",
+      "lifetime": "in-loaded-profile",
+      "description": "Search cells, click exterior maps, enter coordinates, and teleport within the currently loaded profile."
+    }
+  ],
+  "dataSources": [
+    {
+      "id": "worldCatalog",
+      "path": "catalog/worlds.local.json",
+      "requiredFor": [
+        "world-select"
+      ]
+    },
+    {
+      "id": "cellCatalog",
+      "pathTemplate": "catalog/cells/{worldId}.cells.json",
+      "schema": "catalog/cell-catalog.schema.json",
+      "requiredFor": [
+        "world-walker map bounds",
+        "offline cell search"
+      ]
+    },
+    {
+      "id": "runtimeStore",
+      "source": "OpenMW ESMStore and WorldModel",
+      "requiredFor": [
+        "authoritative cell resolution",
+        "spawn position resolution",
+        "teleport"
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "viewer.launchWorld",
+      "scope": "process",
+      "inputs": [
+        "worldId",
+        "mode"
+      ],
+      "launchArgsTemplate": [
+        "--replace",
+        "config",
+        "--config",
+        "{profileDirectory}"
+      ],
+      "notes": "World switching is a process/profile switch. Do not hot-swap content stacks in a running process."
+    },
+    {
+      "id": "viewer.listCells",
+      "scope": "in-process",
+      "inputs": [
+        "query",
+        "cellType",
+        "worldspaceId"
+      ],
+      "outputs": [
+        "cellId",
+        "displayName",
+        "editorId",
+        "cellType",
+        "worldspaceId",
+        "grid",
+        "spawn"
+      ],
+      "notes": "Can use the offline cell catalog for fast search, then confirm against the runtime store before travel."
+    },
+    {
+      "id": "viewer.jumpToCell",
+      "scope": "in-process",
+      "inputs": [
+        "cellId or displayName"
+      ],
+      "enginePath": [
+        "World::findInteriorPosition",
+        "World::findExteriorPosition",
+        "World::changeToCell"
+      ],
+      "notes": "Best for named interiors, named exteriors, and typed grid strings."
+    },
+    {
+      "id": "viewer.jumpToMapPoint",
+      "scope": "in-process",
+      "inputs": [
+        "worldspaceId",
+        "mapRect",
+        "clickX",
+        "clickY"
+      ],
+      "requires": [
+        "worldspace cell bounds",
+        "worldspace cell size",
+        "Y-axis inversion rule"
+      ],
+      "outputs": [
+        "worldX",
+        "worldY",
+        "cellX",
+        "cellY"
+      ],
+      "enginePath": [
+        "ViewerTravel::travelToExteriorPosition",
+        "WorldModel::getExterior",
+        "World::changeToCell"
+      ],
+      "notes": "Exterior-only first cut. Interior maps can be added later after per-interior projection is stable."
+    },
+    {
+      "id": "viewer.jumpToCoordinates",
+      "scope": "in-process",
+      "inputs": [
+        "worldspaceId",
+        "worldX",
+        "worldY",
+        "optionalZ",
+        "optionalYaw"
+      ],
+      "enginePath": [
+        "ViewerTravel::travelToExteriorPosition",
+        "WorldModel::getExterior",
+        "World::changeToCell"
+      ],
+      "notes": "Coordinate jump is the fallback when the map image or cell name is poor."
+    }
+  ],
+  "engineAnchors": [
+    {
+      "path": "apps/openmw/mwworld/worldimp.cpp",
+      "symbols": [
+        "World::findInteriorPosition",
+        "World::findExteriorPosition",
+        "World::changeToCell"
+      ]
+    },
+    {
+      "path": "apps/openmw/mwgui/mapwindow.cpp",
+      "symbols": [
+        "LocalMapBase::getMarkerPosition",
+        "LocalMapBase::getPosition"
+      ]
+    },
+    {
+      "path": "apps/openmw/mwlua/objectbindings.cpp",
+      "symbols": [
+        "teleportPlayer"
+      ]
+    }
+  ],
+  "firstCutReadyWhen": [
+    "The generated world profile launches with --replace config --config.",
+    "The world walker opens inside the loaded profile.",
+    "Search can resolve at least interior names and exterior grid cells.",
+    "A map click in an exterior worldspace converts to world coordinates.",
+    "Travel calls World::changeToCell and the player can walk into neighboring cells."
+  ]
+}

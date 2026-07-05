@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-05",
+  "purpose": "Per-world OpenMW settings presets for the world viewer. These keep detail, cache, model, terrain, map, and VR-adjacent settings isolated from Morrowind defaults and from each other.",
+  "presets": {
+    "morrowind_full_balanced": {
+      "Camera": {
+        "field of view": 75,
+        "viewing distance": 28672,
+        "small feature culling": false,
+        "small feature culling pixel size": 0.5
+      },
+      "Cells": {
+        "preload enabled": true,
+        "preload num threads": 2,
+        "preload exterior grid": true,
+        "preload fast travel": false,
+        "preload doors": true,
+        "preload distance": 8192,
+        "preload instances": true,
+        "cell cache min": 8,
+        "cell cache max": 16,
+        "cache expiry delay": 45,
+        "target framerate": 60,
+        "pointers cache size": 200
+      },
+      "Terrain": {
+        "distant terrain": true,
+        "object paging": true,
+        "object paging active grid": true,
+        "object paging min size": 0.01
+      },
+      "Models": {
+        "load unsupported nif files": false
+      },
+      "General": {
+        "anisotropy": 16
+      },
+      "Map": {
+        "global": true,
+        "local map hud fog of war": false
+      },
+      "Navigator": {
+        "enable nav mesh disk cache": false,
+        "write to navmeshdb": false
+      }
+    },
+    "esm4_world_viewer_high_detail": {
+      "Camera": {
+        "field of view": 91,
+        "viewing distance": 81920,
+        "small feature culling": false,
+        "small feature culling pixel size": 0.5
+      },
+      "Cells": {
+        "preload enabled": true,
+        "preload num threads": 2,
+        "preload exterior grid": true,
+        "preload fast travel": false,
+        "preload doors": true,
+        "preload distance": 12288,
+        "preload instances": true,
+        "cell cache min": 12,
+        "cell cache max": 24,
+        "cell expiry delay": 5,
+        "prediction time": 1,
+        "cache expiry delay": 45,
+        "target framerate": 90,
+        "pointers cache size": 200
+      },
+      "Terrain": {
+        "distant terrain": true,
+        "object paging": true,
+        "object paging active grid": true,
+        "object paging min size": 0.01
+      },
+      "Models": {
+        "load unsupported nif files": true
+      },
+      "General": {
+        "anisotropy": 16
+      },
+      "Video": {
+        "antialiasing": 2
+      },
+      "Map": {
+        "global": true,
+        "local map hud fog of war": false
+      },
+      "Navigator": {
+        "wait until min distance to player": 0,
+        "enable nav mesh disk cache": false,
+        "write to navmeshdb": false
+      },
+      "Input": {
+        "always run": false,
+        "thumbstick auto run": false
+      }
+    },
+    "fo4_ba2_research": {
+      "Camera": {
+        "field of view": 91,
+        "viewing distance": 81920,
+        "small feature culling": false,
+        "small feature culling pixel size": 0.5
+      },
+      "Cells": {
+        "preload enabled": true,
+        "preload num threads": 2,
+        "preload exterior grid": true,
+        "preload fast travel": false,
+        "preload doors": true,
+        "preload distance": 12288,
+        "preload instances": true,
+        "cell cache min": 8,
+        "cell cache max": 16,
+        "cell expiry delay": 5,
+        "prediction time": 1,
+        "cache expiry delay": 45,
+        "target framerate": 90,
+        "pointers cache size": 200
+      },
+      "Terrain": {
+        "distant terrain": true,
+        "object paging": true,
+        "object paging active grid": true,
+        "object paging min size": 0.01
+      },
+      "Models": {
+        "load unsupported nif files": true
+      },
+      "General": {
+        "anisotropy": 16
+      },
+      "Video": {
+        "antialiasing": 2
+      },
+      "Map": {
+        "global": true,
+        "local map hud fog of war": false
+      },
+      "Navigator": {
+        "wait until min distance to player": 0,
+        "enable nav mesh disk cache": false,
+        "write to navmeshdb": false
+      },
+      "Input": {
+        "always run": false,
+        "thumbstick auto run": false
+      }
+    }
+  },
+  "worlds": {
+    "morrowind": {
+      "preset": "morrowind_full_balanced",
+      "sections": {
+        "Saves": {
+          "character": "world-viewer-morrowind"
+        }
+      }
+    },
+    "oblivion": {
+      "preset": "esm4_world_viewer_high_detail",
+      "sections": {
+        "Saves": {
+          "character": "world-viewer-oblivion"
+        }
+      }
+    },
+    "fallout3": {
+      "preset": "esm4_world_viewer_high_detail",
+      "sections": {
+        "Saves": {
+          "character": "world-viewer-fallout3"
+        }
+      }
+    },
+    "fallout_new_vegas": {
+      "preset": "esm4_world_viewer_high_detail",
+      "sections": {
+        "Saves": {
+          "character": "world-viewer-fnv"
+        },
+        "Windows": {
+          "map hidden": false,
+          "stats hidden": true
+        },
+        "VR": {
+          "fallout hand mesh offset x": 0,
+          "fallout hand mesh offset y": 0.0857,
+          "fallout hand mesh offset z": -0.1714,
+          "fallout left hand mesh offset x": 0,
+          "fallout left hand mesh offset y": 0,
+          "fallout left hand mesh offset z": 0,
+          "fallout left hand mesh pitch": 0,
+          "fallout left hand mesh yaw": -90,
+          "fallout left hand mesh roll": 90,
+          "fallout right hand mesh offset x": 0,
+          "fallout right hand mesh offset y": 0,
+          "fallout right hand mesh offset z": 0,
+          "fallout right hand mesh pitch": 0,
+          "fallout right hand mesh yaw": 90,
+          "fallout right hand mesh roll": -90,
+          "fallout left hand roll flip": true
+        }
+      }
+    },
+    "skyrim_2011": {
+      "preset": "esm4_world_viewer_high_detail",
+      "sections": {
+        "Saves": {
+          "character": "world-viewer-skyrim-2011"
+        }
+      }
+    },
+    "skyrim_vr": {
+      "preset": "esm4_world_viewer_high_detail",
+      "sections": {
+        "Saves": {
+          "character": "world-viewer-skyrim-vr"
+        }
+      }
+    },
+    "fallout4": {
+      "preset": "fo4_ba2_research",
+      "sections": {
+        "Saves": {
+          "character": "world-viewer-fallout4"
+        }
+      }
+    },
+    "fallout4_vr": {
+      "preset": "fo4_ba2_research",
+      "sections": {
+        "Saves": {
+          "character": "world-viewer-fallout4-vr"
+        }
+      }
+    }
+  },
+  "guardrails": [
+    "Every world gets its own settings.cfg; do not share detail settings between Morrowind and ESM4 worlds.",
+    "Use --replace config --config <profile-dir> for launches so ambient user config cannot re-add Morrowind data/content.",
+    "Generated openmw.cfg files use replace=data, replace=fallback-archive, and replace=content.",
+    "Generated openmw.cfg files set user-data to a profile-local userdata directory.",
+    "Navigator disk cache writes are disabled in generated world-viewer settings unless a world profile explicitly opts in."
+  ]
+}

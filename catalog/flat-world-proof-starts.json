@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-05",
+  "purpose": "Best-known flat start cells for screenshot smoke tests. These are intentionally conservative and can be replaced by generated cell catalogs later.",
+  "defaults": {
+    "runSeconds": 28,
+    "screenshotFrames": "240",
+    "extraArgs": [
+      "--no-sound"
+    ]
+  },
+  "worlds": {
+    "morrowind": {
+      "startCell": "Seyda Neen",
+      "label": "Seyda Neen starting village"
+    },
+    "oblivion": {
+      "startCell": "ICPalace03",
+      "label": "Imperial City Palace exterior"
+    },
+    "fallout3": {
+      "startCell": "Vault101Exterior",
+      "label": "Vault 101 exterior"
+    },
+    "fallout_new_vegas": {
+      "startCell": "Goodsprings",
+      "label": "Goodsprings exterior"
+    },
+    "skyrim_vr": {
+      "startCell": "Riverwood",
+      "label": "Riverwood exterior"
+    },
+    "fallout4_vr": {
+      "startCell": "SanctuaryExt",
+      "label": "Sanctuary Hills exterior"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "description": "Schema shape for per-world cell catalogs consumed by the world walker.",
+  "requiredTopLevelKeys": [
+    "schemaVersion",
+    "worldId",
+    "generatedAt",
+    "profileHash",
+    "worldspaces",
+    "cells"
+  ],
+  "worldspaceRecord": {
+    "id": "RefId or engine-native worldspace id",
+    "editorId": "Optional editor id",
+    "displayName": "Human-readable name",
+    "cellSize": "World units per exterior cell",
+    "bounds": {
+      "minCellX": "integer",
+      "maxCellX": "integer",
+      "minCellY": "integer",
+      "maxCellY": "integer"
+    },
+    "map": {
+      "status": "missing|generated|asset",
+      "imagePath": "Optional generated overview image path",
+      "yAxis": "cell-y-up"
+    }
+  },
+  "cellRecord": {
+    "id": "RefId or stable generated cell key",
+    "cellType": "interior|exterior",
+    "displayName": "Human-readable name",
+    "editorId": "Optional editor id",
+    "worldspaceId": "Worldspace id for exterior cells",
+    "grid": {
+      "x": "integer",
+      "y": "integer"
+    },
+    "center": {
+      "x": "number",
+      "y": "number",
+      "z": "number"
+    },
+    "spawn": {
+      "strategy": "cocmarkerheading|door-destination|xmarkerheading|first-static|cell-center",
+      "x": "number",
+      "y": "number",
+      "z": "number",
+      "rotZ": "number"
+    },
+    "warnings": [
+      "missing-land",
+      "missing-model",
+      "unresolved-parent-worldspace"
+    ]
+  }
+}
