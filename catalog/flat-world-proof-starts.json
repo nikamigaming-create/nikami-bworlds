@@ -5,6 +5,7 @@
   "defaults": {
     "runSeconds": 90,
     "screenshotFrames": "120,300,600,1200",
+    "esm4GridRadius": 0,
     "extraArgs": [
       "--no-sound"
     ]
@@ -17,8 +18,9 @@
     "oblivion": {
       "startCell": "ICPalace03",
       "label": "Imperial City Palace exterior",
+      "esm4GridRadius": 1,
       "anchor": {
-        "source": "Oblivion.esm CELL ICPalace03, street/palace static cluster",
+        "source": "Oblivion.esm CELL ICPalace03, static survey camera pulled outside/up from palace shell",
         "position": {
           "x": 28672,
           "y": 63424,
@@ -32,45 +34,46 @@
         "camera": {
           "mode": "static",
           "position": {
-            "x": 25000,
-            "y": 60000,
-            "z": 6500
+            "x": 18000,
+            "y": 51000,
+            "z": 10500
           },
           "target": {
             "x": 28672,
             "y": 63424,
-            "z": 3700
+            "z": 5200
           }
         },
         "dry": true
       }
     },
     "fallout3": {
-      "startCell": "Vault101Exterior",
-      "label": "Vault 101 exterior",
+      "startCell": "MegatonEntrance",
+      "label": "Megaton entrance exterior",
+      "esm4GridRadius": 1,
       "anchor": {
-        "source": "Fallout3.esm CELL Vault101Exterior, local exterior static cluster",
+        "source": "Fallout3.esm CELL MegatonEntrance, mined gate/static cluster",
         "position": {
-          "x": -13488,
-          "y": -14112,
-          "z": 14180
+          "x": -2907,
+          "y": -23485,
+          "z": 12643
         },
         "rotation": {
           "x": 0,
           "y": 0,
-          "z": 2.2
+          "z": 0.2
         },
         "camera": {
           "mode": "static",
           "position": {
-            "x": -11500,
-            "y": -19000,
-            "z": 16000
+            "x": -6200,
+            "y": -27000,
+            "z": 15000
           },
           "target": {
-            "x": -13488,
-            "y": -14112,
-            "z": 14250
+            "x": -2907,
+            "y": -23485,
+            "z": 12900
           }
         },
         "dry": true
@@ -79,6 +82,7 @@
     "fallout_new_vegas": {
       "startCell": "Goodsprings",
       "label": "Goodsprings exterior",
+      "esm4GridRadius": 1,
       "anchor": {
         "source": "Local FNV proof bootstrap Goodsprings position",
         "position": {
@@ -108,14 +112,15 @@
       }
     },
     "skyrim_vr": {
-      "startCell": "Riverwood01",
-      "label": "Riverwood exterior",
+      "startCell": "RiverwoodBridge",
+      "label": "Riverwood bridge exterior",
+      "esm4GridRadius": 0,
       "anchor": {
-        "source": "Skyrim.esm CELL Riverwood01 COCMarkerHeading",
+        "source": "Skyrim.esm CELL RiverwoodBridge marker cluster",
         "position": {
-          "x": 20051.375,
-          "y": -42984.742,
-          "z": -48
+          "x": 22583,
+          "y": -37847,
+          "z": -71
         },
         "rotation": {
           "x": 0,
@@ -125,14 +130,14 @@
         "camera": {
           "mode": "static",
           "position": {
-            "x": 17000,
-            "y": -46000,
-            "z": 1800
+            "x": 24500,
+            "y": -40200,
+            "z": 1300
           },
           "target": {
-            "x": 20051.375,
-            "y": -42984.742,
-            "z": 100
+            "x": 22583,
+            "y": -37847,
+            "z": 0
           }
         },
         "dry": true
@@ -141,8 +146,9 @@
     "fallout4_vr": {
       "startCell": "SanctuaryExt",
       "label": "Sanctuary Hills exterior",
+      "esm4GridRadius": 1,
       "anchor": {
-        "source": "Fallout4.esm CELL SanctuaryExt COC/marker cluster",
+        "source": "Fallout4.esm CELL SanctuaryExt COC/marker cluster, lowered street-view survey camera",
         "position": {
           "x": -80352,
           "y": 89600,
@@ -156,14 +162,14 @@
         "camera": {
           "mode": "static",
           "position": {
-            "x": -83500,
-            "y": 86000,
-            "z": 9800
+            "x": -82500,
+            "y": 85800,
+            "z": 8900
           },
           "target": {
             "x": -80352,
             "y": 89600,
-            "z": 7900
+            "z": 7950
           }
         },
         "dry": true

@@ -262,7 +262,7 @@ index 59699d63a5..9edaad744d 100644
 +    endif()
  endif()
 diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
-index 7dd4db4d58..90e3f8a2c1 100644
+index 7dd4db4d58..7362158028 100644
 --- a/apps/openmw/engine.cpp
 +++ b/apps/openmw/engine.cpp
 @@ -9,6 +9,7 @@
@@ -273,15 +273,78 @@ index 7dd4db4d58..90e3f8a2c1 100644
  #include <string>
  #include <string_view>
  #include <system_error>
-@@ -120,6 +121,7 @@
+@@ -256,6 +257,70 @@ namespace
+         return parsed;
+     }
  
- #include "mwphysics/collisiontype.hpp"
- #include "mwphysics/raycasting.hpp"
-+#include "mwphysics/raycasting.hpp"
- 
- #include "mwrender/vismask.hpp"
- 
-@@ -670,6 +672,335 @@ namespace
++    bool worldViewerStaticCameraRequested()
++    {
++        const char* value = std::getenv("OPENMW_WORLD_VIEWER_START_CAMERA_MODE");
++        return value != nullptr && std::string(value) == "static";
++    }
++
++    bool enforceWorldViewerStaticCamera(MWWorld::World& world)
++    {
++        if (!worldViewerStaticCameraRequested())
++            return false;
++
++        MWRender::Camera* camera = world.getCamera();
++        const MWWorld::Ptr player = world.getPlayerPtr();
++        if (camera == nullptr || player.isEmpty())
++            return false;
++
++        const ESM::Position& position = player.getRefData().getPosition();
++        const osg::Vec3d fallbackTarget(position.pos[0], position.pos[1], position.pos[2] + 128.f);
++        const osg::Vec3d target(
++            readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X", static_cast<float>(fallbackTarget.x())),
++            readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y", static_cast<float>(fallbackTarget.y())),
++            readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z", static_cast<float>(fallbackTarget.z())));
++        const osg::Vec3d eye(
++            readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_POS_X", position.pos[0] + 2048.f),
++            readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_POS_Y", position.pos[1] - 4096.f),
++            readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z", position.pos[2] + 2048.f));
++
++        camera->setMode(MWRender::Camera::Mode::Static, true);
++        camera->setStaticPosition(eye);
++        const osg::Vec3d delta = target - eye;
++        const double horizontal = std::sqrt(delta.x() * delta.x() + delta.y() * delta.y());
++        camera->setPitch(static_cast<float>(std::atan2(delta.z(), horizontal)), true);
++        camera->setYaw(-static_cast<float>(std::atan2(delta.x(), delta.y())), true);
++        camera->setRoll(0.f);
++        camera->instantTransition();
++        camera->updateCamera();
++
++        static bool logged = false;
++        if (!logged)
++        {
++            logged = true;
++            Log(Debug::Info) << "World viewer: enforcing static survey camera eye=(" << eye.x() << "," << eye.y()
++                             << "," << eye.z() << ") target=(" << target.x() << "," << target.y() << ","
++                             << target.z() << ") pitch=" << camera->getPitch() << " yaw=" << camera->getYaw();
++        }
++        return true;
++    }
++
++    void enforceWorldViewerDryStart(MWWorld::World& world)
++    {
++        const char* value = std::getenv("OPENMW_WORLD_VIEWER_START_DRY");
++        if (value == nullptr || *value == '\0' || std::string(value) == "0")
++            return;
++
++        world.setWaterHeight(-200000.f);
++
++        static bool logged = false;
++        if (!logged)
++        {
++            logged = true;
++            Log(Debug::Info) << "World viewer: enforcing dry proof water height";
++        }
++    }
++
+     bool hasFalloutNvContent(const std::vector<std::string>& contentFiles)
+     {
+         for (std::string file : contentFiles)
+@@ -670,6 +735,335 @@ namespace
                           << cameraPos.x() << "," << cameraPos.y() << "," << cameraPos.z()
                           << ") cameraPitch=" << camera->getPitch() << " cameraYaw=" << camera->getYaw();
      }
@@ -617,7 +680,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
      // ## VR_PATCH BEGIN
  
      class InitializeVrOperation : public osg::GraphicsOperation
-@@ -802,6 +1133,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -802,6 +1196,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      static int proofActorScreenshotLastResolveFrame = -1;
      static bool proofFirstPersonHidden = false;
      static bool proofGuiHidden = false;
@@ -625,7 +688,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
      static bool proofSkyDisabled = false;
      static bool proofGodModeEnabled = false;
      static bool proofDelayedStartupScriptExecuted = false;
-@@ -810,6 +1142,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -810,6 +1205,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      static bool fnvFlatStartupCameraSettled = false;
      static bool proofScreenshotWaitLogged = false;
      static int proofWorldReadyFrames = 0;
@@ -635,7 +698,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
      const auto parseProofFormId = [](std::string_view value) -> std::optional<ESM::FormId> {
          while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
          while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
-@@ -1261,6 +1596,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1261,6 +1659,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      }
  
      const bool proofRunning = mStateManager->getState() == MWBase::StateManager::State_Running;
@@ -650,10 +713,16 @@ index 7dd4db4d58..90e3f8a2c1 100644
      const bool proofLoadingGui = mWindowManager->containsMode(MWGui::GM_Loading)
          || mWindowManager->containsMode(MWGui::GM_LoadingWallpaper)
          || mWindowManager->containsMode(MWGui::GM_MainMenu);
-@@ -1270,6 +1613,20 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1270,6 +1676,26 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      else
          proofWorldReadyFrames = 0;
  
++    if (proofWorldReady && mWorld != nullptr)
++        enforceWorldViewerDryStart(*mWorld);
++
++    if (proofWorldReady && mWorld != nullptr && !VR::getVR())
++        enforceWorldViewerStaticCamera(*mWorld);
++
 +    if (viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_TELEMETRY") && proofRunning && mWorld != nullptr)
 +    {
 +        const int telemetryInterval = readProofInt("OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL", 30);
@@ -671,7 +740,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
      if (!proofDelayedStartupScriptExecuted && std::getenv("OPENMW_PROOF_DELAY_STARTUP_SCRIPT") != nullptr
          && !mStartupScript.empty() && proofWorldReady)
      {
-@@ -1295,8 +1652,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1295,8 +1721,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          proofFNVBootstrapApplied = true;
      }
  
@@ -684,7 +753,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
      {
          settleFNVFlatStartupCamera(*mWorld);
          fnvFlatStartupCameraSettled = true;
-@@ -1894,6 +2254,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1894,6 +2323,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          && frameNumber >= static_cast<unsigned>(proofScreenshotFrames[proofScreenshotFrameIndex]);
      const bool proofScreenshotReadyFramesReached
          = !proofScreenshotReadyQueued && proofScreenshotReadyFrames >= 0 && proofWorldReadyFrames >= proofScreenshotReadyFrames;
@@ -709,7 +778,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
      const int proofActorAlignedScreenshotDelay = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_DELAY");
      const int proofActorAlignedScreenshotMinFrame = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_MIN_FRAME");
      const bool proofActorAlignedScreenshotReached = !proofActorAlignedScreenshotQueued && proofActorCameraAligned
-@@ -1931,6 +2309,20 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1931,6 +2378,20 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
              mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
              return true;
          }
@@ -730,7 +799,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
  
          Log(Debug::Info) << "FNV/ESM4 proof: queuing GUI-inclusive native screenshot at frame " << frameNumber
                           << " hour=" << mWorld->getTimeStamp().getHour()
-@@ -2490,12 +2882,19 @@ void OMW::Engine::prepareEngine()
+@@ -2490,12 +2951,19 @@ void OMW::Engine::prepareEngine()
              asyncListener.update();
          dataLoading.get();
      }
@@ -750,7 +819,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
  
      // ## VR_PATCH BEGIN
      if (VR::getVR())
-@@ -2505,6 +2904,7 @@ void OMW::Engine::prepareEngine()
+@@ -2505,6 +2973,7 @@ void OMW::Engine::prepareEngine()
      // ## VR_PATCH END
  
      const MWWorld::Store<ESM::GameSetting>* gmst = &mWorld->getStore().get<ESM::GameSetting>();
@@ -758,7 +827,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
      mL10nManager->setGmstLoader(
          [gmst, misses = std::set<std::string, std::less<>>()](std::string_view gmstName) mutable {
              const ESM::GameSetting* res = gmst->search(gmstName);
-@@ -2520,34 +2920,48 @@ void OMW::Engine::prepareEngine()
+@@ -2520,34 +2989,48 @@ void OMW::Engine::prepareEngine()
                  return std::string("GMST:") + std::string(gmstName);
              }
          });
@@ -807,7 +876,7 @@ index 7dd4db4d58..90e3f8a2c1 100644
  
      // scripts
      if (mCompileAll)
-@@ -2565,11 +2979,15 @@ void OMW::Engine::prepareEngine()
+@@ -2565,11 +3048,15 @@ void OMW::Engine::prepareEngine()
                               << 100 * static_cast<double>(result.second) / result.first << "%)";
      }
  
