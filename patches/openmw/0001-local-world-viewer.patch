@@ -1039,10 +1039,19 @@ index 2b72dca63b..591ccc711c 100644
              physics.addActor(ptr, VFS::Path::toNormalized(model.empty() ? std::string(getModel(ptr)) : model));
          }
 diff --git a/apps/openmw/mwclass/esm4npc.cpp b/apps/openmw/mwclass/esm4npc.cpp
-index 13552f142f..df87f57feb 100644
+index 13552f142f..fb7d06f438 100644
 --- a/apps/openmw/mwclass/esm4npc.cpp
 +++ b/apps/openmw/mwclass/esm4npc.cpp
-@@ -35,6 +35,25 @@
+@@ -3,6 +3,8 @@
+ #include <algorithm>
+ #include <cmath>
+ #include <cstdlib>
++#include <cctype>
++#include <string>
+ 
+ #include <components/esm/attr.hpp>
+ #include <components/esm4/loadarmo.hpp>
+@@ -35,6 +37,38 @@
  
  namespace MWClass
  {
@@ -1065,10 +1074,23 @@ index 13552f142f..df87f57feb 100644
 +        return "TES5_OR_UNKNOWN";
 +    }
 +
++    static bool isWorldViewerMarkerActorModel(std::string_view model)
++    {
++        std::string lowered;
++        lowered.reserve(model.size());
++        for (char ch : model)
++        {
++            const char normalized = ch == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
++            lowered.push_back(normalized);
++        }
++
++        return lowered.ends_with("marker_creature.nif") || lowered.ends_with("marker_npc.nif");
++    }
++
      template <class LevelledRecord, class TargetRecord>
      static std::vector<const TargetRecord*> withBaseTemplates(
          const TargetRecord* rec, int level = MWClass::ESM4Impl::sDefaultLevel)
-@@ -58,9 +77,6 @@ namespace MWClass
+@@ -58,9 +92,6 @@ namespace MWClass
                  return rec;
              else if (rec->mIsFONV)
              {
@@ -1078,7 +1100,37 @@ index 13552f142f..df87f57feb 100644
                  if (!(rec->mBaseConfig.fo3.templateFlags & flag))
                      return rec;
              }
-@@ -534,6 +550,29 @@ namespace MWClass
+@@ -128,6 +159,29 @@ namespace MWClass
+     {
+     }
+ 
++    static std::string_view getFalloutNpcFallbackSkeleton(const ESM4NpcCustomData& data)
++    {
++        if (data.mTraits != nullptr && data.mTraits->mIsFONV)
++            return "characters/_male/skeleton.nif";
++        return {};
++    }
++
++    static void logWorldViewerNpcModelFallback(
++        const MWWorld::ConstPtr& ptr, const ESM4NpcCustomData& data, std::string_view model, std::string_view reason)
++    {
++        if (!worldViewerActorTelemetryEnabled() || data.mTraits == nullptr)
++            return;
++
++        Log(Debug::Info) << "World viewer actor ledger: phase=npc-model-fallback"
++                         << " ref=" << ptr.getCellRef().getRefId()
++                         << " base=" << ESM::FormId(data.mTraits->mId)
++                         << " game=" << getWorldViewerNpcGameTag(*data.mTraits)
++                         << " npc=\"" << data.mTraits->mEditorId << "\""
++                         << " model=\"" << model << "\""
++                         << " fallback=\"characters/_male/skeleton.nif\""
++                         << " reason=\"" << reason << "\"";
++    }
++
+     static const ESM4::Npc* chooseStatsRecord(const ESM4NpcCustomData& data)
+     {
+         if (data.mStats != nullptr)
+@@ -534,6 +588,29 @@ namespace MWClass
                           << " packageCount=" << (data->mAIPackage != nullptr ? data->mAIPackage->mAIPackages.size() : 0)
                           << " weapon="
                           << (data->mEquippedWeapon != nullptr ? data->mEquippedWeapon->mEditorId : std::string_view{});
@@ -1108,6 +1160,31 @@ index 13552f142f..df87f57feb 100644
  
          ESM4NpcCustomData& res = *data;
          refData.setCustomData(std::move(data));
+@@ -632,13 +709,23 @@ namespace MWClass
+             return {};
+         if (data.mTraits->mIsTES4)
+             return data.mTraits->mModel;
++        const std::string_view falloutFallback = getFalloutNpcFallbackSkeleton(data);
+         if (data.mRace != nullptr)
+         {
+             const std::string_view raceModel = data.mIsFemale ? data.mRace->mModelFemale : data.mRace->mModelMale;
+-            if (!raceModel.empty())
++            if (!raceModel.empty() && (falloutFallback.empty() || !isWorldViewerMarkerActorModel(raceModel)))
+                 return raceModel;
++            if (!raceModel.empty() && !falloutFallback.empty())
++                logWorldViewerNpcModelFallback(ptr, data, raceModel, "race marker model");
+         }
+         const ESM4::Npc* modelRecord = data.mModel != nullptr ? data.mModel : data.mTraits;
++        if (!falloutFallback.empty()
++            && (modelRecord->mModel.empty() || isWorldViewerMarkerActorModel(modelRecord->mModel)))
++        {
++            logWorldViewerNpcModelFallback(
++                ptr, data, modelRecord->mModel, modelRecord->mModel.empty() ? "empty model" : "record marker model");
++            return falloutFallback;
++        }
+         if (modelRecord->mModel.empty())
+             Log(Debug::Warning) << "FNV/ESM4 diag: no skeleton model for NPC \"" << data.mTraits->mEditorId << "\" ("
+                                 << ESM::RefId(data.mTraits->mId) << ")";
 diff --git a/apps/openmw/mwclass/esm4npc.hpp b/apps/openmw/mwclass/esm4npc.hpp
 index a307c7359b..41cb227c81 100644
 --- a/apps/openmw/mwclass/esm4npc.hpp
