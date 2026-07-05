@@ -6,29 +6,29 @@
     "morrowind_full_balanced": {
       "Camera": {
         "field of view": 75,
-        "viewing distance": 28672,
+        "viewing distance": 65536,
         "small feature culling": false,
         "small feature culling pixel size": 0.5
       },
       "Cells": {
         "preload enabled": true,
-        "preload num threads": 2,
+        "preload num threads": 4,
         "preload exterior grid": true,
         "preload fast travel": false,
         "preload doors": true,
-        "preload distance": 8192,
+        "preload distance": 16384,
         "preload instances": true,
-        "cell cache min": 8,
-        "cell cache max": 16,
+        "cell cache min": 16,
+        "cell cache max": 48,
         "cache expiry delay": 45,
-        "target framerate": 60,
+        "target framerate": 90,
         "pointers cache size": 200
       },
       "Terrain": {
         "distant terrain": true,
         "object paging": true,
         "object paging active grid": true,
-        "object paging min size": 0.01
+        "object paging min size": 0
       },
       "Models": {
         "load unsupported nif files": false
@@ -48,20 +48,20 @@
     "esm4_world_viewer_high_detail": {
       "Camera": {
         "field of view": 91,
-        "viewing distance": 81920,
+        "viewing distance": 196608,
         "small feature culling": false,
         "small feature culling pixel size": 0.5
       },
       "Cells": {
         "preload enabled": true,
-        "preload num threads": 2,
+        "preload num threads": 4,
         "preload exterior grid": true,
         "preload fast travel": false,
         "preload doors": true,
-        "preload distance": 12288,
+        "preload distance": 32768,
         "preload instances": true,
-        "cell cache min": 12,
-        "cell cache max": 24,
+        "cell cache min": 24,
+        "cell cache max": 64,
         "cell expiry delay": 5,
         "prediction time": 1,
         "cache expiry delay": 45,
@@ -72,10 +72,14 @@
         "distant terrain": true,
         "object paging": true,
         "object paging active grid": true,
-        "object paging min size": 0.01
+        "object paging min size": 0
       },
       "Models": {
-        "load unsupported nif files": true
+        "load unsupported nif files": true,
+        "skyatmosphere": "meshes/sky/atmosphere.nif",
+        "skyclouds": "meshes/sky/clouds.nif",
+        "skynight01": "meshes/sky/stars.nif",
+        "skynight02": "meshes/sky/stars_oblivion.nif"
       },
       "General": {
         "anisotropy": 16
@@ -100,20 +104,20 @@
     "fo4_ba2_research": {
       "Camera": {
         "field of view": 91,
-        "viewing distance": 81920,
+        "viewing distance": 196608,
         "small feature culling": false,
         "small feature culling pixel size": 0.5
       },
       "Cells": {
         "preload enabled": true,
-        "preload num threads": 2,
+        "preload num threads": 4,
         "preload exterior grid": true,
         "preload fast travel": false,
         "preload doors": true,
-        "preload distance": 12288,
+        "preload distance": 32768,
         "preload instances": true,
-        "cell cache min": 8,
-        "cell cache max": 16,
+        "cell cache min": 24,
+        "cell cache max": 64,
         "cell expiry delay": 5,
         "prediction time": 1,
         "cache expiry delay": 45,
@@ -124,10 +128,14 @@
         "distant terrain": true,
         "object paging": true,
         "object paging active grid": true,
-        "object paging min size": 0.01
+        "object paging min size": 0
       },
       "Models": {
-        "load unsupported nif files": true
+        "load unsupported nif files": true,
+        "skyatmosphere": "meshes/sky/atmosphere.nif",
+        "skyclouds": "meshes/sky/cloudshape01.nif",
+        "skynight01": "meshes/sky/stars.nif",
+        "skynight02": "meshes/sky/stars.nif"
       },
       "General": {
         "anisotropy": 16
