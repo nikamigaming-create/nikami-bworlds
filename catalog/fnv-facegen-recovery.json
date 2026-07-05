@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-05",
+  "purpose": "Public-safe ledger for recovered FNV Asset Studio and Goodsprings FaceGen work. This file records provenance and acceptance notes only; it does not contain or point to distributable game assets.",
+  "localArtifactsPolicy": "Keep renders, references, screenshots, source snapshots, and extracted assets in ignored local quarantine storage.",
+  "artifacts": [
+    {
+      "id": "easy-pete-asset-studio-baseline-render",
+      "kind": "authoritative-render",
+      "actor": "GSEasyPete",
+      "sha256": "0E2734A50E281172F9BF3881AF07D17FF04C23373606A5E3A55F89CCA72E355E",
+      "notes": "Surviving Easy Pete Asset Studio render with good hat, beard, sideburn, and hair/part alignment. Known remaining issue is material/alpha/depth ordering and color, including an inside/back-of-head surface drawing through the face."
+    },
+    {
+      "id": "easy-pete-reference",
+      "kind": "reference-image",
+      "actor": "GSEasyPete",
+      "sha256": "1795C7B480C94D71DF86DBAEDEE28486C8427CC3EA59C5403F5405E06D8F1B67",
+      "notes": "Reference image used by the baseline contract."
+    },
+    {
+      "id": "easy-pete-targeted-face-20260629T202544Z",
+      "kind": "goodsprings-face-review",
+      "actor": "GSEasyPete",
+      "sha256": "940C0CD534D5223CBA13BCF4F0F6297AB227DACD90B63A6129690F3844B17057",
+      "notes": "Recovered targeted Goodsprings face render."
+    },
+    {
+      "id": "goodsprings-face-contact",
+      "kind": "contact-sheet",
+      "actor": "goodsprings-set",
+      "sha256": "8389450A71BFD5250B49FE3ABEBB700E032DE3B559860CD6C11544AE7A674A81",
+      "notes": "Recovered Goodsprings face baseline contact sheet."
+    },
+    {
+      "id": "native-asset-studio-proof-window",
+      "kind": "native-window-proof",
+      "notes": "Native Asset Studio window proof. Logs showed window registration, selector, three-camera preview, and model-preview gates."
+    },
+    {
+      "id": "baseline-doc",
+      "kind": "contract-doc",
+      "notes": "Written baseline with exact render/reference hashes and visual contract."
+    }
+  ],
+  "sourceSnapshots": [
+    {
+      "id": "asset-studio-source-42fb54c2a7",
+      "commit": "42fb54c2a7b29b2ed0346b4ccd564834af522fd4",
+      "commitDate": "2026-06-29 13:00:06 -0700",
+      "description": "Stabilize Asset Studio Goodsprings baseline refs",
+      "sha256": "623EFFF393B81F40F607CC66A0E2B2C4CB61F84487DE11F2D6EDC641481026BC"
+    },
+    {
+      "id": "asset-studio-docs-7cf9e6806a",
+      "commit": "7cf9e6806a2ef7cdf5a1c2c162279c7d14903f8e",
+      "commitDate": "2026-06-29 20:57:58 -0700",
+      "description": "Document Easy Pete Asset Studio baseline",
+      "sha256": "2A3C30CBEB43252DF6BB023A4F67E9BC303BEA4DB30E6EFC9A47E259C4A613A3"
+    }
+  ],
+  "futureUse": [
+    "Track skin/face sheen separately from geometry and part placement.",
+    "Use the Asset Studio camera tiles as repeatable actor QA views.",
+    "Use the reference-contract text as acceptance criteria for actor recovery.",
+    "Fold the native Asset Studio proof into the world picker as an optional actor inspection mode after the world/cell browser is stable."
+  ]
+}

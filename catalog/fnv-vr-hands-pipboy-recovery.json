@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-05",
+  "purpose": "Public-safe ledger for recovered FNV VR hands, Pip-Boy, pointer, wrist HUD, and retail sidecar anchors. This file records provenance and acceptance notes only; it does not contain or point to distributable game assets.",
+  "localArtifactsPolicy": "Keep source snapshots, proof JSON, extracted meshes, screenshots, and copied configs in ignored local quarantine storage.",
+  "verdict": {
+    "nativeOpenmwVrHands": "Recovered. The proven baseline is commit 5266335943; the latest clean source snapshot found during recovery was commit 7cf9e6806a.",
+    "retailFnvxrBridge": "Recovered from a local working tree as a separate sidecar layer. Keep it separate from native OpenMW VR until the world viewer shell is stable.",
+    "eppSearch": "No literal .epp or EPP markers were found in the targeted recovery search. The preserved anchors are source, configs, and proof JSONs."
+  },
+  "sourceSnapshots": [
+    {
+      "id": "openmwvr-native-hands-current",
+      "kind": "git-archive",
+      "commit": "7cf9e6806a2ef7cdf5a1c2c162279c7d14903f8e",
+      "commitDate": "2026-06-29 20:57:58 -0700",
+      "description": "Clean branch snapshot with native OpenMW VR hand, Pip-Boy, pointer, and HUD source paths.",
+      "sha256": "39211A486B50599C51E779AB898372953E4F7872E5DEF137BB1FE3E3862774CB"
+    },
+    {
+      "id": "openmwvr-native-hands-proven",
+      "kind": "git-archive",
+      "commit": "526633594323ebe3e3b6764c706131aef09225e8",
+      "commitDate": "2026-06-21 10:30:39 -0700",
+      "description": "Proven baseline: Stabilize FNV VR hands pointer and wrist HUD.",
+      "sha256": "E8DAE572249F7A7D3AA4FA4C9EB70AB12D3882A038C095237E0D1198FD1CB397"
+    },
+    {
+      "id": "fnvxr-retail-bridge-working-tree",
+      "kind": "working-tree-copy",
+      "baseCommit": "d690f6afbfa9c8e4ad9b7bbe9a4aad93c4b81ac5",
+      "baseCommitDate": "2026-07-05 05:52:10 -0700",
+      "baseDescription": "Make FNVXR stereo runtime default",
+      "description": "Dirty working tree copy of FNVXR sidecar source/docs/scripts/tests/tools, excluding build/deps/local/runtime assets.",
+      "sha256": "FD5B0602636027DD0E98B6DA589AAE86911C117B99EE8D0137A18374819BE710"
+    }
+  ],
+  "configs": [
+    {
+      "id": "fnv-run-vr-launcher",
+      "sha256": "38C3CCDDBA3F3B63F8080DDDF0D496F9843CA85A2EFE064D960550E3DA36413C",
+      "notes": "Authoritative no-rebuild launcher profile for the existing OpenMW VR binary and FNV config."
+    },
+    {
+      "id": "fnv-openmw-settings",
+      "notes": "Includes VR hand mesh offsets, map/HUD settings, preload, terrain, and FNV world-viewer settings."
+    },
+    {
+      "id": "fnv-openmw-content-profile",
+      "notes": "Existing FNV OpenMW content/archive/profile config copied locally for reference only."
+    }
+  ],
+  "proofArtifacts": [
+    {
+      "id": "right-hand-mesh-proof-20260626-162930",
+      "sha256": "A736BD7F518DFEF667AC1C308B2963C3B8D6C3685BCA51E7E693CF56766262A4"
+    },
+    {
+      "id": "left-hand-pipboy-glove-proof-20260626-162930-a"
+    },
+    {
+      "id": "left-hand-pipboy-glove-proof-20260626-162930-b"
+    }
+  ],
+  "runtimeOnlyAssetReferences": [
+    "characters/_male/lefthand.nif",
+    "characters/_male/lefthandpipboyglove.nif",
+    "characters/_male/righthand.nif",
+    "pipboy3000/pipboyarm.nif"
+  ],
+  "guardrails": [
+    "Prefer an existing external OpenMW VR binary before starting a full compile.",
+    "Do not publish or commit extracted retail meshes/textures from the FNV install.",
+    "Keep OpenMW VR native hand/Pip-Boy rendering and the FNVXR retail sidecar as separate layers until the world viewer menu is stable."
+  ]
+}
