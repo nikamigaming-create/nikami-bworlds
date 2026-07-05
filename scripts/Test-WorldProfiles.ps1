@@ -30,7 +30,7 @@ foreach ($world in $catalog.worlds) {
         $failures.Add("$($world.id): missing generated settings $settingsPath")
     }
 
-    foreach ($required in @("replace=data", "replace=fallback-archive", "replace=content", "user-data=")) {
+    foreach ($required in @("replace=data", "replace=data-local", "replace=fallback-archive", "replace=content", "user-data=", "data-local=")) {
         if ($profileText -notmatch [regex]::Escape($required)) {
             $failures.Add("$($world.id): openmw.cfg missing $required")
         }
