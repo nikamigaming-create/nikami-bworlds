@@ -70,7 +70,7 @@ def subrecords(payload):
 
 
 class ESM4Catalog:
-    def __init__(self, path, mod_index=1, terms=None):
+    def __init__(self, path, mod_index=0, terms=None):
         self.path = Path(path)
         self.data = self.path.read_bytes()
         self.mod_index = mod_index
@@ -350,7 +350,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export a narrow ESM4 cell/ref catalog for world-viewer starts.")
     parser.add_argument("--esm", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--mod-index", type=int, default=1)
+    parser.add_argument("--mod-index", type=int, default=0)
     parser.add_argument("--terms", nargs="*", default=[])
     args = parser.parse_args()
 

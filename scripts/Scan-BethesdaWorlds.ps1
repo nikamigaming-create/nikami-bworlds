@@ -425,14 +425,20 @@ foreach ($definition in $definitions) {
     $contentStatus = if ($primaryDataPath) { Test-FilesPresent -BasePath $primaryDataPath -Files $requiredContent } else { [ordered]@{ present = @(); missing = $requiredContent } }
     $archiveStatus = if ($primaryDataPath) { Test-FilesPresent -BasePath $primaryDataPath -Files $requiredArchives } else { [ordered]@{ present = @(); missing = $requiredArchives } }
     $viewerArchiveFiles = @()
+    $includeDetectedArchives = $true
+    if ($null -ne $cap.PSObject.Properties["includeDetectedArchives"]) {
+        $includeDetectedArchives = [bool]$cap.includeDetectedArchives
+    }
     foreach ($archive in $requiredArchives) {
         if ($archiveStatus.present -contains $archive -and $viewerArchiveFiles -notcontains $archive) {
             $viewerArchiveFiles += $archive
         }
     }
-    foreach ($archive in $archiveFiles) {
-        if ($viewerArchiveFiles -notcontains $archive) {
-            $viewerArchiveFiles += $archive
+    if ($includeDetectedArchives) {
+        foreach ($archive in $archiveFiles) {
+            if ($viewerArchiveFiles -notcontains $archive) {
+                $viewerArchiveFiles += $archive
+            }
         }
     }
 

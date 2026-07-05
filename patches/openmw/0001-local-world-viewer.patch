@@ -892,8 +892,53 @@ index 7dd4db4d58..7362158028 100644
  }
  
  // Initialise and enter main loop.
+diff --git a/apps/openmw/mwclass/esm4base.cpp b/apps/openmw/mwclass/esm4base.cpp
+index 17af545348..66f8d3ae9c 100644
+--- a/apps/openmw/mwclass/esm4base.cpp
++++ b/apps/openmw/mwclass/esm4base.cpp
+@@ -3,6 +3,10 @@
+ #include <MyGUI_TextIterator.h>
+ #include <MyGUI_UString.h>
+ 
++#include <atomic>
++#include <cstdlib>
++
++#include <components/debug/debuglog.hpp>
+ #include <components/sceneutil/positionattitudetransform.hpp>
+ 
+ #include "../mwgui/tooltips.hpp"
+@@ -16,6 +20,29 @@
+ 
+ namespace MWClass
+ {
++    bool ESM4Impl::worldViewerDisableEsm4Actors()
++    {
++        return std::getenv("OPENMW_WORLD_VIEWER_DISABLE_ESM4_ACTORS") != nullptr;
++    }
++
++    bool ESM4Impl::worldViewerUseEsm4ActorProxies()
++    {
++        return std::getenv("OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXIES") != nullptr;
++    }
++
++    void ESM4Impl::logWorldViewerSkippedActor(const MWWorld::ConstPtr& ptr, std::string_view actorType)
++    {
++        static std::atomic<int> sSkippedActors { 0 };
++        const int count = sSkippedActors.fetch_add(1);
++        if (count >= 120)
++            return;
++
++        Log(Debug::Info) << "World viewer: skipped " << actorType << " actor "
++                         << ptr.getCellRef().getRefNum().toString("FormId:")
++                         << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                         << " because OPENMW_WORLD_VIEWER_DISABLE_ESM4_ACTORS is set";
++    }
++
+     void ESM4Impl::insertObjectRendering(
+         const MWWorld::Ptr& ptr, const std::string& model, MWRender::RenderingInterface& renderingInterface)
+     {
 diff --git a/apps/openmw/mwclass/esm4base.hpp b/apps/openmw/mwclass/esm4base.hpp
-index 9563086e78..691ef05754 100644
+index 9563086e78..206fe10c15 100644
 --- a/apps/openmw/mwclass/esm4base.hpp
 +++ b/apps/openmw/mwclass/esm4base.hpp
 @@ -3,6 +3,7 @@
@@ -914,7 +959,17 @@ index 9563086e78..691ef05754 100644
  #include "../mwworld/class.hpp"
  #include "../mwworld/esmstore.hpp"
  #include "../mwworld/registeredclass.hpp"
-@@ -371,6 +375,35 @@ namespace MWClass
+@@ -43,6 +47,9 @@ namespace MWClass
+             const MWWorld::Ptr& ptr, const std::string& model, MWRender::RenderingInterface& renderingInterface);
+         void insertObjectPhysics(const MWWorld::Ptr& ptr, const std::string& model, const osg::Quat& rotation,
+             MWPhysics::PhysicsSystem& physics);
++        bool worldViewerDisableEsm4Actors();
++        bool worldViewerUseEsm4ActorProxies();
++        void logWorldViewerSkippedActor(const MWWorld::ConstPtr& ptr, std::string_view actorType);
+         MWGui::ToolTipInfo getToolTipInfo(std::string_view name, int count);
+ 
+         // We don't handle ESM4 player stats yet, so for resolving levelled object we use an arbitrary number.
+@@ -371,6 +378,35 @@ namespace MWClass
  
          bool canLock(const MWWorld::ConstPtr& ptr) const override { return true; }
  
@@ -950,6 +1005,134 @@ index 9563086e78..691ef05754 100644
          MWWorld::DoorState getDoorState(const MWWorld::ConstPtr& ptr) const override
          {
              if (!ptr.getRefData().getCustomData())
+diff --git a/apps/openmw/mwclass/esm4creature.hpp b/apps/openmw/mwclass/esm4creature.hpp
+index 2b72dca63b..591ccc711c 100644
+--- a/apps/openmw/mwclass/esm4creature.hpp
++++ b/apps/openmw/mwclass/esm4creature.hpp
+@@ -14,6 +14,7 @@
+ #include "../mwworld/registeredclass.hpp"
+ 
+ #include "actor.hpp"
++#include "esm4base.hpp"
+ 
+ namespace MWClass
+ {
+@@ -34,6 +35,11 @@ namespace MWClass
+         void insertObjectRendering(const MWWorld::Ptr& ptr, const std::string& model,
+             MWRender::RenderingInterface& renderingInterface) const override
+         {
++            if (ESM4Impl::worldViewerDisableEsm4Actors() && !ESM4Impl::worldViewerUseEsm4ActorProxies())
++            {
++                ESM4Impl::logWorldViewerSkippedActor(ptr, "creature");
++                return;
++            }
+             renderingInterface.getObjects().insertCreature(ptr, model, false);
+         }
+ 
+@@ -46,6 +52,8 @@ namespace MWClass
+         void insertObjectPhysics(const MWWorld::Ptr& ptr, const std::string& model, const osg::Quat& rotation,
+             MWPhysics::PhysicsSystem& physics) const override
+         {
++            if (ESM4Impl::worldViewerDisableEsm4Actors())
++                return;
+             (void)rotation;
+             physics.addActor(ptr, VFS::Path::toNormalized(model.empty() ? std::string(getModel(ptr)) : model));
+         }
+diff --git a/apps/openmw/mwclass/esm4npc.cpp b/apps/openmw/mwclass/esm4npc.cpp
+index 13552f142f..df87f57feb 100644
+--- a/apps/openmw/mwclass/esm4npc.cpp
++++ b/apps/openmw/mwclass/esm4npc.cpp
+@@ -35,6 +35,25 @@
+ 
+ namespace MWClass
+ {
++    static bool worldViewerActorTelemetryEnabled()
++    {
++        const char* value = std::getenv("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY");
++        return value != nullptr && *value != '\0' && value[0] != '0';
++    }
++
++    static const char* getWorldViewerNpcGameTag(const ESM4::Npc& npc)
++    {
++        if (npc.mIsTES4)
++            return "TES4";
++        if (npc.mIsFO3)
++            return "FO3";
++        if (npc.mIsFONV)
++            return "FONV";
++        if (npc.mIsFO4)
++            return "FO4";
++        return "TES5_OR_UNKNOWN";
++    }
++
+     template <class LevelledRecord, class TargetRecord>
+     static std::vector<const TargetRecord*> withBaseTemplates(
+         const TargetRecord* rec, int level = MWClass::ESM4Impl::sDefaultLevel)
+@@ -58,9 +77,6 @@ namespace MWClass
+                 return rec;
+             else if (rec->mIsFONV)
+             {
+-                // TODO: FO3 should use this branch as well. But it is not clear how to distinguish FO3 from
+-                // TES5. Currently FO3 uses wrong template flags that can lead to "ESM4 NPC traits not found"
+-                // exception the NPC will not be added to the scene. But in any way it shouldn't cause a crash.
+                 if (!(rec->mBaseConfig.fo3.templateFlags & flag))
+                     return rec;
+             }
+@@ -534,6 +550,29 @@ namespace MWClass
+                          << " packageCount=" << (data->mAIPackage != nullptr ? data->mAIPackage->mAIPackages.size() : 0)
+                          << " weapon="
+                          << (data->mEquippedWeapon != nullptr ? data->mEquippedWeapon->mEditorId : std::string_view{});
++        if (worldViewerActorTelemetryEnabled())
++        {
++            const ESM::Position& pos = ptr.getRefData().getPosition();
++            Log(Debug::Info) << "World viewer actor ledger: phase=npc-custom-data"
++                             << " ref=" << ptr.getCellRef().getRefNum().toString("FormId:")
++                             << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                             << " game=" << (data->mTraits != nullptr ? getWorldViewerNpcGameTag(*data->mTraits) : "UNKNOWN")
++                             << " npc=\"" << base->mEditorId << "\""
++                             << " traits=\"" << (data->mTraits != nullptr ? data->mTraits->mEditorId : std::string()) << "\""
++                             << " modelRecord=\""
++                             << (data->mModel != nullptr ? data->mModel->mEditorId : std::string()) << "\""
++                             << " aiPackageRecord=\""
++                             << (data->mAIPackage != nullptr ? data->mAIPackage->mEditorId : std::string()) << "\""
++                             << " race=" << (data->mTraits != nullptr ? ESM::RefId(data->mTraits->mRace) : ESM::RefId())
++                             << " raceResolved=" << (data->mRace != nullptr)
++                             << " female=" << data->mIsFemale
++                             << " armor=" << data->mEquippedArmor.size()
++                             << " clothing=" << data->mEquippedClothing.size()
++                             << " weapon=\""
++                             << (data->mEquippedWeapon != nullptr ? data->mEquippedWeapon->mEditorId : std::string())
++                             << "\""
++                             << " pos=(" << pos.pos[0] << "," << pos.pos[1] << "," << pos.pos[2] << ")";
++        }
+ 
+         ESM4NpcCustomData& res = *data;
+         refData.setCustomData(std::move(data));
+diff --git a/apps/openmw/mwclass/esm4npc.hpp b/apps/openmw/mwclass/esm4npc.hpp
+index a307c7359b..41cb227c81 100644
+--- a/apps/openmw/mwclass/esm4npc.hpp
++++ b/apps/openmw/mwclass/esm4npc.hpp
+@@ -37,6 +37,11 @@ namespace MWClass
+         void insertObjectRendering(const MWWorld::Ptr& ptr, const std::string& model,
+             MWRender::RenderingInterface& renderingInterface) const override
+         {
++            if (ESM4Impl::worldViewerDisableEsm4Actors() && !ESM4Impl::worldViewerUseEsm4ActorProxies())
++            {
++                ESM4Impl::logWorldViewerSkippedActor(ptr, "NPC");
++                return;
++            }
+             renderingInterface.getObjects().insertNPC(ptr);
+         }
+ 
+@@ -49,6 +54,8 @@ namespace MWClass
+         void insertObjectPhysics(const MWWorld::Ptr& ptr, const std::string& model, const osg::Quat& rotation,
+             MWPhysics::PhysicsSystem& physics) const override
+         {
++            if (ESM4Impl::worldViewerDisableEsm4Actors())
++                return;
+             (void)rotation;
+             physics.addActor(ptr, VFS::Path::toNormalized(model.empty() ? std::string(getModel(ptr)) : model));
+         }
 diff --git a/apps/openmw/mwgui/hud.cpp b/apps/openmw/mwgui/hud.cpp
 index 3efc22198f..12102c76d5 100644
 --- a/apps/openmw/mwgui/hud.cpp
@@ -2165,6 +2348,405 @@ index 8575f471a0..e480eebb38 100644
              }
          }
      }
+diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
+index 49a7175149..4414432761 100644
+--- a/apps/openmw/mwrender/esm4npcanimation.cpp
++++ b/apps/openmw/mwrender/esm4npcanimation.cpp
+@@ -74,6 +74,52 @@ namespace MWRender
+ {
+     namespace
+     {
++        bool worldViewerEnvEnabled(const char* name)
++        {
++            const char* value = std::getenv(name);
++            return value != nullptr && *value != '\0' && value[0] != '0';
++        }
++
++        bool worldViewerActorTelemetryEnabled()
++        {
++            return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY")
++                || worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
++        }
++
++        bool worldViewerSkipMissingActorParts()
++        {
++            return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS");
++        }
++
++        const char* worldViewerNpcGameTag(const ESM4::Npc& npc)
++        {
++            if (npc.mIsTES4)
++                return "TES4";
++            if (npc.mIsFO3)
++                return "FO3";
++            if (npc.mIsFONV)
++                return "FONV";
++            if (npc.mIsFO4)
++                return "FO4";
++            return "TES5_OR_UNKNOWN";
++        }
++
++        void logWorldViewerActorLedger(
++            const MWWorld::Ptr& ptr, std::string_view phase, std::string_view details = {})
++        {
++            if (!worldViewerActorTelemetryEnabled())
++                return;
++
++            const ESM::Position& pos = ptr.getRefData().getPosition();
++            Log(Debug::Info) << "World viewer actor ledger: phase=" << phase
++                             << " ref=" << ptr.getCellRef().getRefNum().toString("FormId:")
++                             << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                             << " type=\"" << ptr.getTypeDescription() << "\""
++                             << " name=\"" << ptr.getClass().getName(ptr) << "\""
++                             << " pos=(" << pos.pos[0] << "," << pos.pos[1] << "," << pos.pos[2] << ") "
++                             << details;
++        }
++
+         class TintMaterialVisitor : public osg::NodeVisitor
+         {
+         public:
+@@ -4162,9 +4208,64 @@ namespace MWRender
+         : Animation(ptr, std::move(parentNode), resourceSystem)
+     {
+         const std::string skeletonModel = mPtr.getClass().getCorrectedModel(mPtr);
+-        setObjectRoot(skeletonModel, true, true, false);
+-
+         const ESM4::Npc* traits = MWClass::ESM4Npc::getTraitsRecord(mPtr);
++        const ESM4::Npc* modelRecord = MWClass::ESM4Npc::getModelRecord(mPtr);
++        const ESM4::Race* race = MWClass::ESM4Npc::getRace(mPtr);
++        const VFS::Manager* vfs = mResourceSystem != nullptr ? mResourceSystem->getVFS() : nullptr;
++        bool skeletonExists = false;
++        if (vfs != nullptr && !skeletonModel.empty())
++            skeletonExists = vfs->exists(VFS::Path::toNormalized(skeletonModel));
++
++        if (traits != nullptr)
++        {
++            std::ostringstream details;
++            details << "game=" << worldViewerNpcGameTag(*traits)
++                    << " npc=\"" << traits->mEditorId << "\""
++                    << " form=" << ESM::RefId(traits->mId)
++                    << " race=" << ESM::RefId(traits->mRace)
++                    << " raceEditor=\"" << (race != nullptr ? race->mEditorId : std::string()) << "\""
++                    << " female=" << MWClass::ESM4Npc::isFemale(mPtr)
++                    << " skeleton=\"" << skeletonModel << "\""
++                    << " skeletonExists=" << skeletonExists
++                    << " modelRecord=\""
++                    << (modelRecord != nullptr ? modelRecord->mEditorId : std::string()) << "\""
++                    << " modelKfCount=" << (modelRecord != nullptr ? modelRecord->mKf.size() : 0)
++                    << " headParts=" << traits->mHeadParts.size()
++                    << " armor=" << MWClass::ESM4Npc::getEquippedArmor(mPtr).size()
++                    << " clothing=" << MWClass::ESM4Npc::getEquippedClothing(mPtr).size()
++                    << " weapon=\""
++                    << (MWClass::ESM4Npc::getEquippedWeapon(mPtr) != nullptr
++                            ? MWClass::ESM4Npc::getEquippedWeapon(mPtr)->mEditorId
++                            : std::string())
++                    << "\"";
++            logWorldViewerActorLedger(mPtr, "npc-root-begin", details.str());
++        }
++        else
++            logWorldViewerActorLedger(mPtr, "npc-root-begin", "traits=0");
++
++        try
++        {
++            setObjectRoot(skeletonModel, true, true, false);
++        }
++        catch (const std::exception& e)
++        {
++            std::ostringstream details;
++            details << "skeleton=\"" << skeletonModel << "\" skeletonExists=" << skeletonExists
++                    << " exception=\"" << e.what() << "\"";
++            logWorldViewerActorLedger(mPtr, "npc-root-exception", details.str());
++            if (!worldViewerSkipMissingActorParts())
++                throw;
++            return;
++        }
++
++        {
++            std::ostringstream details;
++            details << "skeleton=\"" << skeletonModel << "\" skeletonExists=" << skeletonExists
++                    << " objectRoot=" << (mObjectRoot != nullptr)
++                    << " skeletonNode=" << (mSkeleton != nullptr)
++                    << " nodeMap=" << getNodeMap().size();
++            logWorldViewerActorLedger(mPtr, "npc-root-end", details.str());
++        }
+         if (traits != nullptr && traits->mIsFONV)
+         {
+             const NodeMap& currentNodeMap = getNodeMap();
+@@ -4202,7 +4303,21 @@ namespace MWRender
+                     return;
+                 Log(Debug::Info) << "FNV/ESM4 diag: adding FONV NPC " << reason << " animation source " << kfPath
+                                  << " for " << traits->mEditorId;
+-                if (addSingleAnimSource(kfPath, skeletonModel, falloutProcedureIdle) != nullptr)
++                auto source = addSingleAnimSource(kfPath, skeletonModel, falloutProcedureIdle);
++                if (worldViewerActorTelemetryEnabled())
++                {
++                    std::ostringstream details;
++                    details << "game=" << worldViewerNpcGameTag(*traits)
++                            << " npc=\"" << traits->mEditorId << "\""
++                            << " kf=\"" << kfPath << "\""
++                            << " reason=\"" << reason << "\""
++                            << " skeleton=\"" << skeletonModel << "\""
++                            << " bound=" << (source != nullptr)
++                            << " primary=" << countsAsPrimary
++                            << " procedureIdle=" << falloutProcedureIdle;
++                    logWorldViewerActorLedger(mPtr, "animation-source", details.str());
++                }
++                if (source != nullptr)
+                     addedAnimationSource = addedAnimationSource || countsAsPrimary;
+             };
+ 
+@@ -4306,21 +4421,47 @@ namespace MWRender
+     void ESM4NpcAnimation::updateParts()
+     {
+         if (mObjectRoot == nullptr)
++        {
++            logWorldViewerActorLedger(mPtr, "parts-skip", "reason=\"missing object root\"");
+             return;
++        }
+         const ESM4::Npc* traits = MWClass::ESM4Npc::getTraitsRecord(mPtr);
+         if (traits == nullptr)
++        {
++            logWorldViewerActorLedger(mPtr, "parts-skip", "reason=\"missing traits\"");
+             return;
++        }
++        std::string_view branch = traits->mIsTES4 ? std::string_view("TES4")
++            : traits->mIsFONV                   ? std::string_view("FALLOUT")
++                                                : std::string_view("TES5");
++        {
++            std::ostringstream details;
++            details << "branch=" << branch << " game=" << worldViewerNpcGameTag(*traits)
++                    << " npc=\"" << traits->mEditorId << "\""
++                    << " race=" << ESM::RefId(traits->mRace)
++                    << " headParts=" << traits->mHeadParts.size()
++                    << " armor=" << MWClass::ESM4Npc::getEquippedArmor(mPtr).size()
++                    << " clothing=" << MWClass::ESM4Npc::getEquippedClothing(mPtr).size();
++            logWorldViewerActorLedger(mPtr, "parts-begin", details.str());
++        }
+         if (traits->mIsTES4)
+             updatePartsTES4(*traits);
+         else if (traits->mIsFONV)
+             updatePartsFONV(*traits);
+         else
+         {
+-            // There is no easy way to distinguish TES5 and FO3.
+-            // In case of FO3 the function shouldn't crash the game and will
+-            // only lead to the NPC not being rendered.
++            // Skyrim and newer non-Fallout actors still use the TES5-style static part path.
++            // Full HKX/behavior animation is not implemented here.
+             updatePartsTES5(*traits);
+         }
++        {
++            std::ostringstream details;
++            details << "branch=" << branch << " game=" << worldViewerNpcGameTag(*traits)
++                    << " npc=\"" << traits->mEditorId << "\""
++                    << " objectRoot=" << (mObjectRoot != nullptr)
++                    << " nodeMap=" << getNodeMap().size();
++            logWorldViewerActorLedger(mPtr, "parts-end", details.str());
++        }
+     }
+ 
+     osg::ref_ptr<osg::Node> ESM4NpcAnimation::insertPart(
+@@ -4330,6 +4471,7 @@ namespace MWRender
+         {
+             Log(Debug::Verbose) << "FNV/ESM4 diag: skipped empty NPC model part for "
+                                 << mPtr.getCellRef().getRefId();
++            logWorldViewerActorLedger(mPtr, "part-skip", "reason=\"empty model\"");
+             return nullptr;
+         }
+         if (Misc::StringUtils::ciEndsWith(model, ".egt") || Misc::StringUtils::ciEndsWith(model, ".egm")
+@@ -4337,9 +4479,30 @@ namespace MWRender
+         {
+             Log(Debug::Verbose) << "FNV/ESM4 diag: skipped non-render NPC data part " << model << " for "
+                                 << mPtr.getCellRef().getRefId();
++            std::ostringstream details;
++            details << "reason=\"non-render data\" model=\"" << model << "\"";
++            logWorldViewerActorLedger(mPtr, "part-skip", details.str());
+             return nullptr;
+         }
+         const VFS::Path::Normalized correctedModel = Misc::ResourceHelpers::correctMeshPath(VFS::Path::Normalized(model));
++        const VFS::Manager* vfs = mResourceSystem != nullptr ? mResourceSystem->getVFS() : nullptr;
++        const bool modelExists = vfs != nullptr && vfs->exists(correctedModel);
++        {
++            std::ostringstream details;
++            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " vfsExists=" << modelExists
++                    << " tint=" << (tint != nullptr)
++                    << " diffuse=\"" << diffuseTexture << "\"";
++            logWorldViewerActorLedger(mPtr, "part-request", details.str());
++        }
++        if (!modelExists && worldViewerSkipMissingActorParts())
++        {
++            std::ostringstream details;
++            details << "reason=\"missing vfs\" model=\"" << model << "\" corrected=\"" << correctedModel.value()
++                    << "\"";
++            logWorldViewerActorLedger(mPtr, "part-missing", details.str());
++            return nullptr;
++        }
+         const std::string loweredModel = Misc::StringUtils::lowerCase(std::string(model));
+         if (std::getenv("OPENMW_FNV_PROOF_HIDE_FACE_HAIR") != nullptr && isFalloutFaceHairModel(loweredModel))
+         {
+@@ -4378,7 +4541,30 @@ namespace MWRender
+                              << " for " << mPtr.getCellRef().getRefId();
+             return nullptr;
+         }
+-        osg::ref_ptr<const osg::Node> templateNode = mResourceSystem->getSceneManager()->getTemplate(correctedModel);
++        osg::ref_ptr<const osg::Node> templateNode;
++        try
++        {
++            templateNode = mResourceSystem->getSceneManager()->getTemplate(correctedModel);
++        }
++        catch (const std::exception& e)
++        {
++            std::ostringstream details;
++            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " vfsExists=" << modelExists
++                    << " exception=\"" << e.what() << "\"";
++            logWorldViewerActorLedger(mPtr, "part-template-exception", details.str());
++            if (!worldViewerSkipMissingActorParts())
++                throw;
++            return nullptr;
++        }
++        if (templateNode == nullptr)
++        {
++            std::ostringstream details;
++            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " vfsExists=" << modelExists;
++            logWorldViewerActorLedger(mPtr, "part-template-null", details.str());
++            return nullptr;
++        }
+ 
+         osg::Group* attachNode = mObjectRoot.get();
+         const NodeMap& nodeMap = getNodeMap();
+@@ -4490,6 +4676,17 @@ namespace MWRender
+                             << " to " << mPtr.getCellRef().getRefId() << " at " << attachNode->getName();
+         FalloutPartShapeSummaryVisitor rigProbe;
+         const_cast<osg::Node*>(templateNode.get())->accept(rigProbe);
++        {
++            std::ostringstream details;
++                    details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " vfsExists=" << modelExists
++                    << " template=1"
++                    << " rigGeometry=" << rigProbe.mRigGeometryCount
++                    << " staticGeometry=" << rigProbe.mStaticGeometryCount
++                    << " firstRigRoot=\"" << rigProbe.mFirstRigRootBone << "\""
++                    << " firstRigBoneCount=" << rigProbe.mFirstRigBoneCount;
++            logWorldViewerActorLedger(mPtr, "part-template", details.str());
++        }
+         osg::ref_ptr<const osg::Node> attachTemplateNode = templateNode;
+         bool staticizedHeadPartRig = false;
+         bool staticizedBareHandPartRig = false;
+@@ -4757,16 +4954,73 @@ namespace MWRender
+             attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
+             correctedModel.value(), mPtr);
+         logFalloutFaceDrawableAudit(attached.get(), correctedModel.value(), mPtr);
++        {
++            std::ostringstream details;
++            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " attached=" << (attached != nullptr)
++                    << " attachNode=\"" << (attachNode != nullptr ? attachNode->getName() : std::string()) << "\""
++                    << " headAttachment=" << headAttachedStaticPart
++                    << " headgear=" << headgearStaticPart
++                    << " handSurface=" << bareHandSurfacePart
++                    << " rigGeometry=" << rigProbe.mRigGeometryCount
++                    << " staticizedHead=" << staticizedHeadPartRig
++                    << " staticizedHand=" << staticizedBareHandPartRig;
++            logWorldViewerActorLedger(mPtr, "part-attached", details.str());
++        }
+         return attached;
+     }
+ 
+     osg::ref_ptr<osg::Node> ESM4NpcAnimation::insertAttachedPart(std::string_view model, std::string_view preferredBone)
+     {
+         if (model.empty())
++        {
++            logWorldViewerActorLedger(mPtr, "attached-part-skip", "reason=\"empty model\"");
+             return nullptr;
++        }
+ 
+         const VFS::Path::Normalized correctedModel = Misc::ResourceHelpers::correctMeshPath(VFS::Path::Normalized(model));
+-        osg::ref_ptr<const osg::Node> templateNode = mResourceSystem->getSceneManager()->getTemplate(correctedModel);
++        const VFS::Manager* vfs = mResourceSystem != nullptr ? mResourceSystem->getVFS() : nullptr;
++        const bool modelExists = vfs != nullptr && vfs->exists(correctedModel);
++        {
++            std::ostringstream details;
++            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " preferredBone=\"" << preferredBone << "\""
++                    << " vfsExists=" << modelExists;
++            logWorldViewerActorLedger(mPtr, "attached-part-request", details.str());
++        }
++        if (!modelExists && worldViewerSkipMissingActorParts())
++        {
++            std::ostringstream details;
++            details << "reason=\"missing vfs\" model=\"" << model << "\" corrected=\"" << correctedModel.value()
++                    << "\" preferredBone=\"" << preferredBone << "\"";
++            logWorldViewerActorLedger(mPtr, "attached-part-missing", details.str());
++            return nullptr;
++        }
++
++        osg::ref_ptr<const osg::Node> templateNode;
++        try
++        {
++            templateNode = mResourceSystem->getSceneManager()->getTemplate(correctedModel);
++        }
++        catch (const std::exception& e)
++        {
++            std::ostringstream details;
++            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " preferredBone=\"" << preferredBone << "\""
++                    << " exception=\"" << e.what() << "\"";
++            logWorldViewerActorLedger(mPtr, "attached-part-template-exception", details.str());
++            if (!worldViewerSkipMissingActorParts())
++                throw;
++            return nullptr;
++        }
++        if (templateNode == nullptr)
++        {
++            std::ostringstream details;
++            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " preferredBone=\"" << preferredBone << "\"";
++            logWorldViewerActorLedger(mPtr, "attached-part-template-null", details.str());
++            return nullptr;
++        }
+ 
+         const NodeMap& nodeMap = getNodeMap();
+         osg::Group* attachNode = nullptr;
+@@ -4794,6 +5048,14 @@ namespace MWRender
+         logFalloutAttachmentBounds(
+             attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
+             correctedModel.value(), mPtr);
++        {
++            std::ostringstream details;
++            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " preferredBone=\"" << preferredBone << "\""
++                    << " attached=" << (attached != nullptr)
++                    << " attachNode=\"" << (attachNode != nullptr ? attachNode->getName() : std::string()) << "\"";
++            logWorldViewerActorLedger(mPtr, "attached-part-attached", details.str());
++        }
+         return attached;
+     }
+ 
+@@ -4927,6 +5189,21 @@ namespace MWRender
+         if (!npcBodyNormalTexture.empty())
+             Log(Debug::Info) << "FNV/ESM4 diag: using baked NPC body normal texture " << npcBodyNormalTexture
+                              << " for " << traits.mEditorId;
++        {
++            std::ostringstream details;
++            details << "game=" << worldViewerNpcGameTag(traits)
++                    << " npc=\"" << traits.mEditorId << "\""
++                    << " faceTexture=\"" << npcFaceTexture << "\""
++                    << " faceDetail=\"" << npcFaceDetailTexture << "\""
++                    << " faceNormal=\"" << npcFaceNormalTexture << "\""
++                    << " bodyTexture=\"" << npcBodyTexture << "\""
++                    << " bodyDetail=\"" << npcBodyDetailTexture << "\""
++                    << " bodyNormal=\"" << npcBodyNormalTexture << "\""
++                    << " bodyDetailTiny=" << npcBodyDetailIsTinyTint
++                    << " bodyTintSize=" << npcBodyTintWidth << "x" << npcBodyTintHeight
++                    << " tintLayers=" << traits.mTintLayers.size();
++            logWorldViewerActorLedger(mPtr, "fallout-facegen-textures", details.str());
++        }
+ 
+         const bool proofTargetActor = isFonvProofTargetActor(mPtr, traits);
+         const bool proofActor = isEasyPeteProofActor(traits);
 diff --git a/apps/openmw/mwrender/localmap.cpp b/apps/openmw/mwrender/localmap.cpp
 index c4f85ff951..e1a180a207 100644
 --- a/apps/openmw/mwrender/localmap.cpp
@@ -2341,6 +2923,313 @@ index 9f8b1ed86c..b84783bbb4 100644
              {
              }
  
+diff --git a/apps/openmw/mwrender/objects.cpp b/apps/openmw/mwrender/objects.cpp
+index 9393846d7a..c9603f7864 100644
+--- a/apps/openmw/mwrender/objects.cpp
++++ b/apps/openmw/mwrender/objects.cpp
+@@ -1,10 +1,24 @@
+ #include "objects.hpp"
+ 
++#include <algorithm>
++#include <atomic>
++#include <cmath>
++#include <cstdlib>
++#include <string_view>
++
+ #include <osg/Group>
++#include <osg/Geode>
++#include <osg/Material>
++#include <osg/MatrixTransform>
++#include <osg/Shape>
++#include <osg/ShapeDrawable>
++#include <osg/StateSet>
+ #include <osg/UserDataContainer>
+ 
++#include <components/debug/debuglog.hpp>
+ #include <components/misc/resourcehelpers.hpp>
+ #include <components/misc/strings/algorithm.hpp>
++#include <components/misc/strings/lower.hpp>
+ #include <components/sceneutil/positionattitudetransform.hpp>
+ #include <components/sceneutil/unrefqueue.hpp>
+ 
+@@ -19,6 +33,183 @@
+ 
+ namespace MWRender
+ {
++    namespace
++    {
++        bool envEnabled(const char* name)
++        {
++            const char* value = std::getenv(name);
++            return value != nullptr && *value != '\0' && value[0] != '0';
++        }
++
++        bool worldViewerDiagnosticFilterEnabled()
++        {
++            return envEnabled("OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS")
++                || envEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
++        }
++
++        bool worldViewerEsm4ActorProxyEnabled()
++        {
++            return envEnabled("OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXIES");
++        }
++
++        bool contains(std::string_view value, std::string_view needle)
++        {
++            return value.find(needle) != std::string_view::npos;
++        }
++
++        bool isWorldViewerDiagnosticModel(std::string_view mesh)
++        {
++            if (mesh.empty())
++                return false;
++
++            std::string lower = Misc::StringUtils::lowerCase(mesh);
++            std::replace(lower.begin(), lower.end(), '\\', '/');
++            std::string_view value(lower);
++
++            return contains(value, "meshes/markers/")
++                || contains(value, "/editormarkers/")
++                || contains(value, "staticcollectionpivotdummy")
++                || contains(value, "fill_planes/")
++                || contains(value, "fillplane_")
++                || contains(value, "occlusion")
++                || contains(value, "occluder")
++                || contains(value, "portalmarker")
++                || contains(value, "roommarker")
++                || contains(value, "loadmarker")
++                || contains(value, "xmarker")
++                || contains(value, "headingmarker")
++                || contains(value, "triggerbox")
++                || contains(value, "collisionmarker")
++                || contains(value, "water/water");
++        }
++
++        bool skipWorldViewerDiagnosticModel(const MWWorld::Ptr& ptr, std::string_view mesh)
++        {
++            if (!worldViewerDiagnosticFilterEnabled() || !isWorldViewerDiagnosticModel(mesh))
++                return false;
++
++            static std::atomic<int> skipLogCount{ 0 };
++            const int logIndex = skipLogCount.fetch_add(1);
++            if (logIndex < 160)
++            {
++                Log(Debug::Info) << "World viewer: skipped diagnostic model base="
++                                 << ptr.getCellRef().getRefId().toDebugString()
++                                 << " type=" << ptr.getTypeDescription()
++                                 << " model=" << mesh
++                                 << " ptr=" << ptr.toString();
++            }
++            else if (logIndex == 160)
++                Log(Debug::Info) << "World viewer: further diagnostic model skip logs suppressed";
++
++            return true;
++        }
++
++        class WorldViewerActorProxyAnimation final : public Animation
++        {
++        public:
++            WorldViewerActorProxyAnimation(const MWWorld::Ptr& ptr, Resource::ResourceSystem* resourceSystem,
++                std::string_view model, bool creature)
++                : Animation(ptr, osg::ref_ptr<osg::Group>(ptr.getRefData().getBaseNode()), resourceSystem)
++                , mCreature(creature)
++                , mAnimate(envEnabled("OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXY_ANIMATE"))
++            {
++                osg::Group* root = getOrCreateObjectRoot();
++                root->setName(creature ? "World Viewer ESM4 Creature Proxy T-Pose"
++                                       : "World Viewer ESM4 Actor Proxy T-Pose");
++
++                mPoseRoot = new osg::MatrixTransform;
++                mPoseRoot->setName("World Viewer ESM4 Actor Proxy Pose Root");
++                osg::ref_ptr<osg::Geode> geode = new osg::Geode;
++                osg::StateSet* stateSet = geode->getOrCreateStateSet();
++                osg::ref_ptr<osg::Material> material = new osg::Material;
++                material->setColorMode(osg::Material::AMBIENT_AND_DIFFUSE);
++                material->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(1.f, 1.f, 1.f, 1.f));
++                material->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(1.f, 1.f, 1.f, 1.f));
++                material->setSpecular(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.f, 0.f, 0.f, 1.f));
++                stateSet->setAttributeAndModes(material, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
++                stateSet->setMode(GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
++                const osg::Vec4f bodyColor = creature ? osg::Vec4f(0.86f, 0.44f, 0.18f, 1.f)
++                                                      : osg::Vec4f(0.12f, 0.42f, 0.95f, 1.f);
++                const osg::Vec4f limbColor = creature ? osg::Vec4f(0.42f, 0.22f, 0.10f, 1.f)
++                                                      : osg::Vec4f(0.08f, 0.18f, 0.38f, 1.f);
++                const osg::Vec4f headColor = creature ? osg::Vec4f(0.96f, 0.68f, 0.30f, 1.f)
++                                                      : osg::Vec4f(0.88f, 0.78f, 0.62f, 1.f);
++
++                auto addCapsule = [&](osg::Vec3f center, float radius, float height, const osg::Vec4f& color,
++                                      const osg::Quat& rotation = osg::Quat()) {
++                    osg::ref_ptr<osg::Capsule> shape = new osg::Capsule(center, radius, height);
++                    shape->setRotation(rotation);
++                    auto* drawable = new osg::ShapeDrawable(shape);
++                    drawable->setColor(color);
++                    geode->addDrawable(drawable);
++                };
++                auto addSphere = [&](osg::Vec3f center, float radius, const osg::Vec4f& color) {
++                    auto* drawable = new osg::ShapeDrawable(new osg::Sphere(center, radius));
++                    drawable->setColor(color);
++                    geode->addDrawable(drawable);
++                };
++
++                if (creature)
++                {
++                    const osg::Quat forward(1.57079632679f, osg::Vec3f(0.f, 1.f, 0.f));
++                    addCapsule(osg::Vec3f(0.f, 0.f, 46.f), 24.f, 92.f, bodyColor, forward);
++                    addSphere(osg::Vec3f(56.f, 0.f, 54.f), 20.f, headColor);
++                    addCapsule(osg::Vec3f(-28.f, -20.f, 22.f), 7.f, 44.f, limbColor);
++                    addCapsule(osg::Vec3f(-28.f, 20.f, 22.f), 7.f, 44.f, limbColor);
++                    addCapsule(osg::Vec3f(28.f, -20.f, 22.f), 7.f, 44.f, limbColor);
++                    addCapsule(osg::Vec3f(28.f, 20.f, 22.f), 7.f, 44.f, limbColor);
++                }
++                else
++                {
++                    const osg::Quat across(1.57079632679f, osg::Vec3f(0.f, 1.f, 0.f));
++                    addCapsule(osg::Vec3f(0.f, 0.f, 86.f), 21.f, 104.f, bodyColor);
++                    addSphere(osg::Vec3f(0.f, 0.f, 152.f), 21.f, headColor);
++                    addCapsule(osg::Vec3f(-46.f, 0.f, 116.f), 7.f, 72.f, limbColor, across);
++                    addCapsule(osg::Vec3f(46.f, 0.f, 116.f), 7.f, 72.f, limbColor, across);
++                    addCapsule(osg::Vec3f(-12.f, 0.f, 30.f), 8.f, 58.f, limbColor);
++                    addCapsule(osg::Vec3f(12.f, 0.f, 30.f), 8.f, 58.f, limbColor);
++                }
++
++                mPoseRoot->addChild(geode);
++                root->addChild(mPoseRoot);
++
++                static std::atomic<int> sProxyLogCount{ 0 };
++                const int logIndex = sProxyLogCount.fetch_add(1);
++                if (logIndex < 160)
++                {
++                    Log(Debug::Info) << "World viewer: inserted ESM4 actor proxy ref="
++                                     << ptr.getCellRef().getRefNum().toString("FormId:")
++                                     << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                                     << " type=" << ptr.getTypeDescription()
++                                     << " name=\"" << ptr.getClass().getName(ptr) << "\" model=\"" << model
++                                     << "\" pose=\"tpose\" animated=" << (mAnimate ? 1 : 0)
++                                     << " pos=(" << ptr.getRefData().getPosition().pos[0] << ","
++                                     << ptr.getRefData().getPosition().pos[1] << ","
++                                     << ptr.getRefData().getPosition().pos[2] << ")";
++                }
++                else if (logIndex == 160)
++                    Log(Debug::Info) << "World viewer: further ESM4 actor proxy logs suppressed";
++            }
++
++            osg::Vec3f runAnimation(float duration) override
++            {
++                if (mAnimate && mPoseRoot)
++                {
++                    mTime += duration;
++                    const float sway = std::sin(mTime * (mCreature ? 2.0f : 1.4f)) * (mCreature ? 0.08f : 0.05f);
++                    mPoseRoot->setMatrix(osg::Matrix::rotate(sway, osg::Vec3f(0.f, 0.f, 1.f)));
++                }
++
++                return osg::Vec3f();
++            }
++
++        private:
++            osg::ref_ptr<osg::MatrixTransform> mPoseRoot;
++            bool mCreature = false;
++            bool mAnimate = false;
++            float mTime = 0.f;
++        };
++    }
+ 
+     Objects::Objects(Resource::ResourceSystem* resourceSystem, const osg::ref_ptr<osg::Group>& rootNode,
+         SceneUtil::UnrefQueue& unrefQueue)
+@@ -74,6 +265,11 @@ namespace MWRender
+     void Objects::insertModel(const MWWorld::Ptr& ptr, const std::string& mesh, bool allowLight)
+     {
+         insertBegin(ptr);
++        if (skipWorldViewerDiagnosticModel(ptr, mesh))
++        {
++            ptr.getRefData().getBaseNode()->setNodeMask(0);
++            return;
++        }
+         ptr.getRefData().getBaseNode()->setNodeMask(Mask_Object);
+         bool animated = ptr.getClass().useAnim();
+         std::string animationMesh = mesh;
+@@ -96,6 +292,25 @@ namespace MWRender
+         insertBegin(ptr);
+         ptr.getRefData().getBaseNode()->setNodeMask(Mask_Actor);
+ 
++        if (worldViewerEsm4ActorProxyEnabled() && ptr.getType() == ESM::REC_CREA4)
++        {
++            osg::ref_ptr<Animation> anim(new WorldViewerActorProxyAnimation(ptr, mResourceSystem, mesh, true));
++            mObjects.emplace(ptr.mRef, anim);
++            return;
++        }
++        if (ptr.getType() == ESM::REC_CREA4 && envEnabled("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY"))
++        {
++            const ESM::Position& pos = ptr.getRefData().getPosition();
++            Log(Debug::Info) << "World viewer actor ledger: phase=render-insert-begin"
++                             << " ref=" << ptr.getCellRef().getRefNum().toString("FormId:")
++                             << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                             << " type=\"" << ptr.getTypeDescription() << "\""
++                             << " actorKind=creature"
++                             << " name=\"" << ptr.getClass().getName(ptr) << "\""
++                             << " model=\"" << mesh << "\""
++                             << " pos=(" << pos.pos[0] << "," << pos.pos[1] << "," << pos.pos[2] << ")";
++        }
++
+         bool animated = true;
+         std::string animationMesh
+             = Misc::ResourceHelpers::correctActorModelPath(VFS::Path::toNormalized(mesh), mResourceSystem->getVFS());
+@@ -112,6 +327,12 @@ namespace MWRender
+ 
+         if (mObjects.emplace(ptr.mRef, anim).second)
+             ptr.getClass().getContainerStore(ptr).setContListener(static_cast<ActorAnimation*>(anim.get()));
++        if (ptr.getType() == ESM::REC_CREA4 && envEnabled("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY"))
++            Log(Debug::Info) << "World viewer actor ledger: phase=render-insert-end"
++                             << " ref=" << ptr.getCellRef().getRefNum().toString("FormId:")
++                             << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                             << " actorKind=creature"
++                             << " object=1";
+     }
+ 
+     void Objects::insertNPC(const MWWorld::Ptr& ptr)
+@@ -121,9 +342,42 @@ namespace MWRender
+ 
+         if (ptr.getType() == ESM::REC_NPC_4)
+         {
++            if (worldViewerEsm4ActorProxyEnabled())
++            {
++                osg::ref_ptr<Animation> anim(
++                    new WorldViewerActorProxyAnimation(ptr, mResourceSystem, ptr.getClass().getModel(ptr), false));
++                mObjects.emplace(ptr.mRef, anim);
++                return;
++            }
++
++            if (envEnabled("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY"))
++            {
++                const ESM::Position& pos = ptr.getRefData().getPosition();
++                Log(Debug::Info) << "World viewer actor ledger: phase=render-insert-begin"
++                                 << " ref=" << ptr.getCellRef().getRefNum().toString("FormId:")
++                                 << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                                 << " type=\"" << ptr.getTypeDescription() << "\""
++                                 << " actorKind=npc"
++                                 << " name=\"" << ptr.getClass().getName(ptr) << "\""
++                                 << " model=\"" << ptr.getClass().getModel(ptr) << "\""
++                                 << " pos=(" << pos.pos[0] << "," << pos.pos[1] << "," << pos.pos[2] << ")";
++            }
+             osg::ref_ptr<ESM4NpcAnimation> anim(
+                 new ESM4NpcAnimation(ptr, osg::ref_ptr<osg::Group>(ptr.getRefData().getBaseNode()), mResourceSystem));
+             mObjects.emplace(ptr.mRef, anim);
++            if (envEnabled("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY"))
++            {
++                const ESM::Position& pos = ptr.getRefData().getPosition();
++                Log(Debug::Info) << "World viewer actor ledger: phase=render-insert-end"
++                                 << " ref=" << ptr.getCellRef().getRefNum().toString("FormId:")
++                                 << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                                 << " type=\"" << ptr.getTypeDescription() << "\""
++                                 << " actorKind=npc"
++                                 << " name=\"" << ptr.getClass().getName(ptr) << "\""
++                                 << " model=\"" << ptr.getClass().getModel(ptr) << "\""
++                                 << " pos=(" << pos.pos[0] << "," << pos.pos[1] << "," << pos.pos[2] << ")"
++                                 << " object=1";
++            }
+         }
+         else
+         {
 diff --git a/apps/openmw/mwrender/renderingmanager.cpp b/apps/openmw/mwrender/renderingmanager.cpp
 index 169694fff2..68cca74be7 100644
 --- a/apps/openmw/mwrender/renderingmanager.cpp
@@ -5812,8 +6701,50 @@ index f2e8347ef1..34dd1cd79c 100644
          osg::ref_ptr<osg::Group> mRoot;
  
          MWRender::RayResult mPointerRay = {};
+diff --git a/apps/openmw/mwworld/cellstore.cpp b/apps/openmw/mwworld/cellstore.cpp
+index 1a2ded2c6c..6e645d7008 100644
+--- a/apps/openmw/mwworld/cellstore.cpp
++++ b/apps/openmw/mwworld/cellstore.cpp
+@@ -2,6 +2,7 @@
+ #include "magiceffects.hpp"
+ 
+ #include <algorithm>
++#include <cstdlib>
+ #include <fstream>
+ #include <type_traits>
+ 
+@@ -90,6 +91,11 @@
+ 
+ namespace
+ {
++    bool worldViewerActorTelemetryEnabled()
++    {
++        const char* value = std::getenv("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY");
++        return value != nullptr && *value != '\0' && value[0] != '0';
++    }
+ 
+     template <typename Record>
+     struct RecordToState
+@@ -1005,6 +1011,17 @@ namespace MWWorld
+                                 << " in parent cell " << ref.mParent;
+             return;
+         }
++        if (worldViewerActorTelemetryEnabled())
++        {
++            Log(Debug::Info) << "World viewer actor ledger: phase=cell-ref-resolved"
++                             << " ref=" << ESM::RefId(ref.mId)
++                             << " editor=\"" << ref.mEditorId << "\""
++                             << " base=" << ESM::RefId(ref.mBaseObj)
++                             << " foundType=" << ESM::printName(static_cast<std::uint32_t>(foundType))
++                             << " parent=" << ref.mParent
++                             << " pos=(" << ref.mPos.pos[0] << "," << ref.mPos.pos[1] << "," << ref.mPos.pos[2]
++                             << ")";
++        }
+ 
+         Misc::tupleForEach(this->mCellStoreImp->mRefLists, [&ref, &store, foundType](auto& x) {
+             recNameSwitcher(x, foundType, [&ref, &store](auto& storeIn) { storeIn.load(ref, store); });
 diff --git a/apps/openmw/mwworld/esmstore.cpp b/apps/openmw/mwworld/esmstore.cpp
-index 53d49050a5..734fb91b02 100644
+index 53d49050a5..7da3e57e6e 100644
 --- a/apps/openmw/mwworld/esmstore.cpp
 +++ b/apps/openmw/mwworld/esmstore.cpp
 @@ -1,6 +1,7 @@
@@ -5883,7 +6814,114 @@ index 53d49050a5..734fb91b02 100644
          }
  
          const auto ensureWeapon = [&weapons](
-@@ -824,7 +853,9 @@ namespace MWWorld
+@@ -500,10 +529,73 @@ namespace MWWorld
+             return false;
+         }
+ 
++        static bool isStarfieldViewerUsefulRecord(ESM4::RecordTypes recordType)
++        {
++            switch (recordType)
++            {
++                case ESM4::REC_ACHR:
++                case ESM4::REC_ACRE:
++                case ESM4::REC_ACTI:
++                case ESM4::REC_CELL:
++                case ESM4::REC_LAND:
++                case ESM4::REC_LTEX:
++                case ESM4::REC_MSTT:
++                case ESM4::REC_RACE:
++                case ESM4::REC_REFR:
++                case ESM4::REC_STAT:
++                case ESM4::REC_TXST:
++                case ESM4::REC_WRLD:
++                    return true;
++                default:
++                    return false;
++            }
++        }
++
++        static bool shouldSkipStarfieldViewerRecord(ESM4::Reader& reader, ESM4::RecordTypes recordType)
++        {
++            if (reader.esmVersionF() < 0.959f || reader.esmVersionF() > 0.961f)
++                return false;
++
++            if (isStarfieldViewerUsefulRecord(recordType))
++                return false;
++
++            static int logged = 0;
++            if (logged < 80)
++            {
++                Log(Debug::Info) << "World viewer: Starfield coarse scan skipped record type="
++                                 << ESM::printName(reader.hdr().record.typeId)
++                                 << " id=" << reader.hdr().record.getFormId().toString();
++                ++logged;
++            }
++            else if (logged == 80)
++            {
++                Log(Debug::Info) << "World viewer: further Starfield coarse scan skipped-record logs suppressed";
++                ++logged;
++            }
++            return true;
++        }
++
+         static bool readRecord(ESM4::Reader& reader, ESMStore& store)
+         {
+-            return std::apply(
++            const auto recordType = static_cast<ESM4::RecordTypes>(reader.hdr().record.typeId);
++            if (shouldSkipStarfieldViewerRecord(reader, recordType))
++                return false;
++
++            const bool result = std::apply(
+                 [&reader](auto&... x) { return (typedReadRecordESM4(reader, x) || ...); }, store.mStoreImp->mStores);
++            if (recordType == ESM4::REC_CELL || recordType == ESM4::REC_WRLD || recordType == ESM4::REC_REFR
++                || recordType == ESM4::REC_ACHR || recordType == ESM4::REC_STAT)
++            {
++                static int logged = 0;
++                if (logged < 120)
++                {
++                    Log(Debug::Info) << "World viewer: ESM4 dispatch type=" << ESM::printName(reader.hdr().record.typeId)
++                                     << " id=" << reader.hdr().record.getFormId().toString()
++                                     << " handled=" << result;
++                    ++logged;
++                }
++            }
++            return result;
+         }
+     };
+ 
+@@ -695,7 +787,30 @@ namespace MWWorld
+                 listener->setProgress(::EsmLoader::fileProgress * r.getFileOffset() / r.getFileSize());
+             return result;
+         };
+-        ESM4::ReaderUtils::readAll(reader, visitorRec, [](ESM4::Reader&) {});
++        auto visitorGroup = [](ESM4::Reader& r) {
++            static int logged = 0;
++            if (logged >= 220)
++                return;
++            const ESM4::GroupTypeHeader& group = r.hdr().group;
++            if (r.stackSize() == 0 || group.type == ESM4::Grp_RecordType || group.type == ESM4::Grp_WorldChild)
++            {
++                Log(Debug::Info) << "World viewer: ESM4 group offset=" << r.getFileOffset()
++                                 << " stack=" << r.stackSize()
++                                 << " " << ESM4::printLabel(group.label, group.type)
++                                 << " size=" << group.groupSize;
++                ++logged;
++            }
++        };
++        ESM4::ReaderUtils::readAll(reader, visitorRec, visitorGroup);
++        Log(Debug::Info) << "World viewer: ESM4 load counts offset=" << reader.getFileOffset() << "/"
++                         << reader.getFileSize()
++                         << " worlds=" << get<ESM4::World>().getSize()
++                         << " cells=" << get<ESM4::Cell>().getSize()
++                         << " refs=" << get<ESM4::Reference>().getSize()
++                         << " actors=" << get<ESM4::ActorCharacter>().getSize()
++                         << " creatures=" << get<ESM4::ActorCreature>().getSize()
++                         << " statics=" << get<ESM4::Static>().getSize()
++                         << " textureSets=" << get<ESM4::TextureSet>().getSize();
+     }
+ 
+     void ESMStore::setIdType(const ESM::RefId& id, ESM::RecNameInts type)
+@@ -824,7 +939,9 @@ namespace MWWorld
              ensureFalloutCharacterDefaults(
                  getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
                  getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
@@ -5894,7 +6932,7 @@ index 53d49050a5..734fb91b02 100644
          rebuildIdsIndex();
          mStoreImp->mStaticIds = mStoreImp->mIds;
          std::vector<ESM::NPC> npcsToReplace = getNPCsToReplace(getWritable<ESM::Faction>(), getWritable<ESM::Class>(),
-@@ -873,7 +904,9 @@ namespace MWWorld
+@@ -873,7 +990,9 @@ namespace MWWorld
              ensureFalloutCharacterDefaults(
                  getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
                  getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
@@ -5906,10 +6944,17 @@ index 53d49050a5..734fb91b02 100644
          auto& scripts = getWritable<ESM::Script>();
  
 diff --git a/apps/openmw/mwworld/scene.cpp b/apps/openmw/mwworld/scene.cpp
-index a30ee3237c..8547dda0d7 100644
+index a30ee3237c..8a3964d3fd 100644
 --- a/apps/openmw/mwworld/scene.cpp
 +++ b/apps/openmw/mwworld/scene.cpp
-@@ -195,6 +195,31 @@ namespace
+@@ -1,5 +1,6 @@
+ #include "scene.hpp"
+ 
++#include <algorithm>
+ #include <atomic>
+ #include <chrono>
+ #include <cmath>
+@@ -195,6 +196,88 @@ namespace
          return true;
      }
  
@@ -5938,10 +6983,77 @@ index a30ee3237c..8547dda0d7 100644
 +        return radius;
 +    }
 +
++    bool envEnabled(const char* name)
++    {
++        const char* value = std::getenv(name);
++        return value != nullptr && *value != '\0' && value[0] != '0';
++    }
++
++    bool worldViewerDiagnosticFilterEnabled()
++    {
++        return envEnabled("OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS")
++            || envEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
++    }
++
++    bool contains(std::string_view value, std::string_view needle)
++    {
++        return value.find(needle) != std::string_view::npos;
++    }
++
++    bool isWorldViewerDiagnosticModel(std::string_view value)
++    {
++        return contains(value, "meshes/markers/")
++            || contains(value, "/editormarkers/")
++            || contains(value, "staticcollectionpivotdummy")
++            || contains(value, "fill_planes/")
++            || contains(value, "fillplane_")
++            || contains(value, "occlusion")
++            || contains(value, "occluder")
++            || contains(value, "portalmarker")
++            || contains(value, "roommarker")
++            || contains(value, "loadmarker")
++            || contains(value, "xmarker")
++            || contains(value, "headingmarker")
++            || contains(value, "triggerbox")
++            || contains(value, "collisionmarker")
++            || contains(value, "water/water");
++    }
++
++    bool skipWorldViewerDiagnosticObject(const MWWorld::Ptr& ptr, const VFS::Path::Normalized& model)
++    {
++        if (model.empty() || !worldViewerDiagnosticFilterEnabled() || !isWorldViewerDiagnosticModel(model.value()))
++            return false;
++
++        static std::atomic<int> skipLogCount{ 0 };
++        const int logIndex = skipLogCount.fetch_add(1);
++        if (logIndex < 240)
++        {
++            Log(Debug::Info) << "World viewer: skipped diagnostic scene object base="
++                             << ptr.getCellRef().getRefId().toDebugString()
++                             << " type=" << ptr.getTypeDescription()
++                             << " model=" << model.value()
++                             << " ptr=" << ptr.toString();
++        }
++        else if (logIndex == 240)
++            Log(Debug::Info) << "World viewer: further diagnostic scene object skip logs suppressed";
++
++        return true;
++    }
++
      osg::Vec3f transformFnvFurnitureMarkerOffsetForProof(osg::Vec3f offset)
      {
          const char* mode = std::getenv("OPENMW_FNV_FURNITURE_MARKER_OFFSET_MODE");
-@@ -1005,7 +1030,7 @@ namespace MWWorld
+@@ -498,6 +581,9 @@ namespace
+         const VFS::Path::Normalized model = getModel(ptr);
+         const auto rotation = makeDirectNodeRotation(ptr);
+ 
++        if (skipWorldViewerDiagnosticObject(ptr, model))
++            return;
++
+         ESM::RefNum refnum = ptr.getCellRef().getRefNum();
+         if (!refnum.hasContentFile() || !std::binary_search(pagedRefs.begin(), pagedRefs.end(), refnum))
+             ptr.getClass().insertObjectRendering(ptr, model, rendering);
+@@ -1005,7 +1091,7 @@ namespace MWWorld
      void Scene::changeCellGrid(const osg::Vec3f& pos, ESM::ExteriorCellLocation playerCellIndex, bool changeEvent)
      {
          const int halfGridSize
@@ -5950,7 +7062,7 @@ index a30ee3237c..8547dda0d7 100644
          auto navigatorUpdateGuard = mNavigator.makeUpdateGuard();
          const int playerCellX = playerCellIndex.mX;
          const int playerCellY = playerCellIndex.mY;
-@@ -1238,7 +1263,7 @@ namespace MWWorld
+@@ -1238,7 +1324,7 @@ namespace MWWorld
  
      void Scene::changePlayerCell(CellStore& cell, const ESM::Position& pos, bool adjustPlayerPos)
      {
@@ -6204,20 +7316,21 @@ index 62d761af27..d4679105b1 100644
  
          /**
 diff --git a/apps/openmw/mwworld/worldimp.cpp b/apps/openmw/mwworld/worldimp.cpp
-index c9128df6a4..1322d3cb80 100644
+index c9128df6a4..7c81ed8c7d 100644
 --- a/apps/openmw/mwworld/worldimp.cpp
 +++ b/apps/openmw/mwworld/worldimp.cpp
-@@ -1,7 +1,9 @@
+@@ -1,7 +1,10 @@
  #include "worldimp.hpp"
  
  #include <charconv>
 +#include <cmath>
  #include <cstdlib>
++#include <exception>
 +#include <string>
  #include <vector>
  
  #include <osg/ComputeBoundsVisitor>
-@@ -120,6 +122,142 @@ namespace MWWorld
+@@ -120,6 +123,192 @@ namespace MWWorld
  {
      namespace
      {
@@ -6241,6 +7354,22 @@ index c9128df6a4..1322d3cb80 100644
 +            float value = fallback;
 +            readViewerProofFloat(name, value);
 +            return value;
++        }
++
++        bool readViewerProofInt(const char* name, int& value)
++        {
++            const char* text = std::getenv(name);
++            if (text == nullptr || *text == '\0')
++                return false;
++
++            int parsed = 0;
++            const char* end = text + std::char_traits<char>::length(text);
++            const std::from_chars_result result = std::from_chars(text, end, parsed);
++            if (result.ec != std::errc{} || result.ptr != end)
++                return false;
++
++            value = parsed;
++            return true;
 +        }
 +
 +        bool readViewerProofHour(float& hour)
@@ -6275,6 +7404,40 @@ index c9128df6a4..1322d3cb80 100644
 +            position.rot[1] = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_ROT_Y", 0.f);
 +            position.rot[2] = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_ROT_Z", 0.f);
 +            return true;
++        }
++
++        bool readViewerStartExteriorLocation(ESM::ExteriorCellLocation& location)
++        {
++            const char* worldspaceText = std::getenv("OPENMW_WORLD_VIEWER_START_WORLDSPACE");
++            if (worldspaceText == nullptr || *worldspaceText == '\0')
++                return false;
++
++            int gridX = 0;
++            int gridY = 0;
++            if (!readViewerProofInt("OPENMW_WORLD_VIEWER_START_GRID_X", gridX)
++                || !readViewerProofInt("OPENMW_WORLD_VIEWER_START_GRID_Y", gridY))
++            {
++                Log(Debug::Warning) << "World viewer: explicit exterior start ignored; grid is missing or invalid";
++                return false;
++            }
++
++            try
++            {
++                ESM::RefId worldspace = ESM::RefId::deserializeText(worldspaceText);
++                if (worldspace.empty())
++                {
++                    Log(Debug::Warning) << "World viewer: explicit exterior start ignored; worldspace is empty";
++                    return false;
++                }
++                location = ESM::ExteriorCellLocation(gridX, gridY, worldspace);
++                return true;
++            }
++            catch (const std::exception& e)
++            {
++                Log(Debug::Warning) << "World viewer: explicit exterior start ignored; worldspace '"
++                                    << worldspaceText << "' is invalid: " << e.what();
++                return false;
++            }
 +        }
 +
 +        bool viewerEnvEnabled(const char* name)
@@ -6360,7 +7523,7 @@ index c9128df6a4..1322d3cb80 100644
          std::vector<std::pair<std::string_view, ESM::Variant>> generateDefaultGameSettings()
          {
              return {
-@@ -545,32 +683,46 @@ namespace MWWorld
+@@ -545,32 +734,46 @@ namespace MWWorld
      void World::init(Debug::Level maxRecastLogLevel, osgViewer::Viewer* viewer, osg::ref_ptr<osg::Group> rootNode,
          SceneUtil::WorkQueue* workQueue, SceneUtil::UnrefQueue& unrefQueue, std::unique_ptr<MWRender::Camera> camera)
      {
@@ -6407,7 +7570,7 @@ index c9128df6a4..1322d3cb80 100644
      }
  
      void World::fillGlobalVariables()
-@@ -594,6 +746,14 @@ namespace MWWorld
+@@ -594,6 +797,14 @@ namespace MWWorld
          // Rebuild player
          setupPlayer();
  
@@ -6422,7 +7585,7 @@ index c9128df6a4..1322d3cb80 100644
          renderPlayer();
          mRendering->getCamera()->reset();
  
-@@ -614,21 +774,41 @@ namespace MWWorld
+@@ -614,21 +825,77 @@ namespace MWWorld
  
          if (bypass && !mStartCell.empty())
          {
@@ -6431,45 +7594,84 @@ index c9128df6a4..1322d3cb80 100644
 +
              ESM::Position pos;
              ESM::RefId cellId = findExteriorPosition(mStartCell, pos);
++            auto changeToResolvedExterior = [&](ESM::RefId resolvedCellId, ESM::Position resolvedPos,
++                                                std::string_view source) {
++                if (hasExplicitAnchor)
++                    resolvedPos = anchor;
++                Log(Debug::Info) << "FNV/ESM4 diag: start cell '" << mStartCell << "' resolved as exterior "
++                                 << resolvedCellId << " explicitAnchor=" << hasExplicitAnchor << " source=" << source;
++                Log(Debug::Info) << "World viewer: start cell exterior change begin cell=" << resolvedCellId
++                                 << " pos=(" << resolvedPos.pos[0] << ", " << resolvedPos.pos[1] << ", "
++                                 << resolvedPos.pos[2] << ")";
++                changeToCell(resolvedCellId, resolvedPos, !hasExplicitAnchor);
++                Log(Debug::Info) << "World viewer: start cell exterior change complete cell=" << resolvedCellId;
++                if (hasExplicitAnchor)
++                    pinViewerStartAnchor(*this, resolvedPos);
++                else
++                    adjustPosition(getPlayerPtr(), false);
++                Log(Debug::Info) << "World viewer: start cell exterior placement complete cell=" << resolvedCellId;
++            };
++
              if (!cellId.empty())
              {
-+                if (hasExplicitAnchor)
-+                    pos = anchor;
-                 Log(Debug::Info) << "FNV/ESM4 diag: start cell '" << mStartCell << "' resolved as exterior "
+-                Log(Debug::Info) << "FNV/ESM4 diag: start cell '" << mStartCell << "' resolved as exterior "
 -                                 << cellId;
 -                changeToCell(cellId, pos, true);
 -                adjustPosition(getPlayerPtr(), false);
-+                                 << cellId << " explicitAnchor=" << hasExplicitAnchor;
-+                Log(Debug::Info) << "World viewer: start cell exterior change begin cell=" << cellId
-+                                 << " pos=(" << pos.pos[0] << ", " << pos.pos[1] << ", " << pos.pos[2] << ")";
-+                changeToCell(cellId, pos, !hasExplicitAnchor);
-+                Log(Debug::Info) << "World viewer: start cell exterior change complete cell=" << cellId;
-+                if (hasExplicitAnchor)
-+                    pinViewerStartAnchor(*this, pos);
-+                else
-+                    adjustPosition(getPlayerPtr(), false);
-+                Log(Debug::Info) << "World viewer: start cell exterior placement complete cell=" << cellId;
++                changeToResolvedExterior(cellId, pos, "named-cell");
              }
              else
              {
-                 cellId = findInteriorPosition(mStartCell, pos);
-+                if (hasExplicitAnchor)
-+                    pos = anchor;
-                 Log(Debug::Info) << "FNV/ESM4 diag: start cell '" << mStartCell << "' resolved as interior "
+-                cellId = findInteriorPosition(mStartCell, pos);
+-                Log(Debug::Info) << "FNV/ESM4 diag: start cell '" << mStartCell << "' resolved as interior "
 -                                 << cellId;
 -                changeToInteriorCell(mStartCell, pos, true);
-+                                 << cellId << " explicitAnchor=" << hasExplicitAnchor;
-+                Log(Debug::Info) << "World viewer: start cell interior change begin cell=\"" << mStartCell
-+                                 << "\" pos=(" << pos.pos[0] << ", " << pos.pos[1] << ", " << pos.pos[2] << ")";
-+                changeToInteriorCell(mStartCell, pos, !hasExplicitAnchor);
-+                Log(Debug::Info) << "World viewer: start cell interior change complete cell=\"" << mStartCell << "\"";
-+                if (hasExplicitAnchor)
-+                    pinViewerStartAnchor(*this, pos);
-+                Log(Debug::Info) << "World viewer: start cell interior placement complete cell=\"" << mStartCell << "\"";
++                bool usedExplicitExterior = false;
++                ESM::ExteriorCellLocation explicitExterior;
++                if (readViewerStartExteriorLocation(explicitExterior))
++                {
++                    try
++                    {
++                        MWWorld::CellStore& exteriorStore = mWorldModel.getExterior(explicitExterior);
++                        cellId = exteriorStore.getCell()->getId();
++                        const osg::Vec2f posFromIndex = indexToPosition(explicitExterior, true);
++                        pos.pos[0] = posFromIndex.x();
++                        pos.pos[1] = posFromIndex.y();
++                        pos.pos[2] = 0;
++                        pos.rot[0] = pos.rot[1] = pos.rot[2] = 0;
++                        Log(Debug::Info) << "World viewer: explicit exterior start location=" << explicitExterior
++                                         << " cell=" << cellId;
++                        changeToResolvedExterior(cellId, pos, "explicit-exterior-location");
++                        usedExplicitExterior = true;
++                    }
++                    catch (const std::exception& e)
++                    {
++                        Log(Debug::Warning) << "World viewer: explicit exterior start failed for "
++                                            << explicitExterior << ": " << e.what();
++                    }
++                }
++
++                if (!usedExplicitExterior)
++                {
++                    cellId = findInteriorPosition(mStartCell, pos);
++                    if (hasExplicitAnchor)
++                        pos = anchor;
++                    Log(Debug::Info) << "FNV/ESM4 diag: start cell '" << mStartCell << "' resolved as interior "
++                                     << cellId << " explicitAnchor=" << hasExplicitAnchor;
++                    Log(Debug::Info) << "World viewer: start cell interior change begin cell=\"" << mStartCell
++                                     << "\" pos=(" << pos.pos[0] << ", " << pos.pos[1] << ", " << pos.pos[2] << ")";
++                    changeToInteriorCell(mStartCell, pos, !hasExplicitAnchor);
++                    Log(Debug::Info) << "World viewer: start cell interior change complete cell=\"" << mStartCell
++                                     << "\"";
++                    if (hasExplicitAnchor)
++                        pinViewerStartAnchor(*this, pos);
++                    Log(Debug::Info) << "World viewer: start cell interior placement complete cell=\"" << mStartCell
++                                     << "\"";
++                }
              }
          }
          else
-@@ -672,6 +852,8 @@ namespace MWWorld
+@@ -672,6 +939,8 @@ namespace MWWorld
  
          // Initial seed.
          mPrng.seed(mRandomSeed);
@@ -6478,7 +7680,7 @@ index c9128df6a4..1322d3cb80 100644
      }
  
      void World::clear()
-@@ -2728,6 +2910,50 @@ namespace MWWorld
+@@ -2728,6 +2997,50 @@ namespace MWWorld
                  state = MWWorld::DoorState::Closing; // if opening, then close
                  break;
          }
@@ -6558,6 +7760,91 @@ index 77409f9326..0c250b7451 100644
 +        )
 +    set(HAS_DOUBLE_PRECISION_BULLET ${RESULT_VAR})
 +endif()
+diff --git a/components/bsa/ba2dx10file.cpp b/components/bsa/ba2dx10file.cpp
+index c16a3bacd2..dd3113cc20 100644
+--- a/components/bsa/ba2dx10file.cpp
++++ b/components/bsa/ba2dx10file.cpp
+@@ -6,7 +6,9 @@
+ #include <filesystem>
+ #include <format>
+ #include <istream>
++#include <limits>
+ 
++#include <lz4.h>
+ #include <zlib.h>
+ 
+ #include <components/esm/fourcc.hpp>
+@@ -101,14 +103,23 @@ namespace Bsa
+                 case BA2Version::Fallout4NextGen_v7:
+                 case BA2Version::Fallout4NextGen_v8:
+                     break;
++                case BA2Version::StarfieldGeneral:
++                {
++                    uint64_t dummy;
++                    input.read(reinterpret_cast<char*>(&dummy), 8);
++                    break;
++                }
+                 case BA2Version::StarfieldDDS:
++                {
+                     uint64_t dummy;
+                     input.read(reinterpret_cast<char*>(&dummy), 8);
+                     uint32_t compressionMethod;
+                     input.read(reinterpret_cast<char*>(&compressionMethod), 4);
+-                    if (compressionMethod == 3)
+-                        fail("Unsupported LZ4-compressed DDS BA2");
++                    if (compressionMethod != 0 && compressionMethod != 3)
++                        fail("Unsupported DDS BA2 compression method");
++                    mCompressionMethod = compressionMethod;
+                     break;
++                }
+                 default:
+                     fail("Unrecognized DDS BA2 version");
+             }
+@@ -644,12 +655,26 @@ namespace Bsa
+             if (c.packedSize != 0)
+             {
+                 streamPtr->read(inputBuffer.data(), c.packedSize);
+-                uLongf destSize = static_cast<uLongf>(c.size);
+-                int ec = ::uncompress(reinterpret_cast<Bytef*>(memoryStreamPtr->getRawData() + offset), &destSize,
+-                    reinterpret_cast<Bytef*>(inputBuffer.data()), static_cast<uLong>(c.packedSize));
+-
+-                if (ec != Z_OK)
+-                    fail("zlib uncompress failed: " + std::string(::zError(ec)));
++                if (mCompressionMethod == 3)
++                {
++                    if (c.packedSize > static_cast<uint32_t>(std::numeric_limits<int>::max())
++                        || c.size > static_cast<uint32_t>(std::numeric_limits<int>::max()))
++                        fail("LZ4 chunk is too large");
++
++                    const int decoded = LZ4_decompress_safe(inputBuffer.data(), memoryStreamPtr->getRawData() + offset,
++                        static_cast<int>(c.packedSize), static_cast<int>(c.size));
++                    if (decoded < 0 || static_cast<uint32_t>(decoded) != c.size)
++                        fail("LZ4 decompress failed");
++                }
++                else
++                {
++                    uLongf destSize = static_cast<uLongf>(c.size);
++                    int ec = ::uncompress(reinterpret_cast<Bytef*>(memoryStreamPtr->getRawData() + offset), &destSize,
++                        reinterpret_cast<Bytef*>(inputBuffer.data()), static_cast<uLong>(c.packedSize));
++
++                    if (ec != Z_OK)
++                        fail("zlib uncompress failed: " + std::string(::zError(ec)));
++                }
+             }
+             // uncompressed chunk
+             else
+diff --git a/components/bsa/ba2dx10file.hpp b/components/bsa/ba2dx10file.hpp
+index aed727dc1a..74970280fc 100644
+--- a/components/bsa/ba2dx10file.hpp
++++ b/components/bsa/ba2dx10file.hpp
+@@ -35,6 +35,7 @@ namespace Bsa
+         };
+ 
+         uint32_t mVersion{ 0u };
++        uint32_t mCompressionMethod{ 0u };
+ 
+         using FolderRecord = std::map<std::pair<uint32_t, uint32_t>, FileRecord>;
+         std::map<uint32_t, FolderRecord> mFolders;
 diff --git a/components/crashcatcher/crashcatcher.cpp b/components/crashcatcher/crashcatcher.cpp
 index e460f04dcc..45872eb711 100644
 --- a/components/crashcatcher/crashcatcher.cpp
@@ -6710,6 +7997,1645 @@ index d7f0eda19c..8c658cf3e5 100644
  
              Log(Debug::Error) << "Fatal error: " << e.what();
  
+diff --git a/components/esm4/loadachr.cpp b/components/esm4/loadachr.cpp
+index 6ccdc0a8c7..99dba0cf58 100644
+--- a/components/esm4/loadachr.cpp
++++ b/components/esm4/loadachr.cpp
+@@ -132,6 +132,8 @@ void ESM4::ActorCharacter::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadachr"))
++                    break;
+                 throw std::runtime_error("ESM4 ACHR/ACRE load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadacti.cpp b/components/esm4/loadacti.cpp
+index 0609e4e1bf..386b466877 100644
+--- a/components/esm4/loadacti.cpp
++++ b/components/esm4/loadacti.cpp
+@@ -51,22 +51,40 @@ void ESM4::Activator::load(ESM4::Reader& reader)
+                 reader.getZString(mModel);
+                 break;
+             case ESM::fourCC("SCRI"):
+-                reader.getFormId(mScriptId);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mScriptId);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("SNAM"):
+-                reader.getFormId(mLoopingSound);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mLoopingSound);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("VNAM"):
+-                reader.getFormId(mActivationSound);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mActivationSound);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("MODB"):
+-                reader.get(mBoundRadius);
++                if (subHdr.dataSize == sizeof(mBoundRadius))
++                    reader.get(mBoundRadius);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("INAM"):
+-                reader.getFormId(mRadioTemplate);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mRadioTemplate);
++                else
++                    reader.skipSubRecordData();
+                 break; // FONV
+             case ESM::fourCC("RNAM"):
+-                reader.getFormId(mRadioStation);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mRadioStation);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("XATO"):
+                 reader.getZString(mActivationPrompt);
+@@ -98,15 +116,34 @@ void ESM4::Activator::load(ESM4::Reader& reader)
+             case ESM::fourCC("CITC"):
+             case ESM::fourCC("NVNM"):
+             case ESM::fourCC("ATTX"): // FO4
++            case ESM::fourCC("ACSH"): // Starfield
++            case ESM::fourCC("ANAM"): // Starfield
++            case ESM::fourCC("BFCB"): // Starfield
++            case ESM::fourCC("BFCE"): // Starfield
++            case ESM::fourCC("BNAM"): // Starfield
++            case ESM::fourCC("CNAM"): // Starfield
++            case ESM::fourCC("FLLD"): // Starfield
+             case ESM::fourCC("FTYP"): // FO4
++            case ESM::fourCC("JNAM"): // Starfield
++            case ESM::fourCC("MOLM"): // Starfield
+             case ESM::fourCC("NTRM"): // FO4
++            case ESM::fourCC("ODTY"): // Starfield
++            case ESM::fourCC("PTCL"): // Starfield
++            case ESM::fourCC("PTT2"): // Starfield
+             case ESM::fourCC("PTRN"): // FO4
+             case ESM::fourCC("PRPS"): // FO4
+             case ESM::fourCC("RADR"): // FO4
++            case ESM::fourCC("REFL"): // Starfield
++            case ESM::fourCC("SNTP"): // Starfield
+             case ESM::fourCC("STCP"): // FO4
++            case ESM::fourCC("WTFM"): // Starfield
++            case ESM::fourCC("XALG"): // Starfield
++            case ESM::fourCC("XFLG"): // Starfield
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadacti"))
++                    break;
+                 throw std::runtime_error("ESM4::ACTI::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadalch.cpp b/components/esm4/loadalch.cpp
+index 4a289ab760..7a5a6fb3a7 100644
+--- a/components/esm4/loadalch.cpp
++++ b/components/esm4/loadalch.cpp
+@@ -115,6 +115,8 @@ void ESM4::Potion::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadalch"))
++                    break;
+                 throw std::runtime_error("ESM4::ALCH::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadaloc.cpp b/components/esm4/loadaloc.cpp
+index 1b3bfd7e5b..546c569e01 100644
+--- a/components/esm4/loadaloc.cpp
++++ b/components/esm4/loadaloc.cpp
+@@ -117,6 +117,8 @@ void ESM4::MediaLocationController::load(ESM4::Reader& reader)
+                 break;
+             }
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadaloc"))
++                    break;
+                 throw std::runtime_error("ESM4::ALOC::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadammo.cpp b/components/esm4/loadammo.cpp
+index 39c42fc83f..250ad1b1d1 100644
+--- a/components/esm4/loadammo.cpp
++++ b/components/esm4/loadammo.cpp
+@@ -168,6 +168,8 @@ void ESM4::Ammunition::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadammo"))
++                    break;
+                 throw std::runtime_error("ESM4::AMMO::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadanio.cpp b/components/esm4/loadanio.cpp
+index a8156eef2b..0f6152c470 100644
+--- a/components/esm4/loadanio.cpp
++++ b/components/esm4/loadanio.cpp
+@@ -63,6 +63,8 @@ void ESM4::AnimObject::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadanio"))
++                    break;
+                 throw std::runtime_error("ESM4::ANIO::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadappa.cpp b/components/esm4/loadappa.cpp
+index 8c74d020a6..d140058b2c 100644
+--- a/components/esm4/loadappa.cpp
++++ b/components/esm4/loadappa.cpp
+@@ -82,6 +82,8 @@ void ESM4::Apparatus::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadappa"))
++                    break;
+                 throw std::runtime_error("ESM4::APPA::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadarma.cpp b/components/esm4/loadarma.cpp
+index a1a1a10845..15ad7a1bbd 100644
+--- a/components/esm4/loadarma.cpp
++++ b/components/esm4/loadarma.cpp
+@@ -148,6 +148,8 @@ void ESM4::ArmorAddon::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadarma"))
++                    break;
+                 throw std::runtime_error("ESM4::ARMA::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadarmo.cpp b/components/esm4/loadarmo.cpp
+index dc926f7a01..4c070019f2 100644
+--- a/components/esm4/loadarmo.cpp
++++ b/components/esm4/loadarmo.cpp
+@@ -71,7 +71,10 @@ void ESM4::Armor::load(ESM4::Reader& reader)
+             }
+             case ESM::fourCC("INDX"): // FO4
+             {
+-                reader.get(currentIndex);
++                if (subHdr.dataSize == sizeof(currentIndex))
++                    reader.get(currentIndex);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             }
+             case ESM::fourCC("MODL"):
+@@ -164,25 +167,43 @@ void ESM4::Armor::load(ESM4::Reader& reader)
+                 }
+                 break;
+             case ESM::fourCC("SCRI"):
+-                reader.getFormId(mScriptId);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mScriptId);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("ANAM"):
+-                reader.get(mEnchantmentPoints);
++                if (subHdr.dataSize == sizeof(mEnchantmentPoints))
++                    reader.get(mEnchantmentPoints);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("ENAM"):
+-                reader.getFormId(mEnchantment);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mEnchantment);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("MODB"):
+-                reader.get(mBoundRadius);
++                if (subHdr.dataSize == sizeof(mBoundRadius))
++                    reader.get(mBoundRadius);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("DESC"):
+                 reader.getLocalizedString(mText);
+                 break;
+             case ESM::fourCC("YNAM"):
+-                reader.getFormId(mPickUpSound);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mPickUpSound);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("ZNAM"):
+-                reader.getFormId(mDropSound);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mDropSound);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("MODT"):
+             case ESM::fourCC("MO2B"):
+@@ -224,17 +245,26 @@ void ESM4::Armor::load(ESM4::Reader& reader)
+             case ESM::fourCC("DSTD"):
+             case ESM::fourCC("DSTF"): // Destructible end
+             case ESM::fourCC("APPR"): // FO4
++            case ESM::fourCC("BFCB"): // Starfield
++            case ESM::fourCC("BFCE"): // Starfield
+             case ESM::fourCC("DAMA"): // FO4
++            case ESM::fourCC("FLLD"): // Starfield
+             case ESM::fourCC("FNAM"): // FO4
+             case ESM::fourCC("INRD"): // FO4
++            case ESM::fourCC("ODTY"): // Starfield
++            case ESM::fourCC("PTT2"): // Starfield
+             case ESM::fourCC("PTRN"): // FO4
++            case ESM::fourCC("REFL"): // Starfield
+             case ESM::fourCC("OBTE"): // FO4 object template start
+             case ESM::fourCC("OBTF"):
+             case ESM::fourCC("OBTS"):
+             case ESM::fourCC("STOP"): // FO4 object template end
++            case ESM::fourCC("XFLG"): // Starfield
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadarmo"))
++                    break;
+                 throw std::runtime_error("ESM4::ARMO::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadaspc.cpp b/components/esm4/loadaspc.cpp
+index e8fe9d3b34..88b1e18ee4 100644
+--- a/components/esm4/loadaspc.cpp
++++ b/components/esm4/loadaspc.cpp
+@@ -73,6 +73,8 @@ void ESM4::AcousticSpace::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadaspc"))
++                    break;
+                 throw std::runtime_error("ESM4::ASPC::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadbook.cpp b/components/esm4/loadbook.cpp
+index cef942074a..5b0d7ad4c0 100644
+--- a/components/esm4/loadbook.cpp
++++ b/components/esm4/loadbook.cpp
+@@ -132,6 +132,8 @@ void ESM4::Book::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadbook"))
++                    break;
+                 throw std::runtime_error("ESM4::BOOK::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadbptd.cpp b/components/esm4/loadbptd.cpp
+index 5ff3b5908b..5ce95eff30 100644
+--- a/components/esm4/loadbptd.cpp
++++ b/components/esm4/loadbptd.cpp
+@@ -109,6 +109,8 @@ void ESM4::BodyPartData::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadbptd"))
++                    break;
+                 throw std::runtime_error("ESM4::BPTD::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadcell.cpp b/components/esm4/loadcell.cpp
+index 8106c1637f..a3342a4d1a 100644
+--- a/components/esm4/loadcell.cpp
++++ b/components/esm4/loadcell.cpp
+@@ -121,10 +121,19 @@ void ESM4::Cell::load(ESM4::Reader& reader)
+             {
+                 if (subHdr.dataSize == 2)
+                     reader.get(mCellFlags);
++                else if (subHdr.dataSize == 4)
++                {
++                    std::uint32_t value = 0;
++                    reader.get(value);
++                    mCellFlags = static_cast<std::uint16_t>(value & std::numeric_limits<std::uint16_t>::max());
++                }
+                 else
+                 {
+                     if (subHdr.dataSize != 1)
+-                        throw std::runtime_error("CELL unexpected DATA flag size");
++                    {
++                        reader.skipSubRecordData();
++                        break;
++                    }
+                     std::uint8_t value = 0;
+                     reader.get(value);
+                     mCellFlags = value;
+@@ -167,16 +176,28 @@ void ESM4::Cell::load(ESM4::Reader& reader)
+                 break;
+             }
+             case ESM::fourCC("XGLB"):
+-                reader.getFormId(mGlobal);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mGlobal);
++                else
++                    reader.skipSubRecordData();
+                 break; // Oblivion only?
+             case ESM::fourCC("XCCM"):
+-                reader.getFormId(mClimate);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mClimate);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("XCWT"):
+-                reader.getFormId(mWater);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mWater);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("XCLW"):
+-                reader.get(mWaterHeight);
++                if (subHdr.dataSize == sizeof(mWaterHeight))
++                    reader.get(mWaterHeight);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("XCLL"):
+             {
+@@ -201,22 +222,40 @@ void ESM4::Cell::load(ESM4::Reader& reader)
+                 reader.get(mMusicType);
+                 break; // Oblivion only?
+             case ESM::fourCC("LTMP"):
+-                reader.getFormId(mLightingTemplate);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mLightingTemplate);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("LNAM"):
+-                reader.get(mLightingTemplateFlags);
++                if (subHdr.dataSize == sizeof(mLightingTemplateFlags))
++                    reader.get(mLightingTemplateFlags);
++                else
++                    reader.skipSubRecordData();
+                 break; // seems to always follow LTMP
+             case ESM::fourCC("XCMO"):
+-                reader.getFormId(mMusic);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mMusic);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("XCAS"):
+-                reader.getFormId(mAcousticSpace);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mAcousticSpace);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("TVDT"):
++            case ESM::fourCC("XBPS"): // Starfield
++            case ESM::fourCC("XCLA"): // Starfield
++            case ESM::fourCC("XCLD"): // Starfield
+             case ESM::fourCC("MHDT"):
++            case ESM::fourCC("XEMP"): // Starfield
+             case ESM::fourCC("XCGD"):
++            case ESM::fourCC("XILS"): // Starfield
+             case ESM::fourCC("XNAM"):
+             case ESM::fourCC("XLCN"):
++            case ESM::fourCC("XTV2"): // Starfield
+             case ESM::fourCC("XWCS"):
+             case ESM::fourCC("XWCU"):
+             case ESM::fourCC("XWCN"):
+@@ -239,6 +278,8 @@ void ESM4::Cell::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadcell"))
++                    break;
+                 throw std::runtime_error("ESM4::CELL::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadclas.cpp b/components/esm4/loadclas.cpp
+index e80b36849e..6b2f827c29 100644
+--- a/components/esm4/loadclas.cpp
++++ b/components/esm4/loadclas.cpp
+@@ -59,6 +59,8 @@ void ESM4::Class::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadclas"))
++                    break;
+                 throw std::runtime_error("ESM4::CLAS::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadclfm.cpp b/components/esm4/loadclfm.cpp
+index b7157877c7..8b427d4b83 100644
+--- a/components/esm4/loadclfm.cpp
++++ b/components/esm4/loadclfm.cpp
+@@ -60,6 +60,8 @@ void ESM4::Colour::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadclfm"))
++                    break;
+                 throw std::runtime_error("ESM4::CLFM::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadclot.cpp b/components/esm4/loadclot.cpp
+index 48999adb18..94baee7ead 100644
+--- a/components/esm4/loadclot.cpp
++++ b/components/esm4/loadclot.cpp
+@@ -93,6 +93,8 @@ void ESM4::Clothing::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadclot"))
++                    break;
+                 throw std::runtime_error("ESM4::CLOT::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadcont.cpp b/components/esm4/loadcont.cpp
+index 70f05b4375..29cacd28a1 100644
+--- a/components/esm4/loadcont.cpp
++++ b/components/esm4/loadcont.cpp
+@@ -103,6 +103,8 @@ void ESM4::Container::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadcont"))
++                    break;
+                 throw std::runtime_error("ESM4::CONT::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadcrea.cpp b/components/esm4/loadcrea.cpp
+index 84a963fbe2..7a5057bc69 100644
+--- a/components/esm4/loadcrea.cpp
++++ b/components/esm4/loadcrea.cpp
+@@ -177,6 +177,8 @@ void ESM4::Creature::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadcrea"))
++                    break;
+                 throw std::runtime_error("ESM4::CREA::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loaddial.cpp b/components/esm4/loaddial.cpp
+index 3ed9b79e0a..b783f580ad 100644
+--- a/components/esm4/loaddial.cpp
++++ b/components/esm4/loaddial.cpp
+@@ -91,6 +91,8 @@ void ESM4::Dialogue::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loaddial"))
++                    break;
+                 throw std::runtime_error("ESM4::DIAL::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loaddobj.cpp b/components/esm4/loaddobj.cpp
+index 9c0c193f81..59c3843882 100644
+--- a/components/esm4/loaddobj.cpp
++++ b/components/esm4/loaddobj.cpp
+@@ -91,6 +91,8 @@ void ESM4::DefaultObj::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loaddobj"))
++                    break;
+                 throw std::runtime_error("ESM4::DOBJ::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loaddoor.cpp b/components/esm4/loaddoor.cpp
+index 10171085c3..a114f2eb48 100644
+--- a/components/esm4/loaddoor.cpp
++++ b/components/esm4/loaddoor.cpp
+@@ -95,6 +95,8 @@ void ESM4::Door::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loaddoor"))
++                    break;
+                 throw std::runtime_error("ESM4::DOOR::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadeyes.cpp b/components/esm4/loadeyes.cpp
+index 7e356889d9..91bdcd1eaa 100644
+--- a/components/esm4/loadeyes.cpp
++++ b/components/esm4/loadeyes.cpp
+@@ -54,6 +54,8 @@ void ESM4::Eyes::load(ESM4::Reader& reader)
+                 reader.get(mData);
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadeyes"))
++                    break;
+                 throw std::runtime_error("ESM4::EYES::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadflor.cpp b/components/esm4/loadflor.cpp
+index 164f97eff1..a75d94038d 100644
+--- a/components/esm4/loadflor.cpp
++++ b/components/esm4/loadflor.cpp
+@@ -91,6 +91,8 @@ void ESM4::Flora::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadflor"))
++                    break;
+                 throw std::runtime_error("ESM4::FLOR::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadflst.cpp b/components/esm4/loadflst.cpp
+index 4acf4d28d2..3fd0cc0a9c 100644
+--- a/components/esm4/loadflst.cpp
++++ b/components/esm4/loadflst.cpp
+@@ -51,6 +51,8 @@ void ESM4::FormIdList::load(ESM4::Reader& reader)
+                 reader.getFormId(mObjects.emplace_back());
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadflst"))
++                    break;
+                 throw std::runtime_error("ESM4::FLST::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadfurn.cpp b/components/esm4/loadfurn.cpp
+index 75dc3751a6..a2da5904ac 100644
+--- a/components/esm4/loadfurn.cpp
++++ b/components/esm4/loadfurn.cpp
+@@ -115,6 +115,8 @@ void ESM4::Furniture::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadfurn"))
++                    break;
+                 throw std::runtime_error("ESM4::FURN::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadglob.cpp b/components/esm4/loadglob.cpp
+index 4349bcb072..480b469d24 100644
+--- a/components/esm4/loadglob.cpp
++++ b/components/esm4/loadglob.cpp
+@@ -57,6 +57,8 @@ void ESM4::GlobalVariable::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadglob"))
++                    break;
+                 throw std::runtime_error("ESM4::GLOB::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadgmst.cpp b/components/esm4/loadgmst.cpp
+index 0b2df075f2..f4b9daf9ca 100644
+--- a/components/esm4/loadgmst.cpp
++++ b/components/esm4/loadgmst.cpp
+@@ -73,7 +73,12 @@ namespace ESM4
+                 case ESM::fourCC("DATA"):
+                     mData = readData(mId, mEditorId, reader);
+                     break;
++                case ESM::fourCC("XALG"): // Starfield
++                    reader.skipSubRecordData();
++                    break;
+                 default:
++                    if (reader.skipUnknownStarfieldSubRecordData("loadgmst"))
++                        break;
+                     throw std::runtime_error(
+                         "Unknown ESM4 GMST (" + mId.toString() + ") subrecord " + ESM::printName(subHdr.typeId));
+             }
+diff --git a/components/esm4/loadgras.cpp b/components/esm4/loadgras.cpp
+index 8514b3aa0a..d0c068b768 100644
+--- a/components/esm4/loadgras.cpp
++++ b/components/esm4/loadgras.cpp
+@@ -61,6 +61,8 @@ void ESM4::Grass::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadgras"))
++                    break;
+                 throw std::runtime_error("ESM4::GRAS::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadhair.cpp b/components/esm4/loadhair.cpp
+index f3e5a8a1c3..3769ec6beb 100644
+--- a/components/esm4/loadhair.cpp
++++ b/components/esm4/loadhair.cpp
+@@ -63,6 +63,8 @@ void ESM4::Hair::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadhair"))
++                    break;
+                 throw std::runtime_error("ESM4::HAIR::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadhdpt.cpp b/components/esm4/loadhdpt.cpp
+index 27623e5203..2dcae85149 100644
+--- a/components/esm4/loadhdpt.cpp
++++ b/components/esm4/loadhdpt.cpp
+@@ -116,6 +116,8 @@ void ESM4::HeadPart::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadhdpt"))
++                    break;
+                 throw std::runtime_error("ESM4::HDPT::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadidle.cpp b/components/esm4/loadidle.cpp
+index 18a408f053..0f0fb4a752 100644
+--- a/components/esm4/loadidle.cpp
++++ b/components/esm4/loadidle.cpp
+@@ -92,6 +92,8 @@ void ESM4::IdleAnimation::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadidle"))
++                    break;
+                 throw std::runtime_error("ESM4::IDLE::load - Unknown subrecord " + std::to_string(subHdr.typeId) + " "
+                     + ESM::printName(subHdr.typeId));
+         }
+diff --git a/components/esm4/loadidlm.cpp b/components/esm4/loadidlm.cpp
+index 9f5ee5aed7..1bdcb0d7fd 100644
+--- a/components/esm4/loadidlm.cpp
++++ b/components/esm4/loadidlm.cpp
+@@ -93,6 +93,8 @@ void ESM4::IdleMarker::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadidlm"))
++                    break;
+                 throw std::runtime_error("ESM4::IDLM::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadimod.cpp b/components/esm4/loadimod.cpp
+index 76f51357a3..8b90eac534 100644
+--- a/components/esm4/loadimod.cpp
++++ b/components/esm4/loadimod.cpp
+@@ -93,6 +93,8 @@ void ESM4::ItemMod::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadimod"))
++                    break;
+                 throw std::runtime_error("ESM4::IMOD::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadinfo.cpp b/components/esm4/loadinfo.cpp
+index d3339d350a..c9f477f0e7 100644
+--- a/components/esm4/loadinfo.cpp
++++ b/components/esm4/loadinfo.cpp
+@@ -217,6 +217,8 @@ void ESM4::DialogInfo::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadinfo"))
++                    break;
+                 throw std::runtime_error("ESM4::INFO::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadingr.cpp b/components/esm4/loadingr.cpp
+index 5238fffab3..a874057ef4 100644
+--- a/components/esm4/loadingr.cpp
++++ b/components/esm4/loadingr.cpp
+@@ -122,6 +122,8 @@ void ESM4::Ingredient::load(ESM4::Reader& reader)
+                 break;
+             }
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadingr"))
++                    break;
+                 throw std::runtime_error("ESM4::INGR::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadkeym.cpp b/components/esm4/loadkeym.cpp
+index b430f7ce3d..6d073c0d23 100644
+--- a/components/esm4/loadkeym.cpp
++++ b/components/esm4/loadkeym.cpp
+@@ -92,6 +92,8 @@ void ESM4::Key::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadkeym"))
++                    break;
+                 throw std::runtime_error("ESM4::KEYM::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadland.cpp b/components/esm4/loadland.cpp
+index a92b2b5960..acc9f2ac7e 100644
+--- a/components/esm4/loadland.cpp
++++ b/components/esm4/loadland.cpp
+@@ -211,6 +211,8 @@ void ESM4::Land::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadland"))
++                    break;
+                 throw std::runtime_error("ESM4::LAND - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadlgtm.cpp b/components/esm4/loadlgtm.cpp
+index ce895ea5b8..c8171ec9d5 100644
+--- a/components/esm4/loadlgtm.cpp
++++ b/components/esm4/loadlgtm.cpp
+@@ -64,6 +64,8 @@ void ESM4::LightingTemplate::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadlgtm"))
++                    break;
+                 throw std::runtime_error("ESM4::LGTM::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadligh.cpp b/components/esm4/loadligh.cpp
+index 32432c97e1..955898b310 100644
+--- a/components/esm4/loadligh.cpp
++++ b/components/esm4/loadligh.cpp
+@@ -128,6 +128,8 @@ void ESM4::Light::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadligh"))
++                    break;
+                 throw std::runtime_error("ESM4::LIGH::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadltex.cpp b/components/esm4/loadltex.cpp
+index a8b6c9ec81..413d513070 100644
+--- a/components/esm4/loadltex.cpp
++++ b/components/esm4/loadltex.cpp
+@@ -80,6 +80,8 @@ void ESM4::LandTexture::load(ESM4::Reader& reader)
+                 reader.get(mMaterialFlags);
+                 break; // SSE
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadltex"))
++                    break;
+                 throw std::runtime_error("ESM4::LTEX::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadlvlc.cpp b/components/esm4/loadlvlc.cpp
+index 844c27f8da..76ac80b2bd 100644
+--- a/components/esm4/loadlvlc.cpp
++++ b/components/esm4/loadlvlc.cpp
+@@ -87,6 +87,8 @@ void ESM4::LevelledCreature::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadlvlc"))
++                    break;
+                 throw std::runtime_error("ESM4::LVLC::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadlvli.cpp b/components/esm4/loadlvli.cpp
+index aa99a9dd12..830a1b7029 100644
+--- a/components/esm4/loadlvli.cpp
++++ b/components/esm4/loadlvli.cpp
+@@ -87,6 +87,8 @@ void ESM4::LevelledItem::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadlvli"))
++                    break;
+                 throw std::runtime_error("ESM4::LVLI::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadlvln.cpp b/components/esm4/loadlvln.cpp
+index 03efc4a08f..b1900a78ad 100644
+--- a/components/esm4/loadlvln.cpp
++++ b/components/esm4/loadlvln.cpp
+@@ -101,6 +101,8 @@ void ESM4::LevelledNpc::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadlvln"))
++                    break;
+                 throw std::runtime_error("ESM4::LVLN::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadmato.cpp b/components/esm4/loadmato.cpp
+index 6d45b689ba..f15461b98a 100644
+--- a/components/esm4/loadmato.cpp
++++ b/components/esm4/loadmato.cpp
+@@ -56,6 +56,8 @@ void ESM4::Material::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadmato"))
++                    break;
+                 throw std::runtime_error("ESM4::MATO::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadmisc.cpp b/components/esm4/loadmisc.cpp
+index b27e38f055..89492a771f 100644
+--- a/components/esm4/loadmisc.cpp
++++ b/components/esm4/loadmisc.cpp
+@@ -96,6 +96,8 @@ void ESM4::MiscItem::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadmisc"))
++                    break;
+                 throw std::runtime_error("ESM4::MISC::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadmset.cpp b/components/esm4/loadmset.cpp
+index f7c088c47f..45ef21a413 100644
+--- a/components/esm4/loadmset.cpp
++++ b/components/esm4/loadmset.cpp
+@@ -129,6 +129,8 @@ void ESM4::MediaSet::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadmset"))
++                    break;
+                 throw std::runtime_error("ESM4::MSET::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadmstt.cpp b/components/esm4/loadmstt.cpp
+index 3e0cc9ea2d..7f35f7d629 100644
+--- a/components/esm4/loadmstt.cpp
++++ b/components/esm4/loadmstt.cpp
+@@ -79,6 +79,8 @@ void ESM4::MovableStatic::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadmstt"))
++                    break;
+                 throw std::runtime_error("ESM4::MSTT::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadmusc.cpp b/components/esm4/loadmusc.cpp
+index a06b4dc81c..9951eeeeba 100644
+--- a/components/esm4/loadmusc.cpp
++++ b/components/esm4/loadmusc.cpp
+@@ -56,6 +56,8 @@ void ESM4::Music::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadmusc"))
++                    break;
+                 throw std::runtime_error("ESM4::MUSC::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadnavi.cpp b/components/esm4/loadnavi.cpp
+index 941b8088eb..bdcb85b9a6 100644
+--- a/components/esm4/loadnavi.cpp
++++ b/components/esm4/loadnavi.cpp
+@@ -361,6 +361,8 @@ void ESM4::Navigation::load(ESM4::Reader& reader)
+             }
+             default:
+             {
++                if (reader.skipUnknownStarfieldSubRecordData("loadnavi"))
++                    break;
+                 throw std::runtime_error("ESM4::NAVI::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+             }
+         }
+diff --git a/components/esm4/loadnavm.cpp b/components/esm4/loadnavm.cpp
+index aa3058162a..56521be99a 100644
+--- a/components/esm4/loadnavm.cpp
++++ b/components/esm4/loadnavm.cpp
+@@ -240,6 +240,8 @@ void ESM4::NavMesh::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadnavm"))
++                    break;
+                 throw std::runtime_error("ESM4::NAVM::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadnote.cpp b/components/esm4/loadnote.cpp
+index aee7909e88..7672e73a08 100644
+--- a/components/esm4/loadnote.cpp
++++ b/components/esm4/loadnote.cpp
+@@ -79,6 +79,8 @@ void ESM4::Note::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadnote"))
++                    break;
+                 throw std::runtime_error("ESM4::NOTE::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadnpc.cpp b/components/esm4/loadnpc.cpp
+index 48c5a09491..5dcbfa5a10 100644
+--- a/components/esm4/loadnpc.cpp
++++ b/components/esm4/loadnpc.cpp
+@@ -26,7 +26,10 @@
+ */
+ #include "loadnpc.hpp"
+ 
++#include <algorithm>
++#include <cctype>
+ #include <cstring>
++#include <filesystem>
+ #include <iomanip>
+ #include <sstream>
+ #include <stdexcept>
+@@ -39,6 +42,27 @@
+ 
+ namespace
+ {
++    std::string lowerFilename(std::filesystem::path path)
++    {
++        std::string value = path.filename().string();
++        std::transform(value.begin(), value.end(), value.begin(),
++            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
++        return value;
++    }
++
++    bool hasMasterNamed(const ESM4::Reader& reader, std::string_view expected)
++    {
++        for (const ESM::MasterData& master : reader.getGameFiles())
++        {
++            std::string name = master.name;
++            std::transform(name.begin(), name.end(), name.begin(),
++                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
++            if (name == expected)
++                return true;
++        }
++        return false;
++    }
++
+     bool shouldLogFonvNpcFaceData(const ESM4::Npc& npc)
+     {
+         return npc.mIsFONV && (npc.mEditorId.rfind("GS", 0) == 0 || npc.mEditorId == "GSEasyPete");
+@@ -79,7 +103,9 @@ void ESM4::Npc::load(ESM4::Reader& reader)
+ 
+     std::uint32_t esmVer = reader.esmVersion();
+     mIsTES4 = (esmVer == ESM::VER_080 || esmVer == ESM::VER_100) && !reader.hasFormVersion();
+-    mIsFONV = esmVer == ESM::VER_132 || esmVer == ESM::VER_133 || esmVer == ESM::VER_134;
++    mIsFO3 = esmVer == ESM::VER_094
++        && (lowerFilename(reader.getFileName()) == "fallout3.esm" || hasMasterNamed(reader, "fallout3.esm"));
++    mIsFONV = mIsFO3 || esmVer == ESM::VER_132 || esmVer == ESM::VER_133 || esmVer == ESM::VER_134;
+     // mIsTES5 = esmVer == ESM::VER_094 || esmVer == ESM::VER_170; // WARN: FO3 is also VER_094
+ 
+     while (reader.getSubRecordHeader())
+@@ -422,6 +448,8 @@ void ESM4::Npc::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadnpc"))
++                    break;
+                 throw std::runtime_error("ESM4::NPC_::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadnpc.hpp b/components/esm4/loadnpc.hpp
+index 82019e5dec..47b0797cc9 100644
+--- a/components/esm4/loadnpc.hpp
++++ b/components/esm4/loadnpc.hpp
+@@ -187,6 +187,7 @@ namespace ESM4
+         std::uint32_t mFlags = 0; // from the header, see enum type RecordFlag for details
+ 
+         bool mIsTES4 = false;
++        bool mIsFO3 = false;
+         bool mIsFONV = false;
+         bool mIsFO4 = false;
+ 
+diff --git a/components/esm4/loadotft.cpp b/components/esm4/loadotft.cpp
+index a5fec9b002..ac130aa30a 100644
+--- a/components/esm4/loadotft.cpp
++++ b/components/esm4/loadotft.cpp
+@@ -52,6 +52,8 @@ void ESM4::Outfit::load(ESM4::Reader& reader)
+                 break;
+             }
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadotft"))
++                    break;
+                 throw std::runtime_error("ESM4::OTFT::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadpack.cpp b/components/esm4/loadpack.cpp
+index b6f983ddec..4de0a25ad1 100644
+--- a/components/esm4/loadpack.cpp
++++ b/components/esm4/loadpack.cpp
+@@ -309,6 +309,8 @@ void ESM4::AIPackage::load(ESM4::Reader& reader)
+                     reader.skipSubRecordData();
+                     break;
+                 }
++                if (reader.skipUnknownStarfieldSubRecordData("loadpack"))
++                    break;
+                 throw std::runtime_error("ESM4::PACK::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+             }
+         }
+diff --git a/components/esm4/loadpgrd.cpp b/components/esm4/loadpgrd.cpp
+index 75e0f97367..5cd4fb3d4f 100644
+--- a/components/esm4/loadpgrd.cpp
++++ b/components/esm4/loadpgrd.cpp
+@@ -144,6 +144,8 @@ void ESM4::Pathgrid::load(ESM4::Reader& reader)
+                 break;
+             }
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadpgrd"))
++                    break;
+                 throw std::runtime_error("ESM4::PGRD::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadpgre.cpp b/components/esm4/loadpgre.cpp
+index 123d2c967a..84c4be4d96 100644
+--- a/components/esm4/loadpgre.cpp
++++ b/components/esm4/loadpgre.cpp
+@@ -91,6 +91,8 @@ void ESM4::PlacedGrenade::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadpgre"))
++                    break;
+                 throw std::runtime_error("ESM4::PGRE::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadpwat.cpp b/components/esm4/loadpwat.cpp
+index 33a2c86546..b362bd01c4 100644
+--- a/components/esm4/loadpwat.cpp
++++ b/components/esm4/loadpwat.cpp
+@@ -52,6 +52,8 @@ void ESM4::PlaceableWater::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadpwat"))
++                    break;
+                 throw std::runtime_error("ESM4::PWAT::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadqust.cpp b/components/esm4/loadqust.cpp
+index bdbc94e07a..4833e155f8 100644
+--- a/components/esm4/loadqust.cpp
++++ b/components/esm4/loadqust.cpp
+@@ -175,6 +175,8 @@ void ESM4::Quest::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadqust"))
++                    break;
+                 throw std::runtime_error("ESM4::QUST::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadrace.cpp b/components/esm4/loadrace.cpp
+index 45fe876730..dfc03ee461 100644
+--- a/components/esm4/loadrace.cpp
++++ b/components/esm4/loadrace.cpp
+@@ -212,8 +212,13 @@ void ESM4::Race::load(ESM4::Reader& reader)
+             }
+             case ESM::fourCC("DNAM"):
+             {
+-                reader.getFormId(mDefaultHair[0]); // male
+-                reader.getFormId(mDefaultHair[1]); // female
++                if (subHdr.dataSize == 8)
++                {
++                    reader.getFormId(mDefaultHair[0]); // male
++                    reader.getFormId(mDefaultHair[1]); // female
++                }
++                else
++                    reader.skipSubRecordData();
+ 
+                 break;
+             }
+@@ -768,6 +773,8 @@ void ESM4::Race::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadrace"))
++                    break;
+                 throw std::runtime_error("ESM4::RACE::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadrefr.cpp b/components/esm4/loadrefr.cpp
+index 321427f782..3244fcd685 100644
+--- a/components/esm4/loadrefr.cpp
++++ b/components/esm4/loadrefr.cpp
+@@ -364,6 +364,8 @@ void ESM4::Reference::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadrefr"))
++                    break;
+                 throw std::runtime_error("ESM4::REFR::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadregn.cpp b/components/esm4/loadregn.cpp
+index c8cc9663d9..d327736b91 100644
+--- a/components/esm4/loadregn.cpp
++++ b/components/esm4/loadregn.cpp
+@@ -141,6 +141,8 @@ void ESM4::Region::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadregn"))
++                    break;
+                 throw std::runtime_error("ESM4::REGN::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadroad.cpp b/components/esm4/loadroad.cpp
+index 71a7b55196..a1a81c9e4d 100644
+--- a/components/esm4/loadroad.cpp
++++ b/components/esm4/loadroad.cpp
+@@ -95,6 +95,8 @@ void ESM4::Road::load(ESM4::Reader& reader)
+                 break;
+             }
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadroad"))
++                    break;
+                 throw std::runtime_error("ESM4::ROAD::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadsbsp.cpp b/components/esm4/loadsbsp.cpp
+index c9450492b8..1a644744d5 100644
+--- a/components/esm4/loadsbsp.cpp
++++ b/components/esm4/loadsbsp.cpp
+@@ -52,6 +52,8 @@ void ESM4::SubSpace::load(ESM4::Reader& reader)
+                 break;
+             }
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadsbsp"))
++                    break;
+                 throw std::runtime_error("ESM4::SBSP::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadscol.cpp b/components/esm4/loadscol.cpp
+index 8748f24f07..4a8769a327 100644
+--- a/components/esm4/loadscol.cpp
++++ b/components/esm4/loadscol.cpp
+@@ -64,6 +64,8 @@ void ESM4::StaticCollection::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadscol"))
++                    break;
+                 throw std::runtime_error("ESM4::SCOL::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadscpt.cpp b/components/esm4/loadscpt.cpp
+index dbc75b75d6..5889ff057a 100644
+--- a/components/esm4/loadscpt.cpp
++++ b/components/esm4/loadscpt.cpp
+@@ -142,6 +142,8 @@ void ESM4::Script::load(ESM4::Reader& reader)
+                 break;
+             }
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadscpt"))
++                    break;
+                 throw std::runtime_error("ESM4::SCPT::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadscrl.cpp b/components/esm4/loadscrl.cpp
+index f88854f8db..efaacd05d1 100644
+--- a/components/esm4/loadscrl.cpp
++++ b/components/esm4/loadscrl.cpp
+@@ -78,6 +78,8 @@ void ESM4::Scroll::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadscrl"))
++                    break;
+                 throw std::runtime_error("ESM4::SCRL::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadsgst.cpp b/components/esm4/loadsgst.cpp
+index eb7a52a5e6..19aa8d2fbd 100644
+--- a/components/esm4/loadsgst.cpp
++++ b/components/esm4/loadsgst.cpp
+@@ -95,6 +95,8 @@ void ESM4::SigilStone::load(ESM4::Reader& reader)
+                 break;
+             }
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadsgst"))
++                    break;
+                 throw std::runtime_error("ESM4::SGST::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadslgm.cpp b/components/esm4/loadslgm.cpp
+index cb16f36857..711baf92a9 100644
+--- a/components/esm4/loadslgm.cpp
++++ b/components/esm4/loadslgm.cpp
+@@ -76,6 +76,8 @@ void ESM4::SoulGem::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadslgm"))
++                    break;
+                 throw std::runtime_error("ESM4::SLGM::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadsndr.cpp b/components/esm4/loadsndr.cpp
+index 21ed9f93e4..7f71381cc7 100644
+--- a/components/esm4/loadsndr.cpp
++++ b/components/esm4/loadsndr.cpp
+@@ -90,6 +90,8 @@ void ESM4::SoundReference::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadsndr"))
++                    break;
+                 throw std::runtime_error("ESM4::SNDR::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadsoun.cpp b/components/esm4/loadsoun.cpp
+index 4fc3b6609f..dfe890c9ed 100644
+--- a/components/esm4/loadsoun.cpp
++++ b/components/esm4/loadsoun.cpp
+@@ -69,6 +69,8 @@ void ESM4::Sound::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadsoun"))
++                    break;
+                 throw std::runtime_error("ESM4::SOUN::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadstat.cpp b/components/esm4/loadstat.cpp
+index 9d85374ae4..77ad3bcf35 100644
+--- a/components/esm4/loadstat.cpp
++++ b/components/esm4/loadstat.cpp
+@@ -99,6 +99,8 @@ void ESM4::Static::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadstat"))
++                    break;
+                 throw std::runtime_error("ESM4::STAT::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadtact.cpp b/components/esm4/loadtact.cpp
+index 453df85504..00bd0fd7f5 100644
+--- a/components/esm4/loadtact.cpp
++++ b/components/esm4/loadtact.cpp
+@@ -82,6 +82,8 @@ void ESM4::TalkingActivator::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadtact"))
++                    break;
+                 throw std::runtime_error("ESM4::TACT::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadterm.cpp b/components/esm4/loadterm.cpp
+index 1fb8ef117d..9502e1e5b5 100644
+--- a/components/esm4/loadterm.cpp
++++ b/components/esm4/loadterm.cpp
+@@ -111,6 +111,8 @@ void ESM4::Terminal::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadterm"))
++                    break;
+                 throw std::runtime_error("ESM4::TERM::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadtes4.cpp b/components/esm4/loadtes4.cpp
+index 6b9499c5ee..8725aaa217 100644
+--- a/components/esm4/loadtes4.cpp
++++ b/components/esm4/loadtes4.cpp
+@@ -101,9 +101,13 @@ void ESM4::Header::load(ESM4::Reader& reader)
+             case ESM::fourCC("DELE"): // Oblivion only?
+             case ESM::fourCC("TNAM"): // Fallout 4 (CK only)
+             case ESM::fourCC("MMSB"): // Fallout 76
++            case ESM::fourCC("BNAM"): // Starfield
++            case ESM::fourCC("CHGL"): // Starfield changelist
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadtes4"))
++                    break;
+                 throw std::runtime_error("ESM4::Header::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadtree.cpp b/components/esm4/loadtree.cpp
+index c433f11564..7115032ea7 100644
+--- a/components/esm4/loadtree.cpp
++++ b/components/esm4/loadtree.cpp
+@@ -67,6 +67,8 @@ void ESM4::Tree::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadtree"))
++                    break;
+                 throw std::runtime_error("ESM4::TREE::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadtxst.cpp b/components/esm4/loadtxst.cpp
+index 69d48cc049..c7e1936ff7 100644
+--- a/components/esm4/loadtxst.cpp
++++ b/components/esm4/loadtxst.cpp
+@@ -96,6 +96,8 @@ void ESM4::TextureSet::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadtxst"))
++                    break;
+                 throw std::runtime_error("ESM4::TXST::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadweap.cpp b/components/esm4/loadweap.cpp
+index 3796563e3c..e0b6500854 100644
+--- a/components/esm4/loadweap.cpp
++++ b/components/esm4/loadweap.cpp
+@@ -221,6 +221,8 @@ void ESM4::Weapon::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadweap"))
++                    break;
+                 throw std::runtime_error("ESM4::WEAP::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+     }
+diff --git a/components/esm4/loadwrld.cpp b/components/esm4/loadwrld.cpp
+index d9bae15385..bc3b128620 100644
+--- a/components/esm4/loadwrld.cpp
++++ b/components/esm4/loadwrld.cpp
+@@ -63,61 +63,105 @@ void ESM4::World::load(ESM4::Reader& reader)
+                 reader.getLocalizedString(mFullName);
+                 break;
+             case ESM::fourCC("WCTR"): // TES5+
+-                reader.get(mCenterCell);
++                if (subHdr.dataSize == sizeof(mCenterCell))
++                    reader.get(mCenterCell);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("WNAM"):
+-                reader.getFormId(mParent);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mParent);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("SNAM"):
+-                reader.get(mSound);
++                if (subHdr.dataSize == sizeof(mSound))
++                    reader.get(mSound);
++                else
++                    reader.skipSubRecordData();
+                 break; // sound, Oblivion only?
+             case ESM::fourCC("ICON"):
+                 reader.getZString(mMapFile);
+                 break;
+             case ESM::fourCC("CNAM"):
+-                reader.getFormId(mClimate);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mClimate);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("NAM2"):
+-                reader.getFormId(mWater);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mWater);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("NAM0"):
+             {
+-                reader.get(mMinX);
+-                reader.get(mMinY);
++                if (subHdr.dataSize == 8)
++                {
++                    reader.get(mMinX);
++                    reader.get(mMinY);
++                }
++                else
++                    reader.skipSubRecordData();
+                 break;
+             }
+             case ESM::fourCC("NAM9"):
+             {
+-                reader.get(mMaxX);
+-                reader.get(mMaxY);
++                if (subHdr.dataSize == 8)
++                {
++                    reader.get(mMaxX);
++                    reader.get(mMaxY);
++                }
++                else
++                    reader.skipSubRecordData();
+                 break;
+             }
+             case ESM::fourCC("DATA"):
+-                reader.get(mWorldFlags);
++                if (subHdr.dataSize == sizeof(mWorldFlags))
++                    reader.get(mWorldFlags);
++                else if (subHdr.dataSize == sizeof(std::uint32_t))
++                {
++                    std::uint32_t value = 0;
++                    reader.get(value);
++                    mWorldFlags = static_cast<std::uint8_t>(value & 0xff);
++                }
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("MNAM"):
+             {
+-                reader.get(mMap.width);
+-                reader.get(mMap.height);
+-                reader.get(mMap.NWcellX);
+-                reader.get(mMap.NWcellY);
+-                reader.get(mMap.SEcellX);
+-                reader.get(mMap.SEcellY);
+-
+-                if (subHdr.dataSize == 28) // Skyrim?
++                if (subHdr.dataSize == 16 || subHdr.dataSize == 28)
+                 {
+-                    reader.get(mMap.minHeight);
+-                    reader.get(mMap.maxHeight);
+-                    reader.get(mMap.initialPitch);
++                    reader.get(mMap.width);
++                    reader.get(mMap.height);
++                    reader.get(mMap.NWcellX);
++                    reader.get(mMap.NWcellY);
++                    reader.get(mMap.SEcellX);
++                    reader.get(mMap.SEcellY);
++
++                    if (subHdr.dataSize == 28) // Skyrim?
++                    {
++                        reader.get(mMap.minHeight);
++                        reader.get(mMap.maxHeight);
++                        reader.get(mMap.initialPitch);
++                    }
+                 }
++                else
++                    reader.skipSubRecordData();
+ 
+                 break;
+             }
+             case ESM::fourCC("DNAM"): // defaults
+             {
+-                reader.get(mLandLevel); //  -2700.f for TES5
+-                reader.get(mWaterLevel); // -14000.f for TES5
+-                usingDefaultLevels = false;
++                if (subHdr.dataSize == 8)
++                {
++                    reader.get(mLandLevel); //  -2700.f for TES5
++                    reader.get(mWaterLevel); // -14000.f for TES5
++                    usingDefaultLevels = false;
++                }
++                else
++                    reader.skipSubRecordData();
+ 
+                 break;
+             }
+@@ -136,12 +180,38 @@ void ESM4::World::load(ESM4::Reader& reader)
+             // 00119D2E freeside\freeside_01.mp3 0012D94E FreesideFortWorld (Old Mormon Fort)
+             // NOTE: FONV DefaultObjectManager has 00090908 "explore" as the default music
+             case ESM::fourCC("ZNAM"):
+-                reader.getFormId(mMusic);
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mMusic);
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("PNAM"):
+-                reader.get(mParentUseFlags);
++                if (subHdr.dataSize == sizeof(mParentUseFlags))
++                    reader.get(mParentUseFlags);
++                else if (subHdr.dataSize == sizeof(std::uint32_t))
++                {
++                    std::uint32_t value = 0;
++                    reader.get(value);
++                    mParentUseFlags = static_cast<std::uint16_t>(value & 0xffff);
++                }
++                else
++                    reader.skipSubRecordData();
+                 break;
+             case ESM::fourCC("OFST"):
++            case ESM::fourCC("BFCB"): // Starfield
++            case ESM::fourCC("BFCE"): // Starfield
++            case ESM::fourCC("BNAM"): // Starfield
++            case ESM::fourCC("CITC"): // Starfield
++            case ESM::fourCC("CTDA"): // Starfield
++            case ESM::fourCC("FNAM"): // Starfield
++            case ESM::fourCC("GNAM"): // Starfield
++            case ESM::fourCC("HNAM"): // Starfield
++            case ESM::fourCC("LNAM"): // Starfield
++            case ESM::fourCC("NAM1"): // Starfield
++            case ESM::fourCC("NAM5"): // Starfield
++            case ESM::fourCC("NAM6"): // Starfield
++            case ESM::fourCC("NAM7"): // Starfield
++            case ESM::fourCC("NAM8"): // Starfield
+             case ESM::fourCC("RNAM"): // multiple
+             case ESM::fourCC("MHDT"):
+             case ESM::fourCC("LTMP"):
+@@ -153,7 +223,13 @@ void ESM4::World::load(ESM4::Reader& reader)
+             case ESM::fourCC("ONAM"):
+             case ESM::fourCC("TNAM"):
+             case ESM::fourCC("UNAM"):
++            case ESM::fourCC("VNAM"): // Starfield
++            case ESM::fourCC("WAMB"): // Starfield
++            case ESM::fourCC("WHGT"): // Starfield
++            case ESM::fourCC("XCLW"): // Starfield
++            case ESM::fourCC("XEMP"): // Starfield
+             case ESM::fourCC("XWEM"):
++            case ESM::fourCC("YNAM"): // Starfield
+             case ESM::fourCC("MODL"): // Model data start
+             case ESM::fourCC("MODT"):
+             case ESM::fourCC("MODC"):
+@@ -169,6 +245,8 @@ void ESM4::World::load(ESM4::Reader& reader)
+                 reader.skipSubRecordData();
+                 break;
+             default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadwrld"))
++                    break;
+                 throw std::runtime_error("ESM4::WRLD::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
+         }
+ 
+diff --git a/components/esm4/reader.cpp b/components/esm4/reader.cpp
+index 43a9e26418..cd37d5e79d 100644
+--- a/components/esm4/reader.cpp
++++ b/components/esm4/reader.cpp
+@@ -25,6 +25,7 @@
+ #undef DEBUG_GROUPSTACK
+ 
+ #include <algorithm>
++#include <cstdlib>
+ #include <iomanip>
+ #include <iostream>
+ #include <optional>
+@@ -157,6 +158,14 @@ namespace ESM4
+               << " uncompressed size = " << uncompressedSize << ": " << *blockError;
+             throw std::runtime_error(s.str());
+         }
++
++        int starfieldUnknownSkipLogLimit()
++        {
++            const char* value = std::getenv("OPENMW_STARFIELD_ESM4_TOLERANCE_LOG_LIMIT");
++            if (value == nullptr || *value == '\0')
++                return 200;
++            return std::atoi(value);
++        }
+     }
+ 
+     ReaderContext::ReaderContext()
+@@ -473,6 +482,20 @@ namespace ESM4
+         {
+             if (mIgnoreMissingLocalizedStrings)
+                 return;
++            if (esmVersionF() >= 0.959f && esmVersionF() <= 0.961f)
++            {
++                static int missingLocalizedStrings = 0;
++                const int logLimit = starfieldUnknownSkipLogLimit();
++                const std::string debugString = ESM::RefId(stringId).toDebugString();
++                if (logLimit < 0 || missingLocalizedStrings < logLimit)
++                    Log(Debug::Warning) << "ESM4 Starfield missing localized string: " << debugString;
++                else if (missingLocalizedStrings == logLimit)
++                    Log(Debug::Warning) << "ESM4 Starfield missing localized string: further logs suppressed; set "
++                                           "OPENMW_STARFIELD_ESM4_TOLERANCE_LOG_LIMIT=-1 to log all";
++                ++missingLocalizedStrings;
++                str = "<missing localized string " + debugString + ">";
++                return;
++            }
+             throw std::runtime_error("ESM4::Reader::getLocalizedString localized string not found for "
+                 + ESM::RefId(stringId).toDebugString());
+         }
+@@ -610,6 +633,31 @@ namespace ESM4
+         mStream->ignore(mCtx.subRecordHeader.dataSize);
+     }
+ 
++    bool Reader::skipUnknownStarfieldSubRecordData(std::string_view owner)
++    {
++        if (esmVersionF() < 0.959f || esmVersionF() > 0.961f)
++            return false;
++
++        static int skipped = 0;
++        const int logLimit = starfieldUnknownSkipLogLimit();
++        if (logLimit < 0 || skipped < logLimit)
++        {
++            Log(Debug::Warning) << "ESM4 Starfield tolerant skip: owner=" << owner
++                                << " record=" << ESM::printName(mCtx.recordHeader.record.typeId)
++                                << " id=" << mCtx.recordHeader.record.getFormId().toString()
++                                << " subrecord=" << ESM::printName(mCtx.subRecordHeader.typeId)
++                                << " size=" << mCtx.subRecordHeader.dataSize;
++        }
++        else if (skipped == logLimit)
++        {
++            Log(Debug::Warning) << "ESM4 Starfield tolerant skip: further unknown subrecord logs suppressed; set "
++                                   "OPENMW_STARFIELD_ESM4_TOLERANCE_LOG_LIMIT=-1 to log all";
++        }
++        ++skipped;
++        skipSubRecordData();
++        return true;
++    }
++
+     void Reader::skipSubRecordData(std::uint32_t size)
+     {
+         mStream->ignore(size);
+diff --git a/components/esm4/reader.hpp b/components/esm4/reader.hpp
+index e8be484355..7359998352 100644
+--- a/components/esm4/reader.hpp
++++ b/components/esm4/reader.hpp
+@@ -28,6 +28,7 @@
+ #include <istream>
+ #include <map>
+ #include <memory>
++#include <string_view>
+ #include <unordered_map>
+ 
+ #include "cellgrid.hpp"
+@@ -330,6 +331,8 @@ namespace ESM4
+         // Note: assumes the header was read correctly and nothing else was read
+         void skipSubRecordData();
+ 
++        bool skipUnknownStarfieldSubRecordData(std::string_view owner);
++
+         // Special for a subrecord following a XXXX subrecord
+         void skipSubRecordData(std::uint32_t size);
+ 
 diff --git a/components/esmterrain/storage.cpp b/components/esmterrain/storage.cpp
 index 73030ab96a..b05064dec6 100644
 --- a/components/esmterrain/storage.cpp
@@ -6764,11 +9690,235 @@ index be3ba87751..27f902ae45 100644
  
          void getEsm4Blendmaps(float chunkSize, const osg::Vec2f& chunkCenter, ImageVector& blendmaps,
              std::vector<Terrain::LayerInfo>& layerList, ESM::RefId worldspace);
+diff --git a/components/nif/niffile.cpp b/components/nif/niffile.cpp
+index 02b110a5a6..3c15df4d28 100644
+--- a/components/nif/niffile.cpp
++++ b/components/nif/niffile.cpp
+@@ -47,6 +47,35 @@ namespace Nif
+ 
+     using CreateRecord = std::unique_ptr<Record> (*)();
+ 
++    struct SkippedRecord : Record
++    {
++        std::uint32_t mSize = 0;
++
++        explicit SkippedRecord(std::uint32_t size)
++            : mSize(size)
++        {
++        }
++
++        void read(NIFStream* nif) override { nif->skip(mSize); }
++    };
++
++    static bool shouldSkipStarfieldNifRecord(std::string_view record)
++    {
++        return record == "BSLightingShaderProperty" || record == "BSEffectShaderProperty"
++            || record == "BSShaderTextureSet";
++    }
++
++    static RecordType skippedRecordType(std::string_view record)
++    {
++        if (record == "BSLightingShaderProperty")
++            return RC_BSLightingShaderProperty;
++        if (record == "BSEffectShaderProperty")
++            return RC_BSEffectShaderProperty;
++        if (record == "BSShaderTextureSet")
++            return RC_BSShaderTextureSet;
++        return RC_MISSING;
++    }
++
+     /// These are all the record types we know how to read.
+     static std::map<std::string, CreateRecord> makeFactory()
+     {
+@@ -300,6 +329,7 @@ namespace Nif
+             { "BSSkin::Instance", &construct<BSSkinInstance, RC_BSSkinInstance> },
+             { "BSSkin::BoneData", &construct<BSSkinBoneData, RC_BSSkinBoneData> },
+             { "BSTriShape", &construct<BSTriShape, RC_BSTriShape> },
++            { "BSGeometry", &construct<BSTriShape, RC_BSTriShape> },
+             { "BSDynamicTriShape", &construct<BSDynamicTriShape, RC_BSDynamicTriShape> },
+             { "BSLODTriShape", &construct<BSLODTriShape, RC_BSLODTriShape> },
+             { "BSMeshLODTriShape", &construct<BSMeshLODTriShape, RC_BSMeshLODTriShape> },
+@@ -650,9 +680,9 @@ namespace Nif
+             }
+         }
+ 
++        std::vector<std::uint32_t> recSizes;
+         if (hasRecordSizes) // Record sizes
+         {
+-            std::vector<std::uint32_t> recSizes; // Currently unused
+             nif.readVector(recSizes, mRecords.size());
+         }
+ 
+@@ -691,16 +721,41 @@ namespace Nif
+             if (entry == factories.end())
+                 throw Nif::Exception("Unknown record type " + rec, mFilename);
+ 
+-            r = entry->second();
++            if (mBethVersion >= NIFFile::BethVersion::BETHVER_STF && hasRecordSizes
++                && shouldSkipStarfieldNifRecord(rec))
++            {
++                r = std::make_unique<SkippedRecord>(recSizes[i]);
++                r->recType = skippedRecordType(rec);
++                Log(Debug::Verbose) << "NIF Debug: Skipping Starfield record of type " << rec << ", index " << i
++                                    << ", bytes " << recSizes[i];
++            }
++            else
++                r = entry->second();
+ 
+             if (writeDebug)
+                 Log(Debug::Verbose) << "NIF Debug: Reading record of type " << rec << ", index " << i;
+ 
++            const std::streampos recordStart = hasRecordSizes ? nif.tell() : std::streampos(-1);
++
+             assert(r != nullptr);
+             assert(r->recType != RC_MISSING);
+             r->recName = std::move(rec);
+             r->recIndex = i;
+             r->read(&nif);
++
++            if (mBethVersion >= NIFFile::BethVersion::BETHVER_STF && hasRecordSizes)
++            {
++                const std::streampos recordEnd = recordStart + static_cast<std::streamoff>(recSizes[i]);
++                const std::streampos current = nif.tell();
++                if (current != recordEnd)
++                {
++                    Log(Debug::Warning) << "NIFFile Warning: Starfield record " << r->recName << " index " << i
++                                        << " consumed " << static_cast<std::streamoff>(current - recordStart)
++                                        << " bytes, expected " << recSizes[i] << ". File: " << mFilename;
++                    nif.seek(recordEnd);
++                }
++            }
++
+             mRecords[i] = std::move(r);
+         }
+ 
+diff --git a/components/nif/nifstream.hpp b/components/nif/nifstream.hpp
+index 062f7c6512..d5c784c06b 100644
+--- a/components/nif/nifstream.hpp
++++ b/components/nif/nifstream.hpp
+@@ -5,6 +5,7 @@
+ 
+ #include <array>
+ #include <cassert>
++#include <ios>
+ #include <istream>
+ #include <stdexcept>
+ #include <stdint.h>
+@@ -97,6 +98,16 @@ namespace Nif
+             return (major << 24) + (minor << 16) + (patch << 8) + rev;
+         }
+ 
++        std::streampos tell() { return mStream->tellg(); }
++
++        void seek(std::streampos pos)
++        {
++            mStream->clear();
++            mStream->seekg(pos);
++            if (mStream->bad())
++                throw std::runtime_error("Failed to seek NIF stream");
++        }
++
+         void skip(size_t size) { mStream->ignore(size); }
+ 
+         /// Read into a single instance of type
+diff --git a/components/nif/node.cpp b/components/nif/node.cpp
+index c2655a3e9c..015638c1fe 100644
+--- a/components/nif/node.cpp
++++ b/components/nif/node.cpp
+@@ -539,6 +539,34 @@ namespace Nif
+         mSkin.read(nif);
+         mShaderProperty.read(nif);
+         mAlphaProperty.read(nif);
++
++        if (recName == "BSGeometry" && nif->getBethVersion() >= NIFFile::BethVersion::BETHVER_STF)
++        {
++            mExternalGeometry.clear();
++            const bool internalGeometry = (mFlags & 0x200) != 0;
++
++            for (int i = 0; i < 4; ++i)
++            {
++                const uint8_t hasMesh = nif->get<uint8_t>();
++                if (hasMesh == 0)
++                    continue;
++
++                BSGeometryMeshRef mesh;
++                nif->read(mesh.mTriangleIndexCount);
++                nif->read(mesh.mVertexCount);
++                nif->read(mesh.mFlags);
++
++                if (!internalGeometry)
++                {
++                    const uint32_t meshPathLength = nif->get<uint32_t>();
++                    mesh.mMeshPath = nif->getSizedString(meshPathLength);
++                    mExternalGeometry.push_back(std::move(mesh));
++                }
++            }
++
++            return;
++        }
++
+         mVertDesc.read(nif);
+ 
+         if (nif->getBethVersion() >= NIFFile::BethVersion::BETHVER_FO4)
+diff --git a/components/nif/node.hpp b/components/nif/node.hpp
+index e9306fa83f..2212b59439 100644
+--- a/components/nif/node.hpp
++++ b/components/nif/node.hpp
+@@ -376,6 +376,14 @@ namespace Nif
+ 
+     struct BSTriShape : NiAVObject
+     {
++        struct BSGeometryMeshRef
++        {
++            uint32_t mTriangleIndexCount{ 0 };
++            uint32_t mVertexCount{ 0 };
++            uint32_t mFlags{ 0 };
++            std::string mMeshPath;
++        };
++
+         osg::BoundingSpheref mBoundingSphere;
+         std::array<float, 6> mBoundMinMax;
+         RecordPtrT<Record> mSkin;
+@@ -389,6 +397,7 @@ namespace Nif
+         std::vector<Misc::float16_t> mParticleVerts;
+         std::vector<Misc::float16_t> mParticleNormals;
+         std::vector<unsigned short> mParticleTriangles;
++        std::vector<BSGeometryMeshRef> mExternalGeometry;
+ 
+         void read(NIFStream* nif) override;
+         void post(Reader& nif) override;
 diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
-index a583941dee..40119afa35 100644
+index a583941dee..1aaff2712c 100644
 --- a/components/nifosg/nifloader.cpp
 +++ b/components/nifosg/nifloader.cpp
-@@ -173,6 +173,21 @@ namespace
+@@ -1,12 +1,18 @@
+ #include "nifloader.hpp"
+ 
+ #include <algorithm>
++#include <array>
++#include <atomic>
++#include <cstdint>
+ #include <cstdlib>
+ #include <cmath>
+ #include <initializer_list>
++#include <istream>
+ #include <limits>
+ #include <mutex>
++#include <optional>
+ #include <sstream>
++#include <stdexcept>
+ #include <string_view>
+ #include <unordered_map>
+ 
+@@ -33,6 +39,7 @@
+ #include <components/resource/bgsmfilemanager.hpp>
+ #include <components/resource/imagemanager.hpp>
+ #include <components/serialization/osgyaml.hpp>
++#include <components/vfs/manager.hpp>
+ 
+ // particle
+ #include <osgParticle/BoxPlacer>
+@@ -173,6 +180,21 @@ namespace
              || name.find("bip01 root") != std::string::npos;
      }
  
@@ -6790,7 +9940,7 @@ index a583941dee..40119afa35 100644
      bool isActivationOnlyAnimationPath(std::string_view filename)
      {
          return containsAny(filename,
-@@ -270,6 +285,9 @@ namespace
+@@ -270,6 +292,9 @@ namespace
          const bool ambientPath = isAmbientEmbeddedAnimationPath(filename);
          const bool falloutFlagPath = isFalloutFlagPath(filename);
  
@@ -6800,7 +9950,278 @@ index a583941dee..40119afa35 100644
          std::string key = sequenceName;
          for (const Nif::ControlledBlock& block : sequence.mControlledBlocks)
          {
-@@ -1279,6 +1297,15 @@ namespace NifOsg
+@@ -332,6 +357,270 @@ namespace
+         return true;
+     }
+ 
++    osg::Vec4f colorFromString(std::string_view value)
++    {
++        uint32_t hash = 2166136261u;
++        for (char c : value)
++        {
++            hash ^= static_cast<unsigned char>(c);
++            hash *= 16777619u;
++        }
++
++        static const std::array<osg::Vec4f, 10> palette = {
++            osg::Vec4f(0.36f, 0.62f, 0.54f, 1.f),
++            osg::Vec4f(0.66f, 0.54f, 0.31f, 1.f),
++            osg::Vec4f(0.42f, 0.56f, 0.70f, 1.f),
++            osg::Vec4f(0.64f, 0.43f, 0.36f, 1.f),
++            osg::Vec4f(0.52f, 0.62f, 0.34f, 1.f),
++            osg::Vec4f(0.33f, 0.58f, 0.65f, 1.f),
++            osg::Vec4f(0.70f, 0.66f, 0.44f, 1.f),
++            osg::Vec4f(0.45f, 0.49f, 0.54f, 1.f),
++            osg::Vec4f(0.63f, 0.58f, 0.48f, 1.f),
++            osg::Vec4f(0.38f, 0.66f, 0.42f, 1.f),
++        };
++
++        return palette[hash % palette.size()];
++    }
++
++    struct StarfieldExternalMeshData
++    {
++        std::vector<osg::Vec3f> mVertices;
++        std::vector<osg::Vec3f> mNormals;
++        std::vector<unsigned int> mIndices;
++        float mScale = 0.f;
++        std::uint32_t mVersion = 0;
++        std::uint32_t mWeightCountPerVertex = 0;
++        std::uint32_t mUv1Count = 0;
++        std::uint32_t mUv2Count = 0;
++        std::uint32_t mColorCount = 0;
++        std::uint32_t mNormalCount = 0;
++        std::uint32_t mTangentCount = 0;
++        std::uint32_t mLodCount = 0;
++        std::uint32_t mMeshletCount = 0;
++        std::uint32_t mCullDataCount = 0;
++    };
++
++    template <class T>
++    bool readStarfieldMeshPod(std::istream& stream, T& value)
++    {
++        stream.read(reinterpret_cast<char*>(&value), sizeof(T));
++        return static_cast<bool>(stream);
++    }
++
++    bool skipStarfieldMeshBytes(std::istream& stream, std::uint64_t bytes)
++    {
++        std::array<char, 4096> buffer{};
++        while (bytes > 0)
++        {
++            const std::streamsize chunk = static_cast<std::streamsize>(std::min<std::uint64_t>(bytes, buffer.size()));
++            stream.read(buffer.data(), chunk);
++            if (!stream)
++                return false;
++            bytes -= static_cast<std::uint64_t>(chunk);
++        }
++        return true;
++    }
++
++    bool skipStarfieldMeshArray(std::istream& stream, std::uint32_t count, std::uint32_t elementSize)
++    {
++        constexpr std::uint64_t maxSkipBytes = 512ull * 1024ull * 1024ull;
++        const std::uint64_t bytes = static_cast<std::uint64_t>(count) * elementSize;
++        if (bytes > maxSkipBytes)
++            return false;
++        return skipStarfieldMeshBytes(stream, bytes);
++    }
++
++    float getStarfieldMeshPositionScale()
++    {
++        static const float scale = [] {
++            const char* value = std::getenv("OPENMW_STARFIELD_MESH_POSITION_SCALE");
++            if (!value)
++                return 1.f;
++            char* end = nullptr;
++            const float parsed = std::strtof(value, &end);
++            if (end == value || !std::isfinite(parsed) || parsed <= 0.f)
++                return 1.f;
++            return parsed;
++        }();
++        return scale;
++    }
++
++    float unpackStarfieldMeshPosition(std::int16_t value, float scale)
++    {
++        const float positionScale = getStarfieldMeshPositionScale();
++        if (value < 0)
++            return static_cast<float>((value / 32768.0) * scale * positionScale);
++        return static_cast<float>((value / 32767.0) * scale * positionScale);
++    }
++
++    osg::Vec3f unpackStarfieldUdec3Normal(std::uint32_t data)
++    {
++        return osg::Vec3f(
++            static_cast<float>(((data & 1023) / 511.5) - 1.0),
++            static_cast<float>((((data >> 10) & 1023) / 511.5) - 1.0),
++            static_cast<float>((((data >> 20) & 1023) / 511.5) - 1.0));
++    }
++
++    std::optional<StarfieldExternalMeshData> readStarfieldExternalMesh(std::istream& stream, std::string& error)
++    {
++        static constexpr std::uint32_t maxIndices = 12'000'000;
++        static constexpr std::uint32_t maxVertices = 4'000'000;
++
++        StarfieldExternalMeshData result;
++        if (!readStarfieldMeshPod(stream, result.mVersion))
++        {
++            error = "missing mesh version";
++            return std::nullopt;
++        }
++        if (result.mVersion > 2)
++        {
++            error = "unsupported mesh version " + std::to_string(result.mVersion);
++            return std::nullopt;
++        }
++
++        std::uint32_t triIndexCount = 0;
++        if (!readStarfieldMeshPod(stream, triIndexCount) || triIndexCount % 3 != 0 || triIndexCount > maxIndices)
++        {
++            error = "invalid triangle index count";
++            return std::nullopt;
++        }
++
++        result.mIndices.reserve(triIndexCount);
++        for (std::uint32_t i = 0; i < triIndexCount; ++i)
++        {
++            std::uint16_t index = 0;
++            if (!readStarfieldMeshPod(stream, index))
++            {
++                error = "truncated triangle indices";
++                return std::nullopt;
++            }
++            result.mIndices.push_back(index);
++        }
++
++        if (!readStarfieldMeshPod(stream, result.mScale) || result.mScale <= 0.f || !std::isfinite(result.mScale))
++        {
++            error = "invalid mesh scale";
++            return std::nullopt;
++        }
++
++        if (!readStarfieldMeshPod(stream, result.mWeightCountPerVertex))
++        {
++            error = "missing weight count";
++            return std::nullopt;
++        }
++
++        std::uint32_t vertexCount = 0;
++        if (!readStarfieldMeshPod(stream, vertexCount) || vertexCount > maxVertices)
++        {
++            error = "invalid vertex count";
++            return std::nullopt;
++        }
++
++        result.mVertices.reserve(vertexCount);
++        for (std::uint32_t i = 0; i < vertexCount; ++i)
++        {
++            std::int16_t x = 0;
++            std::int16_t y = 0;
++            std::int16_t z = 0;
++            if (!readStarfieldMeshPod(stream, x) || !readStarfieldMeshPod(stream, y) || !readStarfieldMeshPod(stream, z))
++            {
++                error = "truncated vertices";
++                return std::nullopt;
++            }
++            result.mVertices.emplace_back(
++                unpackStarfieldMeshPosition(x, result.mScale),
++                unpackStarfieldMeshPosition(y, result.mScale),
++                unpackStarfieldMeshPosition(z, result.mScale));
++        }
++
++        auto readAndSkipArray = [&](std::uint32_t& count, std::uint32_t elementSize, std::string_view label) {
++            if (!readStarfieldMeshPod(stream, count))
++            {
++                error = "missing " + std::string(label) + " count";
++                return false;
++            }
++            if (!skipStarfieldMeshArray(stream, count, elementSize))
++            {
++                error = "invalid/truncated " + std::string(label) + " data";
++                return false;
++            }
++            return true;
++        };
++
++        if (!readAndSkipArray(result.mUv1Count, 4, "uv1"))
++            return std::nullopt;
++        if (!readAndSkipArray(result.mUv2Count, 4, "uv2"))
++            return std::nullopt;
++        if (!readAndSkipArray(result.mColorCount, 4, "colors"))
++            return std::nullopt;
++
++        if (!readStarfieldMeshPod(stream, result.mNormalCount))
++        {
++            error = "missing normals count";
++            return std::nullopt;
++        }
++        if (result.mNormalCount > maxVertices)
++        {
++            error = "invalid normals count";
++            return std::nullopt;
++        }
++        result.mNormals.reserve(result.mNormalCount);
++        for (std::uint32_t i = 0; i < result.mNormalCount; ++i)
++        {
++            std::uint32_t data = 0;
++            if (!readStarfieldMeshPod(stream, data))
++            {
++                error = "truncated normals";
++                return std::nullopt;
++            }
++            result.mNormals.push_back(unpackStarfieldUdec3Normal(data));
++        }
++
++        if (!readAndSkipArray(result.mTangentCount, 4, "tangents"))
++            return std::nullopt;
++
++        std::uint32_t totalWeights = 0;
++        if (!readAndSkipArray(totalWeights, 4, "weights"))
++            return std::nullopt;
++
++        if (!readStarfieldMeshPod(stream, result.mLodCount))
++        {
++            error = "missing lod count";
++            return std::nullopt;
++        }
++        for (std::uint32_t i = 0; i < result.mLodCount; ++i)
++        {
++            std::uint32_t lodIndexCount = 0;
++            if (!readStarfieldMeshPod(stream, lodIndexCount) || !skipStarfieldMeshArray(stream, lodIndexCount, 2))
++            {
++                error = "invalid/truncated lod data";
++                return std::nullopt;
++            }
++        }
++
++        if (!readAndSkipArray(result.mMeshletCount, 16, "meshlets"))
++            return std::nullopt;
++        if (!readAndSkipArray(result.mCullDataCount, 24, "cull data"))
++            return std::nullopt;
++
++        if (result.mVertices.empty() || result.mIndices.empty())
++        {
++            error = "empty mesh";
++            return std::nullopt;
++        }
++
++        for (unsigned int index : result.mIndices)
++        {
++            if (index >= result.mVertices.size())
++            {
++                error = "triangle index outside vertex buffer";
++                return std::nullopt;
++            }
++        }
++
++        return result;
++    }
++
+     bool isTypeBSGeometry(int type)
+     {
+         switch (type)
+@@ -1279,6 +1568,15 @@ namespace NifOsg
              if (args.mRootNode && Misc::StringUtils::ciEqual(nifNode->mName, "Bounding Box"))
                  return nullptr;
  
@@ -6816,7 +10237,7 @@ index a583941dee..40119afa35 100644
              osg::ref_ptr<osg::Group> node = createNode(nifNode);
  
              if (nifNode->recType == Nif::RC_NiBillboardNode)
-@@ -1416,7 +1443,6 @@ namespace NifOsg
+@@ -1416,7 +1714,6 @@ namespace NifOsg
              if (isGeometry && !args.mSkipMeshes)
              {
                  bool skip = false;
@@ -6824,7 +10245,198 @@ index a583941dee..40119afa35 100644
                  if (isFalloutHiddenMorphShape(nifNode->mName)
                      && containsAny(filename, { "meshes/characters/", "meshes\\characters\\", "meshes/armor/",
                             "meshes\\armor\\", "characters/", "characters\\", "armor/", "armor\\" }))
-@@ -3584,6 +3610,55 @@ namespace NifOsg
+@@ -2660,7 +2957,14 @@ namespace NifOsg
+             auto bsTriShape = static_cast<const Nif::BSTriShape*>(nifNode);
+             const std::vector<unsigned short>& triangles = bsTriShape->mTriangles;
+             if (triangles.empty())
++            {
++                if (bsTriShape->recName == "BSGeometry" && !bsTriShape->mExternalGeometry.empty())
++                {
++                    if (!handleStarfieldExternalGeometry(bsTriShape, parentNode))
++                        handleBSGeometryProxy(bsTriShape, parentNode);
++                }
+                 return;
++            }
+ 
+             osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
+             geometry->addPrimitiveSet(
+@@ -2788,6 +3092,175 @@ namespace NifOsg
+             parentNode->addChild(drawable);
+         }
+ 
++        bool handleStarfieldExternalGeometry(const Nif::BSTriShape* bsTriShape, osg::Group* parentNode)
++        {
++            if (bsTriShape->mExternalGeometry.empty())
++                return false;
++
++            const VFS::Manager* vfs = nullptr;
++            if (mMaterialManager)
++                vfs = mMaterialManager->getVFS();
++            if (!vfs && mImageManager)
++                vfs = mImageManager->getVFS();
++            if (!vfs)
++                return false;
++
++            const auto& meshRef = bsTriShape->mExternalGeometry.front();
++            std::string meshPath = "geometries/";
++            meshPath += meshRef.mMeshPath;
++            meshPath += ".mesh";
++
++            VFS::Path::Normalized normalizedPath(meshPath);
++            Files::IStreamPtr stream = vfs->find(normalizedPath);
++            if (!stream)
++            {
++                logStarfieldMeshFailure(normalizedPath.view(), "not found");
++                return false;
++            }
++
++            std::string error;
++            std::optional<StarfieldExternalMeshData> mesh = readStarfieldExternalMesh(*stream, error);
++            if (!mesh)
++            {
++                logStarfieldMeshFailure(normalizedPath.view(), error);
++                return false;
++            }
++
++            osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
++            geometry->setVertexArray(new osg::Vec3Array(mesh->mVertices.size(), mesh->mVertices.data()));
++            geometry->addPrimitiveSet(new osg::DrawElementsUInt(
++                osg::PrimitiveSet::TRIANGLES, mesh->mIndices.size(), mesh->mIndices.data()));
++
++            osg::ref_ptr<osg::Vec4Array> colors(new osg::Vec4Array);
++            colors->push_back(osg::Vec4f(0.62f, 0.64f, 0.60f, 1.f));
++            geometry->setColorArray(colors, osg::Array::BIND_OVERALL);
++
++            if (mesh->mNormals.size() == mesh->mVertices.size())
++                geometry->setNormalArray(new osg::Vec3Array(mesh->mNormals.size(), mesh->mNormals.data()),
++                    osg::Array::BIND_PER_VERTEX);
++            else
++            {
++                osg::ref_ptr<osg::Vec3Array> normals(new osg::Vec3Array);
++                normals->push_back(osg::Vec3f(0.f, 0.f, 1.f));
++                geometry->setNormalArray(normals, osg::Array::BIND_OVERALL);
++            }
++
++            osg::ref_ptr<osg::Material> material(new osg::Material);
++            material->setColorMode(osg::Material::AMBIENT_AND_DIFFUSE);
++            material->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.62f, 0.64f, 0.60f, 1.f));
++            material->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.50f, 0.52f, 0.49f, 1.f));
++
++            osg::StateSet* stateset = geometry->getOrCreateStateSet();
++            stateset->setAttributeAndModes(material, osg::StateAttribute::ON);
++            stateset->setMode(GL_CULL_FACE, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
++
++            geometry->setName(bsTriShape->mName.empty() ? bsTriShape->recName : bsTriShape->mName);
++            parentNode->addChild(geometry);
++
++            logStarfieldMeshLoaded(normalizedPath.view(), *mesh, meshRef);
++            return true;
++        }
++
++        static void logStarfieldMeshLoaded(std::string_view path, const StarfieldExternalMeshData& mesh,
++            const Nif::BSTriShape::BSGeometryMeshRef& meshRef)
++        {
++            static std::atomic<int> meshLogCount{ 0 };
++            const int logIndex = meshLogCount.fetch_add(1);
++            if (logIndex < 80)
++            {
++                Log(Debug::Info) << "World viewer: Starfield mesh loaded path=" << path
++                                 << " vertices=" << mesh.mVertices.size()
++                                 << " indices=" << mesh.mIndices.size()
++                                 << " scale=" << mesh.mScale
++                                 << " positionScale=" << getStarfieldMeshPositionScale()
++                                 << " refVerts=" << meshRef.mVertexCount
++                                 << " refTriIndices=" << meshRef.mTriangleIndexCount
++                                 << " uv1=" << mesh.mUv1Count
++                                 << " normals=" << mesh.mNormalCount
++                                 << " lods=" << mesh.mLodCount
++                                 << " meshlets=" << mesh.mMeshletCount;
++            }
++            else if (logIndex == 80)
++                Log(Debug::Info) << "World viewer: further Starfield mesh load logs suppressed";
++        }
++
++        static void logStarfieldMeshFailure(std::string_view path, std::string_view reason)
++        {
++            static std::atomic<int> meshFailureLogCount{ 0 };
++            const int logIndex = meshFailureLogCount.fetch_add(1);
++            if (logIndex < 80)
++                Log(Debug::Warning) << "World viewer: Starfield mesh load failed path=" << path
++                                    << " reason=" << reason;
++            else if (logIndex == 80)
++                Log(Debug::Warning) << "World viewer: further Starfield mesh failure logs suppressed";
++        }
++
++        void handleBSGeometryProxy(const Nif::BSTriShape* bsTriShape, osg::Group* parentNode)
++        {
++            osg::Vec3f minBound(bsTriShape->mBoundMinMax[0], bsTriShape->mBoundMinMax[1], bsTriShape->mBoundMinMax[2]);
++            osg::Vec3f maxBound(bsTriShape->mBoundMinMax[3], bsTriShape->mBoundMinMax[4], bsTriShape->mBoundMinMax[5]);
++
++            const bool hasMinMax = minBound.x() < maxBound.x() && minBound.y() < maxBound.y()
++                && minBound.z() < maxBound.z();
++            if (!hasMinMax)
++            {
++                const osg::Vec3f center = bsTriShape->mBoundingSphere.center();
++                const float radius = std::max(bsTriShape->mBoundingSphere.radius(), 8.f);
++                minBound = center - osg::Vec3f(radius, radius, radius);
++                maxBound = center + osg::Vec3f(radius, radius, radius);
++            }
++
++            osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
++            osg::ref_ptr<osg::Vec3Array> vertices(new osg::Vec3Array);
++            vertices->reserve(8);
++            vertices->push_back(osg::Vec3f(minBound.x(), minBound.y(), minBound.z()));
++            vertices->push_back(osg::Vec3f(maxBound.x(), minBound.y(), minBound.z()));
++            vertices->push_back(osg::Vec3f(maxBound.x(), maxBound.y(), minBound.z()));
++            vertices->push_back(osg::Vec3f(minBound.x(), maxBound.y(), minBound.z()));
++            vertices->push_back(osg::Vec3f(minBound.x(), minBound.y(), maxBound.z()));
++            vertices->push_back(osg::Vec3f(maxBound.x(), minBound.y(), maxBound.z()));
++            vertices->push_back(osg::Vec3f(maxBound.x(), maxBound.y(), maxBound.z()));
++            vertices->push_back(osg::Vec3f(minBound.x(), maxBound.y(), maxBound.z()));
++            geometry->setVertexArray(vertices);
++
++            static constexpr std::array<unsigned short, 36> indices = {
++                0, 1, 2, 0, 2, 3, // bottom
++                4, 6, 5, 4, 7, 6, // top
++                0, 4, 5, 0, 5, 1, // front
++                1, 5, 6, 1, 6, 2, // right
++                2, 6, 7, 2, 7, 3, // back
++                3, 7, 4, 3, 4, 0, // left
++            };
++            geometry->addPrimitiveSet(new osg::DrawElementsUShort(
++                osg::PrimitiveSet::TRIANGLES, indices.size(), indices.data()));
++
++            osg::ref_ptr<osg::Vec4Array> colors(new osg::Vec4Array);
++            colors->push_back(colorFromString(bsTriShape->mExternalGeometry.front().mMeshPath));
++            geometry->setColorArray(colors, osg::Array::BIND_OVERALL);
++
++            osg::ref_ptr<osg::Vec3Array> normals(new osg::Vec3Array);
++            normals->push_back(osg::Vec3f(0.f, 0.f, 1.f));
++            geometry->setNormalArray(normals, osg::Array::BIND_OVERALL);
++
++            osg::ref_ptr<osg::Material> material(new osg::Material);
++            material->setColorMode(osg::Material::AMBIENT_AND_DIFFUSE);
++            geometry->getOrCreateStateSet()->setAttributeAndModes(material, osg::StateAttribute::ON);
++            geometry->setName(bsTriShape->mName.empty() ? bsTriShape->recName : bsTriShape->mName);
++            parentNode->addChild(geometry);
++
++            static std::atomic<int> proxyLogCount{ 0 };
++            const int logIndex = proxyLogCount.fetch_add(1);
++            if (logIndex < 80)
++            {
++                const auto& mesh = bsTriShape->mExternalGeometry.front();
++                Log(Debug::Info) << "World viewer: Starfield BSGeometry proxy mesh=geometries/" << mesh.mMeshPath
++                                 << ".mesh verts=" << mesh.mVertexCount
++                                 << " triIndices=" << mesh.mTriangleIndexCount << " nif=" << mFilename;
++            }
++            else if (logIndex == 80)
++                Log(Debug::Info) << "World viewer: further Starfield BSGeometry proxy logs suppressed";
++        }
++
+         osg::BlendFunc::BlendFuncMode getBlendMode(int mode) const
+         {
+             switch (mode)
+@@ -3584,6 +4057,55 @@ namespace NifOsg
                      handleDepthFlags(stateset, texprop->depthTest(), texprop->depthWrite());
                      break;
                  }
@@ -6880,6 +10492,50 @@ index a583941dee..40119afa35 100644
                  case Nif::RC_BSLightingShaderProperty:
                  {
                      auto texprop = static_cast<const Nif::BSLightingShaderProperty*>(property);
+diff --git a/components/resource/imagemanager.cpp b/components/resource/imagemanager.cpp
+index b7a19b4d52..8e054293e5 100644
+--- a/components/resource/imagemanager.cpp
++++ b/components/resource/imagemanager.cpp
+@@ -1,6 +1,7 @@
+ #include "imagemanager.hpp"
+ 
+ #include <cassert>
++#include <cstdlib>
+ #include <osgDB/Registry>
+ 
+ #include <components/debug/debuglog.hpp>
+@@ -33,11 +34,27 @@ namespace
+         warningImage->allocateImage(width, height, 1, GL_RGB, GL_UNSIGNED_BYTE);
+         assert(warningImage->isDataContiguous());
+         unsigned char* data = warningImage->data();
+-        for (int i = 0; i < width * height; ++i)
++        const bool neutralWorldViewerFallback
++            = std::getenv("OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES") != nullptr;
++        for (int y = 0; y < height; ++y)
+         {
+-            data[3 * i] = (255);
+-            data[3 * i + 1] = (0);
+-            data[3 * i + 2] = (255);
++            for (int x = 0; x < width; ++x)
++            {
++                const int i = y * width + x;
++                if (neutralWorldViewerFallback)
++                {
++                    const unsigned char shade = ((x / 2 + y / 2) % 2) == 0 ? 150 : 96;
++                    data[3 * i] = shade;
++                    data[3 * i + 1] = shade;
++                    data[3 * i + 2] = shade;
++                }
++                else
++                {
++                    data[3 * i] = (255);
++                    data[3 * i + 1] = (0);
++                    data[3 * i + 2] = (255);
++                }
++            }
+         }
+         return warningImage;
+     }
 diff --git a/components/sceneutil/riggeometry.cpp b/components/sceneutil/riggeometry.cpp
 index 885a59f975..8e43db7415 100644
 --- a/components/sceneutil/riggeometry.cpp
