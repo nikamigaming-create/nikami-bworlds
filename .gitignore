@@ -1,0 +1,57 @@
+# Local/generated world detection output
+/catalog/worlds.local.json
+/catalog/world-walker.seed.json
+/catalog/cells/*.esm4-mined.json
+
+# Generated OpenMW profiles and runtime output
+/profiles/
+/proof/
+/quarantine/
+/local/
+/run/
+/tmp/
+/out/
+
+# Game assets, recovered retail assets, screenshots, videos, archives, binaries
+*.bsa
+*.ba2
+*.esm
+*.esp
+*.esl
+*.nif
+*.kf
+*.dds
+*.tga
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.webp
+*.mp4
+*.mkv
+*.avi
+*.zip
+*.7z
+*.rar
+*.exe
+*.dll
+*.pdb
+*.lib
+
+# Logs, crash dumps, saves, and profiler/debug artifacts
+*.log
+*.dmp
+*.mdmp
+*.ess
+*.omwsave
+*.sqlite
+*.db
+*.prof
+*.trace
+
+# User/editor noise
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
