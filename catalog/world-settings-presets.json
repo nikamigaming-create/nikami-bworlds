@@ -300,6 +300,17 @@
           "character": "world-viewer-fallout4-vr"
         }
       }
+    },
+    "starfield": {
+      "preset": "esm4_world_viewer_first_frame",
+      "sections": {
+        "Camera": {
+          "field of view": 55
+        },
+        "Saves": {
+          "character": "world-viewer-starfield"
+        }
+      }
     }
   },
   "guardrails": [

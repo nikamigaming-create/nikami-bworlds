@@ -4,7 +4,7 @@
   "purpose": "Best-known flat start cells for screenshot smoke tests. These are intentionally conservative and can be replaced by generated cell catalogs later.",
   "defaults": {
     "runSeconds": 90,
-    "screenshotFrames": "120,300,600,1200",
+    "screenshotFrames": "75,120,180,300,600,1200",
     "esm4GridRadius": 0,
     "extraArgs": [
       "--no-sound"
@@ -34,14 +34,14 @@
         "camera": {
           "mode": "static",
           "position": {
-            "x": 18000,
-            "y": 51000,
-            "z": 10500
+            "x": 26770,
+            "y": 63020,
+            "z": 4210
           },
           "target": {
-            "x": 28672,
-            "y": 63424,
-            "z": 5200
+            "x": 26594,
+            "y": 63430,
+            "z": 4160
           }
         },
         "dry": true
@@ -66,14 +66,14 @@
         "camera": {
           "mode": "static",
           "position": {
-            "x": -6200,
-            "y": -27000,
-            "z": 15000
+            "x": -2850,
+            "y": -22850,
+            "z": 13050
           },
           "target": {
-            "x": -2907,
-            "y": -23485,
-            "z": 12900
+            "x": -3015,
+            "y": -22564,
+            "z": 12960
           }
         },
         "dry": true
@@ -98,46 +98,46 @@
         "camera": {
           "mode": "static",
           "position": {
-            "x": -67600,
-            "y": -2200,
-            "z": 10550
+            "x": -71100,
+            "y": 3420,
+            "z": 8520
           },
           "target": {
-            "x": -71300,
-            "y": 2900,
-            "z": 8450
+            "x": -71492,
+            "y": 4001,
+            "z": 8420
           }
         },
         "dry": true
       }
     },
     "skyrim_vr": {
-      "startCell": "RiverwoodBridge",
-      "label": "Riverwood bridge exterior",
+      "startCell": "WhiterunWatchtowerExterior",
+      "label": "Whiterun watchtower guard cluster exterior",
       "esm4GridRadius": 0,
       "anchor": {
-        "source": "Skyrim.esm CELL RiverwoodBridge marker cluster",
+        "source": "Skyrim.esm CELL WhiterunWatchtowerExterior, mined guard ACHR cluster",
         "position": {
-          "x": 22583,
-          "y": -37847,
-          "z": -71
+          "x": 2828,
+          "y": -12732,
+          "z": -5388
         },
         "rotation": {
           "x": 0,
           "y": 0,
-          "z": 5.081004
+          "z": 0.2
         },
         "camera": {
           "mode": "static",
           "position": {
-            "x": 24500,
-            "y": -40200,
-            "z": 1300
+            "x": 2600,
+            "y": -12950,
+            "z": -5290
           },
           "target": {
-            "x": 22583,
-            "y": -37847,
-            "z": 0
+            "x": 2383,
+            "y": -12722,
+            "z": -5310
           }
         },
         "dry": true
@@ -146,7 +146,7 @@
     "fallout4_vr": {
       "startCell": "SanctuaryExt",
       "label": "Sanctuary Hills exterior",
-      "esm4GridRadius": 1,
+      "esm4GridRadius": 0,
       "anchor": {
         "source": "Fallout4.esm CELL SanctuaryExt COC/marker cluster, lowered street-view survey camera",
         "position": {
@@ -162,14 +162,54 @@
         "camera": {
           "mode": "static",
           "position": {
-            "x": -82500,
-            "y": 85800,
-            "z": 8900
+            "x": -78740,
+            "y": 86500,
+            "z": 7700
           },
           "target": {
-            "x": -80352,
-            "y": 89600,
-            "z": 7950
+            "x": -78960,
+            "y": 86269,
+            "z": 7650
+          }
+        },
+        "dry": true
+      }
+    },
+    "starfield": {
+      "startCell": "NewAtlantisSpaceport",
+      "label": "New Atlantis spaceport exterior",
+      "esm4GridRadius": 0,
+      "anchor": {
+        "source": "Starfield.esm CELL NewAtlantisSpaceport, mined ESM4 placement center and actor cluster",
+        "position": {
+          "x": -53.948226,
+          "y": -37.238238,
+          "z": 83.621925
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 5.0
+        },
+        "exteriorLocation": {
+          "worldspace": "FormId:0x1251b",
+          "cellId": "FormId:0x125b6",
+          "grid": {
+            "x": -1,
+            "y": -1
+          }
+        },
+        "camera": {
+          "mode": "static",
+          "position": {
+            "x": -122,
+            "y": -131,
+            "z": 106
+          },
+          "target": {
+            "x": -58,
+            "y": -78,
+            "z": 84
           }
         },
         "dry": true

@@ -9,6 +9,7 @@ param(
     [string]$StartCellOverride = "",
     [int]$WindowCaptureSeconds = 0,
     [int]$TelemetryInterval = 30,
+    [int]$RefTelemetryLimit = 2000,
     [int]$Esm4GridRadius = -1,
     [switch]$NoTelemetry,
     [switch]$AllowBadScreenshots,
@@ -158,6 +159,9 @@ function Get-ScreenshotQuality([string]$Path) {
         $purple = 0
         $brightLowSaturation = 0
         $blueSkyLike = 0
+        $nearWhite = 0
+        $skyOrVoid = 0
+        $worldSignal = 0
 
         for ($y = 0; $y -lt $height; $y += $step) {
             for ($x = 0; $x -lt $width; $x += $step) {
@@ -173,17 +177,33 @@ function Get-ScreenshotQuality([string]$Path) {
                 if ($brightness -lt 20) {
                     $dark++
                 }
-                if ($pixel.R -gt 180 -and $pixel.B -gt 180 -and $pixel.G -lt 110 -and ($pixel.R - $pixel.G) -gt 70 -and ($pixel.B - $pixel.G) -gt 70) {
+                $isMagenta = ($pixel.R -gt 180 -and $pixel.B -gt 180 -and $pixel.G -lt 110 -and ($pixel.R - $pixel.G) -gt 70 -and ($pixel.B - $pixel.G) -gt 70)
+                $isPurple = ($pixel.R -gt 110 -and $pixel.B -gt 130 -and $pixel.G -lt 105 -and ($pixel.B - $pixel.G) -gt 45)
+                $isBrightLowSaturation = ($brightness -gt 145 -and $channelSpread -lt 45)
+                $isBlueSkyLike = ($brightness -gt 80 -and $pixel.B -gt ($pixel.R + 20) -and $pixel.B -gt ($pixel.G + 15))
+                $isNearWhite = ($brightness -gt 220 -and $channelSpread -lt 38)
+                $isSkyOrVoid = ($isNearWhite -or ($isBlueSkyLike -and $brightness -gt 150))
+
+                if ($isMagenta) {
                     $magenta++
                 }
-                if ($pixel.R -gt 110 -and $pixel.B -gt 130 -and $pixel.G -lt 105 -and ($pixel.B - $pixel.G) -gt 45) {
+                if ($isPurple) {
                     $purple++
                 }
-                if ($brightness -gt 145 -and $channelSpread -lt 45) {
+                if ($isBrightLowSaturation) {
                     $brightLowSaturation++
                 }
-                if ($brightness -gt 80 -and $pixel.B -gt ($pixel.R + 20) -and $pixel.B -gt ($pixel.G + 15)) {
+                if ($isBlueSkyLike) {
                     $blueSkyLike++
+                }
+                if ($isNearWhite) {
+                    $nearWhite++
+                }
+                if ($isSkyOrVoid) {
+                    $skyOrVoid++
+                }
+                elseif ($brightness -gt 25 -and -not $isMagenta -and -not $isPurple) {
+                    $worldSignal++
                 }
             }
         }
@@ -206,6 +226,9 @@ function Get-ScreenshotQuality([string]$Path) {
         $purpleRatio = $purple / $sampled
         $brightLowSaturationRatio = $brightLowSaturation / $sampled
         $blueSkyLikeRatio = $blueSkyLike / $sampled
+        $nearWhiteRatio = $nearWhite / $sampled
+        $skyOrVoidRatio = $skyOrVoid / $sampled
+        $worldSignalRatio = $worldSignal / $sampled
         $reasons = New-Object System.Collections.Generic.List[string]
 
         if ($mean -lt 18 -or $darkRatio -gt 0.92) {
@@ -217,11 +240,23 @@ function Get-ScreenshotQuality([string]$Path) {
         if ($magentaRatio -gt 0.005 -or $purpleRatio -gt 0.04) {
             $reasons.Add("purple/magenta fallback pixels detected")
         }
-        if ($brightLowSaturationRatio -gt 0.55) {
+        if ($brightLowSaturationRatio -gt 0.68 -and $stddev -lt 55) {
             $reasons.Add("large bright low-saturation fallback/void surface")
         }
         if ($blueSkyLikeRatio -gt 0.8) {
             $reasons.Add("mostly sky/blue void")
+        }
+        if ($nearWhiteRatio -gt 0.65) {
+            $reasons.Add("mostly near-white frame")
+        }
+        if ($skyOrVoidRatio -gt 0.72) {
+            $reasons.Add("sky/void dominates frame")
+        }
+        if ($worldSignalRatio -lt 0.18) {
+            $reasons.Add("too little non-void world signal")
+        }
+        if ($mean -gt 210 -and $stddev -lt 25 -and $skyOrVoidRatio -gt 0.55) {
+            $reasons.Add("washed-out low-detail frame")
         }
 
         [pscustomobject][ordered]@{
@@ -235,6 +270,9 @@ function Get-ScreenshotQuality([string]$Path) {
             purpleRatio = [Math]::Round($purpleRatio, 4)
             brightLowSaturationRatio = [Math]::Round($brightLowSaturationRatio, 4)
             blueSkyLikeRatio = [Math]::Round($blueSkyLikeRatio, 4)
+            nearWhiteRatio = [Math]::Round($nearWhiteRatio, 4)
+            skyOrVoidRatio = [Math]::Round($skyOrVoidRatio, 4)
+            worldSignalRatio = [Math]::Round($worldSignalRatio, 4)
             acceptable = ($reasons.Count -eq 0)
             reasons = @($reasons)
         }
@@ -255,7 +293,7 @@ function Get-ProofLogSummary([string]$Path) {
         [pscustomobject]@{ Name = "unsupportedAssets"; Pattern = "unsupported|not supported|unhandled" },
         [pscustomobject]@{ Name = "shaderIssues"; Pattern = "shader|purple|magenta|fallback" },
         [pscustomobject]@{ Name = "actorIssues"; Pattern = "actor|npc|creature|skeleton|bone|animation|rig" },
-        [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:" }
+        [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:|World viewer actor ledger:" }
     )
 
     $categories = [ordered]@{}
@@ -395,6 +433,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
 
     $cells = New-Object System.Collections.Generic.List[object]
     $rays = New-Object System.Collections.Generic.List[object]
+    $actorLedger = New-Object System.Collections.Generic.List[object]
     $problemRefs = New-Object System.Collections.Generic.List[object]
     $refsByType = [ordered]@{}
     $rayKinds = [ordered]@{}
@@ -413,6 +452,23 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $loggedRenderedRefs = 0
     $loggedActorRefs = 0
     $loggedRenderedActorRefs = 0
+    $proxyActorRefs = 0
+    $proxyTposeRefs = 0
+    $proxyAnimatedRefs = 0
+    $nativeActorLedgerEvents = 0
+    $nativeActorRenderBegins = 0
+    $nativeActorRenderEnds = 0
+    $nativeActorCustomData = 0
+    $nativeActorRootBegins = 0
+    $nativeActorRootEnds = 0
+    $nativeActorRootExceptions = 0
+    $nativeActorPartsRequested = 0
+    $nativeActorPartsTemplated = 0
+    $nativeActorPartsAttached = 0
+    $nativeActorPartsMissing = 0
+    $nativeActorTemplateExceptions = 0
+    $nativeActorAnimSources = 0
+    $nativeActorAnimSourcesBound = 0
     $rayHits = 0
     $groundRayHits = 0
     $centerRenderHits = 0
@@ -445,6 +501,50 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
             $cellDeleted += Convert-WorldViewerInt (Get-PropertyValue $cell "deleted")
             if ($cells.Count -lt 80) {
                 $cells.Add($cell)
+            }
+            continue
+        }
+
+        $proxyIndex = $line.IndexOf("World viewer: inserted ESM4 actor proxy")
+        if ($proxyIndex -ge 0) {
+            $proxy = Parse-WorldViewerKeyValues ($line.Substring($proxyIndex + "World viewer: inserted ESM4 actor proxy".Length).Trim())
+            $proxyActorRefs++
+            if (([string](Get-PropertyValue $proxy "pose")) -eq "tpose") {
+                $proxyTposeRefs++
+            }
+            if (Convert-WorldViewerFlag (Get-PropertyValue $proxy "animated")) {
+                $proxyAnimatedRefs++
+            }
+            continue
+        }
+
+        $actorLedgerIndex = $line.IndexOf("World viewer actor ledger:")
+        if ($actorLedgerIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($actorLedgerIndex + "World viewer actor ledger:".Length).Trim())
+            $nativeActorLedgerEvents++
+            $phaseValue = Get-PropertyValue $entry "phase"
+            $phase = if ($null -ne $phaseValue) { [string]$phaseValue } else { "<unknown>" }
+            switch ($phase) {
+                "render-insert-begin" { $nativeActorRenderBegins++ }
+                "render-insert-end" { $nativeActorRenderEnds++ }
+                "npc-custom-data" { $nativeActorCustomData++ }
+                "npc-root-begin" { $nativeActorRootBegins++ }
+                "npc-root-end" { $nativeActorRootEnds++ }
+                "npc-root-exception" { $nativeActorRootExceptions++ }
+                "part-request" { $nativeActorPartsRequested++ }
+                "part-template" { $nativeActorPartsTemplated++ }
+                "part-attached" { $nativeActorPartsAttached++ }
+                "part-missing" { $nativeActorPartsMissing++ }
+                "part-template-exception" { $nativeActorTemplateExceptions++ }
+                "animation-source" {
+                    $nativeActorAnimSources++
+                    if (Convert-WorldViewerFlag (Get-PropertyValue $entry "bound")) {
+                        $nativeActorAnimSourcesBound++
+                    }
+                }
+            }
+            if ($actorLedger.Count -lt 240) {
+                $actorLedger.Add($entry)
             }
             continue
         }
@@ -526,6 +626,23 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         loggedRenderedRefs = $loggedRenderedRefs
         loggedActorRefs = $loggedActorRefs
         loggedRenderedActorRefs = $loggedRenderedActorRefs
+        proxyActorRefs = $proxyActorRefs
+        proxyTposeRefs = $proxyTposeRefs
+        proxyAnimatedRefs = $proxyAnimatedRefs
+        nativeActorLedgerEvents = $nativeActorLedgerEvents
+        nativeActorRenderBegins = $nativeActorRenderBegins
+        nativeActorRenderEnds = $nativeActorRenderEnds
+        nativeActorCustomData = $nativeActorCustomData
+        nativeActorRootBegins = $nativeActorRootBegins
+        nativeActorRootEnds = $nativeActorRootEnds
+        nativeActorRootExceptions = $nativeActorRootExceptions
+        nativeActorPartsRequested = $nativeActorPartsRequested
+        nativeActorPartsTemplated = $nativeActorPartsTemplated
+        nativeActorPartsAttached = $nativeActorPartsAttached
+        nativeActorPartsMissing = $nativeActorPartsMissing
+        nativeActorTemplateExceptions = $nativeActorTemplateExceptions
+        nativeActorAnimSources = $nativeActorAnimSources
+        nativeActorAnimSourcesBound = $nativeActorAnimSourcesBound
         refsByType = [pscustomobject]$refsByType
         refDumpTruncated = $refDumpTruncated
         rayCount = $rays.Count
@@ -537,6 +654,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         rayKinds = [pscustomobject]$rayKinds
         cells = @($cells.ToArray())
         rays = @($rays.ToArray())
+        actorLedger = @($actorLedger.ToArray())
         problemRefs = @($problemRefs.ToArray())
     }
 }
@@ -622,6 +740,9 @@ $viewerStartEnvNames = @(
     "OPENMW_WORLD_VIEWER_START_ROT_X",
     "OPENMW_WORLD_VIEWER_START_ROT_Y",
     "OPENMW_WORLD_VIEWER_START_ROT_Z",
+    "OPENMW_WORLD_VIEWER_START_WORLDSPACE",
+    "OPENMW_WORLD_VIEWER_START_GRID_X",
+    "OPENMW_WORLD_VIEWER_START_GRID_Y",
     "OPENMW_WORLD_VIEWER_START_DRY",
     "OPENMW_WORLD_VIEWER_START_CAMERA_MODE",
     "OPENMW_WORLD_VIEWER_START_CAMERA_DISTANCE",
@@ -641,9 +762,16 @@ $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL",
     "OPENMW_WORLD_VIEWER_REF_TELEMETRY",
     "OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT",
+    "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY",
+    "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS",
     "OPENMW_WORLD_VIEWER_RAY_TELEMETRY",
     "OPENMW_WORLD_VIEWER_RAY_DISTANCE",
     "OPENMW_WORLD_VIEWER_ACTOR_RAY_LIMIT",
+    "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS",
+    "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES",
+    "OPENMW_WORLD_VIEWER_DISABLE_ESM4_ACTORS",
+    "OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXIES",
+    "OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXY_ANIMATE",
     "OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS",
     "OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED"
 )
@@ -670,13 +798,17 @@ try {
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_TELEMETRY", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL", [string]$TelemetryInterval, "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REF_TELEMETRY", "1", "Process")
-        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT", "500", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT", [string]$RefTelemetryLimit, "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_RAY_DISTANCE", "200000", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ACTOR_RAY_LIMIT", "8", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "1", "Process")
     }
     else {
-        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY")) {
+        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES")) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
     }
@@ -714,6 +846,27 @@ try {
         }
         else {
             [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS", $null, "Process")
+        }
+        $disableEsm4Actors = ((Get-PropertyValue $start "disableEsm4Actors") -eq $true)
+        if ($disableEsm4Actors) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_DISABLE_ESM4_ACTORS", "1", "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_DISABLE_ESM4_ACTORS", $null, "Process")
+        }
+        $esm4ActorProxies = ((Get-PropertyValue $start "esm4ActorProxies") -eq $true)
+        if ($esm4ActorProxies) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXIES", "1", "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXIES", $null, "Process")
+        }
+        $esm4ActorProxyAnimate = ((Get-PropertyValue $start "esm4ActorProxyAnimate") -eq $true)
+        if ($esm4ActorProxies -and $esm4ActorProxyAnimate) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXY_ANIMATE", "1", "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXY_ANIMATE", $null, "Process")
         }
 
         $worldRunDir = Join-Path $absProofDir $world.id
@@ -784,6 +937,13 @@ try {
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_ROT_X" (Get-PropertyValue $rotation "x")
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_ROT_Y" (Get-PropertyValue $rotation "y")
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_ROT_Z" (Get-PropertyValue $rotation "z")
+            $exteriorLocation = Get-PropertyValue $anchor "exteriorLocation"
+            if ($null -ne $exteriorLocation) {
+                $grid = Get-PropertyValue $exteriorLocation "grid"
+                Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_WORLDSPACE" (Get-PropertyValue $exteriorLocation "worldspace")
+                Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_GRID_X" (Get-PropertyValue $grid "x")
+                Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_GRID_Y" (Get-PropertyValue $grid "y")
+            }
             if ((Get-PropertyValue $anchor "dry") -ne $false) {
                 Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_DRY" "1"
             }
@@ -924,6 +1084,15 @@ try {
 
             $logSummary = Get-ProofLogSummary -Path $copiedOpenMwLog
             $worldViewerTelemetry = Get-WorldViewerTelemetrySummary -Path $copiedOpenMwLog
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.proxyActorRefs -gt 0) {
+                $notes.Add("ESM4 actor proxy proof: $($worldViewerTelemetry.proxyActorRefs) proxy refs, $($worldViewerTelemetry.proxyTposeRefs) t-pose, $($worldViewerTelemetry.proxyAnimatedRefs) animated")
+            }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.nativeActorLedgerEvents -gt 0) {
+                $notes.Add("Native actor ledger: roots $($worldViewerTelemetry.nativeActorRootEnds)/$($worldViewerTelemetry.nativeActorRootBegins), parts $($worldViewerTelemetry.nativeActorPartsAttached)/$($worldViewerTelemetry.nativeActorPartsRequested), missing $($worldViewerTelemetry.nativeActorPartsMissing), templateErrors $($worldViewerTelemetry.nativeActorTemplateExceptions), animSources $($worldViewerTelemetry.nativeActorAnimSourcesBound)/$($worldViewerTelemetry.nativeActorAnimSources)")
+                if ($worldViewerTelemetry.nativeActorRootExceptions -gt 0) {
+                    $notes.Add("Native actor root exceptions: $($worldViewerTelemetry.nativeActorRootExceptions)")
+                }
+            }
             $crashDump = Get-OpenMwCrashDumpInfo -Roots @($runConfig.configDirectory, $userDataDir) -Since $worldStartedAt.AddSeconds(-2)
             if ($null -ne $crashDump) {
                 $notes.Add("crash dump detected: $($crashDump.path)")
@@ -947,10 +1116,16 @@ try {
                     if ($worldViewerTelemetry.centerRenderHits -le 0) {
                         $telemetryRejectReasons.Add("center render ray hit nothing")
                     }
-                    if ($worldViewerTelemetry.cellActors -gt 0 -and $worldViewerTelemetry.cellRenderedActors -le 0) {
+                    if ($worldViewerTelemetry.cellActors -gt 0 -and $worldViewerTelemetry.cellRenderedActors -le 0 -and -not $disableEsm4Actors) {
                         $telemetryRejectReasons.Add("actor-populated cell rendered zero actor nodes")
                     }
-                    if ($worldViewerTelemetry.cellRenderedActors -gt 0 -and $worldViewerTelemetry.actorRayActorHits -le 0) {
+                    elseif ($worldViewerTelemetry.cellActors -gt 0 -and $worldViewerTelemetry.cellRenderedActors -le 0 -and $disableEsm4Actors) {
+                        $notes.Add("ESM4 actor render probes skipped by world config quarantine")
+                    }
+                    if ($worldViewerTelemetry.cellRenderedActors -gt 0 -and $worldViewerTelemetry.actorRayActorHits -le 0 -and ($esm4ActorProxies -or $worldViewerTelemetry.nativeActorPartsAttached -gt 0)) {
+                        $notes.Add("Actor render nodes exist; actor physics ray probes are diagnostic until actor collision is stabilized")
+                    }
+                    elseif ($worldViewerTelemetry.cellRenderedActors -gt 0 -and $worldViewerTelemetry.actorRayActorHits -le 0) {
                         $telemetryRejectReasons.Add("rendered actor nodes present but actor ray probes hit no actors")
                     }
                 }
