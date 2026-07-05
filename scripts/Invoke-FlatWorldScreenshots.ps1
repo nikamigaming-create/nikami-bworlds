@@ -462,6 +462,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $nativeActorRootBegins = 0
     $nativeActorRootEnds = 0
     $nativeActorRootExceptions = 0
+    $nativeActorModelFallbacks = 0
     $nativeActorPartsRequested = 0
     $nativeActorPartsTemplated = 0
     $nativeActorPartsAttached = 0
@@ -469,6 +470,10 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $nativeActorTemplateExceptions = 0
     $nativeActorAnimSources = 0
     $nativeActorAnimSourcesBound = 0
+    $nativeActorControllerSources = 0
+    $nativeActorControllersBound = 0
+    $nativeActorControllersTotal = 0
+    $nativeActorControllerZeroSources = 0
     $rayHits = 0
     $groundRayHits = 0
     $centerRenderHits = 0
@@ -531,6 +536,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
                 "npc-root-begin" { $nativeActorRootBegins++ }
                 "npc-root-end" { $nativeActorRootEnds++ }
                 "npc-root-exception" { $nativeActorRootExceptions++ }
+                "npc-model-fallback" { $nativeActorModelFallbacks++ }
                 "part-request" { $nativeActorPartsRequested++ }
                 "part-template" { $nativeActorPartsTemplated++ }
                 "part-attached" { $nativeActorPartsAttached++ }
@@ -545,6 +551,29 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
             }
             if ($actorLedger.Count -lt 240) {
                 $actorLedger.Add($entry)
+            }
+            continue
+        }
+
+        $controllerMatch = [regex]::Match($line, 'FNV/ESM4 diag: animation source (?<source>.+?) bound (?<bound>\d+)/(?<total>\d+) controller\(s\) to (?<base>.+?), missing (?<missing>\d+)')
+        if ($controllerMatch.Success) {
+            $boundControllers = [int]$controllerMatch.Groups["bound"].Value
+            $totalControllers = [int]$controllerMatch.Groups["total"].Value
+            $nativeActorControllerSources++
+            $nativeActorControllersBound += $boundControllers
+            $nativeActorControllersTotal += $totalControllers
+            if ($totalControllers -gt 0 -and $boundControllers -eq 0) {
+                $nativeActorControllerZeroSources++
+            }
+            if ($actorLedger.Count -lt 240) {
+                $actorLedger.Add([pscustomobject][ordered]@{
+                    phase = "animation-controller-bind"
+                    source = $controllerMatch.Groups["source"].Value
+                    skeleton = $controllerMatch.Groups["base"].Value
+                    bound = $boundControllers
+                    total = $totalControllers
+                    missing = [int]$controllerMatch.Groups["missing"].Value
+                })
             }
             continue
         }
@@ -636,6 +665,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         nativeActorRootBegins = $nativeActorRootBegins
         nativeActorRootEnds = $nativeActorRootEnds
         nativeActorRootExceptions = $nativeActorRootExceptions
+        nativeActorModelFallbacks = $nativeActorModelFallbacks
         nativeActorPartsRequested = $nativeActorPartsRequested
         nativeActorPartsTemplated = $nativeActorPartsTemplated
         nativeActorPartsAttached = $nativeActorPartsAttached
@@ -643,6 +673,10 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         nativeActorTemplateExceptions = $nativeActorTemplateExceptions
         nativeActorAnimSources = $nativeActorAnimSources
         nativeActorAnimSourcesBound = $nativeActorAnimSourcesBound
+        nativeActorControllerSources = $nativeActorControllerSources
+        nativeActorControllersBound = $nativeActorControllersBound
+        nativeActorControllersTotal = $nativeActorControllersTotal
+        nativeActorControllerZeroSources = $nativeActorControllerZeroSources
         refsByType = [pscustomobject]$refsByType
         refDumpTruncated = $refDumpTruncated
         rayCount = $rays.Count
@@ -1089,6 +1123,12 @@ try {
             }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.nativeActorLedgerEvents -gt 0) {
                 $notes.Add("Native actor ledger: roots $($worldViewerTelemetry.nativeActorRootEnds)/$($worldViewerTelemetry.nativeActorRootBegins), parts $($worldViewerTelemetry.nativeActorPartsAttached)/$($worldViewerTelemetry.nativeActorPartsRequested), missing $($worldViewerTelemetry.nativeActorPartsMissing), templateErrors $($worldViewerTelemetry.nativeActorTemplateExceptions), animSources $($worldViewerTelemetry.nativeActorAnimSourcesBound)/$($worldViewerTelemetry.nativeActorAnimSources)")
+                if ($worldViewerTelemetry.nativeActorModelFallbacks -gt 0) {
+                    $notes.Add("Native actor model fallbacks: $($worldViewerTelemetry.nativeActorModelFallbacks)")
+                }
+                if ($worldViewerTelemetry.nativeActorControllerSources -gt 0) {
+                    $notes.Add("Native actor controllers: $($worldViewerTelemetry.nativeActorControllersBound)/$($worldViewerTelemetry.nativeActorControllersTotal) bound across $($worldViewerTelemetry.nativeActorControllerSources) sources, zeroBoundSources $($worldViewerTelemetry.nativeActorControllerZeroSources)")
+                }
                 if ($worldViewerTelemetry.nativeActorRootExceptions -gt 0) {
                     $notes.Add("Native actor root exceptions: $($worldViewerTelemetry.nativeActorRootExceptions)")
                 }
