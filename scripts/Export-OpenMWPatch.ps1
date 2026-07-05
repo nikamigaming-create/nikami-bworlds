@@ -21,6 +21,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $OpenMWSource ".git"))) {
     throw "Not a git checkout: $OpenMWSource"
 }
 
+if (-not [System.IO.Path]::IsPathRooted($PatchPath)) {
+    $PatchPath = Join-Path $script:NikamiRepoRoot $PatchPath
+}
+
 $patchDir = Split-Path -Parent $PatchPath
 if (-not [string]::IsNullOrWhiteSpace($patchDir)) {
     New-Item -ItemType Directory -Force -Path $patchDir | Out-Null
