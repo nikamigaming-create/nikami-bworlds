@@ -367,7 +367,16 @@ $worlds = @()
 foreach ($definition in $definitions) {
     $cap = $capabilityById[$definition.id]
     $installCandidates = @(Get-InstallCandidates -Definition $definition -SteamApps $steamApps -SteamAppsRoots $steamRoots)
-    $installPath = if ($installCandidates.Count -gt 0) { $installCandidates[0] } else { $null }
+    $installPath = $null
+    foreach ($candidate in $installCandidates) {
+        if (Test-Path -LiteralPath (Join-Path $candidate $definition.dataSubpath)) {
+            $installPath = $candidate
+            break
+        }
+    }
+    if (-not $installPath -and $installCandidates.Count -gt 0) {
+        $installPath = $installCandidates[0]
+    }
 
     $dataPaths = @()
     $profileConfig = $null

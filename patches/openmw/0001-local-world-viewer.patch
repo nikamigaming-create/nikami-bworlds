@@ -262,7 +262,7 @@ index 59699d63a5..9edaad744d 100644
 +    endif()
  endif()
 diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
-index 7dd4db4d58..a2cce4a103 100644
+index 7dd4db4d58..c71647bb82 100644
 --- a/apps/openmw/engine.cpp
 +++ b/apps/openmw/engine.cpp
 @@ -802,6 +802,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
@@ -288,6 +288,99 @@ index 7dd4db4d58..a2cce4a103 100644
      const bool proofLoadingGui = mWindowManager->containsMode(MWGui::GM_Loading)
          || mWindowManager->containsMode(MWGui::GM_LoadingWallpaper)
          || mWindowManager->containsMode(MWGui::GM_MainMenu);
+@@ -2490,12 +2499,19 @@ void OMW::Engine::prepareEngine()
+             asyncListener.update();
+         dataLoading.get();
+     }
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine data load complete";
+     listener->loadingOff();
+ 
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine world init begin";
+     mWorld->init(mMaxRecastLogLevel, mViewer, std::move(rootNode), mWorkQueue.get(), *mUnrefQueue, std::move(camera));
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine world init complete";
+     mEnvironment.setWorldScene(mWorld->getWorldScene());
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine world scene registered";
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine setupPlayer begin";
+     mWorld->setupPlayer();
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine setupPlayer complete";
+     mWorld->setRandomSeed(mRandomSeed);
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine random seed set";
+ 
+     // ## VR_PATCH BEGIN
+     if (VR::getVR())
+@@ -2505,6 +2521,7 @@ void OMW::Engine::prepareEngine()
+     // ## VR_PATCH END
+ 
+     const MWWorld::Store<ESM::GameSetting>* gmst = &mWorld->getStore().get<ESM::GameSetting>();
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine gmst loader begin";
+     mL10nManager->setGmstLoader(
+         [gmst, misses = std::set<std::string, std::less<>>()](std::string_view gmstName) mutable {
+             const ESM::GameSetting* res = gmst->search(gmstName);
+@@ -2520,34 +2537,48 @@ void OMW::Engine::prepareEngine()
+                 return std::string("GMST:") + std::string(gmstName);
+             }
+         });
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine gmst loader ready";
+ 
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine window store begin";
+     mWindowManager->setStore(mWorld->getStore());
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine window initUI begin";
+     mWindowManager->initUI();
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine window initUI complete";
+ 
+     // Load translation data
+     mTranslationDataStorage.setEncoder(mEncoder.get());
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine translation load begin";
+     for (auto& mContentFile : mContentFiles)
+         mTranslationDataStorage.loadTranslationData(mFileCollections, mContentFile);
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine translation load complete";
+ 
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine compiler extensions begin";
+     Compiler::registerExtensions(mExtensions);
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine compiler extensions complete";
+ 
+     // Create script system
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine script system begin";
+     mScriptContext = std::make_unique<MWScript::CompilerContext>(MWScript::CompilerContext::Type_Full);
+     mScriptContext->setExtensions(&mExtensions);
+ 
+     mScriptManager = std::make_unique<MWScript::ScriptManager>(mWorld->getStore(), *mScriptContext, mWarningsMode);
+     mEnvironment.setScriptManager(*mScriptManager);
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine script system ready";
+ 
+     // Create game mechanics system
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine mechanics begin";
+     mMechanicsManager = std::make_unique<MWMechanics::MechanicsManager>();
+     mEnvironment.setMechanicsManager(*mMechanicsManager);
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine mechanics ready";
+ 
+     // Create dialog system
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine dialogue begin";
+     mJournal = std::make_unique<MWDialogue::Journal>();
+     mEnvironment.setJournal(*mJournal);
+ 
+     mDialogueManager = std::make_unique<MWDialogue::DialogueManager>(mExtensions, mTranslationDataStorage);
+     mEnvironment.setDialogueManager(*mDialogueManager);
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine dialogue ready";
+ 
+     // scripts
+     if (mCompileAll)
+@@ -2565,11 +2596,15 @@ void OMW::Engine::prepareEngine()
+                              << 100 * static_cast<double>(result.second) / result.first << "%)";
+     }
+ 
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine lua permanent storage begin";
+     mLuaManager->loadPermanentStorage(mCfgMgr.getUserConfigPath());
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine lua init begin";
+     mLuaManager->init();
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine lua init complete";
+ 
+     // starts a separate lua thread if "lua num threads" > 0
+     mLuaWorker = std::make_unique<MWLua::Worker>(*mLuaManager);
++    Log(Debug::Info) << "FNV/ESM4 diag: prepareEngine lua worker ready";
+ }
+ 
+ // Initialise and enter main loop.
 diff --git a/apps/openmw/mwclass/esm4base.hpp b/apps/openmw/mwclass/esm4base.hpp
 index 9563086e78..691ef05754 100644
 --- a/apps/openmw/mwclass/esm4base.hpp
@@ -1219,6 +1312,71 @@ index 8676925dc7..e5d1f87ae1 100644
              vec.x() *= speed;
              vec.y() *= speed;
  
+diff --git a/apps/openmw/mwphysics/physicssystem.cpp b/apps/openmw/mwphysics/physicssystem.cpp
+index c0024c1bdc..adb284424f 100644
+--- a/apps/openmw/mwphysics/physicssystem.cpp
++++ b/apps/openmw/mwphysics/physicssystem.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <exception>
+ #include <memory>
+ #include <vector>
+ 
+@@ -33,6 +34,7 @@
+ #include <components/resource/bulletshapemanager.hpp>
+ #include <components/resource/resourcesystem.hpp>
+ #include <components/settings/values.hpp>
++#include <components/vfs/manager.hpp>
+ 
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/world.hpp"
+@@ -668,7 +670,27 @@ namespace MWPhysics
+     {
+         const VFS::Path::Normalized animationMesh
+             = Misc::ResourceHelpers::correctActorModelPath(mesh, mResourceSystem->getVFS());
+-        osg::ref_ptr<const Resource::BulletShape> shape = mShapeManager->getShape(animationMesh);
++        osg::ref_ptr<const Resource::BulletShape> shape;
++        const VFS::Manager* vfs = mResourceSystem->getVFS();
++        if (vfs != nullptr && !vfs->exists(animationMesh))
++        {
++            Log(Debug::Info) << "World viewer: using fallback actor physics for missing actor mesh "
++                             << animationMesh;
++            shape = makeFallbackActorShape(ptr);
++        }
++        else
++        {
++            try
++            {
++                shape = mShapeManager->getShape(animationMesh);
++            }
++            catch (const std::exception& e)
++            {
++                Log(Debug::Info) << "World viewer: using fallback actor physics after mesh load failed for "
++                                 << animationMesh << ": " << e.what();
++                shape = makeFallbackActorShape(ptr);
++            }
++        }
+ 
+         // Try to get shape from basic model as fallback for creatures
+         if (!ptr.getClass().isNpc() && shape && shape->mCollisionBox.mExtents.length2() == 0)
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+index 2c608506f2..6473b015e5 100644
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -5736,7 +5736,10 @@ namespace MWRender
+                 || VFS::Path::pathEqual(Settings::models().mBaseanimkna.get(), path)
+                 || VFS::Path::pathEqual(Settings::models().mBaseanimkna1st.get(), path)
+                 || VFS::Path::pathEqual(Settings::models().mBaseanimfemale.get(), path)
+-                || VFS::Path::pathEqual(Settings::models().mBaseanimfemale1st.get(), path);
++                || VFS::Path::pathEqual(Settings::models().mBaseanimfemale1st.get(), path)
++                || VFS::Path::pathEqual("characters/_male/skeleton.nif", path)
++                || VFS::Path::pathEqual("actors/character/character assets/skeleton.nif", path)
++                || VFS::Path::pathEqual("actors/character/_1stperson/skeleton.nif", path);
+         };
+         const bool useEmptyMissingDefaultActorRoot
+             = !model.empty() && isDefaultActorModel(model) && !mResourceSystem->getVFS()->exists(VFS::Path::toNormalized(model));
 diff --git a/apps/openmw/mwrender/characterpreview.cpp b/apps/openmw/mwrender/characterpreview.cpp
 index eed85ba391..fe3ed90622 100644
 --- a/apps/openmw/mwrender/characterpreview.cpp
@@ -1673,7 +1831,7 @@ index 9f8b1ed86c..b84783bbb4 100644
              }
  
 diff --git a/apps/openmw/mwrender/renderingmanager.cpp b/apps/openmw/mwrender/renderingmanager.cpp
-index 169694fff2..bf8fc382da 100644
+index 169694fff2..68cca74be7 100644
 --- a/apps/openmw/mwrender/renderingmanager.cpp
 +++ b/apps/openmw/mwrender/renderingmanager.cpp
 @@ -2,6 +2,7 @@
@@ -1684,7 +1842,16 @@ index 169694fff2..bf8fc382da 100644
  #include <sstream>
  #include <string_view>
  
-@@ -454,6 +455,30 @@ namespace MWRender
+@@ -35,6 +36,8 @@
+ 
+ #include <components/settings/values.hpp>
+ 
++#include <components/vfs/manager.hpp>
++
+ #include <components/sceneutil/cullsafeboundsvisitor.hpp>
+ #include <components/sceneutil/depth.hpp>
+ #include <components/sceneutil/lightmanager.hpp>
+@@ -454,6 +457,30 @@ namespace MWRender
              applyFalloutPlayerProxyProofOutfit(visualPtr, "vr-hands-attach");
              std::vector<MWVR::VRAnimation::FalloutVrHandSurface> surfaces
                  = collectFalloutVrHandSurfaces(visualPtr, "fallout-visual-record", false);
@@ -1715,8 +1882,30 @@ index 169694fff2..bf8fc382da 100644
              appendFalloutVrWeaponSurface(surfaces, player, "save-loaded-vr-player-ptr");
              return surfaces;
          }
+@@ -1048,7 +1075,11 @@ namespace MWRender
+         mSky->listAssetsToPreload(workItem->mModels, workItem->mTextures);
+         mWater->listAssetsToPreload(workItem->mTextures);
+ 
+-        if (!hasFalloutNvContentLoaded())
++        const VFS::Manager* vfs = mResourceSystem != nullptr ? mResourceSystem->getVFS() : nullptr;
++        const bool hasMorrowindCommonActors = vfs != nullptr && vfs->exists(Settings::models().mXbaseanim)
++            && vfs->exists(Settings::models().mXbaseanimkf);
++
++        if (hasMorrowindCommonActors)
+         {
+             workItem->mModels.push_back(Settings::models().mXbaseanim);
+             workItem->mModels.push_back(Settings::models().mXbaseanim1st);
+@@ -1061,7 +1092,7 @@ namespace MWRender
+             workItem->mKeyframes.push_back(Settings::models().mXargonianswimknakf);
+         }
+         else
+-            Log(Debug::Info) << "FNV/ESM4: skipped Morrowind common actor preloads for Fallout content";
++            Log(Debug::Info) << "World viewer: skipped Morrowind common actor preloads because xbase assets are absent";
+ 
+         workItem->mTextures.emplace_back("textures/_land_default.dds");
+ 
 diff --git a/apps/openmw/mwrender/sky.cpp b/apps/openmw/mwrender/sky.cpp
-index acdc840c33..b3986d2ba4 100644
+index acdc840c33..014472903c 100644
 --- a/apps/openmw/mwrender/sky.cpp
 +++ b/apps/openmw/mwrender/sky.cpp
 @@ -1,6 +1,8 @@
@@ -1728,12 +1917,13 @@ index acdc840c33..b3986d2ba4 100644
  #include <osg/PositionAttitudeTransform>
  
  #include <osgParticle/BoxPlacer>
-@@ -9,6 +11,13 @@
+@@ -9,6 +11,14 @@
  #include <osgParticle/Operator>
  #include <osgParticle/ParticleSystemUpdater>
  
 +#include <algorithm>
 +#include <cstdlib>
++#include <initializer_list>
 +#include <limits>
 +#include <sstream>
 +#include <string>
@@ -1742,7 +1932,7 @@ index acdc840c33..b3986d2ba4 100644
  #include <components/settings/values.hpp>
  
  #include <components/debug/debuglog.hpp>
-@@ -42,26 +51,328 @@
+@@ -42,26 +52,466 @@
  
  namespace
  {
@@ -1796,6 +1986,118 @@ index acdc840c33..b3986d2ba4 100644
 +                         << ") mode=openmw-stock repeat-wrap uv-scroll=stock-negative runtime-supported";
 +    }
 +
++    VFS::Path::Normalized chooseExistingSkyTexture(
++        const VFS::Manager* vfs, std::initializer_list<std::string_view> candidates, std::string_view fallback)
++    {
++        if (vfs != nullptr)
++        {
++            for (std::string_view candidate : candidates)
++            {
++                VFS::Path::Normalized normalized{ std::string(candidate) };
++                if (vfs->exists(normalized))
++                    return normalized;
++            }
++        }
++
++        return VFS::Path::Normalized{ std::string(fallback) };
++    }
++
++    VFS::Path::Normalized resolveWeatherCloudTexture(
++        const VFS::Manager* vfs, VFS::Path::NormalizedView requested)
++    {
++        if (vfs != nullptr && vfs->exists(requested))
++            return VFS::Path::Normalized(requested);
++
++        const std::string_view value = requested.value();
++
++        if (value.find("clear") != std::string_view::npos)
++        {
++            return chooseExistingSkyTexture(vfs,
++                { "textures/sky/nvskyclouds.dds", "textures/sky/cloudsclear.dds",
++                    "textures/sky/cloudsclear02.dds", "textures/sky/skyrimcloudsupper01.dds",
++                    "textures/sky/cloudsupper01_d.dds", "textures/sky/wastelandcloudcloudyupper01.dds" },
++                value);
++        }
++
++        if (value.find("cloudy") != std::string_view::npos)
++        {
++            return chooseExistingSkyTexture(vfs,
++                { "textures/sky/nvskyclouds.dds", "textures/sky/cloudscloudy.dds",
++                    "textures/sky/wastelandcloudcloudyupper01.dds", "textures/sky/skyrimcloudsupper02.dds",
++                    "textures/sky/cloudsupper02_d.dds" },
++                value);
++        }
++
++        if (value.find("fog") != std::string_view::npos)
++        {
++            return chooseExistingSkyTexture(vfs,
++                { "textures/sky/cloudsfog.dds", "textures/sky/cloudsfoglower.dds",
++                    "textures/sky/wastelandcloudhorizon01.dds", "textures/sky/skyrimcloudshorizon01.dds",
++                    "textures/sky/cloudshorizon01_d.dds" },
++                value);
++        }
++
++        if (value.find("thunder") != std::string_view::npos)
++        {
++            return chooseExistingSkyTexture(vfs,
++                { "textures/sky/cloudsthunderstorm.dds", "textures/sky/wastelandcloudcloudyupper01.dds",
++                    "textures/sky/skyrimcloudsupper04.dds", "textures/sky/cloudsupper04_d.dds" },
++                value);
++        }
++
++        if (value.find("rain") != std::string_view::npos)
++        {
++            return chooseExistingSkyTexture(vfs,
++                { "textures/sky/cloudsrain.dds", "textures/sky/wastelandcloudcloudyupper01.dds",
++                    "textures/sky/skyrimcloudsupper04.dds", "textures/sky/cloudsupper04_d.dds" },
++                value);
++        }
++
++        if (value.find("overcast") != std::string_view::npos)
++        {
++            return chooseExistingSkyTexture(vfs,
++                { "textures/sky/cloudsovercast.dds", "textures/sky/urbancloudovercastupper01.dds",
++                    "textures/sky/skyrimcloudsupper03.dds", "textures/sky/cloudsupper03_d.dds" },
++                value);
++        }
++
++        if (value.find("snow") != std::string_view::npos || value.find("blizzard") != std::string_view::npos)
++        {
++            return chooseExistingSkyTexture(vfs,
++                { "textures/sky/cloudssnow.dds", "textures/sky/skyrimcloudsupper04.dds",
++                    "textures/sky/cloudsupper04_d.dds", "textures/sky/wastelandcloudcloudyupper01.dds" },
++                value);
++        }
++
++        return chooseExistingSkyTexture(vfs,
++            { "textures/sky/nvskyclouds.dds", "textures/sky/cloudsclear.dds",
++                "textures/sky/skyrimcloudsupper01.dds", "textures/sky/cloudsupper01_d.dds",
++                "textures/sky/wastelandcloudcloudyupper01.dds" },
++            value);
++    }
++
++    void pushFirstExistingSkyTexture(Resource::SceneManager& sceneManager,
++        std::vector<VFS::Path::Normalized>& textures, std::initializer_list<std::string_view> candidates,
++        std::string_view label)
++    {
++        const VFS::Manager* vfs = sceneManager.getVFS();
++        if (vfs != nullptr)
++        {
++            for (std::string_view candidate : candidates)
++            {
++                VFS::Path::Normalized normalized{ std::string(candidate) };
++                if (vfs->exists(normalized))
++                {
++                    textures.push_back(normalized);
++                    return;
++                }
++            }
++        }
++
++        if (logMissingSkyAssets())
++            Log(Debug::Info) << "FNV/ESM4: skipped preload for missing isolated sky texture " << label;
++    }
++
 +    float falloutSkyMeshScaleMultiplier()
 +    {
 +        if (const char* value = std::getenv("OPENMW_FNV_SKY_MESH_SCALE"))
@@ -1807,6 +2109,32 @@ index acdc840c33..b3986d2ba4 100644
 +        }
 +
 +        return 1.f;
++    }
++
++    float nativeSkyTargetRadius()
++    {
++        if (const char* value = std::getenv("OPENMW_FNV_SKY_TARGET_RADIUS"))
++        {
++            char* end = nullptr;
++            const float parsed = std::strtof(value, &end);
++            if (end != value && parsed > 1.f)
++                return parsed;
++        }
++
++        return 1024.f;
++    }
++
++    float nativeSkyCloudOpacity()
++    {
++        if (const char* value = std::getenv("OPENMW_FNV_NATIVE_CLOUD_OPACITY"))
++        {
++            char* end = nullptr;
++            const float parsed = std::strtof(value, &end);
++            if (end != value)
++                return std::clamp(parsed, 0.f, 1.f);
++        }
++
++        return 0.f;
 +    }
 +
 +    struct FalloutSkyMeshFit
@@ -2013,7 +2341,7 @@ index acdc840c33..b3986d2ba4 100644
 +            return fit;
 +
 +        const float viewDistance = Settings::camera().mViewingDistance.get();
-+        const float targetRadius = std::max(1024.f, viewDistance * 0.82f);
++        const float targetRadius = nativeSkyTargetRadius();
 +        const float scale = (targetRadius / radius) * falloutSkyMeshScaleMultiplier();
 +        root.setScale(osg::Vec3f(scale, scale, scale));
 +        fit.mRadius = radius;
@@ -2075,7 +2403,7 @@ index acdc840c33..b3986d2ba4 100644
              return;
          }
  
-@@ -264,6 +575,8 @@ namespace MWRender
+@@ -264,6 +714,8 @@ namespace MWRender
          : mSceneManager(sceneManager)
          , mCamera(camera)
          , mAtmosphereNightRoll(0.f)
@@ -2084,7 +2412,7 @@ index acdc840c33..b3986d2ba4 100644
          , mCreated(false)
          , mIsStorm(false)
          , mTimescaleClouds(Fallback::Map::getBool("Weather_Timescale_Clouds"))
-@@ -275,6 +588,12 @@ namespace MWRender
+@@ -275,6 +727,12 @@ namespace MWRender
          , mCloudBlendFactor(0.f)
          , mCloudSpeed(0.f)
          , mStarsOpacity(0.f)
@@ -2097,7 +2425,7 @@ index acdc840c33..b3986d2ba4 100644
          , mRainSpeed(0.f)
          , mRainDiameter(0.f)
          , mRainMinHeight(0.f)
-@@ -292,10 +611,6 @@ namespace MWRender
+@@ -292,10 +750,6 @@ namespace MWRender
      {
          mSkyRootNode = new CameraRelativeTransform;
          mSkyRootNode->setName("Sky Root");
@@ -2108,7 +2436,7 @@ index acdc840c33..b3986d2ba4 100644
          mSceneManager->setUpNormalsRTForStateSet(mSkyRootNode->getOrCreateStateSet(), false);
          SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*mSkyRootNode->getOrCreateStateSet());
          parentNode->addChild(mSkyRootNode);
-@@ -327,17 +642,37 @@ namespace MWRender
+@@ -327,17 +781,37 @@ namespace MWRender
      {
          assert(!mCreated);
  
@@ -2149,7 +2477,7 @@ index acdc840c33..b3986d2ba4 100644
          }
  
          mAtmosphereNightNode = new osg::PositionAttitudeTransform;
-@@ -345,21 +680,32 @@ namespace MWRender
+@@ -345,21 +819,32 @@ namespace MWRender
          mEarlyRenderBinRoot->addChild(mAtmosphereNightNode);
  
          osg::ref_ptr<osg::Node> atmosphereNight;
@@ -2189,14 +2517,15 @@ index acdc840c33..b3986d2ba4 100644
          }
  
          mSun = std::make_unique<Sun>(mEarlyRenderBinRoot, *mSceneManager);
-@@ -377,10 +723,17 @@ namespace MWRender
+@@ -377,10 +862,17 @@ namespace MWRender
              = getOptionalSkyInstance(*mSceneManager, Settings::models().mSkyclouds.get(), mCloudMesh, "clouds");
          if (cloudMeshChild)
          {
 -            mCloudUpdater = new CloudUpdater(forceShaders);
+-            mCloudUpdater->setOpacity(1.f);
 +            mCloudUpdater = new CloudUpdater();
-             mCloudUpdater->setOpacity(1.f);
 +            const bool falloutClouds = isFalloutSkyMesh(Settings::models().mSkyclouds.get());
++            mCloudUpdater->setOpacity(falloutClouds ? nativeSkyCloudOpacity() : 1.f);
              cloudMeshChild->addUpdateCallback(mCloudUpdater);
 -            mCloudMesh->addChild(cloudMeshChild);
 +            if (falloutClouds)
@@ -2209,14 +2538,14 @@ index acdc840c33..b3986d2ba4 100644
          }
  
          mNextCloudMesh = new osg::PositionAttitudeTransform;
-@@ -388,10 +741,17 @@ namespace MWRender
+@@ -388,10 +880,17 @@ namespace MWRender
              = getOptionalSkyInstance(*mSceneManager, Settings::models().mSkyclouds.get(), mNextCloudMesh, "next clouds");
          if (nextCloudMeshChild)
          {
 -            mNextCloudUpdater = new CloudUpdater(forceShaders);
 +            mNextCloudUpdater = new CloudUpdater();
-             mNextCloudUpdater->setOpacity(0.f);
 +            const bool falloutClouds = isFalloutSkyMesh(Settings::models().mSkyclouds.get());
+             mNextCloudUpdater->setOpacity(0.f);
              nextCloudMeshChild->addUpdateCallback(mNextCloudUpdater);
 -            mNextCloudMesh->addChild(nextCloudMeshChild);
 +            if (falloutClouds)
@@ -2229,7 +2558,7 @@ index acdc840c33..b3986d2ba4 100644
          }
          mNextCloudMesh->setNodeMask(0);
  
-@@ -400,12 +760,15 @@ namespace MWRender
+@@ -400,12 +899,15 @@ namespace MWRender
  
          if (mCloudUpdater || mNextCloudUpdater)
          {
@@ -2249,7 +2578,7 @@ index acdc840c33..b3986d2ba4 100644
          {
              Shader::ShaderManager::DefineMap defines = {};
              Stereo::shaderStereoDefines(defines);
-@@ -414,6 +777,12 @@ namespace MWRender
+@@ -414,6 +916,12 @@ namespace MWRender
              mEarlyRenderBinRoot->getOrCreateStateSet()->setAttributeAndModes(
                  program, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
          }
@@ -2262,7 +2591,7 @@ index acdc840c33..b3986d2ba4 100644
  
          osg::ref_ptr<osg::Depth> depth = new SceneUtil::AutoDepth;
          depth->setWriteMask(false);
-@@ -432,14 +801,14 @@ namespace MWRender
+@@ -432,14 +940,14 @@ namespace MWRender
              return;
  
          mRainNode = new osg::Group;
@@ -2280,7 +2609,7 @@ index acdc840c33..b3986d2ba4 100644
  
          osg::ref_ptr<osg::StateSet> stateset = mRainParticleSystem->getOrCreateStateSet();
  
-@@ -564,7 +933,7 @@ namespace MWRender
+@@ -564,7 +1072,7 @@ namespace MWRender
  
      bool SkyManager::getRainRipplesEnabled() const
      {
@@ -2289,7 +2618,7 @@ index acdc840c33..b3986d2ba4 100644
              return false;
  
          if (hasRain())
-@@ -578,10 +947,7 @@ namespace MWRender
+@@ -578,10 +1086,7 @@ namespace MWRender
  
      float SkyManager::getPrecipitationAlpha() const
      {
@@ -2301,7 +2630,7 @@ index acdc840c33..b3986d2ba4 100644
      }
  
      void SkyManager::update(float duration)
-@@ -752,8 +1118,9 @@ namespace MWRender
+@@ -752,8 +1257,9 @@ namespace MWRender
              {
                  if (!mSceneManager->getVFS()->exists(mCurrentParticleEffect))
                  {
@@ -2313,7 +2642,7 @@ index acdc840c33..b3986d2ba4 100644
                      mCurrentParticleEffect.clear();
                      if (mParticleNode)
                      {
-@@ -769,7 +1136,6 @@ namespace MWRender
+@@ -769,7 +1275,6 @@ namespace MWRender
                  {
                      mParticleNode = new osg::PositionAttitudeTransform;
                      mParticleNode->addCullCallback(mUnderwaterSwitch);
@@ -2321,7 +2650,7 @@ index acdc840c33..b3986d2ba4 100644
                      mParticleNode->setNodeMask(Mask_WeatherParticles);
                      mSkyNode->addChild(mParticleNode);
                  }
-@@ -795,7 +1161,7 @@ namespace MWRender
+@@ -795,7 +1300,7 @@ namespace MWRender
                          = static_cast<osgParticle::ParticleSystem*>(findPSVisitor.mFoundNodes[i]);
  
                      osg::ref_ptr<osgParticle::ModularProgram> program = new osgParticle::ModularProgram;
@@ -2330,29 +2659,71 @@ index acdc840c33..b3986d2ba4 100644
                          program->addOperator(new WrapAroundOperator(mCamera, defaultWrapRange));
                      program->addOperator(new WeatherAlphaOperator(mPrecipitationAlpha, false));
                      program->setParticleSystem(ps);
-@@ -831,8 +1197,8 @@ namespace MWRender
+@@ -831,8 +1336,10 @@ namespace MWRender
  
              if (mCloudUpdater)
              {
--                const VFS::Path::Normalized texture
--                    = Misc::ResourceHelpers::correctTexturePath(mClouds, mSceneManager->getVFS());
-+                const VFS::Path::Normalized texture = Misc::ResourceHelpers::correctTexturePath(
++                const VFS::Path::Normalized requested = Misc::ResourceHelpers::correctTexturePath(
 +                    VFS::Path::toNormalized(mClouds), mSceneManager->getVFS());
+                 const VFS::Path::Normalized texture
+-                    = Misc::ResourceHelpers::correctTexturePath(mClouds, mSceneManager->getVFS());
++                    = resolveWeatherCloudTexture(mSceneManager->getVFS(), requested);
  
                  osg::ref_ptr<osg::Texture2D> cloudTex
                      = new osg::Texture2D(mSceneManager->getImageManager()->getImage(texture));
-@@ -855,8 +1221,8 @@ namespace MWRender
+@@ -840,6 +1347,9 @@ namespace MWRender
+                 cloudTex->setWrap(osg::Texture::WRAP_T, osg::Texture::REPEAT);
+ 
+                 mCloudUpdater->setTexture(std::move(cloudTex));
++                if (logMissingSkyAssets() && texture != requested)
++                    Log(Debug::Info) << "FNV/ESM4: remapped weather cloud texture " << requested.value()
++                                     << " -> " << texture.value();
+             }
+         }
+ 
+@@ -855,8 +1365,10 @@ namespace MWRender
  
              if (!mNextClouds.empty() && mNextCloudUpdater)
              {
--                const VFS::Path::Normalized texture
--                    = Misc::ResourceHelpers::correctTexturePath(mNextClouds, mSceneManager->getVFS());
-+                const VFS::Path::Normalized texture = Misc::ResourceHelpers::correctTexturePath(
++                const VFS::Path::Normalized requested = Misc::ResourceHelpers::correctTexturePath(
 +                    VFS::Path::toNormalized(mNextClouds), mSceneManager->getVFS());
+                 const VFS::Path::Normalized texture
+-                    = Misc::ResourceHelpers::correctTexturePath(mNextClouds, mSceneManager->getVFS());
++                    = resolveWeatherCloudTexture(mSceneManager->getVFS(), requested);
  
                  osg::ref_ptr<osg::Texture2D> cloudTex
                      = new osg::Texture2D(mSceneManager->getImageManager()->getImage(texture));
-@@ -903,6 +1269,24 @@ namespace MWRender
+@@ -864,6 +1376,9 @@ namespace MWRender
+                 cloudTex->setWrap(osg::Texture::WRAP_T, osg::Texture::REPEAT);
+ 
+                 mNextCloudUpdater->setTexture(std::move(cloudTex));
++                if (logMissingSkyAssets() && texture != requested)
++                    Log(Debug::Info) << "FNV/ESM4: remapped next weather cloud texture " << requested.value()
++                                     << " -> " << texture.value();
+                 mNextStormDirection = weather.mStormDirection;
+             }
+         }
+@@ -871,13 +1386,16 @@ namespace MWRender
+         if (mCloudBlendFactor != weather.mCloudBlendFactor)
+         {
+             mCloudBlendFactor = std::clamp(weather.mCloudBlendFactor, 0.f, 1.f);
++            const float nativeCloudOpacity
++                = isFalloutSkyMesh(Settings::models().mSkyclouds.get()) ? nativeSkyCloudOpacity() : 1.f;
+ 
+             if (mCloudUpdater)
+-                mCloudUpdater->setOpacity(1.f - mCloudBlendFactor);
++                mCloudUpdater->setOpacity((1.f - mCloudBlendFactor) * nativeCloudOpacity);
+             if (mNextCloudUpdater)
+-                mNextCloudUpdater->setOpacity(mCloudBlendFactor);
++                mNextCloudUpdater->setOpacity(mCloudBlendFactor * nativeCloudOpacity);
+             if (mNextCloudMesh)
+-                mNextCloudMesh->setNodeMask(mCloudBlendFactor > 0.f && mNextCloudUpdater ? ~0u : 0);
++                mNextCloudMesh->setNodeMask(
++                    mCloudBlendFactor > 0.f && nativeCloudOpacity > 0.f && mNextCloudUpdater ? ~0u : 0);
+         }
+ 
+         if (mCloudColour != weather.mFogColor)
+@@ -903,6 +1421,24 @@ namespace MWRender
              mSecunda->setAtmosphereColor(mSkyColour);
          }
  
@@ -2377,7 +2748,7 @@ index acdc840c33..b3986d2ba4 100644
          if (mFogColour != weather.mFogColor)
          {
              mFogColour = weather.mFogColor;
-@@ -915,6 +1299,18 @@ namespace MWRender
+@@ -915,6 +1451,18 @@ namespace MWRender
  
          mSun->setColor(weather.mSunDiscColor);
          mSun->adjustTransparency(weather.mGlareView * weather.mSunDiscColor.a());
@@ -2396,7 +2767,7 @@ index acdc840c33..b3986d2ba4 100644
  
          float nextStarsOpacity = weather.mNightFade * weather.mGlareView;
  
-@@ -927,7 +1323,9 @@ namespace MWRender
+@@ -927,7 +1475,9 @@ namespace MWRender
          }
  
          if (mAtmosphereNightNode)
@@ -2407,6 +2778,74 @@ index acdc840c33..b3986d2ba4 100644
          mPrecipitationAlpha = weather.mPrecipitationAlpha;
      }
  
+@@ -1017,31 +1567,42 @@ namespace MWRender
+         pushOptionalSkyModel(*mSceneManager, models, Settings::models().mWeathersnow, "snow");
+         pushOptionalSkyModel(*mSceneManager, models, Settings::models().mWeatherblizzard, "blizzard");
+ 
+-        textures.emplace_back("textures/tx_mooncircle_full_s.dds");
+-        textures.emplace_back("textures/tx_mooncircle_full_m.dds");
+-
+-        textures.emplace_back("textures/tx_masser_new.dds");
+-        textures.emplace_back("textures/tx_masser_one_wax.dds");
+-        textures.emplace_back("textures/tx_masser_half_wax.dds");
+-        textures.emplace_back("textures/tx_masser_three_wax.dds");
+-        textures.emplace_back("textures/tx_masser_one_wan.dds");
+-        textures.emplace_back("textures/tx_masser_half_wan.dds");
+-        textures.emplace_back("textures/tx_masser_three_wan.dds");
+-        textures.emplace_back("textures/tx_masser_full.dds");
+-
+-        textures.emplace_back("textures/tx_secunda_new.dds");
+-        textures.emplace_back("textures/tx_secunda_one_wax.dds");
+-        textures.emplace_back("textures/tx_secunda_half_wax.dds");
+-        textures.emplace_back("textures/tx_secunda_three_wax.dds");
+-        textures.emplace_back("textures/tx_secunda_one_wan.dds");
+-        textures.emplace_back("textures/tx_secunda_half_wan.dds");
+-        textures.emplace_back("textures/tx_secunda_three_wan.dds");
+-        textures.emplace_back("textures/tx_secunda_full.dds");
+-
+-        textures.emplace_back("textures/tx_sun_05.dds");
+-        textures.emplace_back("textures/tx_sun_flash_grey_05.dds");
+-
+-        textures.emplace_back("textures/tx_raindrop_01.dds");
++        pushFirstExistingSkyTexture(*mSceneManager, textures,
++            { "textures/sky/secunda_full.dds", "textures/sky/skymoonfull.dds",
++                "textures/tx_mooncircle_full_s.dds" },
++            "Secunda moon circle");
++        pushFirstExistingSkyTexture(*mSceneManager, textures,
++            { "textures/sky/masser_full.dds", "textures/tx_mooncircle_full_m.dds" },
++            "Masser moon circle");
++
++        for (std::string_view phase :
++            { "new", "one_wax", "half_wax", "three_wax", "one_wan", "half_wan", "three_wan", "full" })
++        {
++            const std::string masserNative = "textures/sky/masser_" + std::string(phase) + ".dds";
++            const std::string masserFallback = "textures/tx_masser_" + std::string(phase) + ".dds";
++            pushFirstExistingSkyTexture(*mSceneManager, textures, { masserNative, masserFallback },
++                std::string("Masser phase ") + std::string(phase));
++
++            const std::string secundaNative = "textures/sky/secunda_" + std::string(phase) + ".dds";
++            const std::string secundaFallback = "textures/tx_secunda_" + std::string(phase) + ".dds";
++            pushFirstExistingSkyTexture(*mSceneManager, textures,
++                { secundaNative, "textures/sky/skymoonfull.dds", secundaFallback },
++                std::string("Secunda phase ") + std::string(phase));
++        }
++
++        pushFirstExistingSkyTexture(*mSceneManager, textures,
++            { "textures/sky/sun.dds", "textures/sky/sun_d.dds", "textures/lensflare/sun01.dds",
++                "textures/tx_sun_05.dds" },
++            "sun disc");
++        pushFirstExistingSkyTexture(*mSceneManager, textures,
++            { "textures/sky/nv_sunglare.dds", "textures/sky/sunglare.dds", "textures/sky/sunglarenonhdr.dds",
++                "textures/sky/sunglare_d.dds", "textures/lensflare/suncolor.dds",
++                "textures/tx_sun_flash_grey_05.dds" },
++            "sun glare");
++
++        pushFirstExistingSkyTexture(*mSceneManager, textures,
++            { "textures/sky/raindrop.dds", "textures/tx_raindrop_01.dds" },
++            "raindrop");
+     }
+ 
+     void SkyManager::setWaterEnabled(bool enabled)
 diff --git a/apps/openmw/mwrender/sky.hpp b/apps/openmw/mwrender/sky.hpp
 index 6d33165c36..2a0104977c 100644
 --- a/apps/openmw/mwrender/sky.hpp
@@ -2432,10 +2871,20 @@ index 6d33165c36..2a0104977c 100644
          VFS::Path::Normalized mCurrentParticleEffect;
  
 diff --git a/apps/openmw/mwrender/skyutil.cpp b/apps/openmw/mwrender/skyutil.cpp
-index bba6f61029..03498c63f5 100644
+index bba6f61029..e6cc08a1b0 100644
 --- a/apps/openmw/mwrender/skyutil.cpp
 +++ b/apps/openmw/mwrender/skyutil.cpp
-@@ -11,7 +11,6 @@
+@@ -2,6 +2,9 @@
+ 
+ #include <array>
+ #include <cmath>
++#include <initializer_list>
++#include <string>
++#include <string_view>
+ 
+ #include <osg/AlphaFunc>
+ #include <osg/BlendFunc>
+@@ -11,7 +14,6 @@
  #include <osg/Material>
  #include <osg/OcclusionQueryNode>
  #include <osg/PositionAttitudeTransform>
@@ -2443,7 +2892,7 @@ index bba6f61029..03498c63f5 100644
  #include <osg/TexMat>
  #include <osg/Transform>
  #include <osg/observer_ptr>
-@@ -60,18 +59,19 @@ namespace
+@@ -60,18 +62,19 @@ namespace
          osg::ref_ptr<osg::Geometry> geom = new osg::Geometry;
  
          osg::ref_ptr<osg::Vec3Array> verts = new osg::Vec3Array;
@@ -2469,7 +2918,42 @@ index bba6f61029..03498c63f5 100644
  
          osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
          colors->push_back(osg::Vec4(1.f, 1.f, 1.f, 1.f));
-@@ -120,6 +120,14 @@ namespace
+@@ -94,12 +97,20 @@ namespace
+         stateset.setRenderBinDetails(renderBin, "RenderBin");
+     }
+ 
+-    bool hasFalloutSkyContent(Resource::SceneManager& sceneManager)
++    bool hasNativeBethesdaSkyContent(Resource::SceneManager& sceneManager)
+     {
+         const VFS::Manager* vfs = sceneManager.getVFS();
+         if (vfs != nullptr
+             && (vfs->exists(VFS::Path::NormalizedView("meshes/creatures/nvraven/skeleton.nif"))
+                 || vfs->exists(VFS::Path::NormalizedView("meshes/clutter/flags/nv_nevadaflag.nif"))
++                || vfs->exists(VFS::Path::NormalizedView("meshes/sky/atmosphere.nif"))
++                || vfs->exists(VFS::Path::NormalizedView("meshes/sky/clouds.nif"))
++                || vfs->exists(VFS::Path::NormalizedView("meshes/sky/stars.nif"))
++                || vfs->exists(VFS::Path::NormalizedView("textures/sky/sun.dds"))
++                || vfs->exists(VFS::Path::NormalizedView("textures/sky/sun_d.dds"))
++                || vfs->exists(VFS::Path::NormalizedView("textures/sky/skymoonfull.dds"))
++                || vfs->exists(VFS::Path::NormalizedView("textures/sky/secunda_full.dds"))
++                || vfs->exists(VFS::Path::NormalizedView("textures/sky/skyrimcloudsupper01.dds"))
+                 || vfs->exists(VFS::Path::NormalizedView("falloutnv.esm"))))
+             return true;
+ 
+@@ -109,7 +120,11 @@ namespace
+ 
+         for (const std::string& file : world->getContentFiles())
+         {
+-            if (file.find("FalloutNV.esm") != std::string::npos || file.find("falloutnv.esm") != std::string::npos)
++            if (file.find("FalloutNV.esm") != std::string::npos || file.find("falloutnv.esm") != std::string::npos
++                || file.find("Fallout3.esm") != std::string::npos || file.find("fallout3.esm") != std::string::npos
++                || file.find("Oblivion.esm") != std::string::npos || file.find("oblivion.esm") != std::string::npos
++                || file.find("Skyrim.esm") != std::string::npos || file.find("skyrim.esm") != std::string::npos
++                || file.find("Fallout4.esm") != std::string::npos || file.find("fallout4.esm") != std::string::npos)
+                 return true;
+         }
+ 
+@@ -120,6 +135,30 @@ namespace
      {
          osg::BoundingSphere computeBound(const osg::Node& node) const override { return osg::BoundingSphere(); }
      };
@@ -2481,10 +2965,26 @@ index bba6f61029..03498c63f5 100644
 +            return VFS::Path::Normalized(preferred);
 +        return VFS::Path::Normalized(fallback);
 +    }
++
++    VFS::Path::Normalized chooseExistingTexture(
++        const VFS::Manager* vfs, std::initializer_list<std::string_view> candidates, std::string_view fallback)
++    {
++        if (vfs != nullptr)
++        {
++            for (std::string_view candidate : candidates)
++            {
++                VFS::Path::Normalized normalized{ std::string(candidate) };
++                if (vfs->exists(normalized))
++                    return normalized;
++            }
++        }
++
++        return VFS::Path::Normalized{ std::string(fallback) };
++    }
  }
  
  namespace MWRender
-@@ -213,7 +221,7 @@ namespace MWRender
+@@ -213,7 +252,7 @@ namespace MWRender
  
              if (visibleRatio > 0.f)
              {
@@ -2493,7 +2993,7 @@ index bba6f61029..03498c63f5 100644
                  if (visibleRatio < fadeThreshold)
                  {
                      float fade = 1.f - (fadeThreshold - visibleRatio) / fadeThreshold;
-@@ -224,7 +232,7 @@ namespace MWRender
+@@ -224,7 +263,7 @@ namespace MWRender
                  }
                  else if (visibleRatio < 1.f)
                  {
@@ -2502,7 +3002,7 @@ index bba6f61029..03498c63f5 100644
                      visibleRatio = visibleRatio * (1.f - threshold) + threshold;
                  }
              }
-@@ -338,8 +346,8 @@ namespace MWRender
+@@ -338,8 +377,8 @@ namespace MWRender
  
              forward.normalize();
              sun.normalize();
@@ -2513,7 +3013,7 @@ index bba6f61029..03498c63f5 100644
          }
  
          osg::ref_ptr<osg::PositionAttitudeTransform> mSunTransform;
-@@ -352,92 +360,37 @@ namespace MWRender
+@@ -352,92 +391,37 @@ namespace MWRender
  
      struct MoonUpdater : SceneUtil::StateSetUpdater
      {
@@ -2625,7 +3125,7 @@ index bba6f61029..03498c63f5 100644
          }
  
          void setTextures(VFS::Path::NormalizedView phaseTex, VFS::Path::NormalizedView circleTex)
-@@ -451,6 +404,11 @@ namespace MWRender
+@@ -451,6 +435,11 @@ namespace MWRender
  
              reset();
          }
@@ -2637,7 +3137,7 @@ index bba6f61029..03498c63f5 100644
      };
  
      class CameraRelativeTransformCullCallback
-@@ -499,23 +457,64 @@ namespace MWRender
+@@ -499,23 +488,64 @@ namespace MWRender
          mEmissionColor = emissionColor;
      }
  
@@ -2706,7 +3206,7 @@ index bba6f61029..03498c63f5 100644
      {
          mTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
          mTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
-@@ -528,42 +527,17 @@ namespace MWRender
+@@ -528,42 +558,17 @@ namespace MWRender
  
      void AtmosphereNightUpdater::setDefaults(osg::StateSet* stateset)
      {
@@ -2753,7 +3253,7 @@ index bba6f61029..03498c63f5 100644
      {
      }
  
-@@ -595,30 +569,10 @@ namespace MWRender
+@@ -595,30 +600,10 @@ namespace MWRender
          osg::ref_ptr<osg::TexMat> texmat = new osg::TexMat;
          stateset->setTextureAttributeAndModes(0, texmat);
  
@@ -2787,7 +3287,7 @@ index bba6f61029..03498c63f5 100644
      }
  
      void CloudUpdater::apply(osg::StateSet* stateset, osg::NodeVisitor* nv)
-@@ -631,18 +585,7 @@ namespace MWRender
+@@ -631,18 +616,7 @@ namespace MWRender
          osg::TexMat* texMat = static_cast<osg::TexMat*>(stateset->getTextureAttribute(0, osg::StateAttribute::TEXMAT));
          texMat->setMatrix(mTexMat);
  
@@ -2807,7 +3307,7 @@ index bba6f61029..03498c63f5 100644
      }
  
      class SkyStereoStatesetUpdater : public SceneUtil::StateSetUpdater
-@@ -696,47 +639,6 @@ namespace MWRender
+@@ -696,47 +670,6 @@ namespace MWRender
      private:
      };
  
@@ -2855,11 +3355,11 @@ index bba6f61029..03498c63f5 100644
      CameraRelativeTransform::CameraRelativeTransform()
      {
          // Culling works in node-local space, not in camera space, so we can't cull this node correctly
-@@ -844,27 +746,17 @@ namespace MWRender
+@@ -844,27 +777,18 @@ namespace MWRender
      Sun::Sun(osg::Group* parentNode, Resource::SceneManager& sceneManager)
          : CelestialBody(parentNode, 1.0f, 1, Mask_Sun)
          , mUpdater(new SunUpdater)
-+        , mFalloutSkyContent(hasFalloutSkyContent(sceneManager))
++        , mFalloutSkyContent(hasNativeBethesdaSkyContent(sceneManager))
      {
 -        if (hasFalloutSkyContent(sceneManager))
 -        {
@@ -2881,15 +3381,16 @@ index bba6f61029..03498c63f5 100644
 -            Log(Debug::Info) << "FNV/ESM4: disabled OpenMW sun billboard; missing Morrowind texture " << image;
 -            return;
 -        }
-+        const VFS::Path::Normalized image = chooseExistingTexture(
-+            sceneManager.getVFS(), VFS::Path::Normalized("textures/sky/sun.dds"),
-+            VFS::Path::Normalized("textures/tx_sun_05.dds"));
++        const VFS::Path::Normalized image = chooseExistingTexture(sceneManager.getVFS(),
++            { "textures/sky/sun.dds", "textures/sky/sun_d.dds", "textures/lensflare/sun01.dds",
++                "textures/sky/soulcairnsun01.dds" },
++            "textures/tx_sun_05.dds");
 +        if (mFalloutSkyContent)
-+            Log(Debug::Info) << "FNV/ESM4: enabled FNV sun billboard using texture " << image.value();
++            Log(Debug::Info) << "FNV/ESM4: enabled native Bethesda sun billboard using texture " << image.value();
  
          osg::ref_ptr<osg::Texture2D> sunTex = new osg::Texture2D(imageManager.getImage(image));
          sunTex->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
-@@ -872,8 +764,7 @@ namespace MWRender
+@@ -872,8 +796,7 @@ namespace MWRender
  
          osg::StateSet* sunStateSet = mGeom->getOrCreateStateSet();
          sunStateSet->setTextureAttributeAndModes(0, sunTex);
@@ -2899,7 +3400,7 @@ index bba6f61029..03498c63f5 100644
          sunStateSet->addUniform(new osg::Uniform("pass", static_cast<int>(Pass::Sun)));
          setAlphaBlendedSkyBillboard(*sunStateSet);
  
-@@ -882,14 +773,6 @@ namespace MWRender
+@@ -882,14 +805,6 @@ namespace MWRender
          osg::StateSet* stateset = queryNode->getOrCreateStateSet();
          stateset->setRenderBinDetails(RenderBin_OcclusionQuery, "RenderBin");
          stateset->setNestRenderBins(false);
@@ -2914,7 +3415,7 @@ index bba6f61029..03498c63f5 100644
          stateset->setTextureAttributeAndModes(0, sunTex);
          stateset->setTextureAttributeAndModes(0, new SceneUtil::TextureType("diffuseMap"), osg::StateAttribute::ON);
          stateset->setAttributeAndModes(createUnlitMaterial());
-@@ -904,10 +787,7 @@ namespace MWRender
+@@ -904,10 +819,7 @@ namespace MWRender
          mOcclusionQueryVisiblePixels = createOcclusionQueryNode(queryNode, true);
          mOcclusionQueryTotalPixels = createOcclusionQueryNode(queryNode, false);
  
@@ -2926,7 +3427,7 @@ index bba6f61029..03498c63f5 100644
          createSunGlare();
      }
  
-@@ -1011,10 +891,15 @@ namespace MWRender
+@@ -1011,10 +923,16 @@ namespace MWRender
          return oqn;
      }
  
@@ -2936,23 +3437,24 @@ index bba6f61029..03498c63f5 100644
 -        constexpr VFS::Path::NormalizedView flashImage("textures/tx_sun_flash_grey_05.dds");
 -        osg::ref_ptr<osg::Texture2D> tex = new osg::Texture2D(imageManager.getImage(flashImage));
 +        Resource::ImageManager& imageManager = *sceneManager.getImageManager();
-+        const VFS::Path::Normalized image = chooseExistingTexture(
-+            sceneManager.getVFS(), VFS::Path::Normalized("textures/sky/nv_sunglare.dds"),
-+            VFS::Path::Normalized("textures/tx_sun_flash_grey_05.dds"));
++        const VFS::Path::Normalized image = chooseExistingTexture(sceneManager.getVFS(),
++            { "textures/sky/nv_sunglare.dds", "textures/sky/sunglare.dds", "textures/sky/sunglarenonhdr.dds",
++                "textures/sky/sunglare_d.dds", "textures/sky/sunglare.dds", "textures/lensflare/suncolor.dds" },
++            "textures/tx_sun_flash_grey_05.dds");
 +        if (mFalloutSkyContent)
-+            Log(Debug::Info) << "FNV/ESM4: enabled FNV sun glare using texture " << image.value();
++            Log(Debug::Info) << "FNV/ESM4: enabled native Bethesda sun glare using texture " << image.value();
 +        osg::ref_ptr<osg::Texture2D> tex = new osg::Texture2D(imageManager.getImage(image));
          tex->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
          tex->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
  
-@@ -1102,34 +987,11 @@ namespace MWRender
+@@ -1102,34 +1020,11 @@ namespace MWRender
          : CelestialBody(parentNode, scaleFactor, 2)
          , mType(type)
          , mPhase(MoonState::Phase::Unspecified)
 -        , mUpdater(new MoonUpdater(*sceneManager.getImageManager(), sceneManager.getForceShaders()))
 +        , mVFS(sceneManager.getVFS())
 +        , mUpdater(new MoonUpdater(*sceneManager.getImageManager()))
-+        , mFalloutSkyContent(hasFalloutSkyContent(sceneManager))
++        , mFalloutSkyContent(hasNativeBethesdaSkyContent(sceneManager))
      {
 -        if (hasFalloutSkyContent(sceneManager))
 -        {
@@ -2984,7 +3486,7 @@ index bba6f61029..03498c63f5 100644
          setVisible(true);
  
          setAlphaBlendedSkyBillboard(*mGeom->getOrCreateStateSet());
-@@ -1221,55 +1083,62 @@ namespace MWRender
+@@ -1221,55 +1116,65 @@ namespace MWRender
  
          mPhase = phase;
  
@@ -3037,36 +3539,39 @@ index bba6f61029..03498c63f5 100644
 -        textureName += ".dds";
 -
 -        const VFS::Path::Normalized texturePath(std::move(textureName));
-+        const std::string fallbackTextureName
-+            = "textures/tx_" + std::string(mType == Moon::Type_Secunda ? "secunda_" : "masser_") + suffix + ".dds";
-+        const std::string fonvTextureName = mType == Moon::Type_Secunda
-+            ? "textures/sky/skymoonfull.dds"
-+            : "textures/sky/masser_" + suffix + ".dds";
-+        const VFS::Path::Normalized texturePath = chooseExistingTexture(
-+            mVFS, VFS::Path::Normalized(fonvTextureName), VFS::Path::Normalized(fallbackTextureName));
++        const std::string moonName = mType == Moon::Type_Secunda ? "secunda_" : "masser_";
++        const std::string fallbackTextureName = "textures/tx_" + moonName + suffix + ".dds";
++        const std::string nativePhaseTextureName = "textures/sky/" + moonName + suffix + ".dds";
++        const VFS::Path::Normalized texturePath = mType == Moon::Type_Secunda
++            ? chooseExistingTexture(mVFS,
++                { nativePhaseTextureName, "textures/sky/skymoonfull.dds", "textures/sky/skysecunda.dds",
++                    "textures/sky/secunda_full.dds" },
++                fallbackTextureName)
++            : chooseExistingTexture(mVFS, { nativePhaseTextureName, "textures/sky/skymasser.dds" },
++                fallbackTextureName);
 +        if (mFalloutSkyContent)
-+            Log(Debug::Info) << "FNV/ESM4: enabled FNV "
++            Log(Debug::Info) << "FNV/ESM4: enabled native Bethesda "
 +                             << (mType == Moon::Type_Secunda ? "Secunda" : "Masser")
 +                             << " moon billboard using texture " << texturePath.value();
  
          if (mType == Moon::Type_Secunda)
          {
 -            constexpr VFS::Path::NormalizedView secunda("textures/tx_mooncircle_full_s.dds");
-+            const VFS::Path::Normalized secunda = chooseExistingTexture(
-+                mVFS, VFS::Path::Normalized("textures/sky/skymoonfull.dds"),
-+                VFS::Path::Normalized("textures/tx_mooncircle_full_s.dds"));
++            const VFS::Path::Normalized secunda = chooseExistingTexture(mVFS,
++                { "textures/sky/secunda_full.dds", "textures/sky/skymoonfull.dds", "textures/sky/skysecunda.dds" },
++                "textures/tx_mooncircle_full_s.dds");
              mUpdater->setTextures(texturePath, secunda);
          }
          else
          {
 -            constexpr VFS::Path::NormalizedView masser("textures/tx_mooncircle_full_m.dds");
 +            const VFS::Path::Normalized masser = chooseExistingTexture(
-+                mVFS, VFS::Path::Normalized("textures/sky/masser_full.dds"),
-+                VFS::Path::Normalized("textures/tx_mooncircle_full_m.dds"));
++                mVFS, { "textures/sky/masser_full.dds", "textures/sky/skymasser.dds" },
++                "textures/tx_mooncircle_full_m.dds");
              mUpdater->setTextures(texturePath, masser);
          }
      }
-@@ -1290,7 +1159,7 @@ namespace MWRender
+@@ -1290,7 +1195,7 @@ namespace MWRender
      void RainShooter::shoot(osgParticle::Particle* particle) const
      {
          particle->setVelocity(mVelocity);
@@ -3075,7 +3580,7 @@ index bba6f61029..03498c63f5 100644
      }
  
      void RainShooter::setVelocity(const osg::Vec3f& velocity)
-@@ -1339,7 +1208,7 @@ namespace MWRender
+@@ -1339,7 +1244,7 @@ namespace MWRender
                      if (i >= 49 && i <= 64)
                          alpha = 0.f; // bottom-most row
                      else if (i >= 33 && i <= 48)
@@ -4796,6 +5301,99 @@ index f2e8347ef1..34dd1cd79c 100644
          osg::ref_ptr<osg::Group> mRoot;
  
          MWRender::RayResult mPointerRay = {};
+diff --git a/apps/openmw/mwworld/esmstore.cpp b/apps/openmw/mwworld/esmstore.cpp
+index 53d49050a5..734fb91b02 100644
+--- a/apps/openmw/mwworld/esmstore.cpp
++++ b/apps/openmw/mwworld/esmstore.cpp
+@@ -1,6 +1,7 @@
+ #include "esmstore.hpp"
+ 
+ #include <algorithm>
++#include <cctype>
+ #include <cstdlib>
+ #include <fstream>
+ #include <tuple>
+@@ -95,11 +96,38 @@ namespace
+         throw std::runtime_error("List of NPC races is empty!");
+     }
+ 
++    bool containsAsciiNoCase(std::string_view value, std::string_view needle)
++    {
++        auto it = std::search(value.begin(), value.end(), needle.begin(), needle.end(),
++            [](char left, char right) {
++                return std::tolower(static_cast<unsigned char>(left)) == std::tolower(static_cast<unsigned char>(right));
++            });
++        return it != value.end();
++    }
++
++    std::string_view chooseViewerPlayerSkeleton(const MWWorld::Store<ESM4::World>& worlds,
++        const MWWorld::Store<ESM4::ArmorAddon>& armorAddons, const MWWorld::Store<ESM4::HeadPart>& headParts)
++    {
++        for (const ESM4::World& world : worlds)
++        {
++            if (containsAsciiNoCase(world.mEditorId, "Wasteland") || containsAsciiNoCase(world.mEditorId, "DCWorld"))
++                return "characters/_male/skeleton.nif";
++            if (containsAsciiNoCase(world.mEditorId, "Commonwealth"))
++                return "actors/character/character assets/skeleton.nif";
++        }
++
++        const bool hasTes5ActorParts = armorAddons.begin() != armorAddons.end() || headParts.begin() != headParts.end();
++        if (hasTes5ActorParts)
++            return "actors/character/character assets/skeleton.nif";
++
++        return "characters/_male/skeleton.nif";
++    }
++
+     void ensureFalloutCharacterDefaults(MWWorld::Store<ESM::Class>& classes, MWWorld::Store<ESM::Race>& races,
+         MWWorld::Store<ESM::Skill>& skills, MWWorld::Store<ESM::MagicEffect>& magicEffects,
+         MWWorld::Store<ESM::Dialogue>& dialogues, MWWorld::Store<ESM::NPC>& npcs,
+         MWWorld::Store<ESM::Weapon>& weapons, MWWorld::Store<ESM::Potion>& potions,
+-        MWWorld::Store<ESM::Miscellaneous>& miscItems)
++        MWWorld::Store<ESM::Miscellaneous>& miscItems, std::string_view playerSkeleton)
+     {
+         const ESM::RefId classId = ESM::RefId::stringRefId("FNV_Courier");
+         const ESM::RefId raceId = ESM::RefId::stringRefId("FNV_Wastelander");
+@@ -199,7 +227,7 @@ namespace
+             player.mId = ESM::RefId::stringRefId("Player");
+             player.blank();
+             player.mName = "Courier";
+-            player.mModel = "characters/_male/skeleton.nif";
++            player.mModel = std::string(playerSkeleton);
+             player.mRace = raceId;
+             player.mClass = classId;
+             player.mNpdt.mLevel = 1;
+@@ -211,7 +239,8 @@ namespace
+             player.mNpdt.mDisposition = 50;
+             player.mNpdt.mGold = 0;
+             npcs.insertStatic(player);
+-            Log(Debug::Info) << "FNV/ESM4: inserted fallback ESM3 Player NPC for normal save/load";
++            Log(Debug::Info) << "FNV/ESM4: inserted fallback ESM3 Player NPC for normal save/load model="
++                             << player.mModel;
+         }
+ 
+         const auto ensureWeapon = [&weapons](
+@@ -824,7 +853,9 @@ namespace MWWorld
+             ensureFalloutCharacterDefaults(
+                 getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
+                 getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
+-                getWritable<ESM::Potion>(), getWritable<ESM::Miscellaneous>());
++                getWritable<ESM::Potion>(), getWritable<ESM::Miscellaneous>(),
++                chooseViewerPlayerSkeleton(
++                    getWritable<ESM4::World>(), getWritable<ESM4::ArmorAddon>(), getWritable<ESM4::HeadPart>()));
+         rebuildIdsIndex();
+         mStoreImp->mStaticIds = mStoreImp->mIds;
+         std::vector<ESM::NPC> npcsToReplace = getNPCsToReplace(getWritable<ESM::Faction>(), getWritable<ESM::Class>(),
+@@ -873,7 +904,9 @@ namespace MWWorld
+             ensureFalloutCharacterDefaults(
+                 getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
+                 getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
+-                getWritable<ESM::Potion>(), getWritable<ESM::Miscellaneous>());
++                getWritable<ESM::Potion>(), getWritable<ESM::Miscellaneous>(),
++                chooseViewerPlayerSkeleton(
++                    getWritable<ESM4::World>(), getWritable<ESM4::ArmorAddon>(), getWritable<ESM4::HeadPart>()));
+         rebuildIdsIndex();
+         auto& scripts = getWritable<ESM::Script>();
+ 
 diff --git a/apps/openmw/mwworld/weather.cpp b/apps/openmw/mwworld/weather.cpp
 index 783e5c270b..0f5a4ea186 100644
 --- a/apps/openmw/mwworld/weather.cpp
@@ -5041,10 +5639,57 @@ index 62d761af27..d4679105b1 100644
  
          /**
 diff --git a/apps/openmw/mwworld/worldimp.cpp b/apps/openmw/mwworld/worldimp.cpp
-index c9128df6a4..74faa8c93c 100644
+index c9128df6a4..594eecb99e 100644
 --- a/apps/openmw/mwworld/worldimp.cpp
 +++ b/apps/openmw/mwworld/worldimp.cpp
-@@ -2728,6 +2728,50 @@ namespace MWWorld
+@@ -545,32 +545,46 @@ namespace MWWorld
+     void World::init(Debug::Level maxRecastLogLevel, osgViewer::Viewer* viewer, osg::ref_ptr<osg::Group> rootNode,
+         SceneUtil::WorkQueue* workQueue, SceneUtil::UnrefQueue& unrefQueue, std::unique_ptr<MWRender::Camera> camera)
+     {
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init begin";
+         mPhysics = std::make_unique<MWPhysics::PhysicsSystem>(mResourceSystem, rootNode);
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init physics ready";
+ 
+         if (Settings::navigator().mEnable)
+         {
+             auto navigatorSettings = DetourNavigator::makeSettingsFromSettingsManager(maxRecastLogLevel);
+             navigatorSettings.mRecast.mSwimHeightScale = mSwimHeightScale;
+             mNavigator = DetourNavigator::makeNavigator(navigatorSettings, mUserDataPath);
++            Log(Debug::Info) << "FNV/ESM4 diag: World::init navigator ready";
+         }
+         else
+         {
+             mNavigator = DetourNavigator::makeNavigatorStub();
++            Log(Debug::Info) << "FNV/ESM4 diag: World::init navigator stub ready";
+         }
+ 
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init rendering begin";
+         mRendering = std::make_unique<MWRender::RenderingManager>(
+ //## VR_PATCH BEGIN
+             viewer, rootNode, mResourceSystem, workQueue, *mNavigator, mGroundcoverStore, unrefQueue, std::move(camera));
+ 
+ 
+ //## VR_PATCH END
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init rendering ready";
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init projectile manager begin";
+         mProjectileManager = std::make_unique<ProjectileManager>(
+             mRendering->getLightRoot()->asGroup(), mResourceSystem, mRendering.get(), mPhysics.get());
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init projectile manager ready";
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init preload common assets begin";
+         mRendering->preloadCommonAssets();
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init preload common assets queued";
+ 
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init weather manager begin";
+         mWeatherManager = std::make_unique<MWWorld::WeatherManager>(*mRendering, mStore);
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init weather manager ready";
+ 
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init world scene begin";
+         mWorldScene = std::make_unique<Scene>(*this, *mRendering.get(), mPhysics.get(), *mNavigator);
++        Log(Debug::Info) << "FNV/ESM4 diag: World::init world scene ready";
+     }
+ 
+     void World::fillGlobalVariables()
+@@ -2728,6 +2742,50 @@ namespace MWWorld
                  state = MWWorld::DoorState::Closing; // if opening, then close
                  break;
          }
@@ -5125,13 +5770,18 @@ index 77409f9326..0c250b7451 100644
 +    set(HAS_DOUBLE_PRECISION_BULLET ${RESULT_VAR})
 +endif()
 diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
-index a583941dee..bdabc2e30f 100644
+index a583941dee..40119afa35 100644
 --- a/components/nifosg/nifloader.cpp
 +++ b/components/nifosg/nifloader.cpp
-@@ -173,6 +173,16 @@ namespace
+@@ -173,6 +173,21 @@ namespace
              || name.find("bip01 root") != std::string::npos;
      }
  
++    bool enableExperimentalSkyShaderProperties()
++    {
++        return std::getenv("OPENMW_FNV_ENABLE_SKY_SHADER_PROPERTIES") != nullptr;
++    }
++
 +    std::string remapFalloutSkyTexture(std::string_view texture)
 +    {
 +        const std::string lower = Misc::StringUtils::lowerCase(texture);
@@ -5145,7 +5795,17 @@ index a583941dee..bdabc2e30f 100644
      bool isActivationOnlyAnimationPath(std::string_view filename)
      {
          return containsAny(filename,
-@@ -1279,6 +1289,15 @@ namespace NifOsg
+@@ -270,6 +285,9 @@ namespace
+         const bool ambientPath = isAmbientEmbeddedAnimationPath(filename);
+         const bool falloutFlagPath = isFalloutFlagPath(filename);
+ 
++        if (ambientPath && !falloutFlagPath && (sequenceName == "specialidle" || sequenceName == "idle"))
++            return true;
++
+         std::string key = sequenceName;
+         for (const Nif::ControlledBlock& block : sequence.mControlledBlocks)
+         {
+@@ -1279,6 +1297,15 @@ namespace NifOsg
              if (args.mRootNode && Misc::StringUtils::ciEqual(nifNode->mName, "Bounding Box"))
                  return nullptr;
  
@@ -5161,7 +5821,7 @@ index a583941dee..bdabc2e30f 100644
              osg::ref_ptr<osg::Group> node = createNode(nifNode);
  
              if (nifNode->recType == Nif::RC_NiBillboardNode)
-@@ -1416,7 +1435,6 @@ namespace NifOsg
+@@ -1416,7 +1443,6 @@ namespace NifOsg
              if (isGeometry && !args.mSkipMeshes)
              {
                  bool skip = false;
@@ -5169,12 +5829,15 @@ index a583941dee..bdabc2e30f 100644
                  if (isFalloutHiddenMorphShape(nifNode->mName)
                      && containsAny(filename, { "meshes/characters/", "meshes\\characters\\", "meshes/armor/",
                             "meshes\\armor\\", "characters/", "characters\\", "armor/", "armor\\" }))
-@@ -3584,6 +3602,49 @@ namespace NifOsg
+@@ -3584,6 +3610,55 @@ namespace NifOsg
                      handleDepthFlags(stateset, texprop->depthTest(), texprop->depthWrite());
                      break;
                  }
 +                case Nif::RC_SkyShaderProperty:
 +                {
++                    if (!enableExperimentalSkyShaderProperties())
++                        break;
++
 +                    auto texprop = static_cast<const Nif::SkyShaderProperty*>(property);
 +                    node->setUserValue("shaderPrefix", std::string("bs/nolighting"));
 +                    node->setUserValue("shaderRequired", true);
@@ -5197,6 +5860,9 @@ index a583941dee..bdabc2e30f 100644
 +                }
 +                case Nif::RC_BSSkyShaderProperty:
 +                {
++                    if (!enableExperimentalSkyShaderProperties())
++                        break;
++
 +                    auto texprop = static_cast<const Nif::BSSkyShaderProperty*>(property);
 +                    node->setUserValue("shaderPrefix", std::string("bs/nolighting"));
 +                    node->setUserValue("shaderRequired", true);
@@ -5927,7 +6593,7 @@ index 238286a087..78fae3c3ac 100644
      if(gl_FragColor.a == 0.0) discard;
  }
 diff --git a/files/shaders/compatibility/sky.frag b/files/shaders/compatibility/sky.frag
-index 1e1dfb71e4..765b997526 100644
+index 1e1dfb71e4..7fcd42ce52 100644
 --- a/files/shaders/compatibility/sky.frag
 +++ b/files/shaders/compatibility/sky.frag
 @@ -8,6 +8,10 @@ uniform sampler2D maskMap;      // PASS_MOON
@@ -5952,7 +6618,7 @@ index 1e1dfb71e4..765b997526 100644
 +        vec3 lowerBand = mix(
 +            falloutAtmosphereSkyHorizonColor.rgb, falloutAtmosphereSkyLowerColor.rgb, smoothstep(0.0, 0.22, gradient));
 +        color.rgb = mix(lowerBand, falloutAtmosphereSkyUpperColor.rgb, smoothstep(0.22, 0.58, gradient));
-+        color.a = 1.0;
++        color.a *= passColor.a;
 +    }
 +    else
 +        color.a *= passColor.a;
