@@ -9,7 +9,7 @@ param(
     [string]$StartCellOverride = "",
     [int]$WindowCaptureSeconds = 0,
     [int]$TelemetryInterval = 30,
-    [int]$Esm4GridRadius = 0,
+    [int]$Esm4GridRadius = -1,
     [switch]$NoTelemetry,
     [switch]$AllowBadScreenshots,
     [switch]$ShowGui,
@@ -680,9 +680,6 @@ try {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
     }
-    if ($Esm4GridRadius -ge 0) {
-        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS", [string]$Esm4GridRadius, "Process")
-    }
     [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED", "1", "Process")
 
     foreach ($world in $selected) {
@@ -700,6 +697,25 @@ try {
             $startCell = $StartCellOverride
             $label = "manual probe"
         }
+
+        $worldGridRadius = $Esm4GridRadius
+        if ($worldGridRadius -lt 0) {
+            $startGridRadius = Get-PropertyValue $start "esm4GridRadius"
+            $defaultGridRadius = Get-PropertyValue $starts.defaults "esm4GridRadius"
+            if ($null -ne $startGridRadius) {
+                $worldGridRadius = [int]$startGridRadius
+            }
+            elseif ($null -ne $defaultGridRadius) {
+                $worldGridRadius = [int]$defaultGridRadius
+            }
+        }
+        if ($worldGridRadius -ge 0) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS", [string]$worldGridRadius, "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS", $null, "Process")
+        }
+
         $worldRunDir = Join-Path $absProofDir $world.id
         $userDataDir = Join-Path $worldRunDir "userdata"
         $stdoutLog = Join-Path $logsDir "$($world.id).stdout.log"
@@ -965,6 +981,7 @@ try {
             openmwLogSummary = $logSummary
             worldViewerTelemetry = $worldViewerTelemetry
             crashDump = $crashDump
+            esm4GridRadius = $worldGridRadius
             processLog = (Convert-ToForwardSlash -Path $stdoutLog)
             processErrorLog = (Convert-ToForwardSlash -Path $stderrLog)
             command = $commandLine
