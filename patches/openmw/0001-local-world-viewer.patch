@@ -262,10 +262,362 @@ index 59699d63a5..9edaad744d 100644
 +    endif()
  endif()
 diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
-index 7dd4db4d58..c71647bb82 100644
+index 7dd4db4d58..90e3f8a2c1 100644
 --- a/apps/openmw/engine.cpp
 +++ b/apps/openmw/engine.cpp
-@@ -802,6 +802,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -9,6 +9,7 @@
+ #include <cstdlib>
+ #include <future>
+ #include <optional>
++#include <span>
+ #include <string>
+ #include <string_view>
+ #include <system_error>
+@@ -120,6 +121,7 @@
+ 
+ #include "mwphysics/collisiontype.hpp"
+ #include "mwphysics/raycasting.hpp"
++#include "mwphysics/raycasting.hpp"
+ 
+ #include "mwrender/vismask.hpp"
+ 
+@@ -670,6 +672,335 @@ namespace
+                          << cameraPos.x() << "," << cameraPos.y() << "," << cameraPos.z()
+                          << ") cameraPitch=" << camera->getPitch() << " cameraYaw=" << camera->getYaw();
+     }
++
++    bool viewerTelemetryEnabled(const char* name)
++    {
++        const char* value = std::getenv(name);
++        if (value == nullptr || *value == '\0')
++            return false;
++
++        return !Misc::StringUtils::ciEqual(value, "0") && !Misc::StringUtils::ciEqual(value, "false")
++            && !Misc::StringUtils::ciEqual(value, "off") && !Misc::StringUtils::ciEqual(value, "no");
++    }
++
++    std::string safeWorldViewerPtrText(const MWWorld::Ptr& ptr)
++    {
++        if (ptr.isEmpty())
++            return "<none>";
++
++        try
++        {
++            return ptr.toString();
++        }
++        catch (const std::exception& e)
++        {
++            return std::string("<ptr failed: ") + e.what() + ">";
++        }
++    }
++
++    std::string safeWorldViewerPtrBase(const MWWorld::Ptr& ptr)
++    {
++        if (ptr.isEmpty())
++            return "<none>";
++
++        try
++        {
++            return ptr.getCellRef().getRefId().toDebugString();
++        }
++        catch (const std::exception& e)
++        {
++            return std::string("<base failed: ") + e.what() + ">";
++        }
++    }
++
++    std::string safeWorldViewerPtrType(const MWWorld::Ptr& ptr)
++    {
++        if (ptr.isEmpty())
++            return "<none>";
++
++        try
++        {
++            return std::string(ptr.getTypeDescription());
++        }
++        catch (const std::exception& e)
++        {
++            return std::string("<type failed: ") + e.what() + ">";
++        }
++    }
++
++    std::string safeWorldViewerPtrName(const MWWorld::Ptr& ptr)
++    {
++        if (ptr.isEmpty())
++            return "<none>";
++
++        try
++        {
++            return std::string(ptr.getClass().getName(ptr));
++        }
++        catch (const std::exception& e)
++        {
++            return std::string("<name failed: ") + e.what() + ">";
++        }
++    }
++
++    bool isWorldViewerActorPtr(const MWWorld::Ptr& ptr)
++    {
++        if (ptr.isEmpty())
++            return false;
++
++        try
++        {
++            return ptr.getClass().isActor();
++        }
++        catch (const std::exception&)
++        {
++            return false;
++        }
++    }
++
++    void logWorldViewerRayResult(const char* kind, unsigned frameNumber, const osg::Vec3f& from,
++        const osg::Vec3f& to, const MWPhysics::RayCastingResult& result)
++    {
++        const float distance = result.mHit ? (result.mHitPos - from).length() : (to - from).length();
++        const MWWorld::Ptr& hitObject = result.mHitObject;
++
++        Log(Debug::Info) << "World viewer ray: kind=" << kind << " frame=" << frameNumber << " hit=" << result.mHit
++                         << " distance=" << distance << " actorHit=" << isWorldViewerActorPtr(hitObject)
++                         << " from=(" << from.x() << "," << from.y() << "," << from.z() << ") to=(" << to.x()
++                         << "," << to.y() << "," << to.z() << ") hitPos=(" << result.mHitPos.x() << ","
++                         << result.mHitPos.y() << "," << result.mHitPos.z() << ") hitNormal=("
++                         << result.mHitNormal.x() << "," << result.mHitNormal.y() << "," << result.mHitNormal.z()
++                         << ") hitBase=" << safeWorldViewerPtrBase(hitObject)
++                         << " hitType=\"" << safeWorldViewerPtrType(hitObject) << "\" hitName=\""
++                         << safeWorldViewerPtrName(hitObject) << "\" hitPtr=" << safeWorldViewerPtrText(hitObject);
++    }
++
++    void logWorldViewerTelemetry(MWWorld::World& world, osgViewer::Viewer& viewer, unsigned frameNumber, int state,
++        bool loadingGui, bool worldReady, int worldReadyFrames)
++    {
++        MWWorld::Ptr player;
++        try
++        {
++            player = world.getPlayerPtr();
++        }
++        catch (const std::exception& e)
++        {
++            Log(Debug::Warning) << "World viewer telemetry: player lookup failed: " << e.what();
++        }
++
++        MWWorld::CellStore* playerCell = !player.isEmpty() && player.isInCell() ? player.getCell() : nullptr;
++        const bool playerExterior = playerCell != nullptr && playerCell->isExterior();
++        ESM::Position playerPos = {};
++        if (!player.isEmpty())
++            playerPos = player.getRefData().getPosition();
++
++        MWRender::Camera* camera = world.getCamera();
++        const osg::Vec3d cameraPos = camera != nullptr ? camera->getPosition() : osg::Vec3d();
++        const osg::Vec3f cameraPosF(cameraPos.x(), cameraPos.y(), cameraPos.z());
++        const osg::Vec3f playerPosF(playerPos.pos[0], playerPos.pos[1], playerPos.pos[2]);
++
++        Log(Debug::Info) << "World viewer telemetry: frame=" << frameNumber << " state=" << state
++                         << " loadingGui=" << loadingGui << " worldReady=" << worldReady
++                         << " readyFrames=" << worldReadyFrames
++                         << " activeCells=" << world.getWorldScene().getActiveCells().size()
++                         << " hour=" << world.getTimeStamp().getHour()
++                         << " weatherId=" << world.getCurrentWeatherScriptId()
++                         << " weatherTransition=" << world.getWeatherTransition()
++                         << " playerCell=\"" << (playerCell != nullptr ? world.getCellName(playerCell) : "<none>")
++                         << "\" exterior=" << playerExterior << " grid=("
++                         << (playerCell != nullptr && playerExterior ? playerCell->getCell()->getGridX() : 0)
++                         << ","
++                         << (playerCell != nullptr && playerExterior ? playerCell->getCell()->getGridY() : 0)
++                         << ") worldspace="
++                         << (playerCell != nullptr ? playerCell->getCell()->getWorldSpace().toDebugString() : "<none>")
++                         << " playerPos=(" << playerPos.pos[0] << "," << playerPos.pos[1] << ","
++                         << playerPos.pos[2] << ") playerRot=(" << playerPos.rot[0] << "," << playerPos.rot[1]
++                         << "," << playerPos.rot[2] << ") cameraMode="
++                         << (camera != nullptr ? static_cast<int>(camera->getMode()) : -1)
++                         << " cameraPos=(" << cameraPos.x() << "," << cameraPos.y() << "," << cameraPos.z()
++                         << ") cameraPitch=" << (camera != nullptr ? camera->getPitch() : 0.f)
++                         << " cameraYaw=" << (camera != nullptr ? camera->getYaw() : 0.f)
++                         << " cullMask=0x" << std::hex << viewer.getCamera()->getCullMask() << std::dec;
++
++        if (viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_RAY_TELEMETRY"))
++        {
++            const float rayMaxDistance = static_cast<float>(readProofInt("OPENMW_WORLD_VIEWER_RAY_DISTANCE", 200000));
++            const osg::Vec3f rayUpOffset(0.f, 0.f, 512.f);
++            const osg::Vec3f rayDown(0.f, 0.f, -rayMaxDistance);
++            const MWPhysics::RayCastingInterface* rayCasting = world.getRayCasting();
++            const int groundMask = MWPhysics::CollisionType_World | MWPhysics::CollisionType_HeightMap
++                | MWPhysics::CollisionType_Door | MWPhysics::CollisionType_Water;
++
++            if (rayCasting != nullptr)
++            {
++                const osg::Vec3f playerGroundFrom = playerPosF + rayUpOffset;
++                const osg::Vec3f playerGroundTo = playerGroundFrom + rayDown;
++                logWorldViewerRayResult("playerGround", frameNumber, playerGroundFrom, playerGroundTo,
++                    rayCasting->castRay(playerGroundFrom, playerGroundTo, groundMask));
++
++                const osg::Vec3f cameraGroundFrom = cameraPosF + rayUpOffset;
++                const osg::Vec3f cameraGroundTo = cameraGroundFrom + rayDown;
++                logWorldViewerRayResult("cameraGround", frameNumber, cameraGroundFrom, cameraGroundTo,
++                    rayCasting->castRay(cameraGroundFrom, cameraGroundTo, groundMask));
++            }
++
++            if (camera != nullptr)
++            {
++                osg::Vec3f forward = camera->getOrient() * osg::Vec3f(0.f, 1.f, 0.f);
++                forward.normalize();
++                const osg::Vec3f centerTo = cameraPosF + (forward * rayMaxDistance);
++                MWPhysics::RayCastingResult centerRay {};
++                world.castRenderingRay(centerRay, cameraPosF, centerTo, true, false, std::span<const MWWorld::Ptr> {});
++                logWorldViewerRayResult("cameraCenterRender", frameNumber, cameraPosF, centerTo, centerRay);
++            }
++        }
++
++        if (!viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_REF_TELEMETRY"))
++            return;
++
++        const int refLimit = readProofInt("OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT", 200);
++        const bool unlimitedRefs = refLimit == 0;
++        int refsLogged = 0;
++        int refsTotal = 0;
++        int actorRaysLogged = 0;
++        const int actorRayLimit = readProofInt("OPENMW_WORLD_VIEWER_ACTOR_RAY_LIMIT", 8);
++
++        for (MWWorld::CellStore* cellstore : world.getWorldScene().getActiveCells())
++        {
++            if (cellstore == nullptr)
++                continue;
++
++            int refs = 0;
++            int enabled = 0;
++            int rendered = 0;
++            int actors = 0;
++            int renderedActors = 0;
++            int doors = 0;
++            int deleted = 0;
++            int modelFailures = 0;
++            int nameFailures = 0;
++
++            cellstore->forEach([&](const MWWorld::Ptr& ptr) {
++                ++refs;
++                ++refsTotal;
++                const bool isDeleted = ptr.mRef != nullptr && ptr.mRef->isDeleted();
++                const bool isEnabled = ptr.getRefData().isEnabled();
++                const bool hasNode = ptr.getRefData().getBaseNode() != nullptr;
++                const bool isActor = ptr.getClass().isActor();
++                const bool isDoor = ptr.getClass().isDoor();
++                if (isDeleted)
++                    ++deleted;
++                if (isEnabled)
++                    ++enabled;
++                if (hasNode)
++                    ++rendered;
++                if (isActor)
++                    ++actors;
++                if (isActor && hasNode)
++                    ++renderedActors;
++                if (isDoor)
++                    ++doors;
++
++                std::string name;
++                try
++                {
++                    name = std::string(ptr.getClass().getName(ptr));
++                }
++                catch (const std::exception& e)
++                {
++                    ++nameFailures;
++                    name = std::string("<name failed: ") + e.what() + ">";
++                }
++
++                std::string model;
++                try
++                {
++                    model = ptr.getClass().getCorrectedModel(ptr).value();
++                }
++                catch (const std::exception& e)
++                {
++                    ++modelFailures;
++                    model = std::string("<model failed: ") + e.what() + ">";
++                }
++
++                if (unlimitedRefs || refsLogged < refLimit)
++                {
++                    const ESM::Position& pos = ptr.getRefData().getPosition();
++                    unsigned int nodeMask = 0;
++                    osg::Vec3d scenePos;
++                    if (ptr.getRefData().getBaseNode())
++                    {
++                        nodeMask = ptr.getRefData().getBaseNode()->getNodeMask();
++                        scenePos = ptr.getRefData().getBaseNode()->getPosition();
++                    }
++
++                    Log(Debug::Info) << "World viewer ref: cell=\"" << world.getCellName(cellstore)
++                                     << "\" ref=" << ptr.getCellRef().getRefNum().toString("FormId:")
++                                     << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                                     << " type=" << ptr.getTypeDescription() << " enabled=" << isEnabled
++                                     << " deleted=" << isDeleted << " rendered=" << hasNode << " actor="
++                                     << isActor << " door=" << isDoor << " name=\"" << name << "\" model=\""
++                                     << model << "\" pos=(" << pos.pos[0] << "," << pos.pos[1] << ","
++                                     << pos.pos[2] << ") rot=(" << pos.rot[0] << "," << pos.rot[1] << ","
++                                     << pos.rot[2] << ") scenePos=(" << scenePos.x() << "," << scenePos.y()
++                                     << "," << scenePos.z() << ") nodeMask=0x" << std::hex << nodeMask << std::dec
++                                     << " ptr=" << ptr.toString();
++                    ++refsLogged;
++                }
++
++                if (viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_RAY_TELEMETRY") && isActor && hasNode
++                    && actorRaysLogged < actorRayLimit)
++                {
++                    const ESM::Position& pos = ptr.getRefData().getPosition();
++                    osg::Vec3f actorCenter(pos.pos[0], pos.pos[1], pos.pos[2] + 64.f);
++                    if (ptr.getRefData().getBaseNode())
++                    {
++                        const osg::Vec3d nodePos = ptr.getRefData().getBaseNode()->getPosition();
++                        actorCenter = osg::Vec3f(nodePos.x(), nodePos.y(), nodePos.z() + 64.f);
++                    }
++
++                    if (camera != nullptr)
++                    {
++                        MWPhysics::RayCastingResult cameraActorRay {};
++                        world.castRenderingRay(
++                            cameraActorRay, cameraPosF, actorCenter, true, false, std::span<const MWWorld::Ptr> {});
++                        logWorldViewerRayResult("cameraActorRender", frameNumber, cameraPosF, actorCenter,
++                            cameraActorRay);
++                    }
++
++                    const MWPhysics::RayCastingInterface* rayCasting = world.getRayCasting();
++                    if (rayCasting != nullptr)
++                    {
++                        const osg::Vec3f actorCrossFrom = actorCenter + osg::Vec3f(0.f, -128.f, 0.f);
++                        const osg::Vec3f actorCrossTo = actorCenter + osg::Vec3f(0.f, 128.f, 0.f);
++                        std::vector<MWWorld::Ptr> targetActor { ptr };
++                        logWorldViewerRayResult("actorCrossPhysics", frameNumber, actorCrossFrom, actorCrossTo,
++                            rayCasting->castRay(actorCrossFrom, actorCrossTo, {}, targetActor,
++                                MWPhysics::CollisionType_Actor));
++                    }
++
++                    ++actorRaysLogged;
++                }
++                return true;
++            });
++
++            Log(Debug::Info) << "World viewer cell: name=\"" << world.getCellName(cellstore) << "\" exterior="
++                             << cellstore->isExterior() << " grid=("
++                             << (cellstore->isExterior() ? cellstore->getCell()->getGridX() : 0) << ","
++                             << (cellstore->isExterior() ? cellstore->getCell()->getGridY() : 0) << ") worldspace="
++                             << cellstore->getCell()->getWorldSpace().toDebugString() << " refs=" << refs
++                             << " enabled=" << enabled << " rendered=" << rendered
++                             << " missingRenderNode=" << (enabled - rendered) << " actors=" << actors
++                             << " renderedActors=" << renderedActors << " doors=" << doors << " deleted="
++                             << deleted << " nameFailures=" << nameFailures << " modelFailures=" << modelFailures;
++        }
++
++        if (!unlimitedRefs && refsTotal > refsLogged)
++        {
++            Log(Debug::Info) << "World viewer telemetry: ref dump truncated refsLogged=" << refsLogged
++                             << " refsTotal=" << refsTotal << " limit=" << refLimit;
++        }
++    }
+     // ## VR_PATCH BEGIN
+ 
+     class InitializeVrOperation : public osg::GraphicsOperation
+@@ -802,6 +1133,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      static int proofActorScreenshotLastResolveFrame = -1;
      static bool proofFirstPersonHidden = false;
      static bool proofGuiHidden = false;
@@ -273,7 +625,17 @@ index 7dd4db4d58..c71647bb82 100644
      static bool proofSkyDisabled = false;
      static bool proofGodModeEnabled = false;
      static bool proofDelayedStartupScriptExecuted = false;
-@@ -1261,6 +1262,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -810,6 +1142,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+     static bool fnvFlatStartupCameraSettled = false;
+     static bool proofScreenshotWaitLogged = false;
+     static int proofWorldReadyFrames = 0;
++    static bool worldViewerTelemetryLogged = false;
++    static unsigned int worldViewerTelemetryLastFrame = 0;
++    static bool worldViewerCameraWaitLogged = false;
+     const auto parseProofFormId = [](std::string_view value) -> std::optional<ESM::FormId> {
+         while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
+         while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
+@@ -1261,6 +1596,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      }
  
      const bool proofRunning = mStateManager->getState() == MWBase::StateManager::State_Running;
@@ -288,7 +650,87 @@ index 7dd4db4d58..c71647bb82 100644
      const bool proofLoadingGui = mWindowManager->containsMode(MWGui::GM_Loading)
          || mWindowManager->containsMode(MWGui::GM_LoadingWallpaper)
          || mWindowManager->containsMode(MWGui::GM_MainMenu);
-@@ -2490,12 +2499,19 @@ void OMW::Engine::prepareEngine()
+@@ -1270,6 +1613,20 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+     else
+         proofWorldReadyFrames = 0;
+ 
++    if (viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_TELEMETRY") && proofRunning && mWorld != nullptr)
++    {
++        const int telemetryInterval = readProofInt("OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL", 30);
++        const bool telemetryDue = !worldViewerTelemetryLogged || telemetryInterval <= 0
++            || frameNumber >= worldViewerTelemetryLastFrame + static_cast<unsigned int>(telemetryInterval);
++        if (telemetryDue)
++        {
++            logWorldViewerTelemetry(*mWorld, *mViewer, frameNumber, static_cast<int>(mStateManager->getState()),
++                proofLoadingGui, proofWorldReady, proofWorldReadyFrames);
++            worldViewerTelemetryLastFrame = frameNumber;
++            worldViewerTelemetryLogged = true;
++        }
++    }
++
+     if (!proofDelayedStartupScriptExecuted && std::getenv("OPENMW_PROOF_DELAY_STARTUP_SCRIPT") != nullptr
+         && !mStartupScript.empty() && proofWorldReady)
+     {
+@@ -1295,8 +1652,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+         proofFNVBootstrapApplied = true;
+     }
+ 
++    const char* worldViewerStartCameraMode = std::getenv("OPENMW_WORLD_VIEWER_START_CAMERA_MODE");
++    const bool worldViewerStaticStartCamera
++        = worldViewerStartCameraMode != nullptr && std::string(worldViewerStartCameraMode) == "static";
+     if (!fnvFlatStartupCameraSettled && proofWorldReady && proofWorldReadyFrames >= 2 && !VR::getVR()
+-        && hasFalloutNvContent(mContentFiles))
++        && hasFalloutNvContent(mContentFiles) && !worldViewerStaticStartCamera)
+     {
+         settleFNVFlatStartupCamera(*mWorld);
+         fnvFlatStartupCameraSettled = true;
+@@ -1894,6 +2254,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+         && frameNumber >= static_cast<unsigned>(proofScreenshotFrames[proofScreenshotFrameIndex]);
+     const bool proofScreenshotReadyFramesReached
+         = !proofScreenshotReadyQueued && proofScreenshotReadyFrames >= 0 && proofWorldReadyFrames >= proofScreenshotReadyFrames;
++    bool worldViewerCameraReadyForScreenshot = true;
++    if (!worldViewerStaticStartCamera && std::getenv("OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED") != nullptr
++        && std::getenv("OPENMW_WORLD_VIEWER_START_POS_X") != nullptr && mWorld != nullptr)
++    {
++        const MWWorld::Ptr player = mWorld->getPlayerPtr();
++        const osg::Vec3f cameraPos = mWorld->getCamera()->getPosition();
++        const osg::Vec3f playerPos = player.getRefData().getPosition().asVec3();
++        const float cameraDistanceToPlayer = (cameraPos - playerPos).length();
++        worldViewerCameraReadyForScreenshot = cameraDistanceToPlayer < 4096.f;
++        if (!worldViewerCameraReadyForScreenshot && !worldViewerCameraWaitLogged)
++        {
++            Log(Debug::Info) << "World viewer proof: waiting for camera settle before screenshot frame=" << frameNumber
++                             << " distanceToPlayer=" << cameraDistanceToPlayer << " cameraPos=(" << cameraPos.x()
++                             << "," << cameraPos.y() << "," << cameraPos.z() << ") playerPos=(" << playerPos.x()
++                             << "," << playerPos.y() << "," << playerPos.z() << ")";
++            worldViewerCameraWaitLogged = true;
++        }
++    }
+     const int proofActorAlignedScreenshotDelay = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_DELAY");
+     const int proofActorAlignedScreenshotMinFrame = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_MIN_FRAME");
+     const bool proofActorAlignedScreenshotReached = !proofActorAlignedScreenshotQueued && proofActorCameraAligned
+@@ -1931,6 +2309,20 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+             mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
+             return true;
+         }
++        if (!worldViewerCameraReadyForScreenshot)
++        {
++            mViewer->renderingTraversals();
++            mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
++            return true;
++        }
++
++        if (viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_TELEMETRY") && mWorld != nullptr)
++        {
++            logWorldViewerTelemetry(*mWorld, *mViewer, frameNumber, static_cast<int>(mStateManager->getState()),
++                proofLoadingGui, proofWorldReady, proofWorldReadyFrames);
++            worldViewerTelemetryLastFrame = frameNumber;
++            worldViewerTelemetryLogged = true;
++        }
+ 
+         Log(Debug::Info) << "FNV/ESM4 proof: queuing GUI-inclusive native screenshot at frame " << frameNumber
+                          << " hour=" << mWorld->getTimeStamp().getHour()
+@@ -2490,12 +2882,19 @@ void OMW::Engine::prepareEngine()
              asyncListener.update();
          dataLoading.get();
      }
@@ -308,7 +750,7 @@ index 7dd4db4d58..c71647bb82 100644
  
      // ## VR_PATCH BEGIN
      if (VR::getVR())
-@@ -2505,6 +2521,7 @@ void OMW::Engine::prepareEngine()
+@@ -2505,6 +2904,7 @@ void OMW::Engine::prepareEngine()
      // ## VR_PATCH END
  
      const MWWorld::Store<ESM::GameSetting>* gmst = &mWorld->getStore().get<ESM::GameSetting>();
@@ -316,7 +758,7 @@ index 7dd4db4d58..c71647bb82 100644
      mL10nManager->setGmstLoader(
          [gmst, misses = std::set<std::string, std::less<>>()](std::string_view gmstName) mutable {
              const ESM::GameSetting* res = gmst->search(gmstName);
-@@ -2520,34 +2537,48 @@ void OMW::Engine::prepareEngine()
+@@ -2520,34 +2920,48 @@ void OMW::Engine::prepareEngine()
                  return std::string("GMST:") + std::string(gmstName);
              }
          });
@@ -365,7 +807,7 @@ index 7dd4db4d58..c71647bb82 100644
  
      // scripts
      if (mCompileAll)
-@@ -2565,11 +2596,15 @@ void OMW::Engine::prepareEngine()
+@@ -2565,11 +2979,15 @@ void OMW::Engine::prepareEngine()
                               << 100 * static_cast<double>(result.second) / result.first << "%)";
      }
  
@@ -5394,6 +5836,60 @@ index 53d49050a5..734fb91b02 100644
          rebuildIdsIndex();
          auto& scripts = getWritable<ESM::Script>();
  
+diff --git a/apps/openmw/mwworld/scene.cpp b/apps/openmw/mwworld/scene.cpp
+index a30ee3237c..8547dda0d7 100644
+--- a/apps/openmw/mwworld/scene.cpp
++++ b/apps/openmw/mwworld/scene.cpp
+@@ -195,6 +195,31 @@ namespace
+         return true;
+     }
+ 
++    int getViewerEsm4CellGridRadius()
++    {
++        int radius = Constants::ESM4CellGridRadius;
++        int requested = radius;
++        if (parseFnvIntEnv("OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS", requested))
++        {
++            if (requested < 0)
++                requested = 0;
++            if (requested > 8)
++                requested = 8;
++            radius = requested;
++        }
++
++        static int loggedRadius = -1;
++        if (loggedRadius != radius)
++        {
++            loggedRadius = radius;
++            Log(Debug::Info) << "World viewer: ESM4 exterior grid radius=" << radius
++                             << " source="
++                             << (std::getenv("OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS") != nullptr ? "env" : "default");
++        }
++
++        return radius;
++    }
++
+     osg::Vec3f transformFnvFurnitureMarkerOffsetForProof(osg::Vec3f offset)
+     {
+         const char* mode = std::getenv("OPENMW_FNV_FURNITURE_MARKER_OFFSET_MODE");
+@@ -1005,7 +1030,7 @@ namespace MWWorld
+     void Scene::changeCellGrid(const osg::Vec3f& pos, ESM::ExteriorCellLocation playerCellIndex, bool changeEvent)
+     {
+         const int halfGridSize
+-            = isEsm4Ext(playerCellIndex.mWorldspace) ? Constants::ESM4CellGridRadius : Constants::CellGridRadius;
++            = isEsm4Ext(playerCellIndex.mWorldspace) ? getViewerEsm4CellGridRadius() : Constants::CellGridRadius;
+         auto navigatorUpdateGuard = mNavigator.makeUpdateGuard();
+         const int playerCellX = playerCellIndex.mX;
+         const int playerCellY = playerCellIndex.mY;
+@@ -1238,7 +1263,7 @@ namespace MWWorld
+ 
+     void Scene::changePlayerCell(CellStore& cell, const ESM::Position& pos, bool adjustPlayerPos)
+     {
+-        mHalfGridSize = cell.getCell()->isEsm4() ? Constants::ESM4CellGridRadius : Constants::CellGridRadius;
++        mHalfGridSize = cell.getCell()->isEsm4() ? getViewerEsm4CellGridRadius() : Constants::CellGridRadius;
+         mCurrentCell = &cell;
+ 
+         mRendering.enableTerrain(cell.isExterior(), cell.getCell()->getWorldSpace());
 diff --git a/apps/openmw/mwworld/weather.cpp b/apps/openmw/mwworld/weather.cpp
 index 783e5c270b..0f5a4ea186 100644
 --- a/apps/openmw/mwworld/weather.cpp
@@ -5639,10 +6135,163 @@ index 62d761af27..d4679105b1 100644
  
          /**
 diff --git a/apps/openmw/mwworld/worldimp.cpp b/apps/openmw/mwworld/worldimp.cpp
-index c9128df6a4..594eecb99e 100644
+index c9128df6a4..1322d3cb80 100644
 --- a/apps/openmw/mwworld/worldimp.cpp
 +++ b/apps/openmw/mwworld/worldimp.cpp
-@@ -545,32 +545,46 @@ namespace MWWorld
+@@ -1,7 +1,9 @@
+ #include "worldimp.hpp"
+ 
+ #include <charconv>
++#include <cmath>
+ #include <cstdlib>
++#include <string>
+ #include <vector>
+ 
+ #include <osg/ComputeBoundsVisitor>
+@@ -120,6 +122,142 @@ namespace MWWorld
+ {
+     namespace
+     {
++        bool readViewerProofFloat(const char* name, float& value)
++        {
++            const char* text = std::getenv(name);
++            if (text == nullptr || *text == '\0')
++                return false;
++
++            char* end = nullptr;
++            const float parsed = std::strtof(text, &end);
++            if (end == text)
++                return false;
++
++            value = parsed;
++            return true;
++        }
++
++        float readViewerProofFloatOr(const char* name, float fallback)
++        {
++            float value = fallback;
++            readViewerProofFloat(name, value);
++            return value;
++        }
++
++        bool readViewerProofHour(float& hour)
++        {
++            const char* value = std::getenv("OPENMW_FNV_BOOTSTRAP_HOUR");
++            if (value == nullptr || *value == '\0')
++                return false;
++
++            char* end = nullptr;
++            const float parsed = std::strtof(value, &end);
++            if (end == value)
++                return false;
++
++            hour = parsed;
++            if (hour < 0.f)
++                hour = 0.f;
++            else if (hour >= 24.f)
++                hour = std::fmod(hour, 24.f);
++            return true;
++        }
++
++        bool readViewerStartAnchor(ESM::Position& position)
++        {
++            if (!readViewerProofFloat("OPENMW_WORLD_VIEWER_START_POS_X", position.pos[0]))
++                return false;
++            if (!readViewerProofFloat("OPENMW_WORLD_VIEWER_START_POS_Y", position.pos[1]))
++                return false;
++            if (!readViewerProofFloat("OPENMW_WORLD_VIEWER_START_POS_Z", position.pos[2]))
++                return false;
++
++            position.rot[0] = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_ROT_X", 0.f);
++            position.rot[1] = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_ROT_Y", 0.f);
++            position.rot[2] = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_ROT_Z", 0.f);
++            return true;
++        }
++
++        bool viewerEnvEnabled(const char* name)
++        {
++            const char* value = std::getenv(name);
++            return value != nullptr && *value != '\0' && std::string(value) != "0";
++        }
++
++        void settleViewerStartCamera(MWRender::Camera* camera, const Ptr& player, const ESM::Position& position)
++        {
++            if (camera == nullptr || player.isEmpty())
++                return;
++
++            const char* cameraMode = std::getenv("OPENMW_WORLD_VIEWER_START_CAMERA_MODE");
++            const bool staticCamera = cameraMode != nullptr && std::string(cameraMode) == "static";
++            const bool thirdPerson = cameraMode != nullptr && std::string(cameraMode) == "thirdperson";
++            const float cameraDistance = readViewerProofFloatOr(
++                "OPENMW_WORLD_VIEWER_START_CAMERA_DISTANCE", thirdPerson ? 192.f : 0.f);
++            const float cameraPitch = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_PITCH", -position.rot[0]);
++            const float cameraYaw = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_YAW", -position.rot[2]);
++
++            if (staticCamera)
++            {
++                const osg::Vec3d playerTarget(position.pos[0], position.pos[1], position.pos[2] + 128.f);
++                osg::Vec3d target(
++                    readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X", playerTarget.x()),
++                    readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y", playerTarget.y()),
++                    readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z", playerTarget.z()));
++                osg::Vec3d eye(
++                    readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_POS_X", position.pos[0] + 2048.f),
++                    readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_POS_Y", position.pos[1] - 4096.f),
++                    readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z", position.pos[2] + 2048.f));
++
++                camera->setMode(MWRender::Camera::Mode::Static, true);
++                camera->setStaticPosition(eye);
++                const osg::Vec3d delta = target - eye;
++                const double horizontal = std::sqrt(delta.x() * delta.x() + delta.y() * delta.y());
++                camera->setPitch(static_cast<float>(std::atan2(delta.z(), horizontal)), true);
++                camera->setYaw(-static_cast<float>(std::atan2(delta.x(), delta.y())), true);
++                camera->setRoll(0.f);
++                camera->instantTransition();
++                camera->updateCamera();
++
++                Log(Debug::Info) << "World viewer: settled static survey camera eye=(" << eye.x() << ","
++                                 << eye.y() << "," << eye.z() << ") target=(" << target.x() << ","
++                                 << target.y() << "," << target.z() << ") pitch=" << camera->getPitch()
++                                 << " yaw=" << camera->getYaw();
++                return;
++            }
++
++            camera->attachTo(player);
++            camera->setMode(thirdPerson ? MWRender::Camera::Mode::ThirdPerson : MWRender::Camera::Mode::FirstPerson,
++                true);
++            camera->setPreferredCameraDistance(cameraDistance);
++            camera->processViewChange();
++            camera->update(0.f, false);
++            camera->instantTransition();
++            camera->setPitch(cameraPitch, true);
++            camera->setYaw(cameraYaw, true);
++            camera->setRoll(0.f);
++            camera->update(0.f, false);
++            camera->instantTransition();
++            camera->updateCamera();
++        }
++
++        void pinViewerStartAnchor(World& world, const ESM::Position& position)
++        {
++            MWWorld::Ptr player = world.getPlayerPtr();
++            player = world.moveObject(player, position.asVec3(), true, true);
++            if (viewerEnvEnabled("OPENMW_WORLD_VIEWER_START_DRY") && player.getCell() != nullptr)
++                player.getCell()->setWaterLevel(-200000.f);
++            world.rotateObject(player, position.asRotationVec3(), MWBase::RotationFlag_none);
++            settleViewerStartCamera(world.getCamera(), player, position);
++            const ESM::Position& actual = player.getRefData().getPosition();
++            const osg::Vec3d cameraPos = world.getCamera() != nullptr ? world.getCamera()->getPosition() : osg::Vec3d();
++            Log(Debug::Info) << "World viewer: pinned explicit start anchor pos=(" << actual.pos[0] << ", "
++                             << actual.pos[1] << ", " << actual.pos[2] << ") rot=(" << actual.rot[0] << ", "
++                             << actual.rot[1] << ", " << actual.rot[2] << ") dry="
++                             << viewerEnvEnabled("OPENMW_WORLD_VIEWER_START_DRY") << " cameraPos=("
++                             << cameraPos.x() << ", " << cameraPos.y() << ", " << cameraPos.z() << ")";
++        }
++
+         std::vector<std::pair<std::string_view, ESM::Variant>> generateDefaultGameSettings()
+         {
+             return {
+@@ -545,32 +683,46 @@ namespace MWWorld
      void World::init(Debug::Level maxRecastLogLevel, osgViewer::Viewer* viewer, osg::ref_ptr<osg::Group> rootNode,
          SceneUtil::WorkQueue* workQueue, SceneUtil::UnrefQueue& unrefQueue, std::unique_ptr<MWRender::Camera> camera)
      {
@@ -5689,7 +6338,78 @@ index c9128df6a4..594eecb99e 100644
      }
  
      void World::fillGlobalVariables()
-@@ -2728,6 +2742,50 @@ namespace MWWorld
+@@ -594,6 +746,14 @@ namespace MWWorld
+         // Rebuild player
+         setupPlayer();
+ 
++        float proofHour = 0.f;
++        if (readViewerProofHour(proofHour))
++        {
++            setGlobalFloat(Globals::sGameHour, proofHour);
++            advanceTime(0.0, false);
++            Log(Debug::Info) << "World viewer: applied proof start hour " << proofHour;
++        }
++
+         renderPlayer();
+         mRendering->getCamera()->reset();
+ 
+@@ -614,21 +774,41 @@ namespace MWWorld
+ 
+         if (bypass && !mStartCell.empty())
+         {
++            ESM::Position anchor;
++            const bool hasExplicitAnchor = readViewerStartAnchor(anchor);
++
+             ESM::Position pos;
+             ESM::RefId cellId = findExteriorPosition(mStartCell, pos);
+             if (!cellId.empty())
+             {
++                if (hasExplicitAnchor)
++                    pos = anchor;
+                 Log(Debug::Info) << "FNV/ESM4 diag: start cell '" << mStartCell << "' resolved as exterior "
+-                                 << cellId;
+-                changeToCell(cellId, pos, true);
+-                adjustPosition(getPlayerPtr(), false);
++                                 << cellId << " explicitAnchor=" << hasExplicitAnchor;
++                Log(Debug::Info) << "World viewer: start cell exterior change begin cell=" << cellId
++                                 << " pos=(" << pos.pos[0] << ", " << pos.pos[1] << ", " << pos.pos[2] << ")";
++                changeToCell(cellId, pos, !hasExplicitAnchor);
++                Log(Debug::Info) << "World viewer: start cell exterior change complete cell=" << cellId;
++                if (hasExplicitAnchor)
++                    pinViewerStartAnchor(*this, pos);
++                else
++                    adjustPosition(getPlayerPtr(), false);
++                Log(Debug::Info) << "World viewer: start cell exterior placement complete cell=" << cellId;
+             }
+             else
+             {
+                 cellId = findInteriorPosition(mStartCell, pos);
++                if (hasExplicitAnchor)
++                    pos = anchor;
+                 Log(Debug::Info) << "FNV/ESM4 diag: start cell '" << mStartCell << "' resolved as interior "
+-                                 << cellId;
+-                changeToInteriorCell(mStartCell, pos, true);
++                                 << cellId << " explicitAnchor=" << hasExplicitAnchor;
++                Log(Debug::Info) << "World viewer: start cell interior change begin cell=\"" << mStartCell
++                                 << "\" pos=(" << pos.pos[0] << ", " << pos.pos[1] << ", " << pos.pos[2] << ")";
++                changeToInteriorCell(mStartCell, pos, !hasExplicitAnchor);
++                Log(Debug::Info) << "World viewer: start cell interior change complete cell=\"" << mStartCell << "\"";
++                if (hasExplicitAnchor)
++                    pinViewerStartAnchor(*this, pos);
++                Log(Debug::Info) << "World viewer: start cell interior placement complete cell=\"" << mStartCell << "\"";
+             }
+         }
+         else
+@@ -672,6 +852,8 @@ namespace MWWorld
+ 
+         // Initial seed.
+         mPrng.seed(mRandomSeed);
++        Log(Debug::Info) << "World viewer: startNewGame complete bypass=" << bypass << " startCell='" << mStartCell
++                         << "' playerInCell=" << getPlayerPtr().isInCell();
+     }
+ 
+     void World::clear()
+@@ -2728,6 +2910,50 @@ namespace MWWorld
                  state = MWWorld::DoorState::Closing; // if opening, then close
                  break;
          }
@@ -5769,6 +6489,60 @@ index 77409f9326..0c250b7451 100644
 +        )
 +    set(HAS_DOUBLE_PRECISION_BULLET ${RESULT_VAR})
 +endif()
+diff --git a/components/esmterrain/storage.cpp b/components/esmterrain/storage.cpp
+index 73030ab96a..b05064dec6 100644
+--- a/components/esmterrain/storage.cpp
++++ b/components/esmterrain/storage.cpp
+@@ -413,8 +413,8 @@ namespace ESMTerrain
+             auto found = textureIndicesMap.find(texId);
+             if (found != textureIndicesMap.end())
+                 return blendmaps[found->second]->data();
+-            Terrain::LayerInfo info
+-                = texId.isZeroOrUnset() ? land->getEsm4DefaultLayerInfo() : getLandTextureLayerInfo(texId);
++            const Terrain::LayerInfo& defaultLayer = land->getEsm4DefaultLayerInfo();
++            Terrain::LayerInfo info = texId.isZeroOrUnset() ? defaultLayer : getLandTextureLayerInfo(texId, &defaultLayer);
+             osg::ref_ptr<osg::Image> image(new osg::Image);
+             image->allocateImage(blendmapSize, blendmapSize, 1, GL_ALPHA, GL_UNSIGNED_BYTE);
+             std::memset(image->data(), 0, image->getTotalDataSize());
+@@ -713,12 +713,23 @@ namespace ESMTerrain
+         return info;
+     }
+ 
+-    Terrain::LayerInfo Storage::getLandTextureLayerInfo(ESM::FormId id)
++    Terrain::LayerInfo Storage::getLandTextureLayerInfo(ESM::FormId id, const Terrain::LayerInfo* defaultLayer)
+     {
+         if (const ESM4::LandTexture* ltex = getEsm4LandTexture(id))
+         {
+             if (!ltex->mTextureFile.empty())
+-                return getLayerInfo("textures/landscape/" + ltex->mTextureFile); // TES4
++            {
++                const std::string diffuse = "textures/landscape/" + ltex->mTextureFile; // TES4/FO3/FNV
++                if (mVFS != nullptr && mVFS->exists(diffuse))
++                    return getLayerInfo(diffuse);
++
++                Log(Debug::Warning) << "World viewer terrain: missing ESM4 LTEX diffuse " << diffuse
++                                    << " for " << id.toString() << ", using LAND default";
++                if (defaultLayer != nullptr)
++                    return *defaultLayer;
++
++                return getLayerInfo("");
++            }
+             if (const ESM4::TextureSet* txst = getEsm4TextureSet(ltex->mTexture))
+                 return getTextureSetLayerInfo(*txst); // TES5
+             else
+diff --git a/components/esmterrain/storage.hpp b/components/esmterrain/storage.hpp
+index be3ba87751..27f902ae45 100644
+--- a/components/esmterrain/storage.hpp
++++ b/components/esmterrain/storage.hpp
+@@ -172,7 +172,7 @@ namespace ESMTerrain
+ 
+         Terrain::LayerInfo getLayerInfo(const std::string& texture);
+         Terrain::LayerInfo getTextureSetLayerInfo(const ESM4::TextureSet& txst);
+-        Terrain::LayerInfo getLandTextureLayerInfo(ESM::FormId id);
++        Terrain::LayerInfo getLandTextureLayerInfo(ESM::FormId id, const Terrain::LayerInfo* defaultLayer = nullptr);
+ 
+         void getEsm4Blendmaps(float chunkSize, const osg::Vec2f& chunkCenter, ImageVector& blendmaps,
+             std::vector<Terrain::LayerInfo>& layerList, ESM::RefId worldspace);
 diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
 index a583941dee..40119afa35 100644
 --- a/components/nifosg/nifloader.cpp
