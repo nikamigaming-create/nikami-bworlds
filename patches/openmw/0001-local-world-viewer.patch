@@ -6489,6 +6489,158 @@ index 77409f9326..0c250b7451 100644
 +        )
 +    set(HAS_DOUBLE_PRECISION_BULLET ${RESULT_VAR})
 +endif()
+diff --git a/components/crashcatcher/crashcatcher.cpp b/components/crashcatcher/crashcatcher.cpp
+index e460f04dcc..45872eb711 100644
+--- a/components/crashcatcher/crashcatcher.cpp
++++ b/components/crashcatcher/crashcatcher.cpp
+@@ -70,6 +70,12 @@ namespace
+ {
+     constexpr char crash_switch[] = "--cc-handle-crash";
+ 
++    bool suppressFatalDialogs()
++    {
++        const char* value = getenv("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG");
++        return value != nullptr && value[0] != '\0' && value[0] != '0';
++    }
++
+     struct SignalInfo
+     {
+         int mCode;
+@@ -434,7 +440,8 @@ static void crash_catcher(int signum, siginfo_t* siginfo, void* /*context*/)
+ 
+     const std::string message = "OpenMW has encountered a fatal error.\nCrash log saved to '" + std::string(logfile)
+         + "'.\n Please report this to https://gitlab.com/OpenMW/openmw/issues !";
+-    SDL_ShowSimpleMessageBox(0, "Fatal Error", message.c_str(), nullptr);
++    if (!suppressFatalDialogs())
++        SDL_ShowSimpleMessageBox(0, "Fatal Error", message.c_str(), nullptr);
+ 
+     exit(0);
+ }
+diff --git a/components/crashcatcher/windowscrashcatcher.cpp b/components/crashcatcher/windowscrashcatcher.cpp
+index c89ab9c335..615993ed91 100644
+--- a/components/crashcatcher/windowscrashcatcher.cpp
++++ b/components/crashcatcher/windowscrashcatcher.cpp
+@@ -1,6 +1,7 @@
+ #include "windowscrashcatcher.hpp"
+ 
+ #include <cassert>
++#include <cstdlib>
+ #include <cwchar>
+ #include <sstream>
+ #include <thread>
+@@ -17,6 +18,12 @@ namespace Crash
+ {
+     namespace
+     {
++        bool suppressFatalDialogs()
++        {
++            const char* value = std::getenv("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG");
++            return value != nullptr && value[0] != '\0' && value[0] != '0';
++        }
++
+         template <class T, std::size_t N>
+         void writePathToShm(T (&buffer)[N], const std::filesystem::path& path)
+         {
+@@ -255,10 +262,14 @@ namespace Crash
+             std::string message = "OpenMW has encountered a fatal error.\nCrash dump saved to '"
+                 + Misc::StringUtils::u8StringToString(getCrashDumpPath(*mShm).u8string())
+                 + "'.\nPlease report this to https://gitlab.com/OpenMW/openmw/issues !";
+-            SDL_ShowSimpleMessageBox(0, "Fatal Error", message.c_str(), nullptr);
++            if (!suppressFatalDialogs())
++                SDL_ShowSimpleMessageBox(0, "Fatal Error", message.c_str(), nullptr);
+         }
+         else if (monitorStatus == CrashSHM::Status::Dumping)
+-            SDL_ShowSimpleMessageBox(0, "Fatal Error", "Timed out while creating crash dump", nullptr);
++        {
++            if (!suppressFatalDialogs())
++                SDL_ShowSimpleMessageBox(0, "Fatal Error", "Timed out while creating crash dump", nullptr);
++        }
+     }
+ 
+ } // namespace Crash
+diff --git a/components/crashcatcher/windowscrashmonitor.cpp b/components/crashcatcher/windowscrashmonitor.cpp
+index de66e20b61..e46d663df1 100644
+--- a/components/crashcatcher/windowscrashmonitor.cpp
++++ b/components/crashcatcher/windowscrashmonitor.cpp
+@@ -5,6 +5,7 @@
+ 
+ #include <DbgHelp.h>
+ 
++#include <cstdlib>
+ #include <memory>
+ #include <thread>
+ 
+@@ -21,6 +22,15 @@ namespace Crash
+ {
+     std::unordered_map<HWINEVENTHOOK, CrashMonitor*> CrashMonitor::smEventHookOwners{};
+ 
++    namespace
++    {
++        bool suppressFatalDialogs()
++        {
++            const char* value = std::getenv("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG");
++            return value != nullptr && value[0] != '\0' && value[0] != '0';
++        }
++    }
++
+     using IsHungAppWindowFn = BOOL(WINAPI*)(HWND hwnd);
+ 
+     // Obtains the pointer to user32.IsHungAppWindow, this function may be removed in the future.
+@@ -221,7 +231,8 @@ namespace Crash
+                 std::string message = "OpenMW has frozen.\nCrash dump saved to '"
+                     + Misc::StringUtils::u8StringToString(getFreezeDumpPath(*mShm).u8string())
+                     + "'.\nPlease report this to https://gitlab.com/OpenMW/openmw/issues !";
+-                SDL_ShowSimpleMessageBox(0, "Fatal Error", message.c_str(), nullptr);
++                if (!suppressFatalDialogs())
++                    SDL_ShowSimpleMessageBox(0, "Fatal Error", message.c_str(), nullptr);
+             }
+         }
+         catch (...)
+@@ -242,7 +253,8 @@ namespace Crash
+             shmLock();
+             mShm->mMonitorStatus = CrashSHM::Status::FailedDumping;
+             shmUnlock();
+-            SDL_ShowSimpleMessageBox(0, "Failed to create crash dump", message.c_str(), nullptr);
++            if (!suppressFatalDialogs())
++                SDL_ShowSimpleMessageBox(0, "Failed to create crash dump", message.c_str(), nullptr);
+         };
+ 
+         DWORD processId = GetProcessId(mAppProcessHandle);
+@@ -330,6 +342,9 @@ namespace Crash
+ 
+     void CrashMonitor::showFreezeMessageBox()
+     {
++        if (suppressFatalDialogs())
++            return;
++
+         std::thread messageBoxThread([&]() {
+             SDL_MessageBoxButtonData button = { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 0, "Abort" };
+             SDL_MessageBoxData messageBoxData = { SDL_MESSAGEBOX_ERROR, nullptr, "OpenMW has frozen",
+diff --git a/components/debug/debugging.cpp b/components/debug/debugging.cpp
+index d7f0eda19c..8c658cf3e5 100644
+--- a/components/debug/debugging.cpp
++++ b/components/debug/debugging.cpp
+@@ -1,6 +1,7 @@
+ #include "debugging.hpp"
+ 
+ #include <chrono>
++#include <cstdlib>
+ #include <deque>
+ #include <fstream>
+ #include <iostream>
+@@ -478,7 +479,11 @@ namespace Debug
+ #if (defined(__APPLE__) || defined(__linux) || defined(__unix) || defined(__posix))
+             if (!isatty(fileno(stdin)))
+ #endif
+-                SDL_ShowSimpleMessageBox(0, (std::string(appName) + ": Fatal error").c_str(), e.what(), nullptr);
++            {
++                const char* suppressFatalDialog = std::getenv("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG");
++                if (suppressFatalDialog == nullptr || suppressFatalDialog[0] == '\0' || suppressFatalDialog[0] == '0')
++                    SDL_ShowSimpleMessageBox(0, (std::string(appName) + ": Fatal error").c_str(), e.what(), nullptr);
++            }
+ 
+             Log(Debug::Error) << "Fatal error: " << e.what();
+ 
 diff --git a/components/esmterrain/storage.cpp b/components/esmterrain/storage.cpp
 index 73030ab96a..b05064dec6 100644
 --- a/components/esmterrain/storage.cpp

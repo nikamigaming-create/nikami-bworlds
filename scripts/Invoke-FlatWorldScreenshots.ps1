@@ -636,6 +636,7 @@ $viewerStartEnvNames = @(
 )
 
 $viewerProofEnvNames = @(
+    "OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG",
     "OPENMW_WORLD_VIEWER_TELEMETRY",
     "OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL",
     "OPENMW_WORLD_VIEWER_REF_TELEMETRY",
@@ -655,6 +656,7 @@ foreach ($name in @("OPENMW_PROOF_SCREENSHOT_FRAME", "OPENMW_FNV_BOOTSTRAP_HOUR"
 $results = New-Object System.Collections.Generic.List[object]
 
 try {
+    [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_PROOF_SCREENSHOT_FRAME", $ScreenshotFrames, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_BOOTSTRAP_HOUR", "12", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI", "1", "Process")
