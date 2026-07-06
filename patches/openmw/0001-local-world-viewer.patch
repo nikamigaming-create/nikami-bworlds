@@ -262,7 +262,7 @@ index 59699d63a5..9edaad744d 100644
 +    endif()
  endif()
 diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
-index 7dd4db4d58..8fbeba905c 100644
+index 7dd4db4d58..988b98f3e0 100644
 --- a/apps/openmw/engine.cpp
 +++ b/apps/openmw/engine.cpp
 @@ -6,12 +6,17 @@
@@ -291,7 +291,7 @@ index 7dd4db4d58..8fbeba905c 100644
  #include <osgViewer/ViewerEventHandlers>
  
  #include <SDL.h>
-@@ -256,6 +262,477 @@ namespace
+@@ -256,6 +262,622 @@ namespace
          return parsed;
      }
  
@@ -582,6 +582,151 @@ index 7dd4db4d58..8fbeba905c 100644
 +        return true;
 +    }
 +
++    bool selectProofActorCameraByOrbitRays(MWWorld::World& world, const MWWorld::Ptr& actor, const char* target,
++        const osg::Vec3f& focus, osg::Vec3f& targetPos)
++    {
++        if (!proofEnvEnabled("OPENMW_PROOF_ACTOR_VIEW_ORBIT_RAYCAST"))
++            return false;
++
++        const osg::Vec3f seedOffset = targetPos - focus;
++        const float seedDistance = seedOffset.length();
++        if (seedDistance <= 1e-3f)
++            return false;
++
++        osg::BoundingBox bounds;
++        if (!actor.isEmpty() && actor.getRefData().getBaseNode() != nullptr)
++        {
++            osg::ComputeBoundsVisitor boundsVisitor;
++            boundsVisitor.setTraversalMask(~(MWRender::Mask_ParticleSystem | MWRender::Mask_Effect));
++            actor.getRefData().getBaseNode()->accept(boundsVisitor);
++            bounds = boundsVisitor.getBoundingBox();
++        }
++
++        std::vector<osg::Vec3f> actorSamples;
++        actorSamples.push_back(focus);
++        if (bounds.valid())
++        {
++            const float height = bounds.zMax() - bounds.zMin();
++            const float focusZ = focus.z();
++            actorSamples.emplace_back(bounds.center().x(), bounds.center().y(), bounds.zMin() + height * 0.08f);
++            actorSamples.emplace_back(bounds.center().x(), bounds.center().y(), bounds.zMin() + height * 0.45f);
++            actorSamples.emplace_back(bounds.center().x(), bounds.center().y(), bounds.zMin() + height * 0.82f);
++            actorSamples.emplace_back(bounds.xMin(), bounds.center().y(), focusZ);
++            actorSamples.emplace_back(bounds.xMax(), bounds.center().y(), focusZ);
++            actorSamples.emplace_back(bounds.center().x(), bounds.yMin(), focusZ);
++            actorSamples.emplace_back(bounds.center().x(), bounds.yMax(), focusZ);
++        }
++
++        struct CandidateScore
++        {
++            osg::Vec3f mPos;
++            float mAngle = 0.f;
++            int mBlockers = 0;
++            float mNearestBlocker = std::numeric_limits<float>::max();
++            float mClosestSampleDistance = std::numeric_limits<float>::max();
++            std::string mFirstBlockerBase;
++            std::string mFirstBlockerType;
++            std::string mFirstBlockerName;
++        };
++
++        const float stepDegrees = readProofFloat("OPENMW_PROOF_ACTOR_VIEW_ORBIT_RAYCAST_STEP_DEGREES", 35.f);
++        const int rings = std::max(0, readProofInt("OPENMW_PROOF_ACTOR_VIEW_ORBIT_RAYCAST_RINGS", 4));
++        const float hitTolerance = readProofFloat("OPENMW_PROOF_ACTOR_VIEW_ORBIT_RAYCAST_HIT_TOLERANCE", 0.75f);
++        std::vector<float> angleOffsets;
++        angleOffsets.push_back(0.f);
++        for (int ring = 1; ring <= rings; ++ring)
++        {
++            angleOffsets.push_back(stepDegrees * static_cast<float>(ring));
++            angleOffsets.push_back(-stepDegrees * static_cast<float>(ring));
++        }
++        if (proofEnvEnabled("OPENMW_PROOF_ACTOR_VIEW_ORBIT_RAYCAST_INCLUDE_REVERSE"))
++            angleOffsets.push_back(180.f);
++
++        const auto rotateOffset = [](const osg::Vec3f& offset, float degrees) {
++            const float radians = degrees * static_cast<float>(osg::PI) / 180.f;
++            const float cosAngle = std::cos(radians);
++            const float sinAngle = std::sin(radians);
++            return osg::Vec3f(offset.x() * cosAngle - offset.y() * sinAngle,
++                offset.x() * sinAngle + offset.y() * cosAngle, offset.z());
++        };
++
++        const auto scoreCandidate = [&](const osg::Vec3f& candidatePos, float angle) {
++            CandidateScore score;
++            score.mPos = candidatePos;
++            score.mAngle = angle;
++            for (const osg::Vec3f& sample : actorSamples)
++            {
++                const float sampleDistance = (sample - candidatePos).length();
++                if (sampleDistance <= 1e-3f)
++                    continue;
++                MWPhysics::RayCastingResult renderRay {};
++                world.castRenderingRay(
++                    renderRay, candidatePos, sample, true, true, std::span<const MWWorld::Ptr> { &actor, 1 });
++                if (!renderRay.mHit)
++                    continue;
++
++                const float hitDistance = (renderRay.mHitPos - candidatePos).length();
++                if (hitDistance + hitTolerance >= sampleDistance)
++                    continue;
++
++                ++score.mBlockers;
++                if (hitDistance < score.mNearestBlocker)
++                {
++                    score.mNearestBlocker = hitDistance;
++                    score.mClosestSampleDistance = sampleDistance;
++                    score.mFirstBlockerBase = safeWorldViewerPtrBase(renderRay.mHitObject);
++                    score.mFirstBlockerType = safeWorldViewerPtrType(renderRay.mHitObject);
++                    score.mFirstBlockerName = safeWorldViewerPtrName(renderRay.mHitObject);
++                }
++            }
++            return score;
++        };
++
++        CandidateScore best;
++        bool haveBest = false;
++        for (float angle : angleOffsets)
++        {
++            const osg::Vec3f candidatePos = focus + rotateOffset(seedOffset, angle);
++            CandidateScore score = scoreCandidate(candidatePos, angle);
++            Log(Debug::Info) << "FNV/ESM4 proof: actor orbit camera candidate target=\""
++                             << (target != nullptr ? target : "") << "\" angle=" << angle << " pos=("
++                             << candidatePos.x() << "," << candidatePos.y() << "," << candidatePos.z()
++                             << ") blockers=" << score.mBlockers
++                             << " nearestBlocker=" << (score.mNearestBlocker == std::numeric_limits<float>::max()
++                                        ? -1.f
++                                        : score.mNearestBlocker)
++                             << " closestSampleDistance="
++                             << (score.mClosestSampleDistance == std::numeric_limits<float>::max()
++                                        ? -1.f
++                                        : score.mClosestSampleDistance)
++                             << " blockerBase=" << score.mFirstBlockerBase
++                             << " blockerType=\"" << score.mFirstBlockerType << "\""
++                             << " blockerName=\"" << score.mFirstBlockerName << "\"";
++            if (!haveBest || score.mBlockers < best.mBlockers
++                || (score.mBlockers == best.mBlockers && std::abs(score.mAngle) < std::abs(best.mAngle)))
++            {
++                best = score;
++                haveBest = true;
++            }
++        }
++
++        if (!haveBest || best.mBlockers >= scoreCandidate(targetPos, 0.f).mBlockers)
++        {
++            Log(Debug::Info) << "FNV/ESM4 proof: actor orbit camera kept target=\""
++                             << (target != nullptr ? target : "") << "\" blockers="
++                             << (haveBest ? best.mBlockers : -1);
++            return false;
++        }
++
++        Log(Debug::Info) << "FNV/ESM4 proof: actor orbit camera selected target=\""
++                         << (target != nullptr ? target : "") << "\" angle=" << best.mAngle << " from=("
++                         << targetPos.x() << "," << targetPos.y() << "," << targetPos.z() << ") to=("
++                         << best.mPos.x() << "," << best.mPos.y() << "," << best.mPos.z()
++                         << ") blockers=" << best.mBlockers;
++        targetPos = best.mPos;
++        return true;
++    }
++
 +    void applyWorldViewerStaticCamera(MWRender::Camera* camera, const osg::Vec3d& eye, const osg::Vec3d& target)
 +    {
 +        camera->setMode(MWRender::Camera::Mode::Static, true);
@@ -769,7 +914,7 @@ index 7dd4db4d58..8fbeba905c 100644
      bool hasFalloutNvContent(const std::vector<std::string>& contentFiles)
      {
          for (std::string file : contentFiles)
-@@ -281,13 +758,25 @@ namespace
+@@ -281,13 +903,25 @@ namespace
              || lowerName.find("characters/head/teeth") != std::string_view::npos
              || lowerName.find("characters/head/tongue") != std::string_view::npos
              || lowerName.find("characters/head/eye") != std::string_view::npos
@@ -797,7 +942,7 @@ index 7dd4db4d58..8fbeba905c 100644
      }
  
      bool isFalloutProofFaceFeatureNodeName(std::string_view lowerName)
-@@ -299,7 +788,14 @@ namespace
+@@ -299,7 +933,14 @@ namespace
              || lowerName.find("characters/head/teeth") != std::string_view::npos
              || lowerName.find("characters/head/tongue") != std::string_view::npos
              || lowerName.find("characters/head/eye") != std::string_view::npos
@@ -813,7 +958,7 @@ index 7dd4db4d58..8fbeba905c 100644
      }
  
      class FalloutProofFaceBoundsVisitor : public osg::NodeVisitor
-@@ -326,8 +822,11 @@ namespace
+@@ -326,8 +967,11 @@ namespace
                  const osg::BoundingSphere bound = node.getBound();
                  if (bound.valid())
                  {
@@ -827,7 +972,7 @@ index 7dd4db4d58..8fbeba905c 100644
                      const double radius = bound.radius();
                      mBounds.expandBy(osg::Vec3d(center.x() - radius, center.y() - radius, center.z() - radius));
                      mBounds.expandBy(osg::Vec3d(center.x() + radius, center.y() + radius, center.z() + radius));
-@@ -670,6 +1169,630 @@ namespace
+@@ -670,6 +1314,630 @@ namespace
                           << cameraPos.x() << "," << cameraPos.y() << "," << cameraPos.z()
                           << ") cameraPitch=" << camera->getPitch() << " cameraYaw=" << camera->getYaw();
      }
@@ -1458,7 +1603,7 @@ index 7dd4db4d58..8fbeba905c 100644
      // ## VR_PATCH BEGIN
  
      class InitializeVrOperation : public osg::GraphicsOperation
-@@ -798,10 +1921,17 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -798,10 +2066,17 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      static std::size_t proofActorCameraAlignedScreenshotIndex = static_cast<std::size_t>(-1);
      static bool proofActorAlignedScreenshotQueued = false;
      static bool proofActorStagedForCamera = false;
@@ -1476,7 +1621,7 @@ index 7dd4db4d58..8fbeba905c 100644
      static bool proofSkyDisabled = false;
      static bool proofGodModeEnabled = false;
      static bool proofDelayedStartupScriptExecuted = false;
-@@ -810,6 +1940,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -810,6 +2085,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      static bool fnvFlatStartupCameraSettled = false;
      static bool proofScreenshotWaitLogged = false;
      static int proofWorldReadyFrames = 0;
@@ -1486,7 +1631,7 @@ index 7dd4db4d58..8fbeba905c 100644
      const auto parseProofFormId = [](std::string_view value) -> std::optional<ESM::FormId> {
          while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
          while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
-@@ -1031,21 +2164,26 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1031,21 +2309,26 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      const osg::Timer* const timer = osg::Timer::instance();
      osg::Stats* const stats = mViewer->getViewerStats();
  
@@ -1513,7 +1658,7 @@ index 7dd4db4d58..8fbeba905c 100644
              ScopedProfile<UserStatsType::Sound> profile(frameStart, frameNumber, *timer, *stats);
  
              static bool loggedHiddenVrWindow = false;
-@@ -1067,23 +2205,29 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1067,23 +2350,29 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
              if (mUseSound)
                  mSoundManager->update(frametime);
          }
@@ -1543,7 +1688,7 @@ index 7dd4db4d58..8fbeba905c 100644
              ScopedProfile<UserStatsType::Script> profile(frameStart, frameNumber, *timer, *stats);
  
              if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
-@@ -1110,9 +2254,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1110,9 +2399,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                  }
              }
          }
@@ -1555,7 +1700,7 @@ index 7dd4db4d58..8fbeba905c 100644
              ScopedProfile<UserStatsType::Mechanics> profile(frameStart, frameNumber, *timer, *stats);
  
              if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
-@@ -1127,9 +2273,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1127,9 +2418,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                      mStateManager->endGame();
              }
          }
@@ -1567,7 +1712,7 @@ index 7dd4db4d58..8fbeba905c 100644
              ScopedProfile<UserStatsType::Physics> profile(frameStart, frameNumber, *timer, *stats);
  
              if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
-@@ -1137,9 +2285,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1137,9 +2430,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                  mWorld->updatePhysics(frametime, paused, frameStart, frameNumber, *stats);
              }
          }
@@ -1579,7 +1724,7 @@ index 7dd4db4d58..8fbeba905c 100644
              ScopedProfile<UserStatsType::World> profile(frameStart, frameNumber, *timer, *stats);
  
              if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
-@@ -1147,18 +2297,23 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1147,18 +2442,23 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                  mWorld->update(frametime, paused);
              }
          }
@@ -1603,7 +1748,7 @@ index 7dd4db4d58..8fbeba905c 100644
      const bool reportResource = stats->collectStats("resource");
  
      if (reportResource)
-@@ -1179,17 +2334,37 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1179,17 +2479,37 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          mWorld->reportStats(frameNumber, *stats);
          mLuaManager->reportStats(frameNumber, *stats);
      }
@@ -1642,7 +1787,7 @@ index 7dd4db4d58..8fbeba905c 100644
  
      if (VR::getVR())
      {
-@@ -1212,7 +2387,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1212,7 +2532,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      }
  
      // if there is a separate Lua thread, it starts the update now
@@ -1652,7 +1797,7 @@ index 7dd4db4d58..8fbeba905c 100644
  
      if (std::getenv("OPENMW_PROOF_HIDE_FIRST_PERSON") != nullptr)
      {
-@@ -1261,6 +2438,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1261,6 +2583,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      }
  
      const bool proofRunning = mStateManager->getState() == MWBase::StateManager::State_Running;
@@ -1667,7 +1812,7 @@ index 7dd4db4d58..8fbeba905c 100644
      const bool proofLoadingGui = mWindowManager->containsMode(MWGui::GM_Loading)
          || mWindowManager->containsMode(MWGui::GM_LoadingWallpaper)
          || mWindowManager->containsMode(MWGui::GM_MainMenu);
-@@ -1270,6 +2455,51 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1270,6 +2600,51 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      else
          proofWorldReadyFrames = 0;
  
@@ -1719,7 +1864,7 @@ index 7dd4db4d58..8fbeba905c 100644
      if (!proofDelayedStartupScriptExecuted && std::getenv("OPENMW_PROOF_DELAY_STARTUP_SCRIPT") != nullptr
          && !mStartupScript.empty() && proofWorldReady)
      {
-@@ -1295,8 +2525,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1295,8 +2670,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          proofFNVBootstrapApplied = true;
      }
  
@@ -1732,7 +1877,7 @@ index 7dd4db4d58..8fbeba905c 100644
      {
          settleFNVFlatStartupCamera(*mWorld);
          fnvFlatStartupCameraSettled = true;
-@@ -1404,36 +2637,39 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1404,36 +2782,39 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                                          << proofSayActor << "\": " << e.what();
                  }
              }
@@ -1799,10 +1944,12 @@ index 7dd4db4d58..8fbeba905c 100644
                  const ESM::Position& actorPos = proofActor.getRefData().getPosition();
                  float offsetX = readProofFloat("OPENMW_PROOF_ACTOR_VIEW_OFFSET_X", 0.f);
                  float offsetY = readProofFloat("OPENMW_PROOF_ACTOR_VIEW_OFFSET_Y", -220.f);
-@@ -1655,19 +2891,26 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1655,19 +3036,28 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                          }
                      }
                  }
++                if (selectProofActorCameraByOrbitRays(*mWorld, proofActor, proofSayActor, actorAim, targetPos))
++                    cameraZ = targetPos.z();
 +                if (adjustProofActorCameraByRenderRay(*mWorld, proofActor, proofSayActor, actorAim, targetPos))
 +                    cameraZ = targetPos.z();
                  osg::Vec3f playerTargetPos(targetPos);
@@ -1831,7 +1978,7 @@ index 7dd4db4d58..8fbeba905c 100644
                  if (MWRender::Camera* camera = mWorld->getCamera())
                  {
                      osg::Vec3d proofCameraPos;
-@@ -1770,12 +3013,28 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1770,12 +3160,28 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                          proofActorCameraAligned = true;
                          proofActorCameraAlignedFrame = static_cast<int>(frameNumber);
                          proofActorCameraAlignedScreenshotIndex = proofScreenshotFrameIndex;
@@ -1860,7 +2007,7 @@ index 7dd4db4d58..8fbeba905c 100644
                          Log(Debug::Warning) << "FNV/ESM4 proof: actor camera alignment rejected target=\""
                                              << proofSayActor << "\" frame=" << frameNumber;
                      }
-@@ -1870,6 +3129,34 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1870,6 +3276,34 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          proofSayQueued = true;
      }
  
@@ -1895,7 +2042,7 @@ index 7dd4db4d58..8fbeba905c 100644
      const auto executeProofTimedScript = [&](int targetFrame, const char* pathEnv, bool& executed) {
          if (executed || targetFrame < 0 || frameNumber < static_cast<unsigned>(targetFrame) || !proofRunning
              || !proofWorldReady)
-@@ -1894,6 +3181,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1894,6 +3328,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          && frameNumber >= static_cast<unsigned>(proofScreenshotFrames[proofScreenshotFrameIndex]);
      const bool proofScreenshotReadyFramesReached
          = !proofScreenshotReadyQueued && proofScreenshotReadyFrames >= 0 && proofWorldReadyFrames >= proofScreenshotReadyFrames;
@@ -1920,7 +2067,7 @@ index 7dd4db4d58..8fbeba905c 100644
      const int proofActorAlignedScreenshotDelay = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_DELAY");
      const int proofActorAlignedScreenshotMinFrame = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_MIN_FRAME");
      const bool proofActorAlignedScreenshotReached = !proofActorAlignedScreenshotQueued && proofActorCameraAligned
-@@ -1913,8 +3218,12 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1913,8 +3365,12 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          }
          if (!proofWorldReady)
          {
@@ -1933,29 +2080,29 @@ index 7dd4db4d58..8fbeba905c 100644
              return true;
          }
          if (proofRequiresActorForScreenshot && !proofActorCameraAligned)
-@@ -1927,11 +3236,36 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1927,11 +3383,36 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                                   << " screenshotIndex=" << proofScreenshotFrameIndex;
                  proofActorScreenshotWaitLogged = true;
              }
 +            worldViewerTrace(frameNumber, "actor-wait-render.begin");
-+            mViewer->renderingTraversals();
+             mViewer->renderingTraversals();
 +            worldViewerTrace(frameNumber, "actor-wait-render.end");
 +            worldViewerTrace(frameNumber, "actor-wait-lua-finish.begin");
-+            mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
+             mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
 +            worldViewerTrace(frameNumber, "actor-wait-lua-finish.end");
-+            return true;
-+        }
+             return true;
+         }
 +        if (!worldViewerCameraReadyForScreenshot)
 +        {
 +            worldViewerTrace(frameNumber, "camera-wait-render.begin");
-             mViewer->renderingTraversals();
++            mViewer->renderingTraversals();
 +            worldViewerTrace(frameNumber, "camera-wait-render.end");
 +            worldViewerTrace(frameNumber, "camera-wait-lua-finish.begin");
-             mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
++            mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
 +            worldViewerTrace(frameNumber, "camera-wait-lua-finish.end");
-             return true;
-         }
- 
++            return true;
++        }
++
 +        if (viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_TELEMETRY") && mWorld != nullptr)
 +        {
 +            worldViewerTrace(frameNumber, "screenshot-telemetry.begin");
@@ -1965,12 +2112,12 @@ index 7dd4db4d58..8fbeba905c 100644
 +            worldViewerTelemetryLogged = true;
 +            worldViewerTrace(frameNumber, "screenshot-telemetry.end");
 +        }
-+
+ 
 +        worldViewerTrace(frameNumber, "screenshot-queue.begin");
          Log(Debug::Info) << "FNV/ESM4 proof: queuing GUI-inclusive native screenshot at frame " << frameNumber
                           << " hour=" << mWorld->getTimeStamp().getHour()
                           << " weatherId=" << mWorld->getCurrentWeatherScriptId()
-@@ -1944,12 +3278,18 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1944,12 +3425,18 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
              proofScreenshotReadyQueued = true;
          if (proofActorAlignedScreenshotReached)
              proofActorAlignedScreenshotQueued = true;
@@ -1989,7 +2136,7 @@ index 7dd4db4d58..8fbeba905c 100644
      return true;
  }
  
-@@ -2490,12 +3830,19 @@ void OMW::Engine::prepareEngine()
+@@ -2490,12 +3977,19 @@ void OMW::Engine::prepareEngine()
              asyncListener.update();
          dataLoading.get();
      }
@@ -2009,7 +2156,7 @@ index 7dd4db4d58..8fbeba905c 100644
  
      // ## VR_PATCH BEGIN
      if (VR::getVR())
-@@ -2505,6 +3852,7 @@ void OMW::Engine::prepareEngine()
+@@ -2505,6 +3999,7 @@ void OMW::Engine::prepareEngine()
      // ## VR_PATCH END
  
      const MWWorld::Store<ESM::GameSetting>* gmst = &mWorld->getStore().get<ESM::GameSetting>();
@@ -2017,7 +2164,7 @@ index 7dd4db4d58..8fbeba905c 100644
      mL10nManager->setGmstLoader(
          [gmst, misses = std::set<std::string, std::less<>>()](std::string_view gmstName) mutable {
              const ESM::GameSetting* res = gmst->search(gmstName);
-@@ -2520,34 +3868,48 @@ void OMW::Engine::prepareEngine()
+@@ -2520,34 +4015,48 @@ void OMW::Engine::prepareEngine()
                  return std::string("GMST:") + std::string(gmstName);
              }
          });
@@ -2066,7 +2213,7 @@ index 7dd4db4d58..8fbeba905c 100644
  
      // scripts
      if (mCompileAll)
-@@ -2565,11 +3927,15 @@ void OMW::Engine::prepareEngine()
+@@ -2565,11 +4074,15 @@ void OMW::Engine::prepareEngine()
                               << 100 * static_cast<double>(result.second) / result.first << "%)";
      }
  
@@ -3770,7 +3917,7 @@ index 8575f471a0..e480eebb38 100644
          }
      }
 diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
-index 49a7175149..4cca5d1bdf 100644
+index 49a7175149..e87462d506 100644
 --- a/apps/openmw/mwrender/esm4npcanimation.cpp
 +++ b/apps/openmw/mwrender/esm4npcanimation.cpp
 @@ -28,6 +28,7 @@
@@ -3781,7 +3928,7 @@ index 49a7175149..4cca5d1bdf 100644
  #include <components/sceneutil/skeleton.hpp>
  #include <components/sceneutil/positionattitudetransform.hpp>
  #include <components/sceneutil/riggeometry.hpp>
-@@ -43,11 +44,13 @@
+@@ -43,11 +44,14 @@
  #include <osg/ComputeBoundsVisitor>
  #include <osg/FrontFace>
  #include <osg/Geode>
@@ -3792,10 +3939,11 @@ index 49a7175149..4cca5d1bdf 100644
  #include <osg/NodeVisitor>
  #include <osg/PositionAttitudeTransform>
 +#include <osg/Program>
++#include <osg/TexEnv>
  #include <osg/Texture2D>
  #include <osgAnimation/Bone>
  #include <osgAnimation/UpdateBone>
-@@ -74,6 +77,93 @@ namespace MWRender
+@@ -74,6 +78,93 @@ namespace MWRender
  {
      namespace
      {
@@ -3889,7 +4037,7 @@ index 49a7175149..4cca5d1bdf 100644
          class TintMaterialVisitor : public osg::NodeVisitor
          {
          public:
-@@ -232,6 +322,369 @@ namespace MWRender
+@@ -232,6 +323,375 @@ namespace MWRender
              }
          };
  
@@ -4014,6 +4162,7 @@ index 49a7175149..4cca5d1bdf 100644
 +            unsigned int getGeometryCount() const { return mGeometries; }
 +            unsigned int getTextureUnitsKept() const { return mTextureUnitsKept; }
 +            unsigned int getTextureUnitsDisabled() const { return mTextureUnitsDisabled; }
++            unsigned int getTextureEnvsForced() const { return mTextureEnvsForced; }
 +
 +        private:
 +            void applyStateSet(osg::StateSet* stateSet)
@@ -4041,7 +4190,10 @@ index 49a7175149..4cca5d1bdf 100644
 +                    if (unit == 0)
 +                    {
 +                        stateSet->setTextureMode(unit, GL_TEXTURE_2D, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
++                        stateSet->setTextureAttributeAndModes(
++                            unit, new osg::TexEnv(osg::TexEnv::REPLACE), osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
 +                        ++mTextureUnitsKept;
++                        ++mTextureEnvsForced;
 +                    }
 +                    else
 +                    {
@@ -4088,6 +4240,7 @@ index 49a7175149..4cca5d1bdf 100644
 +            unsigned int mGeometries = 0;
 +            unsigned int mTextureUnitsKept = 0;
 +            unsigned int mTextureUnitsDisabled = 0;
++            unsigned int mTextureEnvsForced = 0;
 +        };
 +
 +        void applyWorldViewerFlatActorMaterials(osg::Node* root, const MWWorld::Ptr& ptr, std::string_view phase)
@@ -4118,7 +4271,8 @@ index 49a7175149..4cca5d1bdf 100644
 +                    << " stateSets=" << visitor.getStateSetCount()
 +                    << " geometries=" << visitor.getGeometryCount()
 +                    << " textureUnitsKept=" << visitor.getTextureUnitsKept()
-+                    << " textureUnitsDisabled=" << visitor.getTextureUnitsDisabled();
++                    << " textureUnitsDisabled=" << visitor.getTextureUnitsDisabled()
++                    << " textureEnvsForced=" << visitor.getTextureEnvsForced();
 +            logWorldViewerActorLedger(ptr, "fullbright-actor-material", details.str());
 +        }
 +
@@ -4259,7 +4413,7 @@ index 49a7175149..4cca5d1bdf 100644
          class FalloutCutoutAlphaVisitor : public osg::NodeVisitor
          {
          public:
-@@ -1926,23 +2379,45 @@ namespace MWRender
+@@ -1926,23 +2386,45 @@ namespace MWRender
                      {
                          mFirstRigRootBone = rig->getRootBone();
                          mFirstRigBoneCount = rig->getBoneCount();
@@ -4309,7 +4463,7 @@ index 49a7175149..4cca5d1bdf 100644
              std::ostringstream mFirstRigBoneSample;
          };
  
-@@ -2534,11 +3009,190 @@ namespace MWRender
+@@ -2534,11 +3016,190 @@ namespace MWRender
              return nullptr;
          }
  
@@ -4501,7 +4655,7 @@ index 49a7175149..4cca5d1bdf 100644
                  || lowered.find("characters\\head\\head") != std::string::npos
                  || lowered.find("mouth") != std::string::npos || lowered.find("teeth") != std::string::npos
                  || lowered.find("tongue") != std::string::npos || lowered.find("eye") != std::string::npos
-@@ -2551,7 +3205,8 @@ namespace MWRender
+@@ -2551,7 +3212,8 @@ namespace MWRender
          {
              std::string lowered(model);
              Misc::StringUtils::lowerCaseInPlace(lowered);
@@ -4511,7 +4665,7 @@ index 49a7175149..4cca5d1bdf 100644
                  || lowered.find("characters\\head\\head") != std::string::npos;
          }
  
-@@ -2592,7 +3247,15 @@ namespace MWRender
+@@ -2592,7 +3254,15 @@ namespace MWRender
          {
              std::string lowered(model);
              Misc::StringUtils::lowerCaseInPlace(lowered);
@@ -4528,7 +4682,7 @@ index 49a7175149..4cca5d1bdf 100644
                  || lowered.find("characters\\head\\eye") != std::string::npos;
          }
  
-@@ -2661,36 +3324,18 @@ namespace MWRender
+@@ -2661,36 +3331,18 @@ namespace MWRender
              return fallback;
          }
  
@@ -4574,7 +4728,7 @@ index 49a7175149..4cca5d1bdf 100644
          {
              if (headgearStaticPart)
                  return "OPENMW_FNV_HEADGEAR";
-@@ -2711,19 +3356,78 @@ namespace MWRender
+@@ -2711,19 +3363,78 @@ namespace MWRender
              return {};
          }
  
@@ -4659,7 +4813,7 @@ index 49a7175149..4cca5d1bdf 100644
              const osg::Quat x(xDegrees * degreesToRadians, osg::Vec3f(1.f, 0.f, 0.f));
              const osg::Quat y(yDegrees * degreesToRadians, osg::Vec3f(0.f, 1.f, 0.f));
              const osg::Quat z(zDegrees * degreesToRadians, osg::Vec3f(0.f, 0.f, 1.f));
-@@ -2791,6 +3495,62 @@ namespace MWRender
+@@ -2791,6 +3502,62 @@ namespace MWRender
              return helper.get();
          }
  
@@ -4722,7 +4876,7 @@ index 49a7175149..4cca5d1bdf 100644
          bool isFalloutStaticFaceChildPart(std::string_view model)
          {
              return shouldAttachFalloutStaticPartToHead(model) && !isFalloutStaticHeadgearPart(model)
-@@ -2970,6 +3730,7 @@ namespace MWRender
+@@ -2970,6 +3737,7 @@ namespace MWRender
              attached->accept(visitor);
              Log(Debug::Info) << "FNV/ESM4 diag: NPC part shape summary " << model << " for "
                               << ptr.getCellRef().getRefId() << " rigGeometry=" << visitor.mRigGeometryCount
@@ -4730,7 +4884,7 @@ index 49a7175149..4cca5d1bdf 100644
                               << " staticGeometry=" << visitor.mStaticGeometryCount
                               << " firstRigRoot='" << visitor.mFirstRigRootBone << "' firstRigBones="
                               << visitor.mFirstRigBoneCount << " sample=[" << visitor.mFirstRigBoneSample.str() << "]";
-@@ -3002,7 +3763,9 @@ namespace MWRender
+@@ -3002,7 +3770,9 @@ namespace MWRender
          {
              std::string lowered(model);
              Misc::StringUtils::lowerCaseInPlace(lowered);
@@ -4741,7 +4895,7 @@ index 49a7175149..4cca5d1bdf 100644
                  || lowered.find("characters\\head\\head") != std::string::npos
                  || containsAny(
                      lowered, { "headgear", "hat", "hair", "beard", "brow", "eye", "mouth", "teeth", "tongue" });
-@@ -3012,7 +3775,9 @@ namespace MWRender
+@@ -3012,7 +3782,9 @@ namespace MWRender
          {
              std::string lowered(model);
              Misc::StringUtils::lowerCaseInPlace(lowered);
@@ -4752,7 +4906,7 @@ index 49a7175149..4cca5d1bdf 100644
                  || lowered.find("characters\\head\\head") != std::string::npos
                  || containsAny(lowered, { "beard", "brow", "eye", "mouth", "teeth", "tongue" });
          }
-@@ -3121,6 +3886,108 @@ namespace MWRender
+@@ -3121,6 +3893,108 @@ namespace MWRender
              return cloned;
          }
  
@@ -4861,7 +5015,7 @@ index 49a7175149..4cca5d1bdf 100644
          void logFalloutAttachmentBounds(osg::Node* attached, osg::Group* attachNode, osg::Group* headNode,
              std::string_view model, const MWWorld::Ptr& ptr)
          {
-@@ -4162,9 +5029,65 @@ namespace MWRender
+@@ -4162,9 +5036,65 @@ namespace MWRender
          : Animation(ptr, std::move(parentNode), resourceSystem)
      {
          const std::string skeletonModel = mPtr.getClass().getCorrectedModel(mPtr);
@@ -4929,7 +5083,7 @@ index 49a7175149..4cca5d1bdf 100644
          if (traits != nullptr && traits->mIsFONV)
          {
              const NodeMap& currentNodeMap = getNodeMap();
-@@ -4202,7 +5125,21 @@ namespace MWRender
+@@ -4202,7 +5132,21 @@ namespace MWRender
                      return;
                  Log(Debug::Info) << "FNV/ESM4 diag: adding FONV NPC " << reason << " animation source " << kfPath
                                   << " for " << traits->mEditorId;
@@ -4952,7 +5106,7 @@ index 49a7175149..4cca5d1bdf 100644
                      addedAnimationSource = addedAnimationSource || countsAsPrimary;
              };
  
-@@ -4306,21 +5243,50 @@ namespace MWRender
+@@ -4306,21 +5250,50 @@ namespace MWRender
      void ESM4NpcAnimation::updateParts()
      {
          if (mObjectRoot == nullptr)
@@ -5006,7 +5160,7 @@ index 49a7175149..4cca5d1bdf 100644
      }
  
      osg::ref_ptr<osg::Node> ESM4NpcAnimation::insertPart(
-@@ -4330,6 +5296,7 @@ namespace MWRender
+@@ -4330,6 +5303,7 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped empty NPC model part for "
                                  << mPtr.getCellRef().getRefId();
@@ -5014,7 +5168,7 @@ index 49a7175149..4cca5d1bdf 100644
              return nullptr;
          }
          if (Misc::StringUtils::ciEndsWith(model, ".egt") || Misc::StringUtils::ciEndsWith(model, ".egm")
-@@ -4337,9 +5304,32 @@ namespace MWRender
+@@ -4337,9 +5311,32 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped non-render NPC data part " << model << " for "
                                  << mPtr.getCellRef().getRefId();
@@ -5047,7 +5201,7 @@ index 49a7175149..4cca5d1bdf 100644
          const std::string loweredModel = Misc::StringUtils::lowerCase(std::string(model));
          if (std::getenv("OPENMW_FNV_PROOF_HIDE_FACE_HAIR") != nullptr && isFalloutFaceHairModel(loweredModel))
          {
-@@ -4378,13 +5368,53 @@ namespace MWRender
+@@ -4378,13 +5375,53 @@ namespace MWRender
                               << " for " << mPtr.getCellRef().getRefId();
              return nullptr;
          }
@@ -5102,7 +5256,7 @@ index 49a7175149..4cca5d1bdf 100644
          if (headAttachedStaticPart)
          {
              const std::string_view mode = headgearStaticPart ? std::string_view("headgear") : getFonvStaticFaceAttachMode(model);
-@@ -4443,9 +5473,46 @@ namespace MWRender
+@@ -4443,9 +5480,46 @@ namespace MWRender
              Log(Debug::Info) << "FNV/ESM4 diag: static head attachment mode=" << mode << " model="
                               << correctedModel.value() << " attachNode=" << attachNode->getName() << " for "
                               << mPtr.getCellRef().getRefId();
@@ -5150,7 +5304,7 @@ index 49a7175149..4cca5d1bdf 100644
          if (bareHandSurfacePart)
          {
              osg::Group* bip01 = nullptr;
-@@ -4490,6 +5557,43 @@ namespace MWRender
+@@ -4490,6 +5564,43 @@ namespace MWRender
                              << " to " << mPtr.getCellRef().getRefId() << " at " << attachNode->getName();
          FalloutPartShapeSummaryVisitor rigProbe;
          const_cast<osg::Node*>(templateNode.get())->accept(rigProbe);
@@ -5194,7 +5348,7 @@ index 49a7175149..4cca5d1bdf 100644
          osg::ref_ptr<const osg::Node> attachTemplateNode = templateNode;
          bool staticizedHeadPartRig = false;
          bool staticizedBareHandPartRig = false;
-@@ -4606,6 +5710,18 @@ namespace MWRender
+@@ -4606,6 +5717,18 @@ namespace MWRender
                               << correctedModel.value() << " to " << mPtr.getCellRef().getRefId()
                               << " rigGeometry=" << rigProbe.mRigGeometryCount << " master=" << rigPartMaster->getName();
          }
@@ -5213,7 +5367,7 @@ index 49a7175149..4cca5d1bdf 100644
          else
          {
              osg::Quat headgearAttitude;
-@@ -4631,7 +5747,18 @@ namespace MWRender
+@@ -4631,7 +5754,18 @@ namespace MWRender
                                   << " attachNode=" << attachNode->getName();
              }
          }
@@ -5233,7 +5387,7 @@ index 49a7175149..4cca5d1bdf 100644
          {
              const osg::Vec3f surfaceOffset = getFalloutHeadFrameSurfaceOffset(model, headgearStaticPart);
              const osg::Quat surfaceAttitude = getFalloutHeadFrameSurfaceAttitude(model, headgearStaticPart);
-@@ -4687,9 +5814,11 @@ namespace MWRender
+@@ -4687,9 +5821,11 @@ namespace MWRender
                  mouthDriverNode->addChild(attached);
              attached = mouthDriverNode;
              attached->setUpdateCallback(new FalloutProofMouthDriver(mPtr, correctedModel.value()));
@@ -5247,7 +5401,7 @@ index 49a7175149..4cca5d1bdf 100644
          if (!diffuseTexture.empty() && attached != nullptr)
          {
              Log(Debug::Info) << "FNV/ESM4 diag: overriding NPC part texture " << diffuseTexture << " on "
-@@ -4721,6 +5850,14 @@ namespace MWRender
+@@ -4721,6 +5857,14 @@ namespace MWRender
              Log(Debug::Info) << "FNV/ESM4 diag: enabled cutout alpha on " << cutoutAlpha.getAppliedCount()
                               << " hair/brow state(s) for " << correctedModel.value() << " on "
                               << mPtr.getCellRef().getRefId();
@@ -5262,7 +5416,7 @@ index 49a7175149..4cca5d1bdf 100644
          }
          if (attached != nullptr && isFalloutEyeSurfaceModel(correctedModel.value()))
          {
-@@ -4735,12 +5872,18 @@ namespace MWRender
+@@ -4735,12 +5879,18 @@ namespace MWRender
          }
          if (attached != nullptr && isFalloutMouthSurfaceModel(correctedModel.value()))
          {
@@ -5283,7 +5437,7 @@ index 49a7175149..4cca5d1bdf 100644
          }
          if (attached != nullptr)
          {
-@@ -4757,16 +5900,74 @@ namespace MWRender
+@@ -4757,16 +5907,74 @@ namespace MWRender
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
          logFalloutFaceDrawableAudit(attached.get(), correctedModel.value(), mPtr);
@@ -5359,7 +5513,7 @@ index 49a7175149..4cca5d1bdf 100644
  
          const NodeMap& nodeMap = getNodeMap();
          osg::Group* attachNode = nullptr;
-@@ -4794,6 +5995,15 @@ namespace MWRender
+@@ -4794,6 +6002,15 @@ namespace MWRender
          logFalloutAttachmentBounds(
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
@@ -5375,7 +5529,7 @@ index 49a7175149..4cca5d1bdf 100644
          return attached;
      }
  
-@@ -4927,6 +6137,21 @@ namespace MWRender
+@@ -4927,6 +6144,21 @@ namespace MWRender
          if (!npcBodyNormalTexture.empty())
              Log(Debug::Info) << "FNV/ESM4 diag: using baked NPC body normal texture " << npcBodyNormalTexture
                               << " for " << traits.mEditorId;
@@ -5397,7 +5551,7 @@ index 49a7175149..4cca5d1bdf 100644
  
          const bool proofTargetActor = isFonvProofTargetActor(mPtr, traits);
          const bool proofActor = isEasyPeteProofActor(traits);
-@@ -5282,37 +6507,85 @@ namespace MWRender
+@@ -5282,37 +6514,85 @@ namespace MWRender
          std::vector<const ESM4::ArmorAddon*> armorAddons;
  
          auto findArmorAddons = [&](const ESM4::Armor* armor) {
@@ -5486,7 +5640,7 @@ index 49a7175149..4cca5d1bdf 100644
                  findArmorAddons(armor);
              else
                  Log(Debug::Error) << "Skin not found: " << ESM::RefId(race->mSkin);
-@@ -5326,20 +6599,114 @@ namespace MWRender
+@@ -5326,20 +6606,114 @@ namespace MWRender
                  [](auto x, auto y) { return x->mMalePriority > y->mMalePriority; });
  
          uint32_t usedParts = 0;
@@ -13613,7 +13767,7 @@ index fe38cc4cad..396679da19 100644
          RC_TallGrassShaderProperty,
          RC_TileShaderProperty,
 diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
-index a583941dee..748d0a89f1 100644
+index a583941dee..e52c4f26b2 100644
 --- a/components/nifosg/nifloader.cpp
 +++ b/components/nifosg/nifloader.cpp
 @@ -1,12 +1,19 @@
@@ -15024,7 +15178,7 @@ index a583941dee..748d0a89f1 100644
  
              osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
              geometry->addPrimitiveSet(
-@@ -2782,10 +3979,277 @@ namespace NifOsg
+@@ -2782,10 +3979,282 @@ namespace NifOsg
                  drawableProps.emplace_back(bsTriShape->mShaderProperty.getPtr());
              if (!bsTriShape->mAlphaProperty.empty())
                  drawableProps.emplace_back(bsTriShape->mAlphaProperty.getPtr());
@@ -15140,7 +15294,12 @@ index a583941dee..748d0a89f1 100644
 +                std::vector<unsigned int> boundTextures;
 +                attachExternalTexture("diffuseMap", diffuse, true, true, 0, stateset, boundTextures);
 +                if (!boundTextures.empty())
++                {
 +                    stateset->setTextureMode(0, GL_TEXTURE_2D, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
++                    if (!actorDiffuse.empty())
++                        stateset->setTextureAttributeAndModes(
++                            0, new osg::TexEnv(osg::TexEnv::REPLACE), osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
++                }
 +                if (!actorDiffuse.empty())
 +                {
 +                    Log(Debug::Info) << "World viewer: Starfield actor proof texture nif=\"" << nifPath << "\""
@@ -15303,7 +15462,7 @@ index a583941dee..748d0a89f1 100644
          }
  
          osg::BlendFunc::BlendFuncMode getBlendMode(int mode) const
-@@ -3364,6 +4828,9 @@ namespace NifOsg
+@@ -3364,6 +4833,9 @@ namespace NifOsg
              const std::string& nodeName, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
          {
              const unsigned int uvSet = 0;
@@ -15313,7 +15472,7 @@ index a583941dee..748d0a89f1 100644
  
              for (size_t i = 0; i < textureSet->mTextures.size(); ++i)
              {
-@@ -3380,6 +4847,14 @@ namespace NifOsg
+@@ -3380,6 +4852,14 @@ namespace NifOsg
                              "normalMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
                      case Nif::BSShaderTextureSet::TextureType::Glow:
@@ -15328,7 +15487,7 @@ index a583941dee..748d0a89f1 100644
                          attachExternalTexture(
                              "emissiveMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
-@@ -3584,6 +5059,55 @@ namespace NifOsg
+@@ -3584,6 +5064,55 @@ namespace NifOsg
                      handleDepthFlags(stateset, texprop->depthTest(), texprop->depthWrite());
                      break;
                  }
@@ -15384,7 +15543,7 @@ index a583941dee..748d0a89f1 100644
                  case Nif::RC_BSLightingShaderProperty:
                  {
                      auto texprop = static_cast<const Nif::BSLightingShaderProperty*>(property);
-@@ -3722,7 +5246,8 @@ namespace NifOsg
+@@ -3722,7 +5251,8 @@ namespace NifOsg
          }
  
          void applyDrawableProperties(osg::Node* node, const std::vector<const Nif::NiProperty*>& properties,
@@ -15394,7 +15553,7 @@ index a583941dee..748d0a89f1 100644
          {
              // Specular lighting is enabled by default, but there's a quirk...
              bool specEnabled = true;
-@@ -3742,6 +5267,16 @@ namespace NifOsg
+@@ -3742,6 +5272,16 @@ namespace NifOsg
              auto lightmode = Nif::NiVertexColorProperty::LightMode::LightMode_EmiAmbDif;
              float emissiveMult = 1.f;
              float specStrength = 1.f;
@@ -15411,7 +15570,7 @@ index a583941dee..748d0a89f1 100644
  
              for (const Nif::NiProperty* property : properties)
              {
-@@ -3757,6 +5292,7 @@ namespace NifOsg
+@@ -3757,6 +5297,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiMaterialProperty:
                      {
@@ -15419,7 +15578,7 @@ index a583941dee..748d0a89f1 100644
                          const Nif::NiMaterialProperty* matprop = static_cast<const Nif::NiMaterialProperty*>(property);
  
                          mat->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(matprop->mDiffuse, matprop->mAlpha));
-@@ -3780,6 +5316,7 @@ namespace NifOsg
+@@ -3780,6 +5321,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiVertexColorProperty:
                      {
@@ -15427,7 +15586,7 @@ index a583941dee..748d0a89f1 100644
                          const Nif::NiVertexColorProperty* vertprop
                              = static_cast<const Nif::NiVertexColorProperty*>(property);
  
-@@ -3822,6 +5359,7 @@ namespace NifOsg
+@@ -3822,6 +5364,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiAlphaProperty:
                      {
@@ -15435,7 +15594,7 @@ index a583941dee..748d0a89f1 100644
                          const Nif::NiAlphaProperty* alphaprop = static_cast<const Nif::NiAlphaProperty*>(property);
                          handleAlphaBlending(alphaprop->useAlphaBlending(), alphaprop->sourceBlendMode(),
                              alphaprop->destinationBlendMode(), !alphaprop->noSorter(), hasSortAlpha, *node);
-@@ -3831,15 +5369,21 @@ namespace NifOsg
+@@ -3831,15 +5374,21 @@ namespace NifOsg
                      }
                      case Nif::RC_BSShaderPPLightingProperty:
                      {
@@ -15457,7 +15616,7 @@ index a583941dee..748d0a89f1 100644
                              handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
                              if (shaderMat->mShaderType == Bgsm::ShaderType::Lighting)
                              {
-@@ -3863,9 +5407,12 @@ namespace NifOsg
+@@ -3863,9 +5412,12 @@ namespace NifOsg
                      }
                      case Nif::RC_BSEffectShaderProperty:
                      {
@@ -15470,7 +15629,7 @@ index a583941dee..748d0a89f1 100644
                              handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
                              break;
                          }
-@@ -3938,6 +5485,65 @@ namespace NifOsg
+@@ -3938,6 +5490,65 @@ namespace NifOsg
              if (specStrength != 1.f)
                  node->getOrCreateStateSet()->addUniform(new osg::Uniform("specStrength", specStrength));
  
