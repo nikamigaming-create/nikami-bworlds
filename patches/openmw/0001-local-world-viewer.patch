@@ -5205,6 +5205,66 @@ index eb94850dc9..034279a120 100644
  }
  
  #endif
+diff --git a/apps/openmw/mwrender/terrainstorage.cpp b/apps/openmw/mwrender/terrainstorage.cpp
+index 0e752701c7..2679e6deb7 100644
+--- a/apps/openmw/mwrender/terrainstorage.cpp
++++ b/apps/openmw/mwrender/terrainstorage.cpp
+@@ -1,5 +1,8 @@
+ #include "terrainstorage.hpp"
+ 
++#include <sstream>
++
++#include <components/debug/debuglog.hpp>
+ #include <components/esm3/loadland.hpp>
+ #include <components/esm4/loadltex.hpp>
+ #include <components/esm4/loadtxst.hpp>
+@@ -116,7 +119,45 @@ namespace MWRender
+     const ESM4::LandTexture* TerrainStorage::getEsm4LandTexture(ESM::RefId ltexId) const
+     {
+         const MWWorld::ESMStore& esmStore = *MWBase::Environment::get().getESMStore();
+-        return esmStore.get<ESM4::LandTexture>().search(ltexId);
++        const MWWorld::Store<ESM4::LandTexture>& ltexStore = esmStore.get<ESM4::LandTexture>();
++        if (const ESM4::LandTexture* direct = ltexStore.search(ltexId))
++            return direct;
++
++        const ESM::FormId* requestedFormId = ltexId.getIf<ESM::FormId>();
++        for (auto it = ltexStore.begin(); requestedFormId != nullptr && it != ltexStore.end(); ++it)
++        {
++            const ESM4::LandTexture& candidate = *it;
++            if (candidate.mId.mIndex == requestedFormId->mIndex)
++            {
++                static int resolvedIndexFallbackLogs = 0;
++                if (resolvedIndexFallbackLogs < 40)
++                {
++                    ++resolvedIndexFallbackLogs;
++                    Log(Debug::Warning) << "World viewer terrain: resolved LTEX " << ltexId.toString()
++                                        << " by matching index to loaded " << candidate.mId.toString()
++                                        << " editorId=\"" << candidate.mEditorId << "\"";
++                }
++                return &candidate;
++            }
++        }
++
++        static int missingLtexSampleLogs = 0;
++        if (missingLtexSampleLogs < 20)
++        {
++            ++missingLtexSampleLogs;
++            std::ostringstream sample;
++            unsigned int count = 0;
++            for (auto it = ltexStore.begin(); it != ltexStore.end() && count < 12; ++it, ++count)
++            {
++                if (count != 0)
++                    sample << ", ";
++                sample << it->mId.toString() << ":" << it->mEditorId;
++            }
++            Log(Debug::Warning) << "World viewer terrain: LTEX lookup failed for " << ltexId.toString()
++                                << " storeSize=" << ltexStore.getSize()
++                                << " sample=[" << sample.str() << "]";
++        }
++        return nullptr;
+     }
+ 
+     const ESM4::TextureSet* TerrainStorage::getEsm4TextureSet(ESM::RefId txstId) const
 diff --git a/apps/openmw/mwvr/vranimation.cpp b/apps/openmw/mwvr/vranimation.cpp
 index ac0cd18d61..dcdd64a239 100644
 --- a/apps/openmw/mwvr/vranimation.cpp
@@ -9714,7 +9774,7 @@ index e8be484355..7359998352 100644
          void skipSubRecordData(std::uint32_t size);
  
 diff --git a/components/esmterrain/storage.cpp b/components/esmterrain/storage.cpp
-index 73030ab96a..b05064dec6 100644
+index 73030ab96a..035ba17889 100644
 --- a/components/esmterrain/storage.cpp
 +++ b/components/esmterrain/storage.cpp
 @@ -413,8 +413,8 @@ namespace ESMTerrain
@@ -9728,7 +9788,7 @@ index 73030ab96a..b05064dec6 100644
              osg::ref_ptr<osg::Image> image(new osg::Image);
              image->allocateImage(blendmapSize, blendmapSize, 1, GL_ALPHA, GL_UNSIGNED_BYTE);
              std::memset(image->data(), 0, image->getTotalDataSize());
-@@ -713,12 +713,23 @@ namespace ESMTerrain
+@@ -713,19 +713,40 @@ namespace ESMTerrain
          return info;
      }
  
@@ -9754,6 +9814,24 @@ index 73030ab96a..b05064dec6 100644
              if (const ESM4::TextureSet* txst = getEsm4TextureSet(ltex->mTexture))
                  return getTextureSetLayerInfo(*txst); // TES5
              else
+                 Log(Debug::Warning) << "TextureSet not found: " << ltex->mTexture.toString();
+         }
+         else
+-            Log(Debug::Warning) << "LandTexture not found: " << id.toString();
++        {
++            static int missingEsm4LtexLogs = 0;
++            if (missingEsm4LtexLogs < 80)
++            {
++                ++missingEsm4LtexLogs;
++                Log(Debug::Warning) << "World viewer terrain: missing ESM4 LTEX " << id.toString()
++                                    << (defaultLayer != nullptr ? ", using LAND default" : ", using empty fallback");
++            }
++            if (defaultLayer != nullptr)
++                return *defaultLayer;
++        }
+         return getLayerInfo("");
+     }
+ 
 diff --git a/components/esmterrain/storage.hpp b/components/esmterrain/storage.hpp
 index be3ba87751..27f902ae45 100644
 --- a/components/esmterrain/storage.hpp
