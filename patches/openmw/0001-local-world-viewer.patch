@@ -262,7 +262,7 @@ index 59699d63a5..9edaad744d 100644
 +    endif()
  endif()
 diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
-index 7dd4db4d58..2eaed7a84b 100644
+index 7dd4db4d58..c1cd8e814a 100644
 --- a/apps/openmw/engine.cpp
 +++ b/apps/openmw/engine.cpp
 @@ -6,12 +6,17 @@
@@ -1190,15 +1190,22 @@ index 7dd4db4d58..2eaed7a84b 100644
      // ## VR_PATCH BEGIN
  
      class InitializeVrOperation : public osg::GraphicsOperation
-@@ -802,6 +1657,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -800,8 +1655,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+     static bool proofActorStagedForCamera = false;
+     static bool proofActorScreenshotWaitLogged = false;
      static int proofActorScreenshotLastResolveFrame = -1;
++    static bool proofPinnedPlayerToActorView = false;
++    static osg::Vec3f proofPinnedPlayerPosition;
++    static osg::Vec3f proofPinnedPlayerRotation;
++    static int proofPinnedPlayerFirstFrame = -1;
++    static int proofPinnedPlayerLastLogFrame = -1000000;
      static bool proofFirstPersonHidden = false;
      static bool proofGuiHidden = false;
 +    static bool proofLoadingGuiForceCleared = false;
      static bool proofSkyDisabled = false;
      static bool proofGodModeEnabled = false;
      static bool proofDelayedStartupScriptExecuted = false;
-@@ -810,6 +1666,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -810,6 +1671,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      static bool fnvFlatStartupCameraSettled = false;
      static bool proofScreenshotWaitLogged = false;
      static int proofWorldReadyFrames = 0;
@@ -1208,7 +1215,7 @@ index 7dd4db4d58..2eaed7a84b 100644
      const auto parseProofFormId = [](std::string_view value) -> std::optional<ESM::FormId> {
          while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
          while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
-@@ -1031,21 +1890,26 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1031,21 +1895,26 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      const osg::Timer* const timer = osg::Timer::instance();
      osg::Stats* const stats = mViewer->getViewerStats();
  
@@ -1235,7 +1242,7 @@ index 7dd4db4d58..2eaed7a84b 100644
              ScopedProfile<UserStatsType::Sound> profile(frameStart, frameNumber, *timer, *stats);
  
              static bool loggedHiddenVrWindow = false;
-@@ -1067,23 +1931,29 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1067,23 +1936,29 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
              if (mUseSound)
                  mSoundManager->update(frametime);
          }
@@ -1265,7 +1272,7 @@ index 7dd4db4d58..2eaed7a84b 100644
              ScopedProfile<UserStatsType::Script> profile(frameStart, frameNumber, *timer, *stats);
  
              if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
-@@ -1110,9 +1980,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1110,9 +1985,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                  }
              }
          }
@@ -1277,7 +1284,7 @@ index 7dd4db4d58..2eaed7a84b 100644
              ScopedProfile<UserStatsType::Mechanics> profile(frameStart, frameNumber, *timer, *stats);
  
              if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
-@@ -1127,9 +1999,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1127,9 +2004,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                      mStateManager->endGame();
              }
          }
@@ -1289,7 +1296,7 @@ index 7dd4db4d58..2eaed7a84b 100644
              ScopedProfile<UserStatsType::Physics> profile(frameStart, frameNumber, *timer, *stats);
  
              if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
-@@ -1137,9 +2011,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1137,9 +2016,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                  mWorld->updatePhysics(frametime, paused, frameStart, frameNumber, *stats);
              }
          }
@@ -1301,7 +1308,7 @@ index 7dd4db4d58..2eaed7a84b 100644
              ScopedProfile<UserStatsType::World> profile(frameStart, frameNumber, *timer, *stats);
  
              if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
-@@ -1147,18 +2023,23 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1147,18 +2028,23 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                  mWorld->update(frametime, paused);
              }
          }
@@ -1325,7 +1332,7 @@ index 7dd4db4d58..2eaed7a84b 100644
      const bool reportResource = stats->collectStats("resource");
  
      if (reportResource)
-@@ -1179,17 +2060,37 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1179,17 +2065,37 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          mWorld->reportStats(frameNumber, *stats);
          mLuaManager->reportStats(frameNumber, *stats);
      }
@@ -1364,7 +1371,7 @@ index 7dd4db4d58..2eaed7a84b 100644
  
      if (VR::getVR())
      {
-@@ -1212,7 +2113,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1212,7 +2118,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      }
  
      // if there is a separate Lua thread, it starts the update now
@@ -1374,7 +1381,7 @@ index 7dd4db4d58..2eaed7a84b 100644
  
      if (std::getenv("OPENMW_PROOF_HIDE_FIRST_PERSON") != nullptr)
      {
-@@ -1261,6 +2164,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1261,6 +2169,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      }
  
      const bool proofRunning = mStateManager->getState() == MWBase::StateManager::State_Running;
@@ -1389,7 +1396,7 @@ index 7dd4db4d58..2eaed7a84b 100644
      const bool proofLoadingGui = mWindowManager->containsMode(MWGui::GM_Loading)
          || mWindowManager->containsMode(MWGui::GM_LoadingWallpaper)
          || mWindowManager->containsMode(MWGui::GM_MainMenu);
-@@ -1270,6 +2181,51 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1270,6 +2186,51 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      else
          proofWorldReadyFrames = 0;
  
@@ -1441,7 +1448,7 @@ index 7dd4db4d58..2eaed7a84b 100644
      if (!proofDelayedStartupScriptExecuted && std::getenv("OPENMW_PROOF_DELAY_STARTUP_SCRIPT") != nullptr
          && !mStartupScript.empty() && proofWorldReady)
      {
-@@ -1295,8 +2251,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1295,8 +2256,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          proofFNVBootstrapApplied = true;
      }
  
@@ -1454,7 +1461,100 @@ index 7dd4db4d58..2eaed7a84b 100644
      {
          settleFNVFlatStartupCamera(*mWorld);
          fnvFlatStartupCameraSettled = true;
-@@ -1894,6 +2853,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1656,18 +2620,23 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+                     }
+                 }
+                 osg::Vec3f playerTargetPos(targetPos);
+-                if (!staticDialogueCamera)
++                const bool pinPlayerToActorView = std::getenv("OPENMW_PROOF_PIN_PLAYER_TO_ACTOR_VIEW") != nullptr;
++                if (!staticDialogueCamera || pinPlayerToActorView)
+                 {
+-                    const float playerEyeZ = readProofFloat("OPENMW_PROOF_ACTOR_VIEW_PLAYER_EYE_Z", 124.f);
+-                    playerTargetPos.z() -= playerEyeZ;
++                    if (!staticDialogueCamera)
++                    {
++                        const float playerEyeZ = readProofFloat("OPENMW_PROOF_ACTOR_VIEW_PLAYER_EYE_Z", 124.f);
++                        playerTargetPos.z() -= playerEyeZ;
++                    }
+                     player = mWorld->moveObject(player, playerTargetPos, true, true);
+                 }
+                 const ESM::Position& playerPos = player.getRefData().getPosition();
+                 const float yawToActor = static_cast<float>(
+                     std::atan2(actorAim.x() - targetPos.x(), actorAim.y() - targetPos.y()));
+                 const float cameraYawToActor = -yawToActor;
+-                if (!staticDialogueCamera)
+-                    mWorld->rotateObject(player, osg::Vec3f(0.f, 0.f, -yawToActor));
++                const osg::Vec3f playerTargetRotation(0.f, 0.f, -yawToActor);
++                if (!staticDialogueCamera || pinPlayerToActorView)
++                    mWorld->rotateObject(player, playerTargetRotation);
+                 if (MWRender::Camera* camera = mWorld->getCamera())
+                 {
+                     osg::Vec3d proofCameraPos;
+@@ -1770,12 +2739,28 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+                         proofActorCameraAligned = true;
+                         proofActorCameraAlignedFrame = static_cast<int>(frameNumber);
+                         proofActorCameraAlignedScreenshotIndex = proofScreenshotFrameIndex;
++                        if (pinPlayerToActorView)
++                        {
++                            proofPinnedPlayerToActorView = true;
++                            proofPinnedPlayerPosition = playerTargetPos;
++                            proofPinnedPlayerRotation = playerTargetRotation;
++                            proofPinnedPlayerFirstFrame = static_cast<int>(frameNumber);
++                            proofPinnedPlayerLastLogFrame = static_cast<int>(frameNumber) - 1000000;
++                            Log(Debug::Info) << "FNV/ESM4 proof: pinned player to actor view target=\""
++                                             << proofSayActor << "\" pos=(" << proofPinnedPlayerPosition.x() << ","
++                                             << proofPinnedPlayerPosition.y() << "," << proofPinnedPlayerPosition.z()
++                                             << ") rot=(" << proofPinnedPlayerRotation.x() << ","
++                                             << proofPinnedPlayerRotation.y() << "," << proofPinnedPlayerRotation.z()
++                                             << ") staticDialogueCamera=" << staticDialogueCamera;
++                        }
+                     }
+                     else
+                     {
+                         proofActorCameraAligned = false;
+                         proofActorCameraAlignedFrame = -1;
+                         proofActorCameraAlignedScreenshotIndex = static_cast<std::size_t>(-1);
++                        if (pinPlayerToActorView)
++                            proofPinnedPlayerToActorView = false;
+                         Log(Debug::Warning) << "FNV/ESM4 proof: actor camera alignment rejected target=\""
+                                             << proofSayActor << "\" frame=" << frameNumber;
+                     }
+@@ -1870,6 +2855,34 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+         proofSayQueued = true;
+     }
+ 
++    if (proofPinnedPlayerToActorView && proofRunning && mWorld != nullptr
++        && std::getenv("OPENMW_PROOF_PIN_PLAYER_TO_ACTOR_VIEW") != nullptr)
++    {
++        try
++        {
++            MWWorld::Ptr player = mWorld->getPlayerPtr();
++            const osg::Vec3f before = player.getRefData().getPosition().asVec3();
++            player = mWorld->moveObject(player, proofPinnedPlayerPosition, true, true);
++            mWorld->rotateObject(player, proofPinnedPlayerRotation);
++            if (static_cast<int>(frameNumber) - proofPinnedPlayerLastLogFrame >= 30)
++            {
++                proofPinnedPlayerLastLogFrame = static_cast<int>(frameNumber);
++                Log(Debug::Info) << "FNV/ESM4 proof: refreshed pinned player actor view frame=" << frameNumber
++                                 << " firstFrame=" << proofPinnedPlayerFirstFrame
++                                 << " before=(" << before.x() << "," << before.y() << "," << before.z() << ")"
++                                 << " pos=(" << proofPinnedPlayerPosition.x() << "," << proofPinnedPlayerPosition.y()
++                                 << "," << proofPinnedPlayerPosition.z() << ") rot=("
++                                 << proofPinnedPlayerRotation.x() << "," << proofPinnedPlayerRotation.y() << ","
++                                 << proofPinnedPlayerRotation.z() << ")";
++            }
++        }
++        catch (const std::exception& e)
++        {
++            proofPinnedPlayerToActorView = false;
++            Log(Debug::Warning) << "FNV/ESM4 proof: failed to refresh pinned player actor view: " << e.what();
++        }
++    }
++
+     const auto executeProofTimedScript = [&](int targetFrame, const char* pathEnv, bool& executed) {
+         if (executed || targetFrame < 0 || frameNumber < static_cast<unsigned>(targetFrame) || !proofRunning
+             || !proofWorldReady)
+@@ -1894,6 +2907,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          && frameNumber >= static_cast<unsigned>(proofScreenshotFrames[proofScreenshotFrameIndex]);
      const bool proofScreenshotReadyFramesReached
          = !proofScreenshotReadyQueued && proofScreenshotReadyFrames >= 0 && proofWorldReadyFrames >= proofScreenshotReadyFrames;
@@ -1479,7 +1579,7 @@ index 7dd4db4d58..2eaed7a84b 100644
      const int proofActorAlignedScreenshotDelay = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_DELAY");
      const int proofActorAlignedScreenshotMinFrame = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_MIN_FRAME");
      const bool proofActorAlignedScreenshotReached = !proofActorAlignedScreenshotQueued && proofActorCameraAligned
-@@ -1913,8 +2890,12 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1913,8 +2944,12 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          }
          if (!proofWorldReady)
          {
@@ -1492,7 +1592,7 @@ index 7dd4db4d58..2eaed7a84b 100644
              return true;
          }
          if (proofRequiresActorForScreenshot && !proofActorCameraAligned)
-@@ -1927,11 +2908,36 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1927,11 +2962,36 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
                                   << " screenshotIndex=" << proofScreenshotFrameIndex;
                  proofActorScreenshotWaitLogged = true;
              }
@@ -1529,7 +1629,7 @@ index 7dd4db4d58..2eaed7a84b 100644
          Log(Debug::Info) << "FNV/ESM4 proof: queuing GUI-inclusive native screenshot at frame " << frameNumber
                           << " hour=" << mWorld->getTimeStamp().getHour()
                           << " weatherId=" << mWorld->getCurrentWeatherScriptId()
-@@ -1944,12 +2950,18 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1944,12 +3004,18 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
              proofScreenshotReadyQueued = true;
          if (proofActorAlignedScreenshotReached)
              proofActorAlignedScreenshotQueued = true;
@@ -1548,7 +1648,7 @@ index 7dd4db4d58..2eaed7a84b 100644
      return true;
  }
  
-@@ -2490,12 +3502,19 @@ void OMW::Engine::prepareEngine()
+@@ -2490,12 +3556,19 @@ void OMW::Engine::prepareEngine()
              asyncListener.update();
          dataLoading.get();
      }
@@ -1568,7 +1668,7 @@ index 7dd4db4d58..2eaed7a84b 100644
  
      // ## VR_PATCH BEGIN
      if (VR::getVR())
-@@ -2505,6 +3524,7 @@ void OMW::Engine::prepareEngine()
+@@ -2505,6 +3578,7 @@ void OMW::Engine::prepareEngine()
      // ## VR_PATCH END
  
      const MWWorld::Store<ESM::GameSetting>* gmst = &mWorld->getStore().get<ESM::GameSetting>();
@@ -1576,7 +1676,7 @@ index 7dd4db4d58..2eaed7a84b 100644
      mL10nManager->setGmstLoader(
          [gmst, misses = std::set<std::string, std::less<>>()](std::string_view gmstName) mutable {
              const ESM::GameSetting* res = gmst->search(gmstName);
-@@ -2520,34 +3540,48 @@ void OMW::Engine::prepareEngine()
+@@ -2520,34 +3594,48 @@ void OMW::Engine::prepareEngine()
                  return std::string("GMST:") + std::string(gmstName);
              }
          });
@@ -1625,7 +1725,7 @@ index 7dd4db4d58..2eaed7a84b 100644
  
      // scripts
      if (mCompileAll)
-@@ -2565,11 +3599,15 @@ void OMW::Engine::prepareEngine()
+@@ -2565,11 +3653,15 @@ void OMW::Engine::prepareEngine()
                               << 100 * static_cast<double>(result.second) / result.first << "%)";
      }
  
