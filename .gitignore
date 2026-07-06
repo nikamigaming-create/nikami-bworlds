@@ -1,6 +1,7 @@
 # Local/generated world detection output
 /catalog/worlds.local.json
 /catalog/world-walker.seed.json
+/catalog/cells/*.esm3-mined.json
 /catalog/cells/*.esm4-mined.json
 
 # Generated OpenMW profiles and runtime output
@@ -11,6 +12,8 @@
 /run/
 /tmp/
 /out/
+__pycache__/
+*.pyc
 
 # Game assets, recovered retail assets, screenshots, videos, archives, binaries
 *.bsa
