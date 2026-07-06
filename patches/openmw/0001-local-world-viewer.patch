@@ -7959,7 +7959,7 @@ index f2e8347ef1..34dd1cd79c 100644
  
          MWRender::RayResult mPointerRay = {};
 diff --git a/apps/openmw/mwworld/cellstore.cpp b/apps/openmw/mwworld/cellstore.cpp
-index 1a2ded2c6c..6e645d7008 100644
+index 1a2ded2c6c..ca311683d0 100644
 --- a/apps/openmw/mwworld/cellstore.cpp
 +++ b/apps/openmw/mwworld/cellstore.cpp
 @@ -2,6 +2,7 @@
@@ -7982,7 +7982,87 @@ index 1a2ded2c6c..6e645d7008 100644
  
      template <typename Record>
      struct RecordToState
-@@ -1005,6 +1011,17 @@ namespace MWWorld
+@@ -336,19 +342,54 @@ namespace
+         }
+     }
+ 
++    template <class LiveRef>
++    void logWorldViewerActorIteration(const LiveRef& ref, std::string_view phase, bool accessible)
++    {
++        using BaseType = std::remove_cv_t<std::remove_pointer_t<decltype(ref.mBase)>>;
++        if constexpr (std::is_same_v<BaseType, ESM4::Npc> || std::is_same_v<BaseType, ESM4::Creature>)
++        {
++            if (!worldViewerActorTelemetryEnabled())
++                return;
++
++            const ESM::RefNum refnum = ref.mRef.getRefNum();
++            Log(Debug::Info) << "World viewer actor ledger: phase=" << phase
++                             << " type=" << ref.getTypeDescription()
++                             << " ref=" << refnum.toString("FormId:")
++                             << " base=" << ref.mRef.getRefId().toDebugString()
++                             << " count=" << ref.mRef.getCount(false)
++                             << " hasContentFile=" << refnum.hasContentFile()
++                             << " refSet=" << refnum.isSet()
++                             << " deleted=" << ref.mData.isDeletedByContentFile()
++                             << " enabled=" << ref.mData.isEnabled()
++                             << " accessible=" << accessible;
++        }
++    }
++
+     // helper function for forEachInternal
+     template <class Visitor, class List>
+     bool forEachImp(Visitor& visitor, List& list, MWWorld::CellStore& cellStore, bool includeDeleted)
+     {
+         for (auto& v : list.mList)
+         {
+-            if (!includeDeleted && !MWWorld::CellStore::isAccessible(v.mData, v.mRef))
++            const bool accessible = MWWorld::CellStore::isAccessible(v.mData, v.mRef);
++            logWorldViewerActorIteration(v, accessible ? "cell-foreach-accept" : "cell-foreach-skip", accessible);
++            if (!includeDeleted && !accessible)
+                 continue;
+             if (!visitor(MWWorld::Ptr(&v, &cellStore)))
+                 return false;
+         }
+         return true;
+     }
++
++    template <class Store>
++    constexpr bool isWorldViewerPriorityActorStore()
++    {
++        using StoreType = std::remove_cv_t<std::remove_reference_t<Store>>;
++        return std::is_same_v<StoreType, MWWorld::CellRefList<ESM::Creature>>
++            || std::is_same_v<StoreType, MWWorld::CellRefList<ESM::NPC>>
++            || std::is_same_v<StoreType, MWWorld::CellRefList<ESM4::Creature>>
++            || std::is_same_v<StoreType, MWWorld::CellRefList<ESM4::Npc>>;
++    }
+ }
+ 
+ namespace MWWorld
+@@ -413,8 +454,22 @@ namespace MWWorld
+         {
+             bool returnValue = true;
+ 
++            returnValue = returnValue && forEachImp(
++                visitor, std::get<CellRefList<ESM::Creature>>(cellStore.mCellStoreImp->mRefLists), cellStore,
++                includeDeleted);
++            returnValue = returnValue
++                && forEachImp(visitor, std::get<CellRefList<ESM::NPC>>(cellStore.mCellStoreImp->mRefLists), cellStore,
++                    includeDeleted);
++            returnValue = returnValue && forEachImp(
++                visitor, std::get<CellRefList<ESM4::Creature>>(cellStore.mCellStoreImp->mRefLists), cellStore,
++                includeDeleted);
++            returnValue = returnValue
++                && forEachImp(visitor, std::get<CellRefList<ESM4::Npc>>(cellStore.mCellStoreImp->mRefLists), cellStore,
++                    includeDeleted);
++
+             Misc::tupleForEach(cellStore.mCellStoreImp->mRefLists, [&](auto& store) {
+-                returnValue = returnValue && forEachImp(visitor, store, cellStore, includeDeleted);
++                if constexpr (!isWorldViewerPriorityActorStore<decltype(store)>())
++                    returnValue = returnValue && forEachImp(visitor, store, cellStore, includeDeleted);
+             });
+ 
+             return returnValue;
+@@ -1005,6 +1060,17 @@ namespace MWWorld
                                  << " in parent cell " << ref.mParent;
              return;
          }
@@ -8233,7 +8313,7 @@ index 53d49050a5..0e0a47b736 100644
          auto& scripts = getWritable<ESM::Script>();
  
 diff --git a/apps/openmw/mwworld/scene.cpp b/apps/openmw/mwworld/scene.cpp
-index a30ee3237c..dfb91a89ce 100644
+index a30ee3237c..0eb23d7bea 100644
 --- a/apps/openmw/mwworld/scene.cpp
 +++ b/apps/openmw/mwworld/scene.cpp
 @@ -1,5 +1,6 @@
@@ -8342,7 +8422,7 @@ index a30ee3237c..dfb91a89ce 100644
      osg::Vec3f transformFnvFurnitureMarkerOffsetForProof(osg::Vec3f offset)
      {
          const char* mode = std::getenv("OPENMW_FNV_FURNITURE_MARKER_OFFSET_MODE");
-@@ -498,6 +591,9 @@ namespace
+@@ -498,9 +591,21 @@ namespace
          const VFS::Path::Normalized model = getModel(ptr);
          const auto rotation = makeDirectNodeRotation(ptr);
  
@@ -8350,9 +8430,22 @@ index a30ee3237c..dfb91a89ce 100644
 +            return;
 +
          ESM::RefNum refnum = ptr.getCellRef().getRefNum();
-         if (!refnum.hasContentFile() || !std::binary_search(pagedRefs.begin(), pagedRefs.end(), refnum))
+-        if (!refnum.hasContentFile() || !std::binary_search(pagedRefs.begin(), pagedRefs.end(), refnum))
++        const bool pagedRef = refnum.hasContentFile() && std::binary_search(pagedRefs.begin(), pagedRefs.end(), refnum);
++        const bool forceEsm4ActorRender = pagedRef && isEsm4Actor(ptr) && ptr.getClass().isActor();
++        if (!pagedRef || forceEsm4ActorRender)
++        {
++            if (forceEsm4ActorRender && envEnabled("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY"))
++                Log(Debug::Info) << "World viewer actor ledger: phase=paged-ref-actor-promote"
++                                 << " ref=" << ptr.getCellRef().getRefNum().toString("FormId:")
++                                 << " base=" << ptr.getCellRef().getRefId().toDebugString()
++                                 << " type=\"" << ptr.getTypeDescription() << "\"";
              ptr.getClass().insertObjectRendering(ptr, model, rendering);
-@@ -514,8 +610,14 @@ namespace
++        }
+         else
+             ptr.getRefData().setBaseNode(pagedNode);
+         setNodeRotation(ptr, rendering, rotation);
+@@ -514,8 +619,14 @@ namespace
                               << scenePos.y() << "," << scenePos.z() << ") rotZ=" << refPos.rot[2];
          }
  
@@ -8368,7 +8461,7 @@ index a30ee3237c..dfb91a89ce 100644
  
          if (ptr.getClass().isActor())
              rendering.addWaterRippleEmitter(ptr);
-@@ -1005,7 +1107,7 @@ namespace MWWorld
+@@ -1005,7 +1116,7 @@ namespace MWWorld
      void Scene::changeCellGrid(const osg::Vec3f& pos, ESM::ExteriorCellLocation playerCellIndex, bool changeEvent)
      {
          const int halfGridSize
@@ -8377,7 +8470,7 @@ index a30ee3237c..dfb91a89ce 100644
          auto navigatorUpdateGuard = mNavigator.makeUpdateGuard();
          const int playerCellX = playerCellIndex.mX;
          const int playerCellY = playerCellIndex.mY;
-@@ -1238,7 +1340,7 @@ namespace MWWorld
+@@ -1238,7 +1349,7 @@ namespace MWWorld
  
      void Scene::changePlayerCell(CellStore& cell, const ESM::Position& pos, bool adjustPlayerPos)
      {

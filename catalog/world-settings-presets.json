@@ -240,7 +240,7 @@
       }
     },
     "fallout_new_vegas": {
-      "preset": "esm4_world_viewer_high_detail",
+      "preset": "esm4_world_viewer_first_frame",
       "sections": {
         "Saves": {
           "character": "world-viewer-fnv"
