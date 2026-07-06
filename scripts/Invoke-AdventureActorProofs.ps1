@@ -1,5 +1,6 @@
 param(
     [string]$CatalogPath = "catalog/adventure-actor-catalog.json",
+    [string]$CuratedTargetsPath = "catalog/adventure-actor-curated-targets.json",
     [string[]]$WorldId = @(),
     [string[]]$CategoryId = @("usual_suspects"),
     [int]$MaxTargetsPerCategory = 1,
@@ -139,7 +140,11 @@ function ConvertTo-HarnessParameterMap($ArgList) {
         "AllowBadScreenshots",
         "ShowGui",
         "DryRun",
-        "KeepRunning"
+        "KeepRunning",
+        "PreserveNativeMaterials",
+        "FullbrightActorMaterialsOnly",
+        "FullbrightNativeMaterials",
+        "RenderDisabledActors"
     )) {
         [void]$switchNames.Add($name)
     }
@@ -181,8 +186,48 @@ function ConvertTo-HarnessParameterMap($ArgList) {
     return $map
 }
 
+function Test-CuratedTargetMatch($Target, [string]$WorldId, [string]$CategoryId) {
+    $targetWorldId = [string](Get-PropertyValue $Target "worldId")
+    if ([string]::IsNullOrWhiteSpace($targetWorldId) -or $targetWorldId -ne $WorldId) {
+        return $false
+    }
+
+    $categoryIds = @()
+    $categoryIdsValue = Get-PropertyValue $Target "categoryIds"
+    if ($null -ne $categoryIdsValue) {
+        $categoryIds = @($categoryIdsValue)
+    }
+    else {
+        $categoryIdValue = Get-PropertyValue $Target "categoryId"
+        if ($null -ne $categoryIdValue) {
+            $categoryIds = @($categoryIdValue)
+        }
+    }
+
+    if ($categoryIds.Count -eq 0) {
+        return $true
+    }
+
+    foreach ($id in $categoryIds) {
+        if ([string]$id -eq $CategoryId) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 $absCatalog = (Resolve-Path -LiteralPath $CatalogPath).Path
 $catalog = Get-Content -LiteralPath $absCatalog -Raw | ConvertFrom-Json
+$curatedTargets = @()
+if (-not [string]::IsNullOrWhiteSpace($CuratedTargetsPath) -and (Test-Path -LiteralPath $CuratedTargetsPath)) {
+    $absCuratedTargets = (Resolve-Path -LiteralPath $CuratedTargetsPath).Path
+    $curatedCatalog = Get-Content -LiteralPath $absCuratedTargets -Raw | ConvertFrom-Json
+    $loadedCuratedTargets = Get-PropertyValue $curatedCatalog "targets"
+    if ($null -ne $loadedCuratedTargets) {
+        $curatedTargets = @($loadedCuratedTargets)
+    }
+}
 $worldFilter = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($id in $WorldId) {
     if (-not [string]::IsNullOrWhiteSpace($id)) {
@@ -230,7 +275,34 @@ foreach ($world in $catalog.worlds) {
         if ($categoryFilter.Count -gt 0 -and -not $categoryFilter.Contains($categoryId)) {
             continue
         }
-        $selected = @($category.targets | Select-Object -First $MaxTargetsPerCategory)
+        $selected = New-Object System.Collections.Generic.List[object]
+        $selectedLabels = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($curatedTarget in @($curatedTargets)) {
+            if ($selected.Count -ge $MaxTargetsPerCategory) {
+                break
+            }
+            if (-not (Test-CuratedTargetMatch -Target $curatedTarget -WorldId $worldId -CategoryId $categoryId)) {
+                continue
+            }
+            $label = [string](Get-PropertyValue $curatedTarget "label")
+            if ([string]::IsNullOrWhiteSpace($label)) {
+                $label = [string](Get-PropertyValue $curatedTarget "baseEditorId")
+            }
+            if (-not [string]::IsNullOrWhiteSpace($label) -and -not $selectedLabels.Add($label)) {
+                continue
+            }
+            $selected.Add($curatedTarget) | Out-Null
+        }
+        foreach ($catalogTarget in @($category.targets)) {
+            if ($selected.Count -ge $MaxTargetsPerCategory) {
+                break
+            }
+            $label = [string](Get-PropertyValue $catalogTarget "label")
+            if (-not [string]::IsNullOrWhiteSpace($label) -and -not $selectedLabels.Add($label)) {
+                continue
+            }
+            $selected.Add($catalogTarget) | Out-Null
+        }
         foreach ($target in $selected) {
             $targets.Add([pscustomobject][ordered]@{
                 world = $world

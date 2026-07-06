@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "description": "Public-safe actor proof targets that are known to produce useful pixels before the mined catalog can rank them automatically.",
+  "targets": [
+    {
+      "worldId": "starfield",
+      "categoryIds": [
+        "usual_suspects",
+        "adult_male"
+      ],
+      "label": "E3_Story02a_ShipServices",
+      "refId": "0x123337c",
+      "baseEditorId": "E3_Story02a_ShipServices",
+      "cellEditorId": "NewAtlantisSpaceport",
+      "notes": [
+        "Known-good New Atlantis Ship Services actor proof target.",
+        "This target is disabled in normal data and needs RenderDisabledActors while the viewer lacks Starfield quest/state evaluation."
+      ],
+      "proofHarnessArgs": [
+        "-WorldId",
+        "starfield",
+        "-BinaryRoot",
+        "local/openmw-fo4guard",
+        "-RunSeconds",
+        "45",
+        "-ScreenshotFrames",
+        "240,420,600",
+        "-TelemetryInterval",
+        "1",
+        "-RefTelemetryLimit",
+        "8000",
+        "-FocusActor",
+        "0x123337c",
+        "-StartCellOverride",
+        "NewAtlantisSpaceport",
+        "-StartPosX",
+        "-127.387",
+        "-StartPosY",
+        "-81.1344",
+        "-StartPosZ",
+        "73.45",
+        "-CameraPosX",
+        "82",
+        "-CameraPosY",
+        "65",
+        "-CameraPosZ",
+        "128",
+        "-CameraTargetX",
+        "-127.387",
+        "-CameraTargetY",
+        "-81.1344",
+        "-CameraTargetZ",
+        "88",
+        "-PreserveNativeMaterials",
+        "-FullbrightActorMaterialsOnly",
+        "-RenderDisabledActors",
+        "-Esm4GridRadius",
+        "0",
+        "-AllowBadScreenshots"
+      ]
+    }
+  ]
+}

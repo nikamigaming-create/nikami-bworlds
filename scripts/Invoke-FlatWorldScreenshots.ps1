@@ -688,6 +688,8 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $geometryLedger = New-Object System.Collections.Generic.List[object]
     $textureLedger = New-Object System.Collections.Generic.List[object]
     $materialLedger = New-Object System.Collections.Generic.List[object]
+    $starfieldMeshLedger = New-Object System.Collections.Generic.List[object]
+    $starfieldActorTextureLedger = New-Object System.Collections.Generic.List[object]
     $meshLoadFailures = New-Object System.Collections.Generic.List[object]
     $staticSkeletonAttaches = New-Object System.Collections.Generic.List[object]
     $tes5FaceSurfaceFallbacks = New-Object System.Collections.Generic.List[object]
@@ -747,6 +749,15 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $actorMeshTemplateEvents = 0
     $actorMeshTemplateWithGeometry = 0
     $actorMeshTemplateEmptyGeometry = 0
+    $starfieldExternalMeshEvents = 0
+    $starfieldExternalMeshVertices = 0
+    $starfieldExternalMeshIndices = 0
+    $starfieldExternalMeshWithUv = 0
+    $starfieldExternalMeshWithNormals = 0
+    $starfieldExternalMeshFailures = 0
+    $starfieldActorProofTextureEvents = 0
+    $starfieldActorProofTextureUnits = 0
+    $starfieldBsGeometryProxyEvents = 0
     $textureLedgerEvents = 0
     $textureImagesResolved = 0
     $textureImagesMissing = 0
@@ -914,6 +925,67 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
                     path = $meshFailureMatch.Groups["path"].Value
                     reason = $meshFailureMatch.Groups["reason"].Value
                 })
+            }
+            continue
+        }
+
+        $starfieldMeshLoadedIndex = $line.IndexOf("World viewer: Starfield mesh loaded")
+        if ($starfieldMeshLoadedIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($starfieldMeshLoadedIndex + "World viewer: Starfield mesh loaded".Length).Trim())
+            $starfieldExternalMeshEvents++
+            $vertices = Convert-WorldViewerInt (Get-PropertyValue $entry "vertices")
+            $indices = Convert-WorldViewerInt (Get-PropertyValue $entry "indices")
+            $uv1 = Convert-WorldViewerInt (Get-PropertyValue $entry "uv1")
+            $normals = Convert-WorldViewerInt (Get-PropertyValue $entry "normals")
+            $starfieldExternalMeshVertices += $vertices
+            $starfieldExternalMeshIndices += $indices
+            if ($uv1 -gt 0) {
+                $starfieldExternalMeshWithUv++
+            }
+            if ($normals -gt 0) {
+                $starfieldExternalMeshWithNormals++
+            }
+            if ($starfieldMeshLedger.Count -lt 240) {
+                $entry | Add-Member -NotePropertyName phase -NotePropertyValue "starfield-mesh-loaded" -Force
+                $starfieldMeshLedger.Add($entry)
+            }
+            continue
+        }
+
+        $starfieldMeshFailureIndex = $line.IndexOf("World viewer: Starfield mesh load failed")
+        if ($starfieldMeshFailureIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($starfieldMeshFailureIndex + "World viewer: Starfield mesh load failed".Length).Trim())
+            $starfieldExternalMeshFailures++
+            $meshLoadFailureEvents++
+            if ($meshLoadFailures.Count -lt 120) {
+                $meshLoadFailures.Add([pscustomobject][ordered]@{
+                    path = [string](Get-PropertyValue $entry "path")
+                    reason = [string](Get-PropertyValue $entry "reason")
+                    source = "starfield-external-mesh"
+                })
+            }
+            continue
+        }
+
+        $starfieldActorTextureIndex = $line.IndexOf("World viewer: Starfield actor proof texture")
+        if ($starfieldActorTextureIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($starfieldActorTextureIndex + "World viewer: Starfield actor proof texture".Length).Trim())
+            $starfieldActorProofTextureEvents++
+            $starfieldActorProofTextureUnits += Convert-WorldViewerInt (Get-PropertyValue $entry "boundTextureUnits")
+            if ($starfieldActorTextureLedger.Count -lt 240) {
+                $entry | Add-Member -NotePropertyName phase -NotePropertyValue "starfield-actor-proof-texture" -Force
+                $starfieldActorTextureLedger.Add($entry)
+            }
+            continue
+        }
+
+        $starfieldProxyIndex = $line.IndexOf("World viewer: Starfield BSGeometry proxy")
+        if ($starfieldProxyIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($starfieldProxyIndex + "World viewer: Starfield BSGeometry proxy".Length).Trim())
+            $starfieldBsGeometryProxyEvents++
+            if ($geometryLedger.Count -lt 240) {
+                $entry | Add-Member -NotePropertyName phase -NotePropertyValue "starfield-bs-proxy" -Force
+                $geometryLedger.Add($entry)
             }
             continue
         }
@@ -1256,6 +1328,15 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         actorMeshTemplateEvents = $actorMeshTemplateEvents
         actorMeshTemplateWithGeometry = $actorMeshTemplateWithGeometry
         actorMeshTemplateEmptyGeometry = $actorMeshTemplateEmptyGeometry
+        starfieldExternalMeshEvents = $starfieldExternalMeshEvents
+        starfieldExternalMeshVertices = $starfieldExternalMeshVertices
+        starfieldExternalMeshIndices = $starfieldExternalMeshIndices
+        starfieldExternalMeshWithUv = $starfieldExternalMeshWithUv
+        starfieldExternalMeshWithNormals = $starfieldExternalMeshWithNormals
+        starfieldExternalMeshFailures = $starfieldExternalMeshFailures
+        starfieldActorProofTextureEvents = $starfieldActorProofTextureEvents
+        starfieldActorProofTextureUnits = $starfieldActorProofTextureUnits
+        starfieldBsGeometryProxyEvents = $starfieldBsGeometryProxyEvents
         meshStages = [pscustomobject]$meshStages
         textureLedgerEvents = $textureLedgerEvents
         textureImagesResolved = $textureImagesResolved
@@ -1304,8 +1385,10 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         rays = @($rays.ToArray())
         actorLedger = @($actorLedger.ToArray())
         meshLedger = @($meshLedger.ToArray())
+        starfieldMeshLedger = @($starfieldMeshLedger.ToArray())
         geometryLedger = @($geometryLedger.ToArray())
         textureLedger = @($textureLedger.ToArray())
+        starfieldActorTextureLedger = @($starfieldActorTextureLedger.ToArray())
         materialLedger = @($materialLedger.ToArray())
         meshLoadFailures = @($meshLoadFailures.ToArray())
         staticSkeletonAttaches = @($staticSkeletonAttaches.ToArray())
@@ -1350,6 +1433,10 @@ $BinaryRoot = Resolve-NikamiPath `
     -ConfigName "openmwBinaryRoot" `
     -Required `
     -Description "OpenMW binary root"
+if (-not (Test-Path -LiteralPath $BinaryRoot)) {
+    throw "Missing OpenMW binary root: $BinaryRoot"
+}
+$BinaryRoot = (Resolve-Path -LiteralPath $BinaryRoot).Path
 
 $binary = Join-Path $BinaryRoot "openmw.exe"
 if (-not (Test-Path -LiteralPath $binary)) {
@@ -1974,6 +2061,9 @@ try {
             }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.meshLedgerEvents -gt 0) {
                 $notes.Add("Mesh ledger: template finals $($worldViewerTelemetry.meshTemplateFinalWithGeometry)/$($worldViewerTelemetry.meshTemplateFinalEvents) with geometry, actor templates $($worldViewerTelemetry.actorMeshTemplateWithGeometry)/$($worldViewerTelemetry.actorMeshTemplateEvents), loadFailures $($worldViewerTelemetry.meshLoadFailureEvents)")
+            }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.starfieldExternalMeshEvents -gt 0) {
+                $notes.Add("Starfield external mesh ledger: loaded $($worldViewerTelemetry.starfieldExternalMeshEvents), uv $($worldViewerTelemetry.starfieldExternalMeshWithUv), normals $($worldViewerTelemetry.starfieldExternalMeshWithNormals), vertices $($worldViewerTelemetry.starfieldExternalMeshVertices), indices $($worldViewerTelemetry.starfieldExternalMeshIndices), failures $($worldViewerTelemetry.starfieldExternalMeshFailures), actorTextureUnits $($worldViewerTelemetry.starfieldActorProofTextureUnits)")
             }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.tes5StaticFaceSurfaceFallbackEvents -gt 0) {
                 $notes.Add("TES5 static face surface fallbacks: $($worldViewerTelemetry.tes5StaticFaceSurfaceFallbackEvents)")
