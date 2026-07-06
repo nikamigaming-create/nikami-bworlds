@@ -27,6 +27,10 @@ def f32(data, offset):
     return struct.unpack_from("<f", data, offset)[0]
 
 
+def form_from_raw(raw_form, mod_index):
+    return form(u32(raw_form, 0), mod_index) if len(raw_form) >= 4 else None
+
+
 def zstr(raw):
     raw = raw.split(b"\0", 1)[0]
     return raw.decode("cp1252", errors="replace")
@@ -120,6 +124,16 @@ class ESM4Catalog:
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "DATA" and len(raw) >= 24:
                 fields["pos"] = [f32(raw, 0), f32(raw, 4), f32(raw, 8)]
                 fields["rot"] = [f32(raw, 12), f32(raw, 16), f32(raw, 20)]
+            elif rtype in ("NPC_", "CREA") and name == "ACBS" and len(raw) >= 4:
+                fields["actorFlags"] = u32(raw, 0)
+                # TES4-family actor flags use bit 0 for female on the games we mine here.
+                fields["femaleFlag"] = (fields["actorFlags"] & 1) != 0
+            elif rtype == "NPC_" and name == "RNAM" and len(raw) >= 4:
+                fields["race"] = form_from_raw(raw, self.mod_index)
+            elif rtype in ("NPC_", "CREA") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
+                fields.setdefault("models", []).append(zstr(raw))
+            elif rtype in ("LVLN", "LVLC") and name == "LVLO" and len(raw) >= 8:
+                fields.setdefault("leveledEntries", []).append(form(u32(raw, 4), self.mod_index))
             elif rtype == "WRLD" and name == "WCTR" and len(raw) >= 4:
                 fields["centerCell"] = [struct.unpack_from("<h", raw, 0)[0], struct.unpack_from("<h", raw, 2)[0]]
         return fields
@@ -186,6 +200,20 @@ class ESM4Catalog:
                     record["editorId"] = fields["editorId"]
                 if "fullName" in fields:
                     record["fullName"] = fields["fullName"]
+                if "actorFlags" in fields:
+                    record["actorFlags"] = fields["actorFlags"]
+                if "femaleFlag" in fields:
+                    record["femaleFlag"] = fields["femaleFlag"]
+                if "race" in fields:
+                    record["race"] = form_hex(fields.get("race"))
+                    record["openmwRace"] = openmw_form_id(fields.get("race"))
+                if "models" in fields:
+                    record["models"] = fields["models"][:8]
+                if "leveledEntries" in fields:
+                    record["leveledEntries"] = [form_hex(entry) for entry in fields["leveledEntries"][:80] if entry]
+                    record["openmwLeveledEntries"] = [
+                        openmw_form_id(entry) for entry in fields["leveledEntries"][:80] if entry
+                    ]
                 matches = self.record_matches_terms(record)
                 if matches:
                     record["matches"] = matches
