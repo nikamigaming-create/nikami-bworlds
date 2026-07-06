@@ -267,7 +267,18 @@ function Convert-StarfieldActorProofTextures([string]$OpenMwCfg, [string]$DataLo
         "textures/clothes/outfit_utilityoveralls_01/headwear_ssohat_01_color.dds",
         "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_sso_jacket_sleeves_01_color.dds",
         "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_sso_jacket_upperbody_01_color.dds",
-        "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_sso_jacket_cooling_upperbody_01_color.dds"
+        "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_sso_jacket_cooling_upperbody_01_color.dds",
+        "textures/architecture/city/newatlantis/naglasspattern02_color.dds",
+        "textures/architecture/city/newatlantis/nagrassastroturf01_color.dds",
+        "textures/architecture/city/newatlantis/nacarpet01b_color.dds",
+        "textures/architecture/city/newatlantis/naterminalsignage01_color.dds",
+        "textures/architecture/city/newatlantis/nametalbrasspattern01_color.dds",
+        "textures/architecture/city/newatlantis/nastone01mossy01_color.dds",
+        "textures/architecture/city/newatlantis/nascreenpattern01_color.dds",
+        "textures/architecture/city/newatlantis/naplasticcirclepattern01_color.dds",
+        "textures/architecture/city/newatlantis/natilefloor01_color.dds",
+        "textures/architecture/city/newatlantis/naconcretemossy01_color.dds",
+        "textures/architecture/city/newatlantis/naconcreteprinted02_color.dds"
     )
     $extractRoot = Join-Path $DataLocalDirectory "__starfield_texture_extract"
     $converted = 0
@@ -690,6 +701,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $materialLedger = New-Object System.Collections.Generic.List[object]
     $starfieldMeshLedger = New-Object System.Collections.Generic.List[object]
     $starfieldActorTextureLedger = New-Object System.Collections.Generic.List[object]
+    $starfieldWorldTextureLedger = New-Object System.Collections.Generic.List[object]
     $meshLoadFailures = New-Object System.Collections.Generic.List[object]
     $staticSkeletonAttaches = New-Object System.Collections.Generic.List[object]
     $tes5FaceSurfaceFallbacks = New-Object System.Collections.Generic.List[object]
@@ -757,6 +769,8 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $starfieldExternalMeshFailures = 0
     $starfieldActorProofTextureEvents = 0
     $starfieldActorProofTextureUnits = 0
+    $starfieldWorldProofTextureEvents = 0
+    $starfieldWorldProofTextureUnits = 0
     $starfieldBsGeometryProxyEvents = 0
     $textureLedgerEvents = 0
     $textureImagesResolved = 0
@@ -975,6 +989,18 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
             if ($starfieldActorTextureLedger.Count -lt 240) {
                 $entry | Add-Member -NotePropertyName phase -NotePropertyValue "starfield-actor-proof-texture" -Force
                 $starfieldActorTextureLedger.Add($entry)
+            }
+            continue
+        }
+
+        $starfieldWorldTextureIndex = $line.IndexOf("World viewer: Starfield world proof texture")
+        if ($starfieldWorldTextureIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($starfieldWorldTextureIndex + "World viewer: Starfield world proof texture".Length).Trim())
+            $starfieldWorldProofTextureEvents++
+            $starfieldWorldProofTextureUnits += Convert-WorldViewerInt (Get-PropertyValue $entry "boundTextureUnits")
+            if ($starfieldWorldTextureLedger.Count -lt 240) {
+                $entry | Add-Member -NotePropertyName phase -NotePropertyValue "starfield-world-proof-texture" -Force
+                $starfieldWorldTextureLedger.Add($entry)
             }
             continue
         }
@@ -1336,6 +1362,8 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         starfieldExternalMeshFailures = $starfieldExternalMeshFailures
         starfieldActorProofTextureEvents = $starfieldActorProofTextureEvents
         starfieldActorProofTextureUnits = $starfieldActorProofTextureUnits
+        starfieldWorldProofTextureEvents = $starfieldWorldProofTextureEvents
+        starfieldWorldProofTextureUnits = $starfieldWorldProofTextureUnits
         starfieldBsGeometryProxyEvents = $starfieldBsGeometryProxyEvents
         meshStages = [pscustomobject]$meshStages
         textureLedgerEvents = $textureLedgerEvents
@@ -1389,6 +1417,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         geometryLedger = @($geometryLedger.ToArray())
         textureLedger = @($textureLedger.ToArray())
         starfieldActorTextureLedger = @($starfieldActorTextureLedger.ToArray())
+        starfieldWorldTextureLedger = @($starfieldWorldTextureLedger.ToArray())
         materialLedger = @($materialLedger.ToArray())
         meshLoadFailures = @($meshLoadFailures.ToArray())
         staticSkeletonAttaches = @($staticSkeletonAttaches.ToArray())
@@ -2063,7 +2092,7 @@ try {
                 $notes.Add("Mesh ledger: template finals $($worldViewerTelemetry.meshTemplateFinalWithGeometry)/$($worldViewerTelemetry.meshTemplateFinalEvents) with geometry, actor templates $($worldViewerTelemetry.actorMeshTemplateWithGeometry)/$($worldViewerTelemetry.actorMeshTemplateEvents), loadFailures $($worldViewerTelemetry.meshLoadFailureEvents)")
             }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.starfieldExternalMeshEvents -gt 0) {
-                $notes.Add("Starfield external mesh ledger: loaded $($worldViewerTelemetry.starfieldExternalMeshEvents), uv $($worldViewerTelemetry.starfieldExternalMeshWithUv), normals $($worldViewerTelemetry.starfieldExternalMeshWithNormals), vertices $($worldViewerTelemetry.starfieldExternalMeshVertices), indices $($worldViewerTelemetry.starfieldExternalMeshIndices), failures $($worldViewerTelemetry.starfieldExternalMeshFailures), actorTextureUnits $($worldViewerTelemetry.starfieldActorProofTextureUnits)")
+                $notes.Add("Starfield external mesh ledger: loaded $($worldViewerTelemetry.starfieldExternalMeshEvents), uv $($worldViewerTelemetry.starfieldExternalMeshWithUv), normals $($worldViewerTelemetry.starfieldExternalMeshWithNormals), vertices $($worldViewerTelemetry.starfieldExternalMeshVertices), indices $($worldViewerTelemetry.starfieldExternalMeshIndices), failures $($worldViewerTelemetry.starfieldExternalMeshFailures), actorTextureUnits $($worldViewerTelemetry.starfieldActorProofTextureUnits), worldTextureUnits $($worldViewerTelemetry.starfieldWorldProofTextureUnits)")
             }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.tes5StaticFaceSurfaceFallbackEvents -gt 0) {
                 $notes.Add("TES5 static face surface fallbacks: $($worldViewerTelemetry.tes5StaticFaceSurfaceFallbackEvents)")
