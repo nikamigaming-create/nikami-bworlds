@@ -8081,7 +8081,7 @@ index 1a2ded2c6c..ca311683d0 100644
          Misc::tupleForEach(this->mCellStoreImp->mRefLists, [&ref, &store, foundType](auto& x) {
              recNameSwitcher(x, foundType, [&ref, &store](auto& storeIn) { storeIn.load(ref, store); });
 diff --git a/apps/openmw/mwworld/esmstore.cpp b/apps/openmw/mwworld/esmstore.cpp
-index 53d49050a5..0e0a47b736 100644
+index 53d49050a5..4f4bec6610 100644
 --- a/apps/openmw/mwworld/esmstore.cpp
 +++ b/apps/openmw/mwworld/esmstore.cpp
 @@ -1,6 +1,7 @@
@@ -8183,7 +8183,7 @@ index 53d49050a5..0e0a47b736 100644
          }
  
          const auto ensureWeapon = [&weapons](
-@@ -500,10 +537,73 @@ namespace MWWorld
+@@ -500,10 +537,81 @@ namespace MWWorld
              return false;
          }
  
@@ -8194,10 +8194,18 @@ index 53d49050a5..0e0a47b736 100644
 +                case ESM4::REC_ACHR:
 +                case ESM4::REC_ACRE:
 +                case ESM4::REC_ACTI:
++                case ESM4::REC_ARMO:
 +                case ESM4::REC_CELL:
++                case ESM4::REC_CREA:
++                case ESM4::REC_HDPT:
++                case ESM4::REC_HAIR:
 +                case ESM4::REC_LAND:
++                case ESM4::REC_LVLC:
++                case ESM4::REC_LVLN:
 +                case ESM4::REC_LTEX:
 +                case ESM4::REC_MSTT:
++                case ESM4::REC_NPC_:
++                case ESM4::REC_OTFT:
 +                case ESM4::REC_RACE:
 +                case ESM4::REC_REFR:
 +                case ESM4::REC_STAT:
@@ -8258,7 +8266,7 @@ index 53d49050a5..0e0a47b736 100644
          }
      };
  
-@@ -695,7 +795,30 @@ namespace MWWorld
+@@ -695,7 +803,30 @@ namespace MWWorld
                  listener->setProgress(::EsmLoader::fileProgress * r.getFileOffset() / r.getFileSize());
              return result;
          };
@@ -8290,7 +8298,7 @@ index 53d49050a5..0e0a47b736 100644
      }
  
      void ESMStore::setIdType(const ESM::RefId& id, ESM::RecNameInts type)
-@@ -824,7 +947,9 @@ namespace MWWorld
+@@ -824,7 +955,9 @@ namespace MWWorld
              ensureFalloutCharacterDefaults(
                  getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
                  getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
@@ -8301,7 +8309,7 @@ index 53d49050a5..0e0a47b736 100644
          rebuildIdsIndex();
          mStoreImp->mStaticIds = mStoreImp->mIds;
          std::vector<ESM::NPC> npcsToReplace = getNPCsToReplace(getWritable<ESM::Faction>(), getWritable<ESM::Class>(),
-@@ -873,7 +998,9 @@ namespace MWWorld
+@@ -873,7 +1006,9 @@ namespace MWWorld
              ensureFalloutCharacterDefaults(
                  getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
                  getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
@@ -11414,7 +11422,7 @@ index e9306fa83f..2212b59439 100644
          void read(NIFStream* nif) override;
          void post(Reader& nif) override;
 diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
-index a583941dee..3b06671116 100644
+index a583941dee..3ac19780c6 100644
 --- a/components/nifosg/nifloader.cpp
 +++ b/components/nifosg/nifloader.cpp
 @@ -1,12 +1,18 @@
@@ -12369,7 +12377,7 @@ index a583941dee..3b06671116 100644
  
              osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
              geometry->addPrimitiveSet(
-@@ -2782,10 +3544,190 @@ namespace NifOsg
+@@ -2782,10 +3544,203 @@ namespace NifOsg
                  drawableProps.emplace_back(bsTriShape->mShaderProperty.getPtr());
              if (!bsTriShape->mAlphaProperty.empty())
                  drawableProps.emplace_back(bsTriShape->mAlphaProperty.getPtr());
@@ -12405,6 +12413,7 @@ index a583941dee..3b06671116 100644
 +                return false;
 +
 +            const auto& meshRef = bsTriShape->mExternalGeometry.front();
++            const osg::Vec4f proofColor = colorFromString(meshRef.mMeshPath);
 +            std::string meshPath = "geometries/";
 +            meshPath += meshRef.mMeshPath;
 +            meshPath += ".mesh";
@@ -12431,7 +12440,7 @@ index a583941dee..3b06671116 100644
 +                osg::PrimitiveSet::TRIANGLES, mesh->mIndices.size(), mesh->mIndices.data()));
 +
 +            osg::ref_ptr<osg::Vec4Array> colors(new osg::Vec4Array);
-+            colors->push_back(osg::Vec4f(0.62f, 0.64f, 0.60f, 1.f));
++            colors->push_back(proofColor);
 +            geometry->setColorArray(colors, osg::Array::BIND_OVERALL);
 +
 +            if (mesh->mNormals.size() == mesh->mVertices.size())
@@ -12445,13 +12454,17 @@ index a583941dee..3b06671116 100644
 +            }
 +
 +            osg::ref_ptr<osg::Material> material(new osg::Material);
-+            material->setColorMode(osg::Material::AMBIENT_AND_DIFFUSE);
-+            material->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.62f, 0.64f, 0.60f, 1.f));
-+            material->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.50f, 0.52f, 0.49f, 1.f));
++            material->setColorMode(osg::Material::OFF);
++            material->setDiffuse(osg::Material::FRONT_AND_BACK, proofColor);
++            material->setAmbient(osg::Material::FRONT_AND_BACK,
++                osg::Vec4f(proofColor.r() * 0.8f, proofColor.g() * 0.8f, proofColor.b() * 0.8f, proofColor.a()));
++            material->setEmission(osg::Material::FRONT_AND_BACK,
++                osg::Vec4f(proofColor.r() * 0.55f, proofColor.g() * 0.55f, proofColor.b() * 0.55f, proofColor.a()));
 +
 +            osg::StateSet* stateset = geometry->getOrCreateStateSet();
-+            stateset->setAttributeAndModes(material, osg::StateAttribute::ON);
++            stateset->setAttributeAndModes(material, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
 +            stateset->setMode(GL_CULL_FACE, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
++            stateset->setMode(GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
 +
 +            geometry->setName(bsTriShape->mName.empty() ? bsTriShape->recName : bsTriShape->mName);
 +            parentNode->addChild(geometry);
@@ -12542,8 +12555,16 @@ index a583941dee..3b06671116 100644
 +            geometry->setNormalArray(normals, osg::Array::BIND_OVERALL);
 +
 +            osg::ref_ptr<osg::Material> material(new osg::Material);
-+            material->setColorMode(osg::Material::AMBIENT_AND_DIFFUSE);
-+            geometry->getOrCreateStateSet()->setAttributeAndModes(material, osg::StateAttribute::ON);
++            const osg::Vec4f proofColor = colors->front();
++            material->setColorMode(osg::Material::OFF);
++            material->setDiffuse(osg::Material::FRONT_AND_BACK, proofColor);
++            material->setAmbient(osg::Material::FRONT_AND_BACK,
++                osg::Vec4f(proofColor.r() * 0.8f, proofColor.g() * 0.8f, proofColor.b() * 0.8f, proofColor.a()));
++            material->setEmission(osg::Material::FRONT_AND_BACK,
++                osg::Vec4f(proofColor.r() * 0.55f, proofColor.g() * 0.55f, proofColor.b() * 0.55f, proofColor.a()));
++            osg::StateSet* stateset = geometry->getOrCreateStateSet();
++            stateset->setAttributeAndModes(material, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
++            stateset->setMode(GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
 +            geometry->setName(bsTriShape->mName.empty() ? bsTriShape->recName : bsTriShape->mName);
 +            parentNode->addChild(geometry);
 +
@@ -12561,7 +12582,7 @@ index a583941dee..3b06671116 100644
          }
  
          osg::BlendFunc::BlendFuncMode getBlendMode(int mode) const
-@@ -3364,6 +4306,9 @@ namespace NifOsg
+@@ -3364,6 +4319,9 @@ namespace NifOsg
              const std::string& nodeName, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
          {
              const unsigned int uvSet = 0;
@@ -12571,7 +12592,7 @@ index a583941dee..3b06671116 100644
  
              for (size_t i = 0; i < textureSet->mTextures.size(); ++i)
              {
-@@ -3380,6 +4325,14 @@ namespace NifOsg
+@@ -3380,6 +4338,14 @@ namespace NifOsg
                              "normalMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
                      case Nif::BSShaderTextureSet::TextureType::Glow:
@@ -12586,7 +12607,7 @@ index a583941dee..3b06671116 100644
                          attachExternalTexture(
                              "emissiveMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
-@@ -3584,6 +4537,55 @@ namespace NifOsg
+@@ -3584,6 +4550,55 @@ namespace NifOsg
                      handleDepthFlags(stateset, texprop->depthTest(), texprop->depthWrite());
                      break;
                  }
@@ -12642,7 +12663,7 @@ index a583941dee..3b06671116 100644
                  case Nif::RC_BSLightingShaderProperty:
                  {
                      auto texprop = static_cast<const Nif::BSLightingShaderProperty*>(property);
-@@ -3722,7 +4724,8 @@ namespace NifOsg
+@@ -3722,7 +4737,8 @@ namespace NifOsg
          }
  
          void applyDrawableProperties(osg::Node* node, const std::vector<const Nif::NiProperty*>& properties,
@@ -12652,7 +12673,7 @@ index a583941dee..3b06671116 100644
          {
              // Specular lighting is enabled by default, but there's a quirk...
              bool specEnabled = true;
-@@ -3742,6 +4745,16 @@ namespace NifOsg
+@@ -3742,6 +4758,16 @@ namespace NifOsg
              auto lightmode = Nif::NiVertexColorProperty::LightMode::LightMode_EmiAmbDif;
              float emissiveMult = 1.f;
              float specStrength = 1.f;
@@ -12669,7 +12690,7 @@ index a583941dee..3b06671116 100644
  
              for (const Nif::NiProperty* property : properties)
              {
-@@ -3757,6 +4770,7 @@ namespace NifOsg
+@@ -3757,6 +4783,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiMaterialProperty:
                      {
@@ -12677,7 +12698,7 @@ index a583941dee..3b06671116 100644
                          const Nif::NiMaterialProperty* matprop = static_cast<const Nif::NiMaterialProperty*>(property);
  
                          mat->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(matprop->mDiffuse, matprop->mAlpha));
-@@ -3780,6 +4794,7 @@ namespace NifOsg
+@@ -3780,6 +4807,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiVertexColorProperty:
                      {
@@ -12685,7 +12706,7 @@ index a583941dee..3b06671116 100644
                          const Nif::NiVertexColorProperty* vertprop
                              = static_cast<const Nif::NiVertexColorProperty*>(property);
  
-@@ -3822,6 +4837,7 @@ namespace NifOsg
+@@ -3822,6 +4850,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiAlphaProperty:
                      {
@@ -12693,7 +12714,7 @@ index a583941dee..3b06671116 100644
                          const Nif::NiAlphaProperty* alphaprop = static_cast<const Nif::NiAlphaProperty*>(property);
                          handleAlphaBlending(alphaprop->useAlphaBlending(), alphaprop->sourceBlendMode(),
                              alphaprop->destinationBlendMode(), !alphaprop->noSorter(), hasSortAlpha, *node);
-@@ -3831,15 +4847,21 @@ namespace NifOsg
+@@ -3831,15 +4860,21 @@ namespace NifOsg
                      }
                      case Nif::RC_BSShaderPPLightingProperty:
                      {
@@ -12715,7 +12736,7 @@ index a583941dee..3b06671116 100644
                              handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
                              if (shaderMat->mShaderType == Bgsm::ShaderType::Lighting)
                              {
-@@ -3863,9 +4885,12 @@ namespace NifOsg
+@@ -3863,9 +4898,12 @@ namespace NifOsg
                      }
                      case Nif::RC_BSEffectShaderProperty:
                      {
@@ -12728,7 +12749,7 @@ index a583941dee..3b06671116 100644
                              handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
                              break;
                          }
-@@ -3938,6 +4963,65 @@ namespace NifOsg
+@@ -3938,6 +4976,65 @@ namespace NifOsg
              if (specStrength != 1.f)
                  node->getOrCreateStateSet()->addUniform(new osg::Uniform("specStrength", specStrength));
  
