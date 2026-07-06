@@ -44,6 +44,7 @@ param(
     [switch]$AllowBadScreenshots,
     [switch]$ShowGui,
     [switch]$DryRun,
+    [string[]]$SetEnv = @(),
     [switch]$KeepRunning
 )
 
@@ -107,6 +108,38 @@ function Set-ProcessEnvIntOverride([string]$Name, [int]$Value) {
     return $true
 }
 
+function ConvertTo-ProcessEnvOverrides([string[]]$Assignments) {
+    $overrides = New-Object System.Collections.Generic.List[object]
+    foreach ($assignment in @($Assignments)) {
+        if ([string]::IsNullOrWhiteSpace($assignment)) {
+            continue
+        }
+
+        $separator = $assignment.IndexOf("=")
+        if ($separator -lt 1) {
+            throw "-SetEnv expects NAME=VALUE, got: $assignment"
+        }
+
+        $name = $assignment.Substring(0, $separator).Trim()
+        if ($name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+            throw "-SetEnv has an invalid environment variable name: $name"
+        }
+
+        $overrides.Add([pscustomobject][ordered]@{
+            name = $name
+            value = $assignment.Substring($separator + 1)
+        }) | Out-Null
+    }
+
+    return @($overrides.ToArray())
+}
+
+function Set-ProcessEnvOverrides($Overrides) {
+    foreach ($override in @($Overrides)) {
+        Set-ProcessEnvValue ([string]$override.name) $override.value
+    }
+}
+
 function New-ProofRunConfig($World, [string]$WorldRunDir, [string]$UserDataDir) {
     $sourceConfigDir = [string]$World.profileDirectory
     if ([string]::IsNullOrWhiteSpace($sourceConfigDir) -or -not (Test-Path -LiteralPath $sourceConfigDir)) {
@@ -115,6 +148,10 @@ function New-ProofRunConfig($World, [string]$WorldRunDir, [string]$UserDataDir) 
 
     $runConfigDir = Join-Path $WorldRunDir "config"
     $dataLocalDir = Join-Path $UserDataDir "data"
+    if ([string]$World.id -eq "starfield" -and $dataLocalDir.Length -gt 120) {
+        $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+        $dataLocalDir = Join-Path (Join-Path $repoRoot "local\proof-data") ("starfield-{0}" -f ([System.Guid]::NewGuid().ToString("N").Substring(0, 12)))
+    }
     New-Item -ItemType Directory -Force -Path $runConfigDir, $UserDataDir, $dataLocalDir | Out-Null
 
     foreach ($name in @("openmw.cfg", "settings.cfg", "shaders.yaml")) {
@@ -1441,7 +1478,9 @@ $viewerProofEnvNames = @(
 )
 
 $previousEnv = @{}
-foreach ($name in @("OPENMW_PROOF_SCREENSHOT_FRAME", "OPENMW_PROOF_SCREENSHOT_READY_FRAMES", "OPENMW_FNV_BOOTSTRAP_HOUR", "OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI", "OPENMW_PROOF_HIDE_GUI") + $viewerStartEnvNames + $viewerProofEnvNames) {
+$processEnvOverrides = @(ConvertTo-ProcessEnvOverrides -Assignments $SetEnv)
+$envNamesToPreserve = @("OPENMW_PROOF_SCREENSHOT_FRAME", "OPENMW_PROOF_SCREENSHOT_READY_FRAMES", "OPENMW_FNV_BOOTSTRAP_HOUR", "OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI", "OPENMW_PROOF_HIDE_GUI") + $viewerStartEnvNames + $viewerProofEnvNames + @($processEnvOverrides | ForEach-Object { $_.name })
+foreach ($name in @($envNamesToPreserve | Sort-Object -Unique)) {
     $previousEnv[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
 }
 
@@ -1788,6 +1827,11 @@ try {
             $notes.Add("used explicit local start anchor")
         }
 
+        if ($processEnvOverrides.Count -gt 0) {
+            Set-ProcessEnvOverrides -Overrides $processEnvOverrides
+            $notes.Add("applied $($processEnvOverrides.Count) command-line environment override(s)")
+        }
+
         if ($DryRun) {
             $status = "dry-run"
         }
@@ -2040,6 +2084,7 @@ $manifest = [ordered]@{
     telemetryInterval = $TelemetryInterval
     esm4GridRadius = $Esm4GridRadius
     focusActor = $FocusActor
+    setEnv = @($processEnvOverrides | ForEach-Object { "{0}={1}" -f $_.name, $_.value })
     allowBadScreenshots = [bool]$AllowBadScreenshots
     showGui = [bool]$ShowGui
     proofDirectory = (Convert-ToForwardSlash -Path $absProofDir)

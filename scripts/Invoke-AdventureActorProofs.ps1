@@ -7,6 +7,7 @@ param(
     [switch]$DryRun,
     [switch]$ShowGui,
     [switch]$DisableSky,
+    [string[]]$SetEnv = @(),
     [switch]$AllowBadScreenshots
 )
 
@@ -38,6 +39,93 @@ function Format-ArgValue($Value) {
     return [string]$Value
 }
 
+function Get-EnvAssignmentName([string]$Assignment) {
+    if ([string]::IsNullOrWhiteSpace($Assignment)) {
+        return $null
+    }
+
+    $separator = $Assignment.IndexOf("=")
+    if ($separator -lt 1) {
+        throw "-SetEnv expects NAME=VALUE, got: $Assignment"
+    }
+
+    $name = $Assignment.Substring(0, $separator).Trim()
+    if ($name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+        throw "-SetEnv has an invalid environment variable name: $name"
+    }
+
+    return $name
+}
+
+function Add-HarnessSetEnv([System.Collections.Generic.List[object]]$HarnessArgs, [string]$Assignment) {
+    $name = Get-EnvAssignmentName -Assignment $Assignment
+    if ($null -eq $name) {
+        return
+    }
+
+    $HarnessArgs.Add("-SetEnv") | Out-Null
+    $HarnessArgs.Add($Assignment) | Out-Null
+}
+
+function Get-HarnessArgumentValue([System.Collections.Generic.List[object]]$HarnessArgs, [string]$Name) {
+    $parameterName = "-$Name"
+    $value = $null
+    for ($i = 0; $i -lt $HarnessArgs.Count; $i++) {
+        if ([string]$HarnessArgs[$i] -ne $parameterName) {
+            continue
+        }
+        if ($i + 1 -ge $HarnessArgs.Count) {
+            throw "Harness parameter $parameterName is missing a value."
+        }
+        $value = [string]$HarnessArgs[$i + 1]
+        $i++
+    }
+    return $value
+}
+
+function Set-HarnessArgumentValue([System.Collections.Generic.List[object]]$HarnessArgs, [string]$Name, [string]$Value) {
+    $parameterName = "-$Name"
+    for ($i = 0; $i -lt $HarnessArgs.Count; $i++) {
+        if ([string]$HarnessArgs[$i] -ne $parameterName) {
+            continue
+        }
+        if ($i + 1 -ge $HarnessArgs.Count) {
+            throw "Harness parameter $parameterName is missing a value."
+        }
+        $HarnessArgs[$i + 1] = $Value
+        return
+    }
+
+    $HarnessArgs.Add($parameterName) | Out-Null
+    $HarnessArgs.Add($Value) | Out-Null
+}
+
+function Ensure-HarnessIntMinimum([System.Collections.Generic.List[object]]$HarnessArgs, [string]$Name, [int]$Minimum) {
+    $currentValue = Get-HarnessArgumentValue -HarnessArgs $HarnessArgs -Name $Name
+    $currentNumber = 0
+    if ([string]::IsNullOrWhiteSpace($currentValue) -or -not [int]::TryParse($currentValue, [ref]$currentNumber) -or $currentNumber -lt $Minimum) {
+        Set-HarnessArgumentValue -HarnessArgs $HarnessArgs -Name $Name -Value ([string]$Minimum)
+    }
+}
+
+function Get-ExistingHarnessSetEnvNames([System.Collections.Generic.List[object]]$HarnessArgs) {
+    $names = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    for ($i = 0; $i -lt $HarnessArgs.Count; $i++) {
+        if ([string]$HarnessArgs[$i] -ne "-SetEnv") {
+            continue
+        }
+        if ($i + 1 -ge $HarnessArgs.Count) {
+            throw "Harness parameter -SetEnv is missing a value."
+        }
+        $name = Get-EnvAssignmentName -Assignment ([string]$HarnessArgs[$i + 1])
+        if ($null -ne $name) {
+            [void]$names.Add($name)
+        }
+        $i++
+    }
+    return ,$names
+}
+
 function ConvertTo-HarnessParameterMap($ArgList) {
     $switchNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($name in @(
@@ -57,7 +145,7 @@ function ConvertTo-HarnessParameterMap($ArgList) {
     }
 
     $arrayNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($name in @("WorldId", "StripOsgUpdateCallbackClass", "KeepOsgUpdateCallbackPath")) {
+    foreach ($name in @("WorldId", "StripOsgUpdateCallbackClass", "KeepOsgUpdateCallbackPath", "SetEnv")) {
         [void]$arrayNames.Add($name)
     }
 
@@ -113,6 +201,19 @@ if (-not (Test-Path -LiteralPath $driver)) {
     throw "Missing screenshot harness: $driver"
 }
 
+$starfieldProofEnv = @(
+    "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS=1",
+    "OPENMW_WORLD_VIEWER_DISABLE_TES5_STATIC_FACE_SURFACE_ANCHOR=1",
+    "OPENMW_WORLD_VIEWER_FORCE_FLAT_WORLD_MATERIALS=1",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_PARTS=70",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HEAD_PARTS=70",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS=70",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_FACE_HAIR_PARTS=70",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_BROW_PARTS=70",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_EYE_PARTS=70",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS=70"
+)
+
 $targets = New-Object System.Collections.Generic.List[object]
 foreach ($world in $catalog.worlds) {
     $worldId = [string]$world.worldId
@@ -164,6 +265,23 @@ foreach ($item in $targets) {
     }
     $harnessArgs.Add("-ProofRoot") | Out-Null
     $harnessArgs.Add($targetProofRoot) | Out-Null
+    $existingSetEnvNames = Get-ExistingHarnessSetEnvNames -HarnessArgs $harnessArgs
+    if ($worldId -eq "starfield") {
+        Ensure-HarnessIntMinimum -HarnessArgs $harnessArgs -Name "RunSeconds" -Minimum 45
+        if ([string]::IsNullOrWhiteSpace((Get-HarnessArgumentValue -HarnessArgs $harnessArgs -Name "ScreenshotFrames"))) {
+            Set-HarnessArgumentValue -HarnessArgs $harnessArgs -Name "ScreenshotFrames" -Value "240,420,600"
+        }
+        foreach ($assignment in $starfieldProofEnv) {
+            $name = Get-EnvAssignmentName -Assignment $assignment
+            if (-not $existingSetEnvNames.Contains($name)) {
+                Add-HarnessSetEnv -HarnessArgs $harnessArgs -Assignment $assignment
+                [void]$existingSetEnvNames.Add($name)
+            }
+        }
+    }
+    foreach ($assignment in @($SetEnv)) {
+        Add-HarnessSetEnv -HarnessArgs $harnessArgs -Assignment $assignment
+    }
     if ($ShowGui) {
         $harnessArgs.Add("-ShowGui") | Out-Null
     }
