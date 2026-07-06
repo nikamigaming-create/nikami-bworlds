@@ -209,6 +209,8 @@
       "startCell": "NewAtlantisSpaceport",
       "label": "New Atlantis spaceport exterior",
       "esm4GridRadius": 0,
+      "esm4ActorProxies": true,
+      "esm4ActorProxyAnimate": true,
       "anchor": {
         "source": "Starfield.esm CELL NewAtlantisSpaceport, mined ESM4 placement center and actor cluster",
         "position": {
