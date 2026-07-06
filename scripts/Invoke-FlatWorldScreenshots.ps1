@@ -12,6 +12,15 @@ param(
     [int]$RefTelemetryLimit = 2000,
     [int]$Esm4GridRadius = -1,
     [switch]$NoTelemetry,
+    [switch]$DisableActors,
+    [switch]$DisableSky,
+    [switch]$AllowOsgUpdateTraversal,
+    [switch]$StripOsgUpdateCallbacks,
+    [switch]$StripOsgNodeUpdateCallbacks,
+    [switch]$StripOsgStateSetUpdateCallbacks,
+    [string[]]$StripOsgUpdateCallbackClass = @(),
+    [string[]]$KeepOsgUpdateCallbackPath = @(),
+    [int]$OsgUpdateCallbackAuditLimit = 120,
     [switch]$AllowBadScreenshots,
     [switch]$ShowGui,
     [switch]$DryRun,
@@ -294,7 +303,7 @@ function Get-ProofLogSummary([string]$Path) {
         [pscustomobject]@{ Name = "shaderIssues"; Pattern = "shader|purple|magenta|fallback" },
         [pscustomobject]@{ Name = "actorIssues"; Pattern = "actor|npc|creature|skeleton|bone|animation|rig" },
         [pscustomobject]@{ Name = "terrainIssues"; Pattern = "World viewer terrain:|LandTexture not found|missing ESM4 LTEX|missing ESM4 LTEX diffuse" },
-        [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:|World viewer actor ledger:" }
+        [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:|World viewer actor ledger:|World viewer osg-update-callback" }
     )
 
     $categories = [ordered]@{}
@@ -475,6 +484,12 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $nativeActorControllersBound = 0
     $nativeActorControllersTotal = 0
     $nativeActorControllerZeroSources = 0
+    $osgUpdateCallbackEvents = 0
+    $osgUpdateCallbackSummaries = 0
+    $osgUpdateNodeCallbacks = 0
+    $osgUpdateNodeOwnersStripped = 0
+    $osgUpdateStateSetCallbacks = 0
+    $osgUpdateStateSetOwnersStripped = 0
     $rayHits = 0
     $groundRayHits = 0
     $centerRenderHits = 0
@@ -579,6 +594,23 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
             continue
         }
 
+        $osgSummaryIndex = $line.IndexOf("World viewer osg-update-callback-summary:")
+        if ($osgSummaryIndex -ge 0) {
+            $summary = Parse-WorldViewerKeyValues ($line.Substring($osgSummaryIndex + "World viewer osg-update-callback-summary:".Length).Trim())
+            $osgUpdateCallbackSummaries++
+            $osgUpdateNodeCallbacks += Convert-WorldViewerInt (Get-PropertyValue $summary "nodeCallbacks")
+            $osgUpdateNodeOwnersStripped += Convert-WorldViewerInt (Get-PropertyValue $summary "nodeOwnersStripped")
+            $osgUpdateStateSetCallbacks += Convert-WorldViewerInt (Get-PropertyValue $summary "stateSetCallbacks")
+            $osgUpdateStateSetOwnersStripped += Convert-WorldViewerInt (Get-PropertyValue $summary "stateSetOwnersStripped")
+            continue
+        }
+
+        $osgCallbackIndex = $line.IndexOf("World viewer osg-update-callback:")
+        if ($osgCallbackIndex -ge 0) {
+            $osgUpdateCallbackEvents++
+            continue
+        }
+
         $refIndex = $line.IndexOf("World viewer ref:")
         if ($refIndex -ge 0) {
             $ref = Parse-WorldViewerKeyValues ($line.Substring($refIndex + "World viewer ref:".Length).Trim())
@@ -678,6 +710,12 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         nativeActorControllersBound = $nativeActorControllersBound
         nativeActorControllersTotal = $nativeActorControllersTotal
         nativeActorControllerZeroSources = $nativeActorControllerZeroSources
+        osgUpdateCallbackEvents = $osgUpdateCallbackEvents
+        osgUpdateCallbackSummaries = $osgUpdateCallbackSummaries
+        osgUpdateNodeCallbacks = $osgUpdateNodeCallbacks
+        osgUpdateNodeOwnersStripped = $osgUpdateNodeOwnersStripped
+        osgUpdateStateSetCallbacks = $osgUpdateStateSetCallbacks
+        osgUpdateStateSetOwnersStripped = $osgUpdateStateSetOwnersStripped
         refsByType = [pscustomobject]$refsByType
         refDumpTruncated = $refDumpTruncated
         rayCount = $rays.Count
@@ -788,17 +826,41 @@ $viewerStartEnvNames = @(
     "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z",
     "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X",
     "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y",
-    "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z"
+    "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_RAYCAST",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_SAMPLES",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_RADIUS",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_HEIGHT",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_CLEARANCE",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_MIN_HIT_DISTANCE",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_MIN_GROUND_HEIGHT",
+    "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_GROUND_RAY_DISTANCE"
 )
 
 $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG",
     "OPENMW_WORLD_VIEWER_TELEMETRY",
+    "OPENMW_WORLD_VIEWER_TRACE",
     "OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL",
     "OPENMW_WORLD_VIEWER_REF_TELEMETRY",
     "OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT",
     "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY",
+    "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY",
+    "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK",
+    "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS",
+    "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS",
     "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS",
+    "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS",
+    "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS",
+    "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL",
+    "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS",
+    "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME",
+    "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT",
+    "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS",
+    "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS",
+    "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS",
+    "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER",
+    "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER",
     "OPENMW_WORLD_VIEWER_RAY_TELEMETRY",
     "OPENMW_WORLD_VIEWER_RAY_DISTANCE",
     "OPENMW_WORLD_VIEWER_ACTOR_RAY_LIMIT",
@@ -808,7 +870,8 @@ $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXIES",
     "OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXY_ANIMATE",
     "OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS",
-    "OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED"
+    "OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED",
+    "OPENMW_PROOF_DISABLE_SKY"
 )
 
 $previousEnv = @{}
@@ -831,11 +894,58 @@ try {
     }
     if (-not $NoTelemetry) {
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_TELEMETRY", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_TRACE", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL", [string]$TelemetryInterval, "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REF_TELEMETRY", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT", [string]$RefTelemetryLimit, "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "1", "Process")
+        if ($AllowOsgUpdateTraversal) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", $null, "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "1", "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", [string]$OsgUpdateCallbackAuditLimit, "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "1", "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", $null, "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", $null, "Process")
+        }
+        if ($StripOsgUpdateCallbacks) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "1", "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", $null, "Process")
+        }
+        if ($StripOsgNodeUpdateCallbacks) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "1", "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", $null, "Process")
+        }
+        if ($StripOsgStateSetUpdateCallbacks) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "1", "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", $null, "Process")
+        }
+        if ($StripOsgUpdateCallbackClass.Count -gt 0) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", ($StripOsgUpdateCallbackClass -join ";"), "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", $null, "Process")
+        }
+        if ($KeepOsgUpdateCallbackPath.Count -gt 0) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", ($KeepOsgUpdateCallbackPath -join ";"), "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", $null, "Process")
+        }
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_RAY_DISTANCE", "200000", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ACTOR_RAY_LIMIT", "8", "Process")
@@ -843,11 +953,17 @@ try {
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "1", "Process")
     }
     else {
-        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES")) {
+        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES")) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
     }
     [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED", "1", "Process")
+    if ($DisableSky) {
+        [Environment]::SetEnvironmentVariable("OPENMW_PROOF_DISABLE_SKY", "1", "Process")
+    }
+    else {
+        [Environment]::SetEnvironmentVariable("OPENMW_PROOF_DISABLE_SKY", $null, "Process")
+    }
 
     foreach ($world in $selected) {
         foreach ($name in $viewerStartEnvNames) {
@@ -882,7 +998,7 @@ try {
         else {
             [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS", $null, "Process")
         }
-        $disableEsm4Actors = ((Get-PropertyValue $start "disableEsm4Actors") -eq $true)
+        $disableEsm4Actors = $DisableActors -or ((Get-PropertyValue $start "disableEsm4Actors") -eq $true)
         if ($disableEsm4Actors) {
             [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_DISABLE_ESM4_ACTORS", "1", "Process")
         }
@@ -994,6 +1110,19 @@ try {
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X" (Get-PropertyValue $cameraTarget "x")
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y" (Get-PropertyValue $cameraTarget "y")
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z" (Get-PropertyValue $cameraTarget "z")
+            if ((Get-PropertyValue $camera "orbitRaycast") -eq $true) {
+                Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_RAYCAST" "1"
+            }
+            else {
+                Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_RAYCAST" $null
+            }
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_SAMPLES" (Get-PropertyValue $camera "orbitSamples")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_RADIUS" (Get-PropertyValue $camera "orbitRadius")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_HEIGHT" (Get-PropertyValue $camera "orbitHeight")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_CLEARANCE" (Get-PropertyValue $camera "orbitClearance")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_MIN_HIT_DISTANCE" (Get-PropertyValue $camera "orbitMinHitDistance")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_MIN_GROUND_HEIGHT" (Get-PropertyValue $camera "orbitMinGroundHeight")
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_GROUND_RAY_DISTANCE" (Get-PropertyValue $camera "orbitGroundRayDistance")
             $notes.Add("used explicit local start anchor")
         }
 
