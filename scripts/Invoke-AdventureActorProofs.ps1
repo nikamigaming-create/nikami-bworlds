@@ -201,6 +201,8 @@ if (-not (Test-Path -LiteralPath $driver)) {
     throw "Missing screenshot harness: $driver"
 }
 
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+$fo4GuardBinaryRoot = Join-Path $repoRoot "local\openmw-fo4guard"
 $starfieldProofEnv = @(
     "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS=1",
     "OPENMW_WORLD_VIEWER_DISABLE_TES5_STATIC_FACE_SURFACE_ANCHOR=1",
@@ -266,6 +268,13 @@ foreach ($item in $targets) {
     $harnessArgs.Add("-ProofRoot") | Out-Null
     $harnessArgs.Add($targetProofRoot) | Out-Null
     $existingSetEnvNames = Get-ExistingHarnessSetEnvNames -HarnessArgs $harnessArgs
+    if ($worldId -eq "fallout4" -or $worldId -eq "fallout4_vr") {
+        if (Test-Path -LiteralPath (Join-Path $fo4GuardBinaryRoot "openmw.exe")) {
+            Set-HarnessArgumentValue -HarnessArgs $harnessArgs -Name "BinaryRoot" -Value $fo4GuardBinaryRoot
+        }
+        Ensure-HarnessIntMinimum -HarnessArgs $harnessArgs -Name "RunSeconds" -Minimum 45
+        Set-HarnessArgumentValue -HarnessArgs $harnessArgs -Name "ScreenshotFrames" -Value "240,420,600"
+    }
     if ($worldId -eq "starfield") {
         Ensure-HarnessIntMinimum -HarnessArgs $harnessArgs -Name "RunSeconds" -Minimum 45
         if ([string]::IsNullOrWhiteSpace((Get-HarnessArgumentValue -HarnessArgs $harnessArgs -Name "ScreenshotFrames"))) {
