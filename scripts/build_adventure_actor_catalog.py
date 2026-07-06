@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -315,12 +316,64 @@ def compact_actor(candidate):
         },
         "position": candidate.get("pos"),
         "rotation": candidate.get("rot"),
-        "camera": candidate.get("camera"),
+        "camera": actor_proof_camera_for(candidate),
+    }
+
+
+def actor_proof_camera_for(candidate):
+    pos = candidate.get("pos") or []
+    if len(pos) < 3:
+        return candidate.get("camera")
+
+    labels = set(candidate.get("labels", []))
+    race = (candidate.get("raceEditorId") or "").lower()
+    base = (candidate.get("baseEditorId") or "").lower()
+    rot = candidate.get("rot") or []
+    yaw = rot[2] if len(rot) >= 3 else 0.7853981633974483
+
+    distance = 80.0
+    camera_z = 106.0
+    target_z = 85.0
+    if labels.intersection({"animal", "creature", "monster"}):
+        distance = 180.0
+        camera_z = 130.0
+        target_z = 85.0
+    if "dragon" in race or "dragon" in base:
+        distance = 420.0
+        camera_z = 260.0
+        target_z = 160.0
+
+    return {
+        "position": {
+            "x": round(pos[0] + math.sin(yaw) * distance, 3),
+            "y": round(pos[1] + math.cos(yaw) * distance, 3),
+            "z": round(pos[2] + camera_z, 3),
+        },
+        "target": {
+            "x": round(pos[0], 3),
+            "y": round(pos[1], 3),
+            "z": round(pos[2] + target_z, 3),
+        },
     }
 
 
 def proof_args_for(world_id, candidate):
     args = ["-WorldId", world_id, "-RunSeconds", "12", "-AllowBadScreenshots"]
+    if world_id in {"skyrim_2011", "skyrim_vr"}:
+        args += [
+            "-ScreenshotFrames",
+            "170",
+            "-DisableSky",
+            "-AllowOsgUpdateTraversal",
+            "-StripOsgUpdateCallbackClass",
+            "NifOsg::",
+            "-StripOsgUpdateCallbackClass",
+            "InitWorldSpaceParticlesCallback",
+            "-KeepOsgUpdateCallbackPath",
+            "SceneUtil::Skeleton/NPC",
+            "-OsgUpdateCallbackAuditLimit",
+            "10",
+        ]
     cell = candidate.get("cell", {})
     cell_name = cell.get("editorId") or cell.get("fullName")
     if cell_name and not cell.get("isExterior"):
@@ -333,8 +386,8 @@ def proof_args_for(world_id, candidate):
         args += ["-StartRotX", round(rot[0], 6), "-StartRotY", round(rot[1], 6), "-StartRotZ", round(rot[2], 6)]
     grid = (cell.get("grid") or {})
     if cell.get("isExterior") and grid.get("x") is not None and grid.get("y") is not None:
-        args += ["-Esm4GridRadius", "2", "-StartGridX", grid["x"], "-StartGridY", grid["y"]]
-    camera = candidate.get("camera") or {}
+        args += ["-Esm4GridRadius", "1", "-StartGridX", grid["x"], "-StartGridY", grid["y"]]
+    camera = actor_proof_camera_for(candidate) or {}
     cam_pos = camera.get("position") or {}
     cam_target = camera.get("target") or {}
     if {"x", "y", "z"}.issubset(cam_pos) and {"x", "y", "z"}.issubset(cam_target):
@@ -608,7 +661,7 @@ def build_world_entry(world, actor_catalog, actor_catalog_path, starts_entry, ma
             "worldContinuityPlan": {
                 "cellMetadataIsMiningUnit": True,
                 "viewerTarget": "Start in an authored cell, render the active exterior grid plus neighboring grids, keep streaming connected cells while walking, and use interiors only when the authored target is indoors.",
-                "exteriorProofGridRadius": 2,
+                "exteriorProofGridRadius": 1,
                 "notTheGoal": "Do not treat representative cells as isolated dioramas or detached replacement scenes.",
             },
             "configuredStart": {
