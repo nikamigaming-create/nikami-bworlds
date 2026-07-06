@@ -301,25 +301,37 @@ def write_summaries(records, summary_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Build all-world actor proof collages and local summaries.")
-    parser.add_argument("--sweep-root", required=True, help="Timestamped proof/adventure-actor-proofs sweep directory.")
+    parser.add_argument("--sweep-root", required=True, nargs="+", help="One or more proof/adventure-actor-proofs sweep directories.")
     parser.add_argument("--out-dir", default="proof/collages", help="Output directory for generated PNG collages.")
     parser.add_argument("--summary-dir", default="", help="Directory for summary.json and summary.csv.")
+    parser.add_argument("--run-name", default="", help="Name for this collage run when combining multiple sweep roots.")
     parser.add_argument("--columns", type=int, default=7)
     args = parser.parse_args()
 
     root = repo_root()
-    sweep_root = (root / args.sweep_root).resolve() if not Path(args.sweep_root).is_absolute() else Path(args.sweep_root)
+    sweep_roots = [
+        (root / sweep_root).resolve() if not Path(sweep_root).is_absolute() else Path(sweep_root)
+        for sweep_root in args.sweep_root
+    ]
     out_dir = (root / args.out_dir).resolve() if not Path(args.out_dir).is_absolute() else Path(args.out_dir)
+    if args.run_name:
+        sweep_name = args.run_name
+    elif len(sweep_roots) == 1:
+        sweep_name = sweep_roots[0].name
+    else:
+        sweep_name = f"combined-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     if args.summary_dir:
         summary_dir = (root / args.summary_dir).resolve() if not Path(args.summary_dir).is_absolute() else Path(args.summary_dir)
     else:
-        summary_dir = root / "proof" / "sweeps" / sweep_root.name
+        summary_dir = root / "proof" / "sweeps" / sweep_name
 
-    records = collect_records(sweep_root, root)
+    records = []
+    for sweep_root in sweep_roots:
+        records.extend(collect_records(sweep_root, root))
     if not records:
-        raise SystemExit(f"No manifest records found under {sweep_root}")
+        raise SystemExit(f"No manifest records found under {', '.join(str(path) for path in sweep_roots)}")
 
-    run_out = out_dir / sweep_root.name
+    run_out = out_dir / sweep_name
     full_path = run_out / "all-worlds-people-full-matrix.png"
     accepted_path = run_out / "all-worlds-people-accepted-pixels.png"
     draw_matrix(records, full_path, "All Worlds / All People - full proof audit", args.columns)
@@ -337,6 +349,7 @@ def main():
             {
                 "records": len(records),
                 "accepted": len(accepted),
+                "sweepRoots": [str(path) for path in sweep_roots],
                 "fullMatrix": str(full_path),
                 "acceptedPixels": str(accepted_path),
                 "summaryJson": str(summary_dir / "summary.json"),
