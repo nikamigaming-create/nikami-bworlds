@@ -18,6 +18,7 @@ param(
     [switch]$FullbrightActorMaterialsOnly,
     [switch]$DisableActors,
     [switch]$RenderDisabledActors,
+    [string]$FocusActor = "",
     [switch]$DisableSky,
     [switch]$AllowOsgUpdateTraversal,
     [switch]$StripOsgUpdateCallbacks,
@@ -211,7 +212,25 @@ function Convert-StarfieldActorProofTextures([string]$OpenMwCfg, [string]$DataLo
         "textures/actors/human/faces/hair/afro_hair_shared_brown_color.dds",
         "textures/actors/human/faces/hair/short_hair_shared_brown_color.dds",
         "textures/actors/human/faces/eyebrows/eyebrows_fluffy_brown_color.dds",
-        "textures/actors/human/faces/eyebrows/femaleeyebrows01_color.dds"
+        "textures/actors/human/faces/eyebrows/femaleeyebrows01_color.dds",
+        "textures/clothes/outfit_service_uniform_01/outfit_service_uniform_lowerbody_01_color.dds",
+        "textures/clothes/outfit_service_uniform_01/outfit_service_uniform_sleeves_01_color.dds",
+        "textures/clothes/outfit_service_uniform_01/outfit_service_uniform_upperbody_01_color.dds",
+        "textures/clothes/outfit_employee_uniform_formal_01/outfit_employee_uniform_formal_lowerbody_01_color.dds",
+        "textures/clothes/outfit_employee_uniform_formal_01/outfit_employee_uniform_formal_sleeves_01_color.dds",
+        "textures/clothes/outfit_employee_uniform_formal_01/outfit_employee_uniform_formal_upperbody_01_color.dds",
+        "textures/clothes/outfit_colonist_quarterpaddedvest_01/outfit_colonist_quarterpaddedvest_01_hat_color.dds",
+        "textures/clothes/outfit_colonist_quarterpaddedvest_01/outfit_colonist_quarterpaddedvest_01_sleeves_color.dds",
+        "textures/clothes/outfit_colonist_quarterpaddedvest_01/outfit_colonist_quarterpaddedvest_01_upperbody_color.dds",
+        "textures/clothes/outfit_colonist_quarterpaddedvest_01/outfit_colonist_quarterpaddedvest_01_f/outfit_colonist_quarterpaddedvest_01_lowerbody_f_color.dds",
+        "textures/clothes/outfit_colonist_quarterpaddedvest_01/outfit_colonist_quarterpaddedvest_01_m/outfit_colonist_quarterpaddedvest_01_lowerbody_m_color.dds",
+        "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_mechanic_lowerbody_01_color.dds",
+        "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_mechanic_sleeves_01_color.dds",
+        "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_mechanic_upperbody_01_color.dds",
+        "textures/clothes/outfit_utilityoveralls_01/headwear_ssohat_01_color.dds",
+        "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_sso_jacket_sleeves_01_color.dds",
+        "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_sso_jacket_upperbody_01_color.dds",
+        "textures/clothes/outfit_utilityoveralls_01/outfit_utilityoveralls_sso_jacket_cooling_upperbody_01_color.dds"
     )
     $extractRoot = Join-Path $DataLocalDirectory "__starfield_texture_extract"
     $converted = 0
@@ -1381,11 +1400,19 @@ $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS",
     "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS",
     "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS",
+    "OPENMW_WORLD_VIEWER_FORCE_FLAT_WORLD_MATERIALS",
     "OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS",
     "OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS",
     "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS",
     "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_PARTS",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HEAD_PARTS",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_FACE_HAIR_PARTS",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_BROW_PARTS",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_EYE_PARTS",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS",
+    "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS",
     "OPENMW_WORLD_VIEWER_DISABLE_TES5_STATIC_FACE_SURFACE_ANCHOR",
     "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS",
     "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS",
@@ -1532,9 +1559,15 @@ try {
         }
     }
     else {
-        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "OPENMW_WORLD_VIEWER_ALLOW_MISSING_SKIN_BONES", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "OPENMW_WORLD_VIEWER_RENDER_DISABLED_ACTORS")) {
+        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "OPENMW_WORLD_VIEWER_ALLOW_MISSING_SKIN_BONES", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HEAD_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_FACE_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_BROW_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_EYE_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS", "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "OPENMW_WORLD_VIEWER_RENDER_DISABLED_ACTORS", "OPENMW_WORLD_VIEWER_FOCUS_ACTOR")) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
+    }
+    if ([string]::IsNullOrWhiteSpace($FocusActor)) {
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FOCUS_ACTOR", $null, "Process")
+    }
+    else {
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FOCUS_ACTOR", $FocusActor, "Process")
     }
     $starfieldOnlyProof = $selected.Count -eq 1 -and $selected[0].id -eq "starfield"
     if ($starfieldOnlyProof) {
@@ -2006,6 +2039,7 @@ $manifest = [ordered]@{
     telemetry = (-not $NoTelemetry)
     telemetryInterval = $TelemetryInterval
     esm4GridRadius = $Esm4GridRadius
+    focusActor = $FocusActor
     allowBadScreenshots = [bool]$AllowBadScreenshots
     showGui = [bool]$ShowGui
     proofDirectory = (Convert-ToForwardSlash -Path $absProofDir)
