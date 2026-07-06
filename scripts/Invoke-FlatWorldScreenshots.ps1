@@ -293,6 +293,7 @@ function Get-ProofLogSummary([string]$Path) {
         [pscustomobject]@{ Name = "unsupportedAssets"; Pattern = "unsupported|not supported|unhandled" },
         [pscustomobject]@{ Name = "shaderIssues"; Pattern = "shader|purple|magenta|fallback" },
         [pscustomobject]@{ Name = "actorIssues"; Pattern = "actor|npc|creature|skeleton|bone|animation|rig" },
+        [pscustomobject]@{ Name = "terrainIssues"; Pattern = "World viewer terrain:|LandTexture not found|missing ESM4 LTEX|missing ESM4 LTEX diffuse" },
         [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:|World viewer actor ledger:" }
     )
 
@@ -1118,6 +1119,9 @@ try {
 
             $logSummary = Get-ProofLogSummary -Path $copiedOpenMwLog
             $worldViewerTelemetry = Get-WorldViewerTelemetrySummary -Path $copiedOpenMwLog
+            if ($null -ne $logSummary -and $null -ne $logSummary.categories.terrainIssues -and $logSummary.categories.terrainIssues.count -gt 0) {
+                $notes.Add("Terrain issues: $($logSummary.categories.terrainIssues.count) logged fallback/lookup events")
+            }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.proxyActorRefs -gt 0) {
                 $notes.Add("ESM4 actor proxy proof: $($worldViewerTelemetry.proxyActorRefs) proxy refs, $($worldViewerTelemetry.proxyTposeRefs) t-pose, $($worldViewerTelemetry.proxyAnimatedRefs) animated")
             }
