@@ -3103,7 +3103,7 @@ index 8575f471a0..e480eebb38 100644
          }
      }
 diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
-index 49a7175149..2ad0e221e4 100644
+index 49a7175149..ab06ef9712 100644
 --- a/apps/openmw/mwrender/esm4npcanimation.cpp
 +++ b/apps/openmw/mwrender/esm4npcanimation.cpp
 @@ -28,6 +28,7 @@
@@ -3128,7 +3128,7 @@ index 49a7175149..2ad0e221e4 100644
  #include <osg/Texture2D>
  #include <osgAnimation/Bone>
  #include <osgAnimation/UpdateBone>
-@@ -74,6 +77,67 @@ namespace MWRender
+@@ -74,6 +77,93 @@ namespace MWRender
  {
      namespace
      {
@@ -3193,10 +3193,36 @@ index 49a7175149..2ad0e221e4 100644
 +                             << details;
 +        }
 +
++        template <class T>
++        const T* searchEsm4ViewerRecordWithLocalFallback(
++            const MWWorld::ESMStore& store, ESM::FormId id, ESM::FormId* resolvedId = nullptr)
++        {
++            if (const T* record = store.get<T>().search(id))
++            {
++                if (resolvedId)
++                    *resolvedId = id;
++                return record;
++            }
++
++            if (!id.hasContentFile() || id.mContentFile == 0)
++                return nullptr;
++
++            ESM::FormId localId = id;
++            localId.mContentFile = 0;
++            if (const T* record = store.get<T>().search(localId))
++            {
++                if (resolvedId)
++                    *resolvedId = localId;
++                return record;
++            }
++
++            return nullptr;
++        }
++
          class TintMaterialVisitor : public osg::NodeVisitor
          {
          public:
-@@ -232,6 +296,369 @@ namespace MWRender
+@@ -232,6 +322,369 @@ namespace MWRender
              }
          };
  
@@ -3566,7 +3592,7 @@ index 49a7175149..2ad0e221e4 100644
          class FalloutCutoutAlphaVisitor : public osg::NodeVisitor
          {
          public:
-@@ -1926,23 +2353,45 @@ namespace MWRender
+@@ -1926,23 +2379,45 @@ namespace MWRender
                      {
                          mFirstRigRootBone = rig->getRootBone();
                          mFirstRigBoneCount = rig->getBoneCount();
@@ -3616,7 +3642,7 @@ index 49a7175149..2ad0e221e4 100644
              std::ostringstream mFirstRigBoneSample;
          };
  
-@@ -2534,6 +2983,30 @@ namespace MWRender
+@@ -2534,6 +3009,30 @@ namespace MWRender
              return nullptr;
          }
  
@@ -3647,7 +3673,7 @@ index 49a7175149..2ad0e221e4 100644
          bool shouldAttachFalloutStaticPartToHead(std::string_view model)
          {
              std::string lowered(model);
-@@ -2682,6 +3155,10 @@ namespace MWRender
+@@ -2682,6 +3181,10 @@ namespace MWRender
                  return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_BEARD_OFFSET_X", 0.f),
                      readFalloutProofFloat("OPENMW_FNV_BEARD_OFFSET_Y", 0.f),
                      readFalloutProofFloat("OPENMW_FNV_BEARD_OFFSET_Z", 0.f));
@@ -3658,7 +3684,7 @@ index 49a7175149..2ad0e221e4 100644
              if (lowered.find("mouth") != std::string::npos || lowered.find("teeth") != std::string::npos
                  || lowered.find("tongue") != std::string::npos)
                  return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_MOUTH_OFFSET_X", -0.35f),
-@@ -2791,6 +3268,60 @@ namespace MWRender
+@@ -2791,6 +3294,60 @@ namespace MWRender
              return helper.get();
          }
  
@@ -3719,7 +3745,7 @@ index 49a7175149..2ad0e221e4 100644
          bool isFalloutStaticFaceChildPart(std::string_view model)
          {
              return shouldAttachFalloutStaticPartToHead(model) && !isFalloutStaticHeadgearPart(model)
-@@ -2970,6 +3501,7 @@ namespace MWRender
+@@ -2970,6 +3527,7 @@ namespace MWRender
              attached->accept(visitor);
              Log(Debug::Info) << "FNV/ESM4 diag: NPC part shape summary " << model << " for "
                               << ptr.getCellRef().getRefId() << " rigGeometry=" << visitor.mRigGeometryCount
@@ -3727,7 +3753,7 @@ index 49a7175149..2ad0e221e4 100644
                               << " staticGeometry=" << visitor.mStaticGeometryCount
                               << " firstRigRoot='" << visitor.mFirstRigRootBone << "' firstRigBones="
                               << visitor.mFirstRigBoneCount << " sample=[" << visitor.mFirstRigBoneSample.str() << "]";
-@@ -3121,6 +3653,36 @@ namespace MWRender
+@@ -3121,6 +3679,36 @@ namespace MWRender
              return cloned;
          }
  
@@ -3764,7 +3790,7 @@ index 49a7175149..2ad0e221e4 100644
          void logFalloutAttachmentBounds(osg::Node* attached, osg::Group* attachNode, osg::Group* headNode,
              std::string_view model, const MWWorld::Ptr& ptr)
          {
-@@ -4162,9 +4724,64 @@ namespace MWRender
+@@ -4162,9 +4750,64 @@ namespace MWRender
          : Animation(ptr, std::move(parentNode), resourceSystem)
      {
          const std::string skeletonModel = mPtr.getClass().getCorrectedModel(mPtr);
@@ -3831,7 +3857,7 @@ index 49a7175149..2ad0e221e4 100644
          if (traits != nullptr && traits->mIsFONV)
          {
              const NodeMap& currentNodeMap = getNodeMap();
-@@ -4202,7 +4819,21 @@ namespace MWRender
+@@ -4202,7 +4845,21 @@ namespace MWRender
                      return;
                  Log(Debug::Info) << "FNV/ESM4 diag: adding FONV NPC " << reason << " animation source " << kfPath
                                   << " for " << traits->mEditorId;
@@ -3854,7 +3880,7 @@ index 49a7175149..2ad0e221e4 100644
                      addedAnimationSource = addedAnimationSource || countsAsPrimary;
              };
  
-@@ -4306,21 +4937,50 @@ namespace MWRender
+@@ -4306,21 +4963,50 @@ namespace MWRender
      void ESM4NpcAnimation::updateParts()
      {
          if (mObjectRoot == nullptr)
@@ -3908,7 +3934,7 @@ index 49a7175149..2ad0e221e4 100644
      }
  
      osg::ref_ptr<osg::Node> ESM4NpcAnimation::insertPart(
-@@ -4330,6 +4990,7 @@ namespace MWRender
+@@ -4330,6 +5016,7 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped empty NPC model part for "
                                  << mPtr.getCellRef().getRefId();
@@ -3916,7 +3942,7 @@ index 49a7175149..2ad0e221e4 100644
              return nullptr;
          }
          if (Misc::StringUtils::ciEndsWith(model, ".egt") || Misc::StringUtils::ciEndsWith(model, ".egm")
-@@ -4337,9 +4998,32 @@ namespace MWRender
+@@ -4337,9 +5024,32 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped non-render NPC data part " << model << " for "
                                  << mPtr.getCellRef().getRefId();
@@ -3949,7 +3975,7 @@ index 49a7175149..2ad0e221e4 100644
          const std::string loweredModel = Misc::StringUtils::lowerCase(std::string(model));
          if (std::getenv("OPENMW_FNV_PROOF_HIDE_FACE_HAIR") != nullptr && isFalloutFaceHairModel(loweredModel))
          {
-@@ -4378,13 +5062,53 @@ namespace MWRender
+@@ -4378,13 +5088,53 @@ namespace MWRender
                               << " for " << mPtr.getCellRef().getRefId();
              return nullptr;
          }
@@ -4004,7 +4030,7 @@ index 49a7175149..2ad0e221e4 100644
          if (headAttachedStaticPart)
          {
              const std::string_view mode = headgearStaticPart ? std::string_view("headgear") : getFonvStaticFaceAttachMode(model);
-@@ -4444,7 +5168,17 @@ namespace MWRender
+@@ -4444,7 +5194,17 @@ namespace MWRender
                               << correctedModel.value() << " attachNode=" << attachNode->getName() << " for "
                               << mPtr.getCellRef().getRefId();
          }
@@ -4023,7 +4049,7 @@ index 49a7175149..2ad0e221e4 100644
              attachNode = makeFalloutFaceSurfaceFrameHelper(*attachNode);
          if (bareHandSurfacePart)
          {
-@@ -4490,6 +5224,43 @@ namespace MWRender
+@@ -4490,6 +5250,43 @@ namespace MWRender
                              << " to " << mPtr.getCellRef().getRefId() << " at " << attachNode->getName();
          FalloutPartShapeSummaryVisitor rigProbe;
          const_cast<osg::Node*>(templateNode.get())->accept(rigProbe);
@@ -4067,7 +4093,7 @@ index 49a7175149..2ad0e221e4 100644
          osg::ref_ptr<const osg::Node> attachTemplateNode = templateNode;
          bool staticizedHeadPartRig = false;
          bool staticizedBareHandPartRig = false;
-@@ -4606,6 +5377,18 @@ namespace MWRender
+@@ -4606,6 +5403,18 @@ namespace MWRender
                               << correctedModel.value() << " to " << mPtr.getCellRef().getRefId()
                               << " rigGeometry=" << rigProbe.mRigGeometryCount << " master=" << rigPartMaster->getName();
          }
@@ -4086,7 +4112,7 @@ index 49a7175149..2ad0e221e4 100644
          else
          {
              osg::Quat headgearAttitude;
-@@ -4631,7 +5414,12 @@ namespace MWRender
+@@ -4631,7 +5440,12 @@ namespace MWRender
                                   << " attachNode=" << attachNode->getName();
              }
          }
@@ -4100,7 +4126,7 @@ index 49a7175149..2ad0e221e4 100644
          {
              const osg::Vec3f surfaceOffset = getFalloutHeadFrameSurfaceOffset(model, headgearStaticPart);
              const osg::Quat surfaceAttitude = getFalloutHeadFrameSurfaceAttitude(model, headgearStaticPart);
-@@ -4687,9 +5475,11 @@ namespace MWRender
+@@ -4687,9 +5501,11 @@ namespace MWRender
                  mouthDriverNode->addChild(attached);
              attached = mouthDriverNode;
              attached->setUpdateCallback(new FalloutProofMouthDriver(mPtr, correctedModel.value()));
@@ -4114,7 +4140,7 @@ index 49a7175149..2ad0e221e4 100644
          if (!diffuseTexture.empty() && attached != nullptr)
          {
              Log(Debug::Info) << "FNV/ESM4 diag: overriding NPC part texture " << diffuseTexture << " on "
-@@ -4721,6 +5511,14 @@ namespace MWRender
+@@ -4721,6 +5537,14 @@ namespace MWRender
              Log(Debug::Info) << "FNV/ESM4 diag: enabled cutout alpha on " << cutoutAlpha.getAppliedCount()
                               << " hair/brow state(s) for " << correctedModel.value() << " on "
                               << mPtr.getCellRef().getRefId();
@@ -4129,7 +4155,7 @@ index 49a7175149..2ad0e221e4 100644
          }
          if (attached != nullptr && isFalloutEyeSurfaceModel(correctedModel.value()))
          {
-@@ -4757,16 +5555,74 @@ namespace MWRender
+@@ -4757,16 +5581,74 @@ namespace MWRender
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
          logFalloutFaceDrawableAudit(attached.get(), correctedModel.value(), mPtr);
@@ -4205,7 +4231,7 @@ index 49a7175149..2ad0e221e4 100644
  
          const NodeMap& nodeMap = getNodeMap();
          osg::Group* attachNode = nullptr;
-@@ -4794,6 +5650,15 @@ namespace MWRender
+@@ -4794,6 +5676,15 @@ namespace MWRender
          logFalloutAttachmentBounds(
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
@@ -4221,7 +4247,7 @@ index 49a7175149..2ad0e221e4 100644
          return attached;
      }
  
-@@ -4927,6 +5792,21 @@ namespace MWRender
+@@ -4927,6 +5818,21 @@ namespace MWRender
          if (!npcBodyNormalTexture.empty())
              Log(Debug::Info) << "FNV/ESM4 diag: using baked NPC body normal texture " << npcBodyNormalTexture
                               << " for " << traits.mEditorId;
@@ -4243,6 +4269,142 @@ index 49a7175149..2ad0e221e4 100644
  
          const bool proofTargetActor = isFonvProofTargetActor(mPtr, traits);
          const bool proofActor = isEasyPeteProofActor(traits);
+@@ -5282,37 +6188,85 @@ namespace MWRender
+         std::vector<const ESM4::ArmorAddon*> armorAddons;
+ 
+         auto findArmorAddons = [&](const ESM4::Armor* armor) {
++            {
++                std::ostringstream details;
++                details << "game=" << worldViewerNpcGameTag(traits)
++                        << " armor=\"" << armor->mEditorId << "\""
++                        << " armorName=\"" << armor->mFullName << "\""
++                        << " addonCount=" << armor->mAddOns.size()
++                        << " race=" << ESM::RefId(traits.mRace);
++                logWorldViewerActorLedger(mPtr, "tes5-armor-candidate", details.str());
++            }
++
+             for (ESM::FormId armaId : armor->mAddOns)
+             {
+                 if (armaId.isZeroOrUnset())
+                     continue;
+-                const ESM4::ArmorAddon* arma = store->get<ESM4::ArmorAddon>().search(armaId);
++                ESM::FormId resolvedArmaId = armaId;
++                const ESM4::ArmorAddon* arma
++                    = searchEsm4ViewerRecordWithLocalFallback<ESM4::ArmorAddon>(*store, armaId, &resolvedArmaId);
+                 if (!arma)
+                 {
+                     Log(Debug::Error) << "ArmorAddon not found: " << ESM::RefId(armaId);
++                    std::ostringstream details;
++                    details << "armor=\"" << armor->mEditorId << "\""
++                            << " addon=" << ESM::RefId(armaId)
++                            << " result=\"missing\"";
++                    logWorldViewerActorLedger(mPtr, "tes5-armor-addon", details.str());
+                     continue;
+                 }
+                 bool compatibleRace = arma->mRacePrimary == traits.mRace;
+                 for (auto r : arma->mRaces)
+                     if (r == traits.mRace)
+                         compatibleRace = true;
++
++                {
++                    std::ostringstream details;
++                    details << "armor=\"" << armor->mEditorId << "\""
++                            << " addon=" << ESM::RefId(armaId)
++                            << " resolvedAddon=" << ESM::RefId(resolvedArmaId)
++                            << " addonEditor=\"" << arma->mEditorId << "\""
++                            << " compatibleRace=" << compatibleRace
++                            << " primaryRace=" << ESM::RefId(arma->mRacePrimary)
++                            << " model=\"" << (isFemale ? arma->mModelFemale : arma->mModelMale) << "\""
++                            << " covers=0x" << std::hex << arma->mBodyTemplate.bodyPart << std::dec
++                            << " malePriority=" << arma->mMalePriority
++                            << " femalePriority=" << arma->mFemalePriority;
++                    logWorldViewerActorLedger(mPtr, "tes5-armor-addon", details.str());
++                }
++
+                 if (compatibleRace)
+                     armorAddons.push_back(arma);
+             }
+         };
+ 
++        {
++            std::ostringstream details;
++            details << "game=" << worldViewerNpcGameTag(traits)
++                    << " race=" << ESM::RefId(traits.mRace)
++                    << " raceEditor=\"" << (race ? race->mEditorId : std::string()) << "\""
++                    << " female=" << isFemale
++                    << " equippedArmor=" << MWClass::ESM4Npc::getEquippedArmor(mPtr).size()
++                    << " equippedClothing=" << MWClass::ESM4Npc::getEquippedClothing(mPtr).size()
++                    << " wornArmor=" << ESM::RefId(traits.mWornArmor)
++                    << " raceSkin=" << (race ? ESM::RefId(race->mSkin).toDebugString() : std::string());
++            logWorldViewerActorLedger(mPtr, "tes5-armor-begin", details.str());
++        }
++
+         for (const ESM4::Armor* armor : MWClass::ESM4Npc::getEquippedArmor(mPtr))
+             findArmorAddons(armor);
+         if (!traits.mWornArmor.isZeroOrUnset())
+         {
+-            if (const ESM4::Armor* armor = store->get<ESM4::Armor>().search(traits.mWornArmor))
++            if (const ESM4::Armor* armor
++                = searchEsm4ViewerRecordWithLocalFallback<ESM4::Armor>(*store, traits.mWornArmor))
+                 findArmorAddons(armor);
+             else
+                 Log(Debug::Error) << "Worn armor not found: " << ESM::RefId(traits.mWornArmor);
+         }
+         if (!race->mSkin.isZeroOrUnset())
+         {
+-            if (const ESM4::Armor* armor = store->get<ESM4::Armor>().search(race->mSkin))
++            if (const ESM4::Armor* armor
++                = searchEsm4ViewerRecordWithLocalFallback<ESM4::Armor>(*store, race->mSkin))
+                 findArmorAddons(armor);
+             else
+                 Log(Debug::Error) << "Skin not found: " << ESM::RefId(race->mSkin);
+@@ -5331,13 +6285,46 @@ namespace MWRender
+             const uint32_t covers = arma->mBodyTemplate.bodyPart;
+             // if body is already covered, skip to avoid clipping
+             if (covers & usedParts & ESM4::Armor::TES5_Body)
++            {
++                std::ostringstream details;
++                details << "addonEditor=\"" << arma->mEditorId << "\""
++                        << " model=\"" << (isFemale ? arma->mModelFemale : arma->mModelMale) << "\""
++                        << " covers=0x" << std::hex << covers
++                        << " usedParts=0x" << usedParts << std::dec
++                        << " result=\"covered\"";
++                logWorldViewerActorLedger(mPtr, "tes5-armor-insert", details.str());
+                 continue;
++            }
+             // if covers at least something that wasn't covered before - add model
+             if (covers & ~usedParts)
+             {
+                 usedParts |= covers;
++                std::ostringstream details;
++                details << "addonEditor=\"" << arma->mEditorId << "\""
++                        << " model=\"" << (isFemale ? arma->mModelFemale : arma->mModelMale) << "\""
++                        << " covers=0x" << std::hex << covers
++                        << " usedParts=0x" << usedParts << std::dec
++                        << " result=\"insert\"";
++                logWorldViewerActorLedger(mPtr, "tes5-armor-insert", details.str());
+                 insertPart(isFemale ? arma->mModelFemale : arma->mModelMale);
+             }
++            else
++            {
++                std::ostringstream details;
++                details << "addonEditor=\"" << arma->mEditorId << "\""
++                        << " model=\"" << (isFemale ? arma->mModelFemale : arma->mModelMale) << "\""
++                        << " covers=0x" << std::hex << covers
++                        << " usedParts=0x" << usedParts << std::dec
++                        << " result=\"empty-cover\"";
++                logWorldViewerActorLedger(mPtr, "tes5-armor-insert", details.str());
++            }
++        }
++
++        {
++            std::ostringstream details;
++            details << "addonCount=" << armorAddons.size()
++                    << " usedParts=0x" << std::hex << usedParts << std::dec;
++            logWorldViewerActorLedger(mPtr, "tes5-armor-end", details.str());
+         }
+ 
+         std::set<uint32_t> usedHeadPartTypes;
 diff --git a/apps/openmw/mwrender/localmap.cpp b/apps/openmw/mwrender/localmap.cpp
 index c4f85ff951..e1a180a207 100644
 --- a/apps/openmw/mwrender/localmap.cpp
@@ -8265,7 +8427,7 @@ index f2e8347ef1..34dd1cd79c 100644
  
          MWRender::RayResult mPointerRay = {};
 diff --git a/apps/openmw/mwworld/cellstore.cpp b/apps/openmw/mwworld/cellstore.cpp
-index 1a2ded2c6c..663f3415c1 100644
+index 1a2ded2c6c..579777bf0a 100644
 --- a/apps/openmw/mwworld/cellstore.cpp
 +++ b/apps/openmw/mwworld/cellstore.cpp
 @@ -2,6 +2,7 @@
@@ -8344,7 +8506,20 @@ index 1a2ded2c6c..663f3415c1 100644
  }
  
  namespace MWWorld
-@@ -413,8 +454,22 @@ namespace MWWorld
+@@ -388,6 +429,12 @@ namespace MWWorld
+ 
+             return true;
+         }
++
++        bool worldViewerRenderDisabledActors()
++        {
++            const char* value = std::getenv("OPENMW_WORLD_VIEWER_RENDER_DISABLED_ACTORS");
++            return value != nullptr && value[0] != '\0' && value[0] != '0';
++        }
+     }
+ 
+     struct CellStoreImp
+@@ -413,8 +460,22 @@ namespace MWWorld
          {
              bool returnValue = true;
  
@@ -8368,7 +8543,7 @@ index 1a2ded2c6c..663f3415c1 100644
              });
  
              return returnValue;
-@@ -452,11 +507,33 @@ namespace MWWorld
+@@ -452,11 +513,33 @@ namespace MWWorld
          return rec == ESM::REC_NPC_4 || rec == ESM::REC_CREA4;
      }
  
@@ -8403,7 +8578,26 @@ index 1a2ded2c6c..663f3415c1 100644
          if (!ptr)
          {
              Log(Debug::Warning) << "FNV/ESM4 diag: could not resolve placed reference " << ESM::RefId(ref.mId)
-@@ -471,6 +548,7 @@ namespace MWWorld
+@@ -465,17 +548,32 @@ namespace MWWorld
+             return;
+         }
+         LiveCellRef<X> liveCellRef(ref, ptr);
+-        if (!isEnabled(ref, esmStore))
+-            liveCellRef.mData.disable();
++        const bool enabledByData = isEnabled(ref, esmStore);
++        const bool initiallyDisabledByFlag = (ref.mFlags & ESM4::Rec_Disabled) != 0;
++        bool forcedEnabledForWorldViewer = false;
++        if (!enabledByData || initiallyDisabledByFlag || !liveCellRef.mData.isEnabled())
++        {
++            if constexpr (isESM4ActorRec(X::sRecordId))
++                forcedEnabledForWorldViewer = worldViewerRenderDisabledActors();
++
++            if (forcedEnabledForWorldViewer)
++                liveCellRef.mData.enable();
++            else if (!enabledByData)
++                liveCellRef.mData.disable();
++        }
+         if constexpr (isESM4ActorRec(X::sRecordId))
          {
              Log(Debug::Info) << "FNV/ESM4 diag: loaded placed actor ref " << ESM::RefId(ref.mId) << " editor '"
                               << ref.mEditorId << "' full '" << ref.mFullName << "' base " << ESM::RefId(ref.mBaseObj)
@@ -8411,7 +8605,15 @@ index 1a2ded2c6c..663f3415c1 100644
                               << " baseEditor '" << ptr->mEditorId << "' baseFull '" << ptr->mFullName << "' parent "
                               << ref.mParent << " pos=(" << ref.mPos.pos[0] << ", " << ref.mPos.pos[1] << ", "
                               << ref.mPos.pos[2] << ") flags=0x" << std::hex << ref.mFlags << std::dec
-@@ -1005,6 +1083,17 @@ namespace MWWorld
+                              << " enableParent=" << ESM::RefId(ref.mEsp.parent) << " enableFlags=0x" << std::hex
+                              << static_cast<int>(ref.mEsp.flags) << std::dec
++                             << " enabledByData=" << enabledByData
++                             << " initiallyDisabledByFlag=" << initiallyDisabledByFlag
++                             << " forcedEnabledForWorldViewer=" << forcedEnabledForWorldViewer
+                              << " enabled=" << liveCellRef.mData.isEnabled();
+         }
+         list.push_back(std::move(liveCellRef));
+@@ -1005,6 +1103,17 @@ namespace MWWorld
                                  << " in parent cell " << ref.mParent;
              return;
          }
@@ -8430,7 +8632,7 @@ index 1a2ded2c6c..663f3415c1 100644
          Misc::tupleForEach(this->mCellStoreImp->mRefLists, [&ref, &store, foundType](auto& x) {
              recNameSwitcher(x, foundType, [&ref, &store](auto& storeIn) { storeIn.load(ref, store); });
 diff --git a/apps/openmw/mwworld/esmstore.cpp b/apps/openmw/mwworld/esmstore.cpp
-index 53d49050a5..2c427c634f 100644
+index 53d49050a5..ffbe6e06c3 100644
 --- a/apps/openmw/mwworld/esmstore.cpp
 +++ b/apps/openmw/mwworld/esmstore.cpp
 @@ -1,6 +1,7 @@
@@ -8532,7 +8734,7 @@ index 53d49050a5..2c427c634f 100644
          }
  
          const auto ensureWeapon = [&weapons](
-@@ -500,10 +537,81 @@ namespace MWWorld
+@@ -500,10 +537,82 @@ namespace MWWorld
              return false;
          }
  
@@ -8543,6 +8745,7 @@ index 53d49050a5..2c427c634f 100644
 +                case ESM4::REC_ACHR:
 +                case ESM4::REC_ACRE:
 +                case ESM4::REC_ACTI:
++                case ESM4::REC_ARMA:
 +                case ESM4::REC_ARMO:
 +                case ESM4::REC_CELL:
 +                case ESM4::REC_CREA:
@@ -8600,7 +8803,7 @@ index 53d49050a5..2c427c634f 100644
 +            if (recordType == ESM4::REC_CELL || recordType == ESM4::REC_WRLD || recordType == ESM4::REC_REFR
 +                || recordType == ESM4::REC_ACHR || recordType == ESM4::REC_ACRE || recordType == ESM4::REC_NPC_
 +                || recordType == ESM4::REC_CREA || recordType == ESM4::REC_LVLN || recordType == ESM4::REC_LVLC
-+                || recordType == ESM4::REC_STAT)
++                || recordType == ESM4::REC_ARMA || recordType == ESM4::REC_ARMO || recordType == ESM4::REC_STAT)
 +            {
 +                static int logged = 0;
 +                if (logged < 120)
@@ -8615,7 +8818,15 @@ index 53d49050a5..2c427c634f 100644
          }
      };
  
-@@ -689,13 +797,97 @@ namespace MWWorld
+@@ -574,6 +683,7 @@ namespace MWWorld
+             case ESM::REC_ACTI4:
+             case ESM::REC_ALCH4:
+             case ESM::REC_AMMO4:
++            case ESM::REC_ARMA4:
+             case ESM::REC_ARMO4:
+             case ESM::REC_BOOK4:
+             case ESM::REC_CONT4:
+@@ -689,13 +799,97 @@ namespace MWWorld
      {
          if (listener != nullptr)
              listener->setProgressRange(::EsmLoader::fileProgress);
@@ -8715,7 +8926,7 @@ index 53d49050a5..2c427c634f 100644
      }
  
      void ESMStore::setIdType(const ESM::RefId& id, ESM::RecNameInts type)
-@@ -824,7 +1016,9 @@ namespace MWWorld
+@@ -824,7 +1018,9 @@ namespace MWWorld
              ensureFalloutCharacterDefaults(
                  getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
                  getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
@@ -8726,7 +8937,7 @@ index 53d49050a5..2c427c634f 100644
          rebuildIdsIndex();
          mStoreImp->mStaticIds = mStoreImp->mIds;
          std::vector<ESM::NPC> npcsToReplace = getNPCsToReplace(getWritable<ESM::Faction>(), getWritable<ESM::Class>(),
-@@ -873,7 +1067,9 @@ namespace MWWorld
+@@ -873,7 +1069,9 @@ namespace MWWorld
              ensureFalloutCharacterDefaults(
                  getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
                  getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
