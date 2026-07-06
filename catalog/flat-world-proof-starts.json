@@ -112,65 +112,95 @@
       }
     },
     "skyrim_vr": {
-      "startCell": "WhiterunWatchtowerExterior",
-      "label": "Whiterun watchtower guard cluster exterior",
-      "esm4GridRadius": 0,
+      "startCell": "Riverwood",
+      "label": "Riverwood guard road-sign actor cluster",
+      "esm4GridRadius": 1,
       "anchor": {
-        "source": "Skyrim.esm CELL WhiterunWatchtowerExterior, mined guard ACHR cluster",
+        "source": "SkyrimVR starts mine: Riverwood exterior road-sign guard ACHR cluster",
         "position": {
-          "x": 2828,
-          "y": -12732,
-          "z": -5388
+          "x": 18522.391,
+          "y": -47049.036,
+          "z": -121.666
         },
         "rotation": {
           "x": 0,
           "y": 0,
-          "z": 0.2
+          "z": 5.72
+        },
+        "exteriorLocation": {
+          "worldspace": "FormId:0x100003c",
+          "grid": {
+            "x": 4,
+            "y": -12
+          }
         },
         "camera": {
           "mode": "static",
           "position": {
-            "x": 2600,
-            "y": -12950,
-            "z": -5290
+            "x": 18290.0,
+            "y": -47275.0,
+            "z": -20.0
           },
           "target": {
-            "x": 2383,
-            "y": -12722,
-            "z": -5310
-          }
+            "x": 18398.873,
+            "y": -47190.539,
+            "z": -60.0
+          },
+          "orbitRaycast": false,
+          "orbitSamples": 32,
+          "orbitRadius": 460,
+          "orbitHeight": 135,
+          "orbitClearance": 72,
+          "orbitMinHitDistance": 96,
+          "orbitMinGroundHeight": 96,
+          "orbitGroundRayDistance": 4096
         },
         "dry": true
       }
     },
     "fallout4_vr": {
-      "startCell": "SanctuaryExt",
-      "label": "Sanctuary Hills exterior",
-      "esm4GridRadius": 0,
+      "startCell": "SanctuaryExt02",
+      "label": "Sanctuary Hills Codsworth exterior",
+      "esm4GridRadius": 1,
       "anchor": {
-        "source": "Fallout4.esm CELL SanctuaryExt COC/marker cluster, lowered street-view survey camera",
+        "source": "Fallout4.esm actor cast mine: Codsworth persistent Commonwealth placement near SanctuaryExt02",
         "position": {
-          "x": -80352,
-          "y": 89600,
-          "z": 7820
+          "x": -80269.641,
+          "y": 90568.555,
+          "z": 7821.387
         },
         "rotation": {
           "x": 0,
           "y": 0,
-          "z": 0.7853982
+          "z": 2.3561945
+        },
+        "exteriorLocation": {
+          "worldspace": "FormId:0x100003c",
+          "grid": {
+            "x": -20,
+            "y": 22
+          }
         },
         "camera": {
-          "mode": "static",
+          "mode": "orbit-raycast",
           "position": {
-            "x": -78740,
-            "y": 86500,
-            "z": 7700
+            "x": -80089.7,
+            "y": 89662.5,
+            "z": 8020
           },
           "target": {
-            "x": -78960,
-            "y": 86269,
-            "z": 7650
-          }
+            "x": -80269.641,
+            "y": 90568.555,
+            "z": 7906.387
+          },
+          "orbitRaycast": true,
+          "orbitSamples": 32,
+          "orbitRadius": 960,
+          "orbitHeight": 190,
+          "orbitClearance": 96,
+          "orbitMinHitDistance": 128,
+          "orbitMinGroundHeight": 160,
+          "orbitGroundRayDistance": 4096
         },
         "dry": true
       }

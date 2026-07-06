@@ -262,25 +262,174 @@ index 59699d63a5..9edaad744d 100644
 +    endif()
  endif()
 diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
-index 7dd4db4d58..7362158028 100644
+index 7dd4db4d58..4382bca828 100644
 --- a/apps/openmw/engine.cpp
 +++ b/apps/openmw/engine.cpp
-@@ -9,6 +9,7 @@
+@@ -6,12 +6,17 @@
+ #include <chrono>
+ #include <cctype>
+ #include <cmath>
++#include <cstdio>
  #include <cstdlib>
  #include <future>
++#include <limits>
  #include <optional>
 +#include <span>
  #include <string>
  #include <string_view>
  #include <system_error>
-@@ -256,6 +257,70 @@ namespace
++#include <typeinfo>
++#include <utility>
+ #include <vector>
+ 
+ #include <osgDB/ReaderWriter>
+@@ -19,6 +24,7 @@
+ #include <osg/ComputeBoundsVisitor>
+ #include <osg/Image>
+ #include <osg/NodeVisitor>
++#include <osg/StateSet>
+ #include <osgViewer/ViewerEventHandlers>
+ 
+ #include <SDL.h>
+@@ -256,6 +262,209 @@ namespace
          return parsed;
      }
  
++    bool proofEnvEnabled(const char* name)
++    {
++        const char* value = std::getenv(name);
++        return value != nullptr && *value != '\0' && std::string(value) != "0";
++    }
++
 +    bool worldViewerStaticCameraRequested()
 +    {
 +        const char* value = std::getenv("OPENMW_WORLD_VIEWER_START_CAMERA_MODE");
-+        return value != nullptr && std::string(value) == "static";
++        return value != nullptr && (std::string(value) == "static" || std::string(value) == "orbit-raycast");
++    }
++
++    bool worldViewerOrbitRaycastRequested()
++    {
++        const char* value = std::getenv("OPENMW_WORLD_VIEWER_START_CAMERA_MODE");
++        return proofEnvEnabled("OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_RAYCAST")
++            || (value != nullptr && std::string(value) == "orbit-raycast");
++    }
++
++    void applyWorldViewerStaticCamera(MWRender::Camera* camera, const osg::Vec3d& eye, const osg::Vec3d& target)
++    {
++        camera->setMode(MWRender::Camera::Mode::Static, true);
++        camera->setStaticPosition(eye);
++        const osg::Vec3d delta = target - eye;
++        const double horizontal = std::sqrt(delta.x() * delta.x() + delta.y() * delta.y());
++        camera->setPitch(static_cast<float>(std::atan2(delta.z(), horizontal)), true);
++        camera->setYaw(-static_cast<float>(std::atan2(delta.x(), delta.y())), true);
++        camera->setRoll(0.f);
++        camera->instantTransition();
++        camera->updateCamera();
++    }
++
++    osg::Vec3d resolveWorldViewerOrbitCamera(MWWorld::World& world, const osg::Vec3d& seedEye,
++        const osg::Vec3d& target)
++    {
++        const osg::Vec3d seedDelta = seedEye - target;
++        const float seedRadius
++            = static_cast<float>(std::sqrt(seedDelta.x() * seedDelta.x() + seedDelta.y() * seedDelta.y()));
++        const float radius = readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_RADIUS",
++            std::max(seedRadius, readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_DISTANCE", 420.f)));
++        const float height = readProofFloat(
++            "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_HEIGHT", static_cast<float>(seedDelta.z()));
++        const int samples = std::max(4, readProofInt("OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_SAMPLES", 24));
++        const float clearance = readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_CLEARANCE", 48.f);
++        const float minHitDistance = readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_MIN_HIT_DISTANCE", 96.f);
++        const float minGroundHeight = readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_MIN_GROUND_HEIGHT", 96.f);
++        const float rayDistance = readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_GROUND_RAY_DISTANCE", 4096.f);
++        const float baseAngle = static_cast<float>(std::atan2(seedDelta.x(), seedDelta.y()));
++        const int groundMask = MWPhysics::CollisionType_World | MWPhysics::CollisionType_HeightMap
++            | MWPhysics::CollisionType_Door | MWPhysics::CollisionType_Water;
++        const MWPhysics::RayCastingInterface* rayCasting = world.getRayCasting();
++
++        osg::Vec3d bestEye = seedEye;
++        float bestScore = -std::numeric_limits<float>::infinity();
++        bool bestClear = false;
++        int bestIndex = -1;
++
++        for (int i = 0; i < samples; ++i)
++        {
++            const float angle = baseAngle + (static_cast<float>(i) * 2.f * static_cast<float>(osg::PI) / samples);
++            osg::Vec3d candidate(target.x() + std::sin(angle) * radius, target.y() + std::cos(angle) * radius,
++                target.z() + height);
++
++            bool groundHit = false;
++            float groundZ = 0.f;
++            if (rayCasting != nullptr)
++            {
++                const osg::Vec3f groundFrom(
++                    static_cast<float>(candidate.x()), static_cast<float>(candidate.y()),
++                    static_cast<float>(candidate.z() + rayDistance * 0.25f));
++                const osg::Vec3f groundTo(groundFrom.x(), groundFrom.y(), groundFrom.z() - rayDistance);
++                const MWPhysics::RayCastingResult groundRay = rayCasting->castRay(groundFrom, groundTo, groundMask);
++                groundHit = groundRay.mHit;
++                if (groundHit)
++                {
++                    groundZ = groundRay.mHitPos.z();
++                    if (candidate.z() < groundZ + minGroundHeight)
++                        candidate.z() = groundZ + minGroundHeight;
++                }
++            }
++
++            const osg::Vec3f from(
++                static_cast<float>(candidate.x()), static_cast<float>(candidate.y()), static_cast<float>(candidate.z()));
++            const osg::Vec3f to(static_cast<float>(target.x()), static_cast<float>(target.y()),
++                static_cast<float>(target.z()));
++            const float totalDistance = (to - from).length();
++            MWPhysics::RayCastingResult renderRay {};
++            world.castRenderingRay(renderRay, from, to, true, false, std::span<const MWWorld::Ptr> {});
++            const float hitDistance = renderRay.mHit ? (renderRay.mHitPos - from).length() : totalDistance;
++            bool actorHit = false;
++            if (renderRay.mHit && !renderRay.mHitObject.isEmpty())
++            {
++                try
++                {
++                    actorHit = renderRay.mHitObject.getClass().isActor();
++                }
++                catch (const std::exception&)
++                {
++                    actorHit = false;
++                }
++            }
++            const bool nearTargetHit = renderRay.mHit && hitDistance >= std::max(0.f, totalDistance - clearance);
++            const bool immediateBlock = renderRay.mHit && hitDistance < minHitDistance;
++            const bool clear = !renderRay.mHit || actorHit || nearTargetHit;
++            float score = hitDistance + (groundHit ? 200.f : 0.f) - (static_cast<float>(i) * 0.01f);
++            if (clear)
++                score += 100000.f;
++            if (actorHit)
++                score += 2000.f;
++            if (immediateBlock)
++                score -= 50000.f;
++
++            Log(Debug::Info) << "World viewer orbit raycast: candidate=" << i << " eye=(" << candidate.x() << ","
++                             << candidate.y() << "," << candidate.z() << ") target=(" << target.x() << ","
++                             << target.y() << "," << target.z() << ") radius=" << radius << " height=" << height
++                             << " groundHit=" << groundHit << " groundZ=" << groundZ << " renderHit="
++                             << renderRay.mHit << " actorHit=" << actorHit << " nearTargetHit=" << nearTargetHit
++                             << " immediateBlock=" << immediateBlock << " hitDistance=" << hitDistance
++                             << " totalDistance=" << totalDistance << " score=" << score << " hitPtr="
++                             << (renderRay.mHitObject.isEmpty() ? std::string("<none>")
++                                                                : renderRay.mHitObject.toString());
++
++            if (score > bestScore)
++            {
++                bestScore = score;
++                bestEye = candidate;
++                bestClear = clear;
++                bestIndex = i;
++            }
++        }
++
++        Log(Debug::Info) << "World viewer orbit raycast: selected candidate=" << bestIndex << " eye=(" << bestEye.x()
++                         << "," << bestEye.y() << "," << bestEye.z() << ") target=(" << target.x() << ","
++                         << target.y() << "," << target.z() << ") clear=" << bestClear << " score=" << bestScore;
++        return bestEye;
 +    }
 +
 +    bool enforceWorldViewerStaticCamera(MWWorld::World& world)
@@ -304,22 +453,30 @@ index 7dd4db4d58..7362158028 100644
 +            readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_POS_Y", position.pos[1] - 4096.f),
 +            readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z", position.pos[2] + 2048.f));
 +
-+        camera->setMode(MWRender::Camera::Mode::Static, true);
-+        camera->setStaticPosition(eye);
-+        const osg::Vec3d delta = target - eye;
-+        const double horizontal = std::sqrt(delta.x() * delta.x() + delta.y() * delta.y());
-+        camera->setPitch(static_cast<float>(std::atan2(delta.z(), horizontal)), true);
-+        camera->setYaw(-static_cast<float>(std::atan2(delta.x(), delta.y())), true);
-+        camera->setRoll(0.f);
-+        camera->instantTransition();
-+        camera->updateCamera();
++        static bool orbitSolved = false;
++        static osg::Vec3d orbitEye;
++        static osg::Vec3d orbitTarget;
++        osg::Vec3d resolvedEye = eye;
++        if (worldViewerOrbitRaycastRequested())
++        {
++            if (!orbitSolved || (orbitTarget - target).length() > 1.f)
++            {
++                orbitEye = resolveWorldViewerOrbitCamera(world, eye, target);
++                orbitTarget = target;
++                orbitSolved = true;
++            }
++            resolvedEye = orbitEye;
++        }
++
++        applyWorldViewerStaticCamera(camera, resolvedEye, target);
 +
 +        static bool logged = false;
 +        if (!logged)
 +        {
 +            logged = true;
-+            Log(Debug::Info) << "World viewer: enforcing static survey camera eye=(" << eye.x() << "," << eye.y()
-+                             << "," << eye.z() << ") target=(" << target.x() << "," << target.y() << ","
++            Log(Debug::Info) << "World viewer: enforcing static survey camera eye=(" << resolvedEye.x() << ","
++                             << resolvedEye.y() << "," << resolvedEye.z() << ") target=(" << target.x() << ","
++                             << target.y() << ","
 +                             << target.z() << ") pitch=" << camera->getPitch() << " yaw=" << camera->getYaw();
 +        }
 +        return true;
@@ -344,7 +501,7 @@ index 7dd4db4d58..7362158028 100644
      bool hasFalloutNvContent(const std::vector<std::string>& contentFiles)
      {
          for (std::string file : contentFiles)
-@@ -670,6 +735,335 @@ namespace
+@@ -670,6 +879,630 @@ namespace
                           << cameraPos.x() << "," << cameraPos.y() << "," << cameraPos.z()
                           << ") cameraPitch=" << camera->getPitch() << " cameraYaw=" << camera->getYaw();
      }
@@ -357,6 +514,301 @@ index 7dd4db4d58..7362158028 100644
 +
 +        return !Misc::StringUtils::ciEqual(value, "0") && !Misc::StringUtils::ciEqual(value, "false")
 +            && !Misc::StringUtils::ciEqual(value, "off") && !Misc::StringUtils::ciEqual(value, "no");
++    }
++
++    bool worldViewerTraceEnabled()
++    {
++        return viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_TRACE")
++            || viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
++    }
++
++    void worldViewerTrace(unsigned int frameNumber, std::string_view phase)
++    {
++        if (!worldViewerTraceEnabled())
++            return;
++
++        Log(Debug::Info) << "World viewer trace: frame=" << frameNumber << " phase=\"" << phase << "\"";
++        std::fflush(stdout);
++        std::fflush(stderr);
++    }
++
++    std::string cleanWorldViewerTelemetryString(std::string value)
++    {
++        for (char& c : value)
++        {
++            if (c == '"')
++                c = '\'';
++            else if (static_cast<unsigned char>(c) < 32)
++                c = ' ';
++        }
++        return value;
++    }
++
++    std::string worldViewerOsgObjectType(const osg::Object& object)
++    {
++        std::string type = object.libraryName();
++        if (!type.empty())
++            type += "::";
++        type += object.className();
++        return cleanWorldViewerTelemetryString(type);
++    }
++
++    std::string worldViewerCallbackType(const osg::Callback& callback)
++    {
++        std::string type = worldViewerOsgObjectType(callback);
++        if (type == "osg::Callback")
++            type = typeid(callback).name();
++        return cleanWorldViewerTelemetryString(type);
++    }
++
++    std::string worldViewerNodePathText(const osg::NodePath& path)
++    {
++        if (path.empty())
++            return "<none>";
++
++        std::string out;
++        const std::size_t start = path.size() > 8 ? path.size() - 8 : 0;
++        if (start > 0)
++            out = ".../";
++
++        for (std::size_t i = start; i < path.size(); ++i)
++        {
++            if (i != start)
++                out += "/";
++
++            const osg::Node* node = path[i];
++            if (node == nullptr)
++            {
++                out += "<null>";
++                continue;
++            }
++
++            std::string name = node->getName();
++            if (name.empty())
++                name = worldViewerOsgObjectType(*node);
++            out += cleanWorldViewerTelemetryString(name);
++        }
++
++        return out;
++    }
++
++    std::string lowerWorldViewerText(std::string value)
++    {
++        std::transform(value.begin(), value.end(), value.begin(),
++            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
++        return value;
++    }
++
++    std::vector<std::string> readWorldViewerFilterList(const char* name)
++    {
++        std::vector<std::string> out;
++        const char* value = std::getenv(name);
++        if (value == nullptr || *value == '\0')
++            return out;
++
++        std::string current;
++        for (const char c : std::string_view(value))
++        {
++            if (c == ';' || c == ',' || c == '|')
++            {
++                if (!current.empty())
++                    out.push_back(lowerWorldViewerText(current));
++                current.clear();
++                continue;
++            }
++            if (!std::isspace(static_cast<unsigned char>(c)))
++                current += c;
++        }
++        if (!current.empty())
++            out.push_back(lowerWorldViewerText(current));
++
++        return out;
++    }
++
++    class WorldViewerOsgUpdateCallbackAuditVisitor : public osg::NodeVisitor
++    {
++    public:
++        WorldViewerOsgUpdateCallbackAuditVisitor(
++            unsigned int frameNumber, bool stripAllNodeCallbacks, bool stripAllStateSetCallbacks,
++            std::vector<std::string> stripClassFilters, std::vector<std::string> keepPathFilters, int logLimit)
++            : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
++            , mFrameNumber(frameNumber)
++            , mStripAllNodeCallbacks(stripAllNodeCallbacks)
++            , mStripAllStateSetCallbacks(stripAllStateSetCallbacks)
++            , mStripClassFilters(std::move(stripClassFilters))
++            , mKeepPathFilters(std::move(keepPathFilters))
++            , mLogLimit(std::max(0, logLimit))
++        {
++        }
++
++        void apply(osg::Node& node) override
++        {
++            ++mNodesVisited;
++            auditNode(node);
++            traverse(node);
++        }
++
++        void report(std::string_view rootName) const
++        {
++            Log(Debug::Info) << "World viewer osg-update-callback-summary: frame=" << mFrameNumber << " root=\""
++                             << rootName << "\" nodesVisited=" << mNodesVisited
++                             << " nodeOwners=" << mNodeOwnersSeen << " nodeCallbacks=" << mNodeCallbacksSeen
++                             << " nodeOwnersStripped=" << mNodeOwnersStripped
++                             << " stateSetOwners=" << mStateSetOwnersSeen
++                             << " stateSetCallbacks=" << mStateSetCallbacksSeen
++                             << " stateSetOwnersStripped=" << mStateSetOwnersStripped
++                             << " logged=" << mLogged;
++        }
++
++    private:
++        void auditNode(osg::Node& node)
++        {
++            const std::string pathText = worldViewerNodePathText(getNodePath());
++            osg::Callback* nodeCallback = node.getUpdateCallback();
++            if (nodeCallback != nullptr)
++            {
++                const bool stripNodeCallbacks = shouldStripCallbackChain(nodeCallback, mStripAllNodeCallbacks, pathText);
++                ++mNodeOwnersSeen;
++                mNodeCallbacksSeen += auditCallbackChain("node", node, nodeCallback, stripNodeCallbacks, pathText);
++                if (stripNodeCallbacks)
++                {
++                    node.setUpdateCallback(nullptr);
++                    ++mNodeOwnersStripped;
++                }
++            }
++
++            osg::StateSet* stateSet = node.getStateSet();
++            if (stateSet == nullptr || stateSet->getUpdateCallback() == nullptr)
++                return;
++
++            const bool stripStateSetCallbacks
++                = shouldStripCallbackChain(stateSet->getUpdateCallback(), mStripAllStateSetCallbacks, pathText);
++            ++mStateSetOwnersSeen;
++            mStateSetCallbacksSeen += auditCallbackChain("stateset", node, stateSet->getUpdateCallback(),
++                stripStateSetCallbacks, pathText);
++            if (stripStateSetCallbacks)
++            {
++                stateSet->setUpdateCallback(nullptr);
++                ++mStateSetOwnersStripped;
++            }
++        }
++
++        bool shouldStripCallbackChain(osg::Callback* callback, bool stripAll, std::string_view pathText) const
++        {
++            const std::string lowerPath = lowerWorldViewerText(std::string(pathText));
++            for (const std::string& keep : mKeepPathFilters)
++            {
++                if (!keep.empty() && lowerPath.find(keep) != std::string::npos)
++                    return false;
++            }
++
++            if (stripAll)
++                return true;
++
++            if (mStripClassFilters.empty())
++                return false;
++
++            for (osg::Callback* cb = callback; cb != nullptr; cb = cb->getNestedCallback())
++            {
++                const std::string callbackType = lowerWorldViewerText(worldViewerCallbackType(*cb));
++                for (const std::string& filter : mStripClassFilters)
++                {
++                    if (!filter.empty() && callbackType.find(filter) != std::string::npos)
++                        return true;
++                }
++            }
++
++            return false;
++        }
++
++        int auditCallbackChain(
++            const char* owner, osg::Node& node, osg::Callback* callback, bool stripOwner, std::string_view pathText)
++        {
++            int count = 0;
++            for (osg::Callback* cb = callback; cb != nullptr; cb = cb->getNestedCallback())
++            {
++                if (mLogged < mLogLimit)
++                {
++                    Log(Debug::Info) << "World viewer osg-update-callback: frame=" << mFrameNumber << " owner=\""
++                                     << owner << "\" action=\"" << (stripOwner ? "strip" : "audit")
++                                     << "\" link=" << count << " nodeClass=\"" << worldViewerOsgObjectType(node)
++                                     << "\" nodeName=\"" << cleanWorldViewerTelemetryString(node.getName())
++                                     << "\" callbackClass=\"" << worldViewerCallbackType(*cb) << "\" path=\""
++                                     << pathText << "\"";
++                    ++mLogged;
++                }
++                ++count;
++            }
++            return count;
++        }
++
++        unsigned int mFrameNumber = 0;
++        bool mStripAllNodeCallbacks = false;
++        bool mStripAllStateSetCallbacks = false;
++        std::vector<std::string> mStripClassFilters;
++        std::vector<std::string> mKeepPathFilters;
++        int mLogLimit = 0;
++        int mLogged = 0;
++        int mNodesVisited = 0;
++        int mNodeOwnersSeen = 0;
++        int mNodeCallbacksSeen = 0;
++        int mNodeOwnersStripped = 0;
++        int mStateSetOwnersSeen = 0;
++        int mStateSetCallbacksSeen = 0;
++        int mStateSetOwnersStripped = 0;
++    };
++
++    bool worldViewerOsgUpdateCallbackAuditRequested()
++    {
++        return viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS")
++            || viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS")
++            || viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS")
++            || viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS")
++            || std::getenv("OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER") != nullptr
++            || std::getenv("OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER") != nullptr;
++    }
++
++    void auditWorldViewerOsgUpdateCallbacks(osg::Node* sceneData, unsigned int frameNumber)
++    {
++        if (!worldViewerOsgUpdateCallbackAuditRequested())
++            return;
++
++        if (sceneData == nullptr)
++        {
++            Log(Debug::Info) << "World viewer osg-update-callback-summary: frame=" << frameNumber
++                             << " root=\"scene\" nodesVisited=0 nodeOwners=0 nodeCallbacks=0"
++                             << " nodeOwnersStripped=0 stateSetOwners=0 stateSetCallbacks=0"
++                             << " stateSetOwnersStripped=0 logged=0 reason=\"missing scene data\"";
++            return;
++        }
++
++        const bool stripAll = viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS");
++        const bool stripNodeCallbacks
++            = stripAll || viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS");
++        const bool stripStateSetCallbacks
++            = stripAll || viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS");
++        std::vector<std::string> stripClassFilters
++            = readWorldViewerFilterList("OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER");
++        std::vector<std::string> keepPathFilters
++            = readWorldViewerFilterList("OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER");
++
++        static bool loggedExamples = false;
++        const bool logEveryFrame = viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME");
++        const int logLimit = (!loggedExamples || logEveryFrame)
++            ? readProofInt("OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", 120)
++            : 0;
++
++        WorldViewerOsgUpdateCallbackAuditVisitor visitor(
++            frameNumber, stripNodeCallbacks, stripStateSetCallbacks, std::move(stripClassFilters),
++            std::move(keepPathFilters), logLimit);
++        sceneData->accept(visitor);
++        visitor.report("scene");
++
++        if (logLimit > 0)
++            loggedExamples = true;
++
++        std::fflush(stdout);
++        std::fflush(stderr);
 +    }
 +
 +    std::string safeWorldViewerPtrText(const MWWorld::Ptr& ptr)
@@ -680,7 +1132,7 @@ index 7dd4db4d58..7362158028 100644
      // ## VR_PATCH BEGIN
  
      class InitializeVrOperation : public osg::GraphicsOperation
-@@ -802,6 +1196,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -802,6 +1635,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      static int proofActorScreenshotLastResolveFrame = -1;
      static bool proofFirstPersonHidden = false;
      static bool proofGuiHidden = false;
@@ -688,7 +1140,7 @@ index 7dd4db4d58..7362158028 100644
      static bool proofSkyDisabled = false;
      static bool proofGodModeEnabled = false;
      static bool proofDelayedStartupScriptExecuted = false;
-@@ -810,6 +1205,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -810,6 +1644,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      static bool fnvFlatStartupCameraSettled = false;
      static bool proofScreenshotWaitLogged = false;
      static int proofWorldReadyFrames = 0;
@@ -698,7 +1150,173 @@ index 7dd4db4d58..7362158028 100644
      const auto parseProofFormId = [](std::string_view value) -> std::optional<ESM::FormId> {
          while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
          while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
-@@ -1261,6 +1659,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1031,21 +1868,26 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+     const osg::Timer* const timer = osg::Timer::instance();
+     osg::Stats* const stats = mViewer->getViewerStats();
+ 
++    worldViewerTrace(frameNumber, "frame.begin");
+     mEnvironment.setFrameDuration(frametime);
++    worldViewerTrace(frameNumber, "frame.duration-set");
+ 
+     try
+     {
+         // update input
++        worldViewerTrace(frameNumber, "input.begin");
+         {
+             ScopedProfile<UserStatsType::Input> profile(frameStart, frameNumber, *timer, *stats);
+             mInputManager->update(frametime, false);
+         }
++        worldViewerTrace(frameNumber, "input.end");
+ 
+         // When the window is minimized, pause the game. Currently this *has* to be here to work around a MyGUI bug.
+         // If we are not currently rendering, then RenderItems will not be reused resulting in a memory leak upon
+         // changing widget textures (fixed in MyGUI 3.3.2), and destroyed widgets will not be deleted (not fixed yet,
+         // https://github.com/MyGUI/mygui/issues/21)
+         {
++            worldViewerTrace(frameNumber, "sound.begin");
+             ScopedProfile<UserStatsType::Sound> profile(frameStart, frameNumber, *timer, *stats);
+ 
+             static bool loggedHiddenVrWindow = false;
+@@ -1067,23 +1909,29 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+             if (mUseSound)
+                 mSoundManager->update(frametime);
+         }
++        worldViewerTrace(frameNumber, "sound.end");
+ 
+         {
++            worldViewerTrace(frameNumber, "lua-sync.begin");
+             ScopedProfile<UserStatsType::LuaSyncUpdate> profile(frameStart, frameNumber, *timer, *stats);
+             // Should be called after input manager update and before any change to the game world.
+             // It applies to the game world queued changes from the previous frame.
+             mLuaManager->synchronizedUpdate();
+         }
++        worldViewerTrace(frameNumber, "lua-sync.end");
+ 
+         // update game state
++        worldViewerTrace(frameNumber, "state.begin");
+         {
+             ScopedProfile<UserStatsType::State> profile(frameStart, frameNumber, *timer, *stats);
+             mStateManager->update(frametime);
+         }
++        worldViewerTrace(frameNumber, "state.end");
+ 
+         bool paused = mWorld->getTimeManager()->isPaused();
+ 
+         {
++            worldViewerTrace(frameNumber, "script.begin");
+             ScopedProfile<UserStatsType::Script> profile(frameStart, frameNumber, *timer, *stats);
+ 
+             if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
+@@ -1110,9 +1958,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+                 }
+             }
+         }
++        worldViewerTrace(frameNumber, "script.end");
+ 
+         // update mechanics
+         {
++            worldViewerTrace(frameNumber, "mechanics.begin");
+             ScopedProfile<UserStatsType::Mechanics> profile(frameStart, frameNumber, *timer, *stats);
+ 
+             if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
+@@ -1127,9 +1977,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+                     mStateManager->endGame();
+             }
+         }
++        worldViewerTrace(frameNumber, "mechanics.end");
+ 
+         // update physics
+         {
++            worldViewerTrace(frameNumber, "physics.begin");
+             ScopedProfile<UserStatsType::Physics> profile(frameStart, frameNumber, *timer, *stats);
+ 
+             if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
+@@ -1137,9 +1989,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+                 mWorld->updatePhysics(frametime, paused, frameStart, frameNumber, *stats);
+             }
+         }
++        worldViewerTrace(frameNumber, "physics.end");
+ 
+         // update world
+         {
++            worldViewerTrace(frameNumber, "world-update.begin");
+             ScopedProfile<UserStatsType::World> profile(frameStart, frameNumber, *timer, *stats);
+ 
+             if (mStateManager->getState() != MWBase::StateManager::State_NoGame)
+@@ -1147,18 +2001,23 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+                 mWorld->update(frametime, paused);
+             }
+         }
++        worldViewerTrace(frameNumber, "world-update.end");
+ 
+         // update GUI
+         {
++            worldViewerTrace(frameNumber, "gui.begin");
+             ScopedProfile<UserStatsType::Gui> profile(frameStart, frameNumber, *timer, *stats);
+             mWindowManager->update(frametime);
+         }
++        worldViewerTrace(frameNumber, "gui.end");
+     }
+     catch (const std::exception& e)
+     {
+         Log(Debug::Error) << "Error in frame: " << e.what();
++        worldViewerTrace(frameNumber, "frame.exception-caught");
+     }
+ 
++    worldViewerTrace(frameNumber, "stats.begin");
+     const bool reportResource = stats->collectStats("resource");
+ 
+     if (reportResource)
+@@ -1179,17 +2038,37 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+         mWorld->reportStats(frameNumber, *stats);
+         mLuaManager->reportStats(frameNumber, *stats);
+     }
++    worldViewerTrace(frameNumber, "stats.end");
+ 
++    worldViewerTrace(frameNumber, "stereo.begin");
+     mStereoManager->updateSettings(Settings::camera().mNearClip, Settings::camera().mViewingDistance);
++    worldViewerTrace(frameNumber, "stereo.end");
+ 
++    worldViewerTrace(frameNumber, "osg-event.begin");
+     mViewer->eventTraversal();
+-    mViewer->updateTraversal();
++    worldViewerTrace(frameNumber, "osg-event.end");
++    worldViewerTrace(frameNumber, "osg-update.begin");
++    if (viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL"))
++    {
++        Log(Debug::Info) << "World viewer trace: frame=" << frameNumber
++                         << " phase=\"osg-update.skipped\" reason=\"proof static scene\"";
++        std::fflush(stdout);
++        std::fflush(stderr);
++    }
++    else
++    {
++        auditWorldViewerOsgUpdateCallbacks(mViewer->getSceneData(), frameNumber);
++        mViewer->updateTraversal();
++    }
++    worldViewerTrace(frameNumber, "osg-update.end");
+ 
+     // update GUI by world data
+     {
++        worldViewerTrace(frameNumber, "window-world-sync.begin");
+         ScopedProfile<UserStatsType::WindowManager> profile(frameStart, frameNumber, *timer, *stats);
+         mWorld->updateWindowManager();
+     }
++    worldViewerTrace(frameNumber, "window-world-sync.end");
+ 
+     if (VR::getVR())
+     {
+@@ -1212,7 +2091,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+     }
+ 
+     // if there is a separate Lua thread, it starts the update now
++    worldViewerTrace(frameNumber, "lua-worker-allow.begin");
+     mLuaWorker->allowUpdate(frameStart, frameNumber, *stats);
++    worldViewerTrace(frameNumber, "lua-worker-allow.end");
+ 
+     if (std::getenv("OPENMW_PROOF_HIDE_FIRST_PERSON") != nullptr)
+     {
+@@ -1261,6 +2142,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      }
  
      const bool proofRunning = mStateManager->getState() == MWBase::StateManager::State_Running;
@@ -713,18 +1331,28 @@ index 7dd4db4d58..7362158028 100644
      const bool proofLoadingGui = mWindowManager->containsMode(MWGui::GM_Loading)
          || mWindowManager->containsMode(MWGui::GM_LoadingWallpaper)
          || mWindowManager->containsMode(MWGui::GM_MainMenu);
-@@ -1270,6 +1676,26 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1270,6 +2159,37 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
      else
          proofWorldReadyFrames = 0;
  
++    worldViewerTrace(frameNumber, "proof-world-ready-evaluated");
 +    if (proofWorldReady && mWorld != nullptr)
++    {
++        worldViewerTrace(frameNumber, "dry-start.begin");
 +        enforceWorldViewerDryStart(*mWorld);
++        worldViewerTrace(frameNumber, "dry-start.end");
++    }
 +
 +    if (proofWorldReady && mWorld != nullptr && !VR::getVR())
++    {
++        worldViewerTrace(frameNumber, "static-camera.begin");
 +        enforceWorldViewerStaticCamera(*mWorld);
++        worldViewerTrace(frameNumber, "static-camera.end");
++    }
 +
 +    if (viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_TELEMETRY") && proofRunning && mWorld != nullptr)
 +    {
++        worldViewerTrace(frameNumber, "periodic-telemetry.begin");
 +        const int telemetryInterval = readProofInt("OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL", 30);
 +        const bool telemetryDue = !worldViewerTelemetryLogged || telemetryInterval <= 0
 +            || frameNumber >= worldViewerTelemetryLastFrame + static_cast<unsigned int>(telemetryInterval);
@@ -735,12 +1363,13 @@ index 7dd4db4d58..7362158028 100644
 +            worldViewerTelemetryLastFrame = frameNumber;
 +            worldViewerTelemetryLogged = true;
 +        }
++        worldViewerTrace(frameNumber, "periodic-telemetry.end");
 +    }
 +
      if (!proofDelayedStartupScriptExecuted && std::getenv("OPENMW_PROOF_DELAY_STARTUP_SCRIPT") != nullptr
          && !mStartupScript.empty() && proofWorldReady)
      {
-@@ -1295,8 +1721,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1295,8 +2215,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          proofFNVBootstrapApplied = true;
      }
  
@@ -753,7 +1382,7 @@ index 7dd4db4d58..7362158028 100644
      {
          settleFNVFlatStartupCamera(*mWorld);
          fnvFlatStartupCameraSettled = true;
-@@ -1894,6 +2323,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1894,6 +2817,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
          && frameNumber >= static_cast<unsigned>(proofScreenshotFrames[proofScreenshotFrameIndex]);
      const bool proofScreenshotReadyFramesReached
          = !proofScreenshotReadyQueued && proofScreenshotReadyFrames >= 0 && proofWorldReadyFrames >= proofScreenshotReadyFrames;
@@ -778,28 +1407,76 @@ index 7dd4db4d58..7362158028 100644
      const int proofActorAlignedScreenshotDelay = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_DELAY");
      const int proofActorAlignedScreenshotMinFrame = getProofFrame("OPENMW_PROOF_ACTOR_ALIGNED_SCREENSHOT_MIN_FRAME");
      const bool proofActorAlignedScreenshotReached = !proofActorAlignedScreenshotQueued && proofActorCameraAligned
-@@ -1931,6 +2378,20 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+@@ -1913,8 +2854,12 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+         }
+         if (!proofWorldReady)
+         {
++            worldViewerTrace(frameNumber, "screenshot-wait-render.begin");
+             mViewer->renderingTraversals();
++            worldViewerTrace(frameNumber, "screenshot-wait-render.end");
++            worldViewerTrace(frameNumber, "screenshot-wait-lua-finish.begin");
              mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
++            worldViewerTrace(frameNumber, "screenshot-wait-lua-finish.end");
              return true;
          }
-+        if (!worldViewerCameraReadyForScreenshot)
-+        {
+         if (proofRequiresActorForScreenshot && !proofActorCameraAligned)
+@@ -1927,11 +2872,36 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+                                  << " screenshotIndex=" << proofScreenshotFrameIndex;
+                 proofActorScreenshotWaitLogged = true;
+             }
++            worldViewerTrace(frameNumber, "actor-wait-render.begin");
 +            mViewer->renderingTraversals();
++            worldViewerTrace(frameNumber, "actor-wait-render.end");
++            worldViewerTrace(frameNumber, "actor-wait-lua-finish.begin");
 +            mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
++            worldViewerTrace(frameNumber, "actor-wait-lua-finish.end");
 +            return true;
 +        }
-+
++        if (!worldViewerCameraReadyForScreenshot)
++        {
++            worldViewerTrace(frameNumber, "camera-wait-render.begin");
+             mViewer->renderingTraversals();
++            worldViewerTrace(frameNumber, "camera-wait-render.end");
++            worldViewerTrace(frameNumber, "camera-wait-lua-finish.begin");
+             mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
++            worldViewerTrace(frameNumber, "camera-wait-lua-finish.end");
+             return true;
+         }
+ 
 +        if (viewerTelemetryEnabled("OPENMW_WORLD_VIEWER_TELEMETRY") && mWorld != nullptr)
 +        {
++            worldViewerTrace(frameNumber, "screenshot-telemetry.begin");
 +            logWorldViewerTelemetry(*mWorld, *mViewer, frameNumber, static_cast<int>(mStateManager->getState()),
 +                proofLoadingGui, proofWorldReady, proofWorldReadyFrames);
 +            worldViewerTelemetryLastFrame = frameNumber;
 +            worldViewerTelemetryLogged = true;
++            worldViewerTrace(frameNumber, "screenshot-telemetry.end");
 +        }
- 
++
++        worldViewerTrace(frameNumber, "screenshot-queue.begin");
          Log(Debug::Info) << "FNV/ESM4 proof: queuing GUI-inclusive native screenshot at frame " << frameNumber
                           << " hour=" << mWorld->getTimeStamp().getHour()
-@@ -2490,12 +2951,19 @@ void OMW::Engine::prepareEngine()
+                          << " weatherId=" << mWorld->getCurrentWeatherScriptId()
+@@ -1944,12 +2914,18 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+             proofScreenshotReadyQueued = true;
+         if (proofActorAlignedScreenshotReached)
+             proofActorAlignedScreenshotQueued = true;
++        worldViewerTrace(frameNumber, "screenshot-queue.end");
+     }
+ 
++    worldViewerTrace(frameNumber, "rendering-traversals.begin");
+     mViewer->renderingTraversals();
++    worldViewerTrace(frameNumber, "rendering-traversals.end");
+ 
++    worldViewerTrace(frameNumber, "lua-worker-finish.begin");
+     mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
++    worldViewerTrace(frameNumber, "lua-worker-finish.end");
+ 
++    worldViewerTrace(frameNumber, "frame.end");
+     return true;
+ }
+ 
+@@ -2490,12 +3466,19 @@ void OMW::Engine::prepareEngine()
              asyncListener.update();
          dataLoading.get();
      }
@@ -819,7 +1496,7 @@ index 7dd4db4d58..7362158028 100644
  
      // ## VR_PATCH BEGIN
      if (VR::getVR())
-@@ -2505,6 +2973,7 @@ void OMW::Engine::prepareEngine()
+@@ -2505,6 +3488,7 @@ void OMW::Engine::prepareEngine()
      // ## VR_PATCH END
  
      const MWWorld::Store<ESM::GameSetting>* gmst = &mWorld->getStore().get<ESM::GameSetting>();
@@ -827,7 +1504,7 @@ index 7dd4db4d58..7362158028 100644
      mL10nManager->setGmstLoader(
          [gmst, misses = std::set<std::string, std::less<>>()](std::string_view gmstName) mutable {
              const ESM::GameSetting* res = gmst->search(gmstName);
-@@ -2520,34 +2989,48 @@ void OMW::Engine::prepareEngine()
+@@ -2520,34 +3504,48 @@ void OMW::Engine::prepareEngine()
                  return std::string("GMST:") + std::string(gmstName);
              }
          });
@@ -876,7 +1553,7 @@ index 7dd4db4d58..7362158028 100644
  
      // scripts
      if (mCompileAll)
-@@ -2565,11 +3048,15 @@ void OMW::Engine::prepareEngine()
+@@ -2565,11 +3563,15 @@ void OMW::Engine::prepareEngine()
                               << 100 * static_cast<double>(result.second) / result.first << "%)";
      }
  
@@ -2426,10 +3103,26 @@ index 8575f471a0..e480eebb38 100644
          }
      }
 diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
-index 49a7175149..4414432761 100644
+index 49a7175149..6b9fe1fd40 100644
 --- a/apps/openmw/mwrender/esm4npcanimation.cpp
 +++ b/apps/openmw/mwrender/esm4npcanimation.cpp
-@@ -74,6 +74,52 @@ namespace MWRender
+@@ -28,6 +28,7 @@
+ #include <components/resource/resourcesystem.hpp>
+ #include <components/resource/scenemanager.hpp>
+ #include <components/sceneutil/attach.hpp>
++#include <components/sceneutil/morphgeometry.hpp>
+ #include <components/sceneutil/skeleton.hpp>
+ #include <components/sceneutil/positionattitudetransform.hpp>
+ #include <components/sceneutil/riggeometry.hpp>
+@@ -43,6 +44,7 @@
+ #include <osg/ComputeBoundsVisitor>
+ #include <osg/FrontFace>
+ #include <osg/Geode>
++#include <osg/Geometry>
+ #include <osg/Material>
+ #include <osg/MatrixTransform>
+ #include <osg/NodeCallback>
+@@ -74,6 +76,57 @@ namespace MWRender
  {
      namespace
      {
@@ -2448,6 +3141,11 @@ index 49a7175149..4414432761 100644
 +        bool worldViewerSkipMissingActorParts()
 +        {
 +            return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS");
++        }
++
++        bool worldViewerSkipUnmappedRiggedActorParts()
++        {
++            return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS");
 +        }
 +
 +        const char* worldViewerNpcGameTag(const ESM4::Npc& npc)
@@ -2482,7 +3180,236 @@ index 49a7175149..4414432761 100644
          class TintMaterialVisitor : public osg::NodeVisitor
          {
          public:
-@@ -4162,9 +4208,64 @@ namespace MWRender
+@@ -232,6 +285,139 @@ namespace MWRender
+             }
+         };
+ 
++        class ActorVisualAuditVisitor : public osg::NodeVisitor
++        {
++        public:
++            ActorVisualAuditVisitor()
++                : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
++            {
++            }
++
++            void apply(osg::Node& node) override
++            {
++                ++mNodes;
++                if (node.getNodeMask() == 0)
++                    ++mZeroMaskNodes;
++                if (osg::Drawable* drawable = node.asDrawable())
++                    auditDrawable(*drawable);
++                traverse(node);
++            }
++
++            void apply(osg::Geode& geode) override
++            {
++                ++mNodes;
++                ++mGeodes;
++                if (geode.getNodeMask() == 0)
++                    ++mZeroMaskNodes;
++                for (unsigned int i = 0; i < geode.getNumDrawables(); ++i)
++                    if (osg::Drawable* drawable = geode.getDrawable(i))
++                        auditDrawable(*drawable);
++                traverse(geode);
++            }
++
++            void apply(osg::Drawable& drawable) override
++            {
++                ++mNodes;
++                auditDrawable(drawable);
++            }
++
++            void apply(osg::Geometry& geometry) override
++            {
++                ++mNodes;
++                auditDrawable(geometry);
++            }
++
++            unsigned int mNodes = 0;
++            unsigned int mZeroMaskNodes = 0;
++            unsigned int mGeodes = 0;
++            unsigned int mDrawables = 0;
++            unsigned int mGeometry = 0;
++            unsigned int mRigGeometry = 0;
++            unsigned int mRigGeometryHolder = 0;
++            unsigned int mRigRenderGeometry = 0;
++            unsigned int mMorphGeometry = 0;
++            unsigned int mMorphSourceGeometry = 0;
++
++        private:
++            void auditDrawable(osg::Drawable& drawable)
++            {
++                ++mDrawables;
++                if (drawable.asGeometry() != nullptr)
++                    ++mGeometry;
++                if (SceneUtil::RigGeometry* rig = dynamic_cast<SceneUtil::RigGeometry*>(&drawable))
++                {
++                    ++mRigGeometry;
++                    if (rig->getSourceGeometry() != nullptr)
++                        ++mGeometry;
++                    for (unsigned int i = 0; i < 2; ++i)
++                        if (rig->getRenderGeometry(i) != nullptr)
++                            ++mRigRenderGeometry;
++                }
++                if (SceneUtil::RigGeometryHolder* holder = dynamic_cast<SceneUtil::RigGeometryHolder*>(&drawable))
++                {
++                    ++mRigGeometryHolder;
++                    if (holder->getSourceRigGeometry() != nullptr)
++                        ++mGeometry;
++                    for (unsigned int i = 0; i < 2; ++i)
++                        if (holder->getGeometry(i) != nullptr)
++                            ++mRigRenderGeometry;
++                }
++                if (SceneUtil::MorphGeometry* morph = dynamic_cast<SceneUtil::MorphGeometry*>(&drawable))
++                {
++                    ++mMorphGeometry;
++                    if (morph->getSourceGeometry() != nullptr)
++                    {
++                        ++mMorphSourceGeometry;
++                        ++mGeometry;
++                    }
++                }
++            }
++        };
++
++        std::string makeActorVisualAuditDetails(osg::Node* node)
++        {
++            if (node == nullptr)
++                return " visualNode=0";
++
++            ActorVisualAuditVisitor visitor;
++            node->accept(visitor);
++
++            osg::ComputeBoundsVisitor boundsVisitor;
++            node->accept(boundsVisitor);
++            const osg::BoundingBox box = boundsVisitor.getBoundingBox();
++            const osg::BoundingSphere sphere = node->getBound();
++
++            std::ostringstream details;
++            details << " visualNode=1"
++                    << " visualNodes=" << visitor.mNodes
++                    << " visualZeroMaskNodes=" << visitor.mZeroMaskNodes
++                    << " visualGeodes=" << visitor.mGeodes
++                    << " visualDrawables=" << visitor.mDrawables
++                    << " visualGeometry=" << visitor.mGeometry
++                    << " visualRigGeometry=" << visitor.mRigGeometry
++                    << " visualRigGeometryHolder=" << visitor.mRigGeometryHolder
++                    << " visualRigRenderGeometry=" << visitor.mRigRenderGeometry
++                    << " visualMorphGeometry=" << visitor.mMorphGeometry
++                    << " visualMorphSourceGeometry=" << visitor.mMorphSourceGeometry
++                    << " visualRootMask=0x" << std::hex << node->getNodeMask() << std::dec
++                    << " visualBoundValid=" << sphere.valid()
++                    << " visualBoundRadius=" << (sphere.valid() ? sphere.radius() : 0.f);
++            if (sphere.valid())
++                details << " visualBoundCenter=(" << sphere.center().x() << "," << sphere.center().y() << ","
++                        << sphere.center().z() << ")";
++            if (box.valid())
++            {
++                const osg::Vec3f min = box._min;
++                const osg::Vec3f max = box._max;
++                details << " visualBoxValid=1"
++                        << " visualBoxMin=(" << min.x() << "," << min.y() << "," << min.z() << ")"
++                        << " visualBoxMax=(" << max.x() << "," << max.y() << "," << max.z() << ")";
++            }
++            else
++                details << " visualBoxValid=0";
++            return details.str();
++        }
++
+         class FalloutCutoutAlphaVisitor : public osg::NodeVisitor
+         {
+         public:
+@@ -1926,23 +2112,45 @@ namespace MWRender
+                     {
+                         mFirstRigRootBone = rig->getRootBone();
+                         mFirstRigBoneCount = rig->getBoneCount();
++                        mFirstRigBoneNames.reserve(mFirstRigBoneCount);
+                         const std::size_t sampleCount = std::min<std::size_t>(mFirstRigBoneCount, 4);
+-                        for (std::size_t i = 0; i < sampleCount; ++i)
++                        for (std::size_t i = 0; i < mFirstRigBoneCount; ++i)
+                         {
+-                            if (i != 0)
+-                                mFirstRigBoneSample << ",";
+-                            mFirstRigBoneSample << rig->getBoneName(i);
++                            const std::string boneName(rig->getBoneName(i));
++                            mFirstRigBoneNames.push_back(boneName);
++                            if (i < sampleCount)
++                            {
++                                if (i != 0)
++                                    mFirstRigBoneSample << ",";
++                                mFirstRigBoneSample << boneName;
++                            }
+                         }
+                     }
+                 }
++                else if (SceneUtil::RigGeometryHolder* holder = dynamic_cast<SceneUtil::RigGeometryHolder*>(&drawable))
++                {
++                    ++mRigGeometryCount;
++                    if (holder->getSourceRigGeometry() != nullptr)
++                        ++mStaticGeometryCount;
++                    drawable.setCullingActive(false);
++                }
++                else if (SceneUtil::MorphGeometry* morph = dynamic_cast<SceneUtil::MorphGeometry*>(&drawable))
++                {
++                    ++mMorphGeometryCount;
++                    if (morph->getSourceGeometry() != nullptr)
++                        ++mStaticGeometryCount;
++                    drawable.setCullingActive(false);
++                }
+                 else if (dynamic_cast<osg::Geometry*>(&drawable) != nullptr)
+                     ++mStaticGeometryCount;
+             }
+ 
+             unsigned int mRigGeometryCount = 0;
+             unsigned int mStaticGeometryCount = 0;
++            unsigned int mMorphGeometryCount = 0;
+             std::string mFirstRigRootBone;
+             std::size_t mFirstRigBoneCount = 0;
++            std::vector<std::string> mFirstRigBoneNames;
+             std::ostringstream mFirstRigBoneSample;
+         };
+ 
+@@ -2534,6 +2742,30 @@ namespace MWRender
+             return nullptr;
+         }
+ 
++        std::size_t countRigBoneMatches(const Animation::NodeMap& nodeMap, const std::vector<std::string>& boneNames)
++        {
++            std::size_t matches = 0;
++            for (const std::string& boneName : boneNames)
++            {
++                if (boneName.empty())
++                    continue;
++                if (nodeMap.find(boneName) != nodeMap.end())
++                {
++                    ++matches;
++                    continue;
++                }
++                for (const auto& [nodeName, node] : nodeMap)
++                {
++                    if (node != nullptr && Misc::StringUtils::ciEqual(nodeName, boneName))
++                    {
++                        ++matches;
++                        break;
++                    }
++                }
++            }
++            return matches;
++        }
++
+         bool shouldAttachFalloutStaticPartToHead(std::string_view model)
+         {
+             std::string lowered(model);
+@@ -2970,6 +3202,7 @@ namespace MWRender
+             attached->accept(visitor);
+             Log(Debug::Info) << "FNV/ESM4 diag: NPC part shape summary " << model << " for "
+                              << ptr.getCellRef().getRefId() << " rigGeometry=" << visitor.mRigGeometryCount
++                             << " morphGeometry=" << visitor.mMorphGeometryCount
+                              << " staticGeometry=" << visitor.mStaticGeometryCount
+                              << " firstRigRoot='" << visitor.mFirstRigRootBone << "' firstRigBones="
+                              << visitor.mFirstRigBoneCount << " sample=[" << visitor.mFirstRigBoneSample.str() << "]";
+@@ -4162,9 +4395,64 @@ namespace MWRender
          : Animation(ptr, std::move(parentNode), resourceSystem)
      {
          const std::string skeletonModel = mPtr.getClass().getCorrectedModel(mPtr);
@@ -2549,7 +3476,7 @@ index 49a7175149..4414432761 100644
          if (traits != nullptr && traits->mIsFONV)
          {
              const NodeMap& currentNodeMap = getNodeMap();
-@@ -4202,7 +4303,21 @@ namespace MWRender
+@@ -4202,7 +4490,21 @@ namespace MWRender
                      return;
                  Log(Debug::Info) << "FNV/ESM4 diag: adding FONV NPC " << reason << " animation source " << kfPath
                                   << " for " << traits->mEditorId;
@@ -2572,7 +3499,7 @@ index 49a7175149..4414432761 100644
                      addedAnimationSource = addedAnimationSource || countsAsPrimary;
              };
  
-@@ -4306,21 +4421,47 @@ namespace MWRender
+@@ -4306,21 +4608,48 @@ namespace MWRender
      void ESM4NpcAnimation::updateParts()
      {
          if (mObjectRoot == nullptr)
@@ -2617,13 +3544,14 @@ index 49a7175149..4414432761 100644
 +            details << "branch=" << branch << " game=" << worldViewerNpcGameTag(*traits)
 +                    << " npc=\"" << traits->mEditorId << "\""
 +                    << " objectRoot=" << (mObjectRoot != nullptr)
-+                    << " nodeMap=" << getNodeMap().size();
++                    << " nodeMap=" << getNodeMap().size()
++                    << makeActorVisualAuditDetails(mObjectRoot.get());
 +            logWorldViewerActorLedger(mPtr, "parts-end", details.str());
 +        }
      }
  
      osg::ref_ptr<osg::Node> ESM4NpcAnimation::insertPart(
-@@ -4330,6 +4471,7 @@ namespace MWRender
+@@ -4330,6 +4659,7 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped empty NPC model part for "
                                  << mPtr.getCellRef().getRefId();
@@ -2631,7 +3559,7 @@ index 49a7175149..4414432761 100644
              return nullptr;
          }
          if (Misc::StringUtils::ciEndsWith(model, ".egt") || Misc::StringUtils::ciEndsWith(model, ".egm")
-@@ -4337,9 +4479,30 @@ namespace MWRender
+@@ -4337,9 +4667,30 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped non-render NPC data part " << model << " for "
                                  << mPtr.getCellRef().getRefId();
@@ -2662,7 +3590,7 @@ index 49a7175149..4414432761 100644
          const std::string loweredModel = Misc::StringUtils::lowerCase(std::string(model));
          if (std::getenv("OPENMW_FNV_PROOF_HIDE_FACE_HAIR") != nullptr && isFalloutFaceHairModel(loweredModel))
          {
-@@ -4378,7 +4541,30 @@ namespace MWRender
+@@ -4378,7 +4729,30 @@ namespace MWRender
                               << " for " << mPtr.getCellRef().getRefId();
              return nullptr;
          }
@@ -2694,25 +3622,70 @@ index 49a7175149..4414432761 100644
  
          osg::Group* attachNode = mObjectRoot.get();
          const NodeMap& nodeMap = getNodeMap();
-@@ -4490,6 +4676,17 @@ namespace MWRender
+@@ -4490,6 +4864,43 @@ namespace MWRender
                              << " to " << mPtr.getCellRef().getRefId() << " at " << attachNode->getName();
          FalloutPartShapeSummaryVisitor rigProbe;
          const_cast<osg::Node*>(templateNode.get())->accept(rigProbe);
++        const std::size_t rigBoneMatches = countRigBoneMatches(nodeMap, rigProbe.mFirstRigBoneNames);
 +        {
 +            std::ostringstream details;
 +                    details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
 +                    << " vfsExists=" << modelExists
 +                    << " template=1"
 +                    << " rigGeometry=" << rigProbe.mRigGeometryCount
++                    << " morphGeometry=" << rigProbe.mMorphGeometryCount
 +                    << " staticGeometry=" << rigProbe.mStaticGeometryCount
 +                    << " firstRigRoot=\"" << rigProbe.mFirstRigRootBone << "\""
-+                    << " firstRigBoneCount=" << rigProbe.mFirstRigBoneCount;
++                    << " firstRigBoneCount=" << rigProbe.mFirstRigBoneCount
++                    << " rigBoneMatches=" << rigBoneMatches
++                    << " nodeMap=" << nodeMap.size();
 +            logWorldViewerActorLedger(mPtr, "part-template", details.str());
++        }
++        if (worldViewerSkipUnmappedRiggedActorParts() && rigProbe.mRigGeometryCount > 0
++            && rigProbe.mFirstRigBoneCount > 0 && rigBoneMatches == 0
++            && !headAttachedStaticPart && !bareHandSurfacePart)
++        {
++            std::ostringstream details;
++            details << "reason=\"unmapped rig bones\" model=\"" << model << "\" corrected=\""
++                    << correctedModel.value() << "\" rigGeometry=" << rigProbe.mRigGeometryCount
++                    << " morphGeometry=" << rigProbe.mMorphGeometryCount
++                    << " firstRigRoot=\"" << rigProbe.mFirstRigRootBone << "\""
++                    << " firstRigBoneCount=" << rigProbe.mFirstRigBoneCount
++                    << " firstRigBoneSample=\"" << rigProbe.mFirstRigBoneSample.str() << "\""
++                    << " nodeMap=" << nodeMap.size();
++            logWorldViewerActorLedger(mPtr, "part-skip", details.str());
++            Log(Debug::Warning) << "World viewer: skipped unmapped rigged NPC part " << correctedModel.value()
++                                << " for " << mPtr.getCellRef().getRefId()
++                                << " rigGeometry=" << rigProbe.mRigGeometryCount
++                                << " firstRigRoot=" << rigProbe.mFirstRigRootBone
++                                << " firstRigBones=" << rigProbe.mFirstRigBoneCount
++                                << " sample=[" << rigProbe.mFirstRigBoneSample.str() << "]"
++                                << " nodeMap=" << nodeMap.size();
++            return nullptr;
 +        }
          osg::ref_ptr<const osg::Node> attachTemplateNode = templateNode;
          bool staticizedHeadPartRig = false;
          bool staticizedBareHandPartRig = false;
-@@ -4757,16 +4954,73 @@ namespace MWRender
+@@ -4606,6 +5017,18 @@ namespace MWRender
+                              << correctedModel.value() << " to " << mPtr.getCellRef().getRefId()
+                              << " rigGeometry=" << rigProbe.mRigGeometryCount << " master=" << rigPartMaster->getName();
+         }
++        else if (worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS")
++            && rigProbe.mRigGeometryCount == 0 && rigProbe.mStaticGeometryCount > 0
++            && dynamic_cast<const SceneUtil::Skeleton*>(attachTemplateNode.get()) != nullptr)
++        {
++            attached = attachStaticizedFalloutPart(
++                attachTemplateNode, attachNode, mResourceSystem->getSceneManager(), false);
++            Log(Debug::Info) << "World viewer: static-skeleton attached NPC model part "
++                             << correctedModel.value() << " to " << mPtr.getCellRef().getRefId()
++                             << " attachNode=" << attachNode->getName()
++                             << " staticGeometry=" << rigProbe.mStaticGeometryCount
++                             << " nodeMap=" << nodeMap.size();
++        }
+         else
+         {
+             osg::Quat headgearAttitude;
+@@ -4757,16 +5180,74 @@ namespace MWRender
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
          logFalloutFaceDrawableAudit(attached.get(), correctedModel.value(), mPtr);
@@ -2726,7 +3699,8 @@ index 49a7175149..4414432761 100644
 +                    << " handSurface=" << bareHandSurfacePart
 +                    << " rigGeometry=" << rigProbe.mRigGeometryCount
 +                    << " staticizedHead=" << staticizedHeadPartRig
-+                    << " staticizedHand=" << staticizedBareHandPartRig;
++                    << " staticizedHand=" << staticizedBareHandPartRig
++                    << makeActorVisualAuditDetails(attached.get());
 +            logWorldViewerActorLedger(mPtr, "part-attached", details.str());
 +        }
          return attached;
@@ -2787,7 +3761,7 @@ index 49a7175149..4414432761 100644
  
          const NodeMap& nodeMap = getNodeMap();
          osg::Group* attachNode = nullptr;
-@@ -4794,6 +5048,14 @@ namespace MWRender
+@@ -4794,6 +5275,15 @@ namespace MWRender
          logFalloutAttachmentBounds(
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
@@ -2796,13 +3770,14 @@ index 49a7175149..4414432761 100644
 +            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
 +                    << " preferredBone=\"" << preferredBone << "\""
 +                    << " attached=" << (attached != nullptr)
-+                    << " attachNode=\"" << (attachNode != nullptr ? attachNode->getName() : std::string()) << "\"";
++                    << " attachNode=\"" << (attachNode != nullptr ? attachNode->getName() : std::string()) << "\""
++                    << makeActorVisualAuditDetails(attached.get());
 +            logWorldViewerActorLedger(mPtr, "attached-part-attached", details.str());
 +        }
          return attached;
      }
  
-@@ -4927,6 +5189,21 @@ namespace MWRender
+@@ -4927,6 +5417,21 @@ namespace MWRender
          if (!npcBodyNormalTexture.empty())
              Log(Debug::Info) << "FNV/ESM4 diag: using baked NPC body normal texture " << npcBodyNormalTexture
                               << " for " << traits.mEditorId;
@@ -6881,7 +7856,7 @@ index 1a2ded2c6c..6e645d7008 100644
          Misc::tupleForEach(this->mCellStoreImp->mRefLists, [&ref, &store, foundType](auto& x) {
              recNameSwitcher(x, foundType, [&ref, &store](auto& storeIn) { storeIn.load(ref, store); });
 diff --git a/apps/openmw/mwworld/esmstore.cpp b/apps/openmw/mwworld/esmstore.cpp
-index 53d49050a5..7da3e57e6e 100644
+index 53d49050a5..0e0a47b736 100644
 --- a/apps/openmw/mwworld/esmstore.cpp
 +++ b/apps/openmw/mwworld/esmstore.cpp
 @@ -1,6 +1,7 @@
@@ -6932,7 +7907,39 @@ index 53d49050a5..7da3e57e6e 100644
      {
          const ESM::RefId classId = ESM::RefId::stringRefId("FNV_Courier");
          const ESM::RefId raceId = ESM::RefId::stringRefId("FNV_Wastelander");
-@@ -199,7 +227,7 @@ namespace
+@@ -181,16 +209,24 @@ namespace
+         if (insertedMagicEffects > 0)
+             Log(Debug::Info) << "FNV/ESM4: inserted fallback ESM3 magic effects count=" << insertedMagicEffects;
+ 
+-        const ESM::RefId vcg01 = ESM::RefId::stringRefId("VCG01");
+-        if (dialogues.search(vcg01) == nullptr)
+-        {
++        const auto ensureDialogue = [&dialogues](std::string_view id, ESM::Dialogue::Type type) {
++            const ESM::RefId refId = ESM::RefId::stringRefId(id);
++            if (dialogues.search(refId) != nullptr)
++                return;
++
+             ESM::Dialogue dialogue;
+-            dialogue.mId = vcg01;
+-            dialogue.mStringId = "VCG01";
++            dialogue.mId = refId;
+             dialogue.blank();
+-            dialogue.mType = ESM::Dialogue::Journal;
++            dialogue.mStringId = std::string(id);
++            dialogue.mType = type;
+             dialogues.insertStatic(dialogue);
+-            Log(Debug::Info) << "FNV/ESM4: inserted fallback ESM3 quest dialogue VCG01";
++            Log(Debug::Info) << "FNV/ESM4: inserted fallback ESM3 dialogue " << id;
++        };
++
++        ensureDialogue("VCG01", ESM::Dialogue::Journal);
++        for (std::string_view topic : { "attack", "flee", "hello", "hit", "idle", "intruder", "thief" })
++        {
++            ensureDialogue(topic, ESM::Dialogue::Voice);
+         }
+ 
+         if (npcs.searchStatic(ESM::RefId::stringRefId("Player")) == nullptr)
+@@ -199,7 +235,7 @@ namespace
              player.mId = ESM::RefId::stringRefId("Player");
              player.blank();
              player.mName = "Courier";
@@ -6941,7 +7948,7 @@ index 53d49050a5..7da3e57e6e 100644
              player.mRace = raceId;
              player.mClass = classId;
              player.mNpdt.mLevel = 1;
-@@ -211,7 +239,8 @@ namespace
+@@ -211,7 +247,8 @@ namespace
              player.mNpdt.mDisposition = 50;
              player.mNpdt.mGold = 0;
              npcs.insertStatic(player);
@@ -6951,7 +7958,7 @@ index 53d49050a5..7da3e57e6e 100644
          }
  
          const auto ensureWeapon = [&weapons](
-@@ -500,10 +529,73 @@ namespace MWWorld
+@@ -500,10 +537,73 @@ namespace MWWorld
              return false;
          }
  
@@ -7026,7 +8033,7 @@ index 53d49050a5..7da3e57e6e 100644
          }
      };
  
-@@ -695,7 +787,30 @@ namespace MWWorld
+@@ -695,7 +795,30 @@ namespace MWWorld
                  listener->setProgress(::EsmLoader::fileProgress * r.getFileOffset() / r.getFileSize());
              return result;
          };
@@ -7058,7 +8065,7 @@ index 53d49050a5..7da3e57e6e 100644
      }
  
      void ESMStore::setIdType(const ESM::RefId& id, ESM::RecNameInts type)
-@@ -824,7 +939,9 @@ namespace MWWorld
+@@ -824,7 +947,9 @@ namespace MWWorld
              ensureFalloutCharacterDefaults(
                  getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
                  getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
@@ -7069,7 +8076,7 @@ index 53d49050a5..7da3e57e6e 100644
          rebuildIdsIndex();
          mStoreImp->mStaticIds = mStoreImp->mIds;
          std::vector<ESM::NPC> npcsToReplace = getNPCsToReplace(getWritable<ESM::Faction>(), getWritable<ESM::Class>(),
-@@ -873,7 +990,9 @@ namespace MWWorld
+@@ -873,7 +998,9 @@ namespace MWWorld
              ensureFalloutCharacterDefaults(
                  getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
                  getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
@@ -7081,7 +8088,7 @@ index 53d49050a5..7da3e57e6e 100644
          auto& scripts = getWritable<ESM::Script>();
  
 diff --git a/apps/openmw/mwworld/scene.cpp b/apps/openmw/mwworld/scene.cpp
-index a30ee3237c..8a3964d3fd 100644
+index a30ee3237c..dfb91a89ce 100644
 --- a/apps/openmw/mwworld/scene.cpp
 +++ b/apps/openmw/mwworld/scene.cpp
 @@ -1,5 +1,6 @@
@@ -7091,7 +8098,7 @@ index a30ee3237c..8a3964d3fd 100644
  #include <atomic>
  #include <chrono>
  #include <cmath>
-@@ -195,6 +196,88 @@ namespace
+@@ -195,6 +196,98 @@ namespace
          return true;
      }
  
@@ -7130,6 +8137,16 @@ index a30ee3237c..8a3964d3fd 100644
 +    {
 +        return envEnabled("OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS")
 +            || envEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
++    }
++
++    bool worldViewerFreezeEsm4ActorMechanics()
++    {
++        return envEnabled("OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS");
++    }
++
++    bool isEsm4Actor(const MWWorld::Ptr& ptr)
++    {
++        return ptr.getType() == ESM::REC_NPC_4 || ptr.getType() == ESM::REC_CREA4;
 +    }
 +
 +    bool contains(std::string_view value, std::string_view needle)
@@ -7180,7 +8197,7 @@ index a30ee3237c..8a3964d3fd 100644
      osg::Vec3f transformFnvFurnitureMarkerOffsetForProof(osg::Vec3f offset)
      {
          const char* mode = std::getenv("OPENMW_FNV_FURNITURE_MARKER_OFFSET_MODE");
-@@ -498,6 +581,9 @@ namespace
+@@ -498,6 +591,9 @@ namespace
          const VFS::Path::Normalized model = getModel(ptr);
          const auto rotation = makeDirectNodeRotation(ptr);
  
@@ -7190,7 +8207,23 @@ index a30ee3237c..8a3964d3fd 100644
          ESM::RefNum refnum = ptr.getCellRef().getRefNum();
          if (!refnum.hasContentFile() || !std::binary_search(pagedRefs.begin(), pagedRefs.end(), refnum))
              ptr.getClass().insertObjectRendering(ptr, model, rendering);
-@@ -1005,7 +1091,7 @@ namespace MWWorld
+@@ -514,8 +610,14 @@ namespace
+                              << scenePos.y() << "," << scenePos.z() << ") rotZ=" << refPos.rot[2];
+         }
+ 
+-        if (ptr.getClass().useAnim())
++        const bool freezeEsm4Actor = worldViewerFreezeEsm4ActorMechanics() && isEsm4Actor(ptr) && ptr.getClass().isActor();
++        if (ptr.getClass().useAnim() && !freezeEsm4Actor)
+             MWBase::Environment::get().getMechanicsManager()->add(ptr);
++        else if (freezeEsm4Actor && envEnabled("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY"))
++        {
++            Log(Debug::Info) << "World viewer actor ledger: phase=mechanics-skip ref=\"" << ptr.getCellRef().getRefId()
++                             << "\" type=" << ptr.getType() << " reason=\"proof static ESM4 actor\"";
++        }
+ 
+         if (ptr.getClass().isActor())
+             rendering.addWaterRippleEmitter(ptr);
+@@ -1005,7 +1107,7 @@ namespace MWWorld
      void Scene::changeCellGrid(const osg::Vec3f& pos, ESM::ExteriorCellLocation playerCellIndex, bool changeEvent)
      {
          const int halfGridSize
@@ -7199,7 +8232,7 @@ index a30ee3237c..8a3964d3fd 100644
          auto navigatorUpdateGuard = mNavigator.makeUpdateGuard();
          const int playerCellX = playerCellIndex.mX;
          const int playerCellY = playerCellIndex.mY;
-@@ -1238,7 +1324,7 @@ namespace MWWorld
+@@ -1238,7 +1340,7 @@ namespace MWWorld
  
      void Scene::changePlayerCell(CellStore& cell, const ESM::Position& pos, bool adjustPlayerPos)
      {
@@ -7453,21 +8486,23 @@ index 62d761af27..d4679105b1 100644
  
          /**
 diff --git a/apps/openmw/mwworld/worldimp.cpp b/apps/openmw/mwworld/worldimp.cpp
-index c9128df6a4..7c81ed8c7d 100644
+index c9128df6a4..8804589d06 100644
 --- a/apps/openmw/mwworld/worldimp.cpp
 +++ b/apps/openmw/mwworld/worldimp.cpp
-@@ -1,7 +1,10 @@
+@@ -1,7 +1,12 @@
  #include "worldimp.hpp"
  
  #include <charconv>
 +#include <cmath>
++#include <cstdio>
  #include <cstdlib>
 +#include <exception>
 +#include <string>
++#include <string_view>
  #include <vector>
  
  #include <osg/ComputeBoundsVisitor>
-@@ -120,6 +123,192 @@ namespace MWWorld
+@@ -120,6 +125,208 @@ namespace MWWorld
  {
      namespace
      {
@@ -7583,6 +8618,22 @@ index c9128df6a4..7c81ed8c7d 100644
 +            return value != nullptr && *value != '\0' && std::string(value) != "0";
 +        }
 +
++        bool viewerTraceEnabled()
++        {
++            return viewerEnvEnabled("OPENMW_WORLD_VIEWER_TRACE")
++                || viewerEnvEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
++        }
++
++        void viewerTrace(std::string_view phase)
++        {
++            if (!viewerTraceEnabled())
++                return;
++
++            Log(Debug::Info) << "World viewer trace: phase=\"world." << phase << "\"";
++            std::fflush(stdout);
++            std::fflush(stderr);
++        }
++
 +        void settleViewerStartCamera(MWRender::Camera* camera, const Ptr& player, const ESM::Position& position)
 +        {
 +            if (camera == nullptr || player.isEmpty())
@@ -7660,7 +8711,7 @@ index c9128df6a4..7c81ed8c7d 100644
          std::vector<std::pair<std::string_view, ESM::Variant>> generateDefaultGameSettings()
          {
              return {
-@@ -545,32 +734,46 @@ namespace MWWorld
+@@ -545,32 +752,46 @@ namespace MWWorld
      void World::init(Debug::Level maxRecastLogLevel, osgViewer::Viewer* viewer, osg::ref_ptr<osg::Group> rootNode,
          SceneUtil::WorkQueue* workQueue, SceneUtil::UnrefQueue& unrefQueue, std::unique_ptr<MWRender::Camera> camera)
      {
@@ -7707,9 +8758,21 @@ index c9128df6a4..7c81ed8c7d 100644
      }
  
      void World::fillGlobalVariables()
-@@ -594,6 +797,14 @@ namespace MWWorld
+@@ -581,6 +802,7 @@ namespace MWWorld
+ 
+     void World::startNewGame(bool bypass)
+     {
++        viewerTrace("start-new-game.begin");
+         Log(Debug::Info) << "FNV/ESM4 diag: startNewGame bypass=" << bypass << " startCell='" << mStartCell << "'";
+ 
+         mGoToJail = false;
+@@ -592,15 +814,31 @@ namespace MWWorld
+         mSky = true;
+ 
          // Rebuild player
++        viewerTrace("setup-player.begin");
          setupPlayer();
++        viewerTrace("setup-player.end");
  
 +        float proofHour = 0.f;
 +        if (readViewerProofHour(proofHour))
@@ -7719,10 +8782,29 @@ index c9128df6a4..7c81ed8c7d 100644
 +            Log(Debug::Info) << "World viewer: applied proof start hour " << proofHour;
 +        }
 +
++        viewerTrace("render-player.begin");
          renderPlayer();
++        viewerTrace("render-player.end");
++        viewerTrace("camera-reset.begin");
          mRendering->getCamera()->reset();
++        viewerTrace("camera-reset.end");
  
-@@ -614,21 +825,77 @@ namespace MWWorld
+         // we don't want old weather to persist on a new game
+         // Note that if reset later, the initial ChangeWeather that the chargen script calls will be lost.
++        viewerTrace("weather-reset.begin");
+         mWeatherManager.reset();
+         mWeatherManager = std::make_unique<MWWorld::WeatherManager>(*mRendering.get(), mStore);
++        viewerTrace("weather-reset.end");
+ 
+         if (!bypass)
+         {
+@@ -610,25 +848,99 @@ namespace MWWorld
+         else
+             mGlobalVariables[Globals::sCharGenState].setInteger(-1);
+ 
++        viewerTrace("lua-new-game-started.begin");
+         MWBase::Environment::get().getLuaManager()->newGameStarted();
++        viewerTrace("lua-new-game-started.end");
  
          if (bypass && !mStartCell.empty())
          {
@@ -7740,12 +8822,22 @@ index c9128df6a4..7c81ed8c7d 100644
 +                Log(Debug::Info) << "World viewer: start cell exterior change begin cell=" << resolvedCellId
 +                                 << " pos=(" << resolvedPos.pos[0] << ", " << resolvedPos.pos[1] << ", "
 +                                 << resolvedPos.pos[2] << ")";
++                viewerTrace("change-to-exterior.begin");
 +                changeToCell(resolvedCellId, resolvedPos, !hasExplicitAnchor);
++                viewerTrace("change-to-exterior.end");
 +                Log(Debug::Info) << "World viewer: start cell exterior change complete cell=" << resolvedCellId;
 +                if (hasExplicitAnchor)
++                {
++                    viewerTrace("pin-start-anchor.begin");
 +                    pinViewerStartAnchor(*this, resolvedPos);
++                    viewerTrace("pin-start-anchor.end");
++                }
 +                else
++                {
++                    viewerTrace("adjust-position.begin");
 +                    adjustPosition(getPlayerPtr(), false);
++                    viewerTrace("adjust-position.end");
++                }
 +                Log(Debug::Info) << "World viewer: start cell exterior placement complete cell=" << resolvedCellId;
 +            };
 +
@@ -7797,27 +8889,68 @@ index c9128df6a4..7c81ed8c7d 100644
 +                                     << cellId << " explicitAnchor=" << hasExplicitAnchor;
 +                    Log(Debug::Info) << "World viewer: start cell interior change begin cell=\"" << mStartCell
 +                                     << "\" pos=(" << pos.pos[0] << ", " << pos.pos[1] << ", " << pos.pos[2] << ")";
++                    viewerTrace("change-to-interior.begin");
 +                    changeToInteriorCell(mStartCell, pos, !hasExplicitAnchor);
++                    viewerTrace("change-to-interior.end");
 +                    Log(Debug::Info) << "World viewer: start cell interior change complete cell=\"" << mStartCell
 +                                     << "\"";
 +                    if (hasExplicitAnchor)
++                    {
++                        viewerTrace("pin-start-anchor.begin");
 +                        pinViewerStartAnchor(*this, pos);
++                        viewerTrace("pin-start-anchor.end");
++                    }
 +                    Log(Debug::Info) << "World viewer: start cell interior placement complete cell=\"" << mStartCell
 +                                     << "\"";
 +                }
              }
          }
          else
-@@ -672,6 +939,8 @@ namespace MWWorld
+@@ -648,7 +960,9 @@ namespace MWWorld
+ 
+                 ESM::ExteriorCellLocation exteriorCellPos = ESM::positionToExteriorCellLocation(pos.pos[0], pos.pos[1]);
+                 ESM::RefId cellId = ESM::RefId::esm3ExteriorCell(exteriorCellPos.mX, exteriorCellPos.mY);
++                viewerTrace("fallback-change-to-exterior.begin");
+                 mWorldScene->changeToExteriorCell(cellId, pos, true);
++                viewerTrace("fallback-change-to-exterior.end");
+             }
+         }
+ 
+@@ -664,14 +978,33 @@ namespace MWWorld
+         }
+ 
+         // enable collision
++        if (viewerEnvEnabled("OPENMW_PROOF_DISABLE_SKY"))
++        {
++            viewerTrace("proof-disable-sky.begin");
++            bool skyEnabled = toggleSky();
++            if (skyEnabled)
++                skyEnabled = toggleSky();
++            Log(Debug::Info) << "World viewer proof: disabled sky before first frame finalEnabled=" << skyEnabled;
++            viewerTrace("proof-disable-sky.end");
++        }
++
++        viewerTrace("collision-enable.begin");
+         if (!mPhysics->toggleCollisionMode())
+             mPhysics->toggleCollisionMode();
++        viewerTrace("collision-enable.end");
+ 
++        viewerTrace("window-update-player.begin");
+         MWBase::Environment::get().getWindowManager()->updatePlayer();
++        viewerTrace("window-update-player.end");
++        viewerTrace("time-manager-setup.begin");
+         mTimeManager->setup(mGlobalVariables);
++        viewerTrace("time-manager-setup.end");
  
          // Initial seed.
          mPrng.seed(mRandomSeed);
 +        Log(Debug::Info) << "World viewer: startNewGame complete bypass=" << bypass << " startCell='" << mStartCell
 +                         << "' playerInCell=" << getPlayerPtr().isInCell();
++        viewerTrace("start-new-game.end");
      }
  
      void World::clear()
-@@ -2728,6 +2997,50 @@ namespace MWWorld
+@@ -2728,6 +3061,50 @@ namespace MWWorld
                  state = MWWorld::DoorState::Closing; // if opening, then close
                  break;
          }
@@ -10043,7 +11176,7 @@ index e9306fa83f..2212b59439 100644
          void read(NIFStream* nif) override;
          void post(Reader& nif) override;
 diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
-index a583941dee..1aaff2712c 100644
+index a583941dee..bb07beb8a5 100644
 --- a/components/nifosg/nifloader.cpp
 +++ b/components/nifosg/nifloader.cpp
 @@ -1,12 +1,18 @@
@@ -10073,7 +11206,39 @@ index a583941dee..1aaff2712c 100644
  
  // particle
  #include <osgParticle/BoxPlacer>
-@@ -173,6 +180,21 @@ namespace
+@@ -148,6 +155,31 @@ namespace
+         return false;
+     }
+ 
++    bool worldViewerEnvEnabled(const char* name)
++    {
++        const char* value = std::getenv(name);
++        return value != nullptr && *value != '\0' && value[0] != '0';
++    }
++
++    bool isWorldViewerActorMeshPath(std::string_view filename)
++    {
++        return containsAny(filename,
++            { "meshes/actors/", "meshes\\actors\\", "meshes/characters/", "meshes\\characters\\",
++                "meshes/armor/", "meshes\\armor\\", "meshes/clothes/", "meshes\\clothes\\" });
++    }
++
++    bool worldViewerSkinPartitionFallbackEnabled()
++    {
++        return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK");
++    }
++
++    bool worldViewerMeshLoadTelemetryEnabled()
++    {
++        return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY")
++            || worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY")
++            || worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
++    }
++
+     bool isAmbientEmbeddedAnimationPath(std::string_view filename)
+     {
+         return containsAny(filename,
+@@ -173,6 +205,21 @@ namespace
              || name.find("bip01 root") != std::string::npos;
      }
  
@@ -10095,7 +11260,7 @@ index a583941dee..1aaff2712c 100644
      bool isActivationOnlyAnimationPath(std::string_view filename)
      {
          return containsAny(filename,
-@@ -270,6 +292,9 @@ namespace
+@@ -270,6 +317,9 @@ namespace
          const bool ambientPath = isAmbientEmbeddedAnimationPath(filename);
          const bool falloutFlagPath = isFalloutFlagPath(filename);
  
@@ -10105,7 +11270,7 @@ index a583941dee..1aaff2712c 100644
          std::string key = sequenceName;
          for (const Nif::ControlledBlock& block : sequence.mControlledBlocks)
          {
-@@ -332,6 +357,270 @@ namespace
+@@ -332,6 +382,270 @@ namespace
          return true;
      }
  
@@ -10376,7 +11541,82 @@ index a583941dee..1aaff2712c 100644
      bool isTypeBSGeometry(int type)
      {
          switch (type)
-@@ -1279,6 +1568,15 @@ namespace NifOsg
+@@ -345,6 +659,74 @@ namespace
+         return false;
+     }
+ 
++    float bsNormByteToFloat(uint8_t value)
++    {
++        return value / 255.f * 2.f - 1.f;
++    }
++
++    float bsHalfToFloat(uint16_t value)
++    {
++        uint32_t bits = static_cast<uint32_t>(value & 0x8000) << 16;
++
++        const uint32_t exp16 = (value & 0x7c00) >> 10;
++        uint32_t frac16 = value & 0x3ff;
++        if (exp16)
++            bits |= (exp16 + 0x70) << 23;
++        else if (frac16)
++        {
++            uint8_t offset = 0;
++            do
++            {
++                ++offset;
++                frac16 <<= 1;
++            } while ((frac16 & 0x400) != 0x400);
++            frac16 &= 0x3ff;
++            bits |= (0x71 - offset) << 23;
++        }
++        bits |= frac16 << 13;
++
++        float result;
++        std::memcpy(&result, &bits, sizeof(float));
++        return result;
++    }
++
++    void appendBSVertexDataArrays(const std::vector<Nif::BSVertexData>& vertexData, uint16_t flags,
++        std::vector<osg::Vec3f>& vertices, std::vector<osg::Vec3f>& normals, std::vector<osg::Vec4ub>& colors,
++        std::vector<osg::Vec2f>& uvlist)
++    {
++        const bool fullPrec = flags & Nif::BSVertexDesc::VertexAttribute::Full_Precision;
++        const bool hasVertices = flags & Nif::BSVertexDesc::VertexAttribute::Vertex;
++        const bool hasNormals = flags & Nif::BSVertexDesc::VertexAttribute::Normals;
++        const bool hasColors = flags & Nif::BSVertexDesc::VertexAttribute::Vertex_Colors;
++        const bool hasUV = flags & Nif::BSVertexDesc::VertexAttribute::UVs;
++
++        for (const Nif::BSVertexData& elem : vertexData)
++        {
++            if (hasVertices)
++            {
++                if (fullPrec)
++                    vertices.emplace_back(elem.mVertex.x(), elem.mVertex.y(), elem.mVertex.z());
++                else
++                    vertices.emplace_back(bsHalfToFloat(elem.mHalfVertex[0]), bsHalfToFloat(elem.mHalfVertex[1]),
++                        bsHalfToFloat(elem.mHalfVertex[2]));
++            }
++            if (hasNormals)
++                normals.emplace_back(bsNormByteToFloat(elem.mNormal[0]), bsNormByteToFloat(elem.mNormal[1]),
++                    bsNormByteToFloat(elem.mNormal[2]));
++            if (hasColors)
++                colors.emplace_back(elem.mVertColor[0], elem.mVertColor[1], elem.mVertColor[2], elem.mVertColor[3]);
++            if (hasUV)
++                uvlist.emplace_back(bsHalfToFloat(elem.mUV[0]), 1.0f - bsHalfToFloat(elem.mUV[1]));
++        }
++    }
++
++    bool isSkyrimSkinAuxTexture(std::string_view texture)
++    {
++        const std::string lower = Misc::StringUtils::lowerCase(texture);
++        return Misc::StringUtils::ciEndsWith(lower, "_sk.dds") || Misc::StringUtils::ciEndsWith(lower, "_sk.dds\\")
++            || lower.find("_sk.dds") != std::string::npos;
++    }
++
+     // Collect all properties affecting the given drawable that should be handled on drawable basis rather than on the
+     // node hierarchy above it.
+     void collectDrawableProperties(
+@@ -1279,6 +1661,15 @@ namespace NifOsg
              if (args.mRootNode && Misc::StringUtils::ciEqual(nifNode->mName, "Bounding Box"))
                  return nullptr;
  
@@ -10392,7 +11632,7 @@ index a583941dee..1aaff2712c 100644
              osg::ref_ptr<osg::Group> node = createNode(nifNode);
  
              if (nifNode->recType == Nif::RC_NiBillboardNode)
-@@ -1416,7 +1714,6 @@ namespace NifOsg
+@@ -1416,7 +1807,6 @@ namespace NifOsg
              if (isGeometry && !args.mSkipMeshes)
              {
                  bool skip = false;
@@ -10400,9 +11640,226 @@ index a583941dee..1aaff2712c 100644
                  if (isFalloutHiddenMorphShape(nifNode->mName)
                      && containsAny(filename, { "meshes/characters/", "meshes\\characters\\", "meshes/armor/",
                             "meshes\\armor\\", "characters/", "characters\\", "armor/", "armor\\" }))
-@@ -2660,7 +2957,14 @@ namespace NifOsg
+@@ -1753,7 +2143,27 @@ namespace NifOsg
+         osg::ref_ptr<osg::Texture2D> attachExternalTexture(const std::string& name, const std::string& path, bool wrapS,
+             bool wrapT, unsigned int uvSet, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
+         {
+-            return attachTexture(name, getTextureImage(path), wrapS, wrapT, uvSet, stateset, boundTextures);
++            osg::ref_ptr<osg::Image> image;
++            VFS::Path::Normalized normalizedPath;
++            if (mImageManager)
++            {
++                normalizedPath = VFS::Path::toNormalized(
++                    Misc::ResourceHelpers::correctTexturePath(path, mImageManager->getVFS()));
++                image = mImageManager->getImage(normalizedPath);
++            }
++            if (worldViewerMeshLoadTelemetryEnabled()
++                && isWorldViewerActorMeshPath(Misc::StringUtils::lowerCase(mFilename.generic_string())))
++            {
++                Log(Debug::Info) << "World viewer texture ledger: file=\"" << mFilename.generic_string()
++                                 << "\" role=\"" << name << "\""
++                                 << " path=\"" << path << "\""
++                                 << " normalized=\"" << normalizedPath.value() << "\""
++                                 << " image=" << (image != nullptr)
++                                 << " width=" << (image != nullptr ? image->s() : 0)
++                                 << " height=" << (image != nullptr ? image->t() : 0)
++                                 << " uvSet=" << uvSet;
++            }
++            return attachTexture(name, image, wrapS, wrapT, uvSet, stateset, boundTextures);
+         }
+ 
+         osg::ref_ptr<osg::Texture2D> attachNiSourceTexture(const std::string& name, const Nif::NiSourceTexture* st,
+@@ -2380,7 +2790,11 @@ namespace NifOsg
+             if (niGeometry->mData.empty())
+                 return;
+ 
++            const std::string filename = Misc::StringUtils::lowerCase(mFilename.generic_string());
+             bool hasPartitions = false;
++            std::size_t partitionCount = 0;
++            std::size_t partitionTriangleIndexCount = 0;
++            std::size_t partitionStripCount = 0;
+             if (!niGeometry->mSkin.empty())
+             {
+                 const Nif::NiSkinInstance* skin = niGeometry->mSkin.getPtr();
+@@ -2388,10 +2802,10 @@ namespace NifOsg
+                 hasPartitions = partitions != nullptr;
+                 if (hasPartitions)
+                 {
++                    partitionCount = partitions->mPartitions.size();
+                     const Nif::BSDismemberSkinInstance* dismemberSkin = nullptr;
+                     if (skin->recType == Nif::RC_BSDismemberSkinInstance)
+                         dismemberSkin = static_cast<const Nif::BSDismemberSkinInstance*>(skin);
+-                    const std::string filename = Misc::StringUtils::lowerCase(mFilename.generic_string());
+                     const bool logDismemberParts = dismemberSkin != nullptr
+                         && (filename.find("meshes/characters/") != std::string::npos
+                             || filename.find("meshes/armor/") != std::string::npos
+@@ -2423,6 +2837,8 @@ namespace NifOsg
+ 
+                         const Nif::NiSkinPartition::Partition& partition = partitions->mPartitions[partitionIndex];
+                         const std::vector<unsigned short>& trueTriangles = partition.mTrueTriangles;
++                        partitionTriangleIndexCount += trueTriangles.size();
++                        partitionStripCount += partition.mTrueStrips.size();
+                         if (!trueTriangles.empty())
+                         {
+                             geometry->addPrimitiveSet(new osg::DrawElementsUShort(
+@@ -2440,41 +2856,56 @@ namespace NifOsg
+             }
+ 
+             const Nif::NiGeometryData* niGeometryData = niGeometry->mData.getPtr();
+-            if (!hasPartitions)
+-            {
++            const auto addRawPrimitiveSets = [&]() -> unsigned int {
++                unsigned int added = 0;
+                 if (niGeometry->recType == Nif::RC_NiTriShape || nifNode->recType == Nif::RC_BSLODTriShape)
+                 {
+                     auto data = static_cast<const Nif::NiTriShapeData*>(niGeometryData);
+                     const std::vector<unsigned short>& triangles = data->mTriangles;
+-                    if (triangles.empty())
+-                        return;
+-                    geometry->addPrimitiveSet(
+-                        new osg::DrawElementsUShort(osg::PrimitiveSet::TRIANGLES, triangles.size(), triangles.data()));
++                    if (!triangles.empty())
++                    {
++                        geometry->addPrimitiveSet(new osg::DrawElementsUShort(
++                            osg::PrimitiveSet::TRIANGLES, triangles.size(), triangles.data()));
++                        ++added;
++                    }
+                 }
+                 else if (niGeometry->recType == Nif::RC_NiTriStrips)
+                 {
+                     auto data = static_cast<const Nif::NiTriStripsData*>(niGeometryData);
+-                    bool hasGeometry = false;
+                     for (const std::vector<unsigned short>& strip : data->mStrips)
+                     {
+                         if (strip.size() < 3)
+                             continue;
+-                        geometry->addPrimitiveSet(
+-                            new osg::DrawElementsUShort(osg::PrimitiveSet::TRIANGLE_STRIP, strip.size(), strip.data()));
+-                        hasGeometry = true;
++                        geometry->addPrimitiveSet(new osg::DrawElementsUShort(
++                            osg::PrimitiveSet::TRIANGLE_STRIP, strip.size(), strip.data()));
++                        ++added;
+                     }
+-                    if (!hasGeometry)
+-                        return;
+                 }
+                 else if (niGeometry->recType == Nif::RC_NiLines)
+                 {
+                     auto data = static_cast<const Nif::NiLinesData*>(niGeometryData);
+                     const auto& line = data->mLines;
+-                    if (line.empty())
+-                        return;
+-                    geometry->addPrimitiveSet(
+-                        new osg::DrawElementsUShort(osg::PrimitiveSet::LINES, line.size(), line.data()));
++                    if (!line.empty())
++                    {
++                        geometry->addPrimitiveSet(
++                            new osg::DrawElementsUShort(osg::PrimitiveSet::LINES, line.size(), line.data()));
++                        ++added;
++                    }
+                 }
++                return added;
++            };
++            bool usedRawFallback = false;
++            unsigned int rawFallbackPrimitiveSets = 0;
++            if (hasPartitions && geometry->getNumPrimitiveSets() == 0 && worldViewerSkinPartitionFallbackEnabled()
++                && isWorldViewerActorMeshPath(filename))
++            {
++                rawFallbackPrimitiveSets = addRawPrimitiveSets();
++                usedRawFallback = rawFallbackPrimitiveSets > 0;
++            }
++            if (!hasPartitions)
++            {
++                if (addRawPrimitiveSets() == 0)
++                    return;
+             }
+ 
+             const auto& vertices = niGeometryData->mVertices;
+@@ -2488,6 +2919,24 @@ namespace NifOsg
+             if (!colors.empty())
+                 geometry->setColorArray(new osg::Vec4Array(colors.size(), colors.data()), osg::Array::BIND_PER_VERTEX);
+ 
++            if (worldViewerMeshLoadTelemetryEnabled() && isWorldViewerActorMeshPath(filename))
++            {
++                Log(Debug::Info) << "World viewer nif geometry ledger: file=\"" << mFilename.generic_string()
++                                 << "\" shape=\"" << nifNode->mName << "\""
++                                 << " recType=" << niGeometry->recType
++                                 << " hasSkin=" << !niGeometry->mSkin.empty()
++                                 << " hasPartitions=" << hasPartitions
++                                 << " partitionCount=" << partitionCount
++                                 << " partitionTriangleIndices=" << partitionTriangleIndexCount
++                                 << " partitionStrips=" << partitionStripCount
++                                 << " rawFallback=" << usedRawFallback
++                                 << " rawFallbackPrimitiveSets=" << rawFallbackPrimitiveSets
++                                 << " primitiveSets=" << geometry->getNumPrimitiveSets()
++                                 << " vertices=" << vertices.size()
++                                 << " normals=" << normals.size()
++                                 << " colors=" << colors.size();
++            }
++
+             const auto& uvlist = niGeometryData->mUVList;
+             int textureStage = 0;
+             for (std::vector<unsigned int>::const_iterator it = boundTextures.begin(); it != boundTextures.end();
+@@ -2659,8 +3108,224 @@ namespace NifOsg
+ 
              auto bsTriShape = static_cast<const Nif::BSTriShape*>(nifNode);
              const std::vector<unsigned short>& triangles = bsTriShape->mTriangles;
++            const std::string filename = Misc::StringUtils::lowerCase(mFilename.generic_string());
++            const bool worldViewerBSLedger = worldViewerMeshLoadTelemetryEnabled() && isWorldViewerActorMeshPath(filename);
++            const Nif::NiSkinPartition* niSkinPartitions = nullptr;
++            if (!bsTriShape->mSkin.empty() && bsTriShape->mSkin->recType == Nif::RC_BSDismemberSkinInstance)
++            {
++                const auto* skin = static_cast<const Nif::BSDismemberSkinInstance*>(bsTriShape->mSkin.getPtr());
++                niSkinPartitions = skin->getPartitions();
++            }
++            else if (!bsTriShape->mSkin.empty() && bsTriShape->mSkin->recType == Nif::RC_NiSkinInstance)
++            {
++                const auto* skin = static_cast<const Nif::NiSkinInstance*>(bsTriShape->mSkin.getPtr());
++                niSkinPartitions = skin->getPartitions();
++            }
++            else if (!bsTriShape->mSkin.empty() && bsTriShape->mSkin->recType == Nif::RC_NiSkinData)
++            {
++                const auto* skinData = static_cast<const Nif::NiSkinData*>(bsTriShape->mSkin.getPtr());
++                if (!skinData->mPartitions.empty())
++                    niSkinPartitions = skinData->mPartitions.getPtr();
++            }
++            if (worldViewerBSLedger)
++            {
++                std::size_t partitionTriangles = 0;
++                std::size_t partitionStrips = 0;
++                std::size_t partitionMappedVertices = 0;
++                if (niSkinPartitions != nullptr)
++                {
++                    for (const Nif::NiSkinPartition::Partition& partition : niSkinPartitions->mPartitions)
++                    {
++                        partitionTriangles += partition.mTrueTriangles.size();
++                        partitionStrips += partition.mTrueStrips.size();
++                        partitionMappedVertices += partition.mVertexMap.size();
++                    }
++                }
++                Log(Debug::Info) << "World viewer bs geometry ledger: file=\"" << mFilename.generic_string()
++                                 << "\" shape=\"" << nifNode->mName << "\""
++                                 << " recName=\"" << bsTriShape->recName << "\""
++                                 << " recType=" << bsTriShape->recType
++                                 << " triangles=" << triangles.size()
++                                 << " vertices=" << bsTriShape->mVertData.size()
++                                 << " dataSize=" << bsTriShape->mDataSize
++                                 << " particleTriangles=" << bsTriShape->mParticleTriangles.size()
++                                 << " particleVerts=" << bsTriShape->mParticleVerts.size()
++                                 << " externalGeometry=" << bsTriShape->mExternalGeometry.size()
++                                 << " niSkinPartitions=" << (niSkinPartitions != nullptr)
++                                 << " partitionCount="
++                                 << (niSkinPartitions != nullptr ? niSkinPartitions->mPartitions.size() : 0)
++                                 << " partitionVertices="
++                                 << (niSkinPartitions != nullptr ? niSkinPartitions->mVertexData.size() : 0)
++                                 << " partitionMappedVertices=" << partitionMappedVertices
++                                 << " partitionTriangles=" << partitionTriangles
++                                 << " partitionStrips=" << partitionStrips
++                                 << " skin=" << !bsTriShape->mSkin.empty()
++                                 << " skinRecType="
++                                 << (!bsTriShape->mSkin.empty() ? bsTriShape->mSkin->recType : 0)
++                                 << " flags=0x" << std::hex << bsTriShape->mVertDesc.mFlags << std::dec;
++            }
              if (triangles.empty())
 +            {
 +                if (bsTriShape->recName == "BSGeometry" && !bsTriShape->mExternalGeometry.empty())
@@ -10410,15 +11867,181 @@ index a583941dee..1aaff2712c 100644
 +                    if (!handleStarfieldExternalGeometry(bsTriShape, parentNode))
 +                        handleBSGeometryProxy(bsTriShape, parentNode);
 +                }
++                else if (worldViewerSkinPartitionFallbackEnabled() && isWorldViewerActorMeshPath(filename)
++                    && niSkinPartitions != nullptr && !niSkinPartitions->mVertexData.empty())
++                {
++                    osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
++
++                    std::size_t partitionPrimitiveSets = 0;
++                    std::size_t remappedPrimitiveSets = 0;
++                    std::size_t invalidPrimitiveSets = 0;
++                    unsigned int maxIndexSeen = 0;
++                    const std::size_t vertexCount = niSkinPartitions->mVertexData.size();
++
++                    auto addPartitionPrimitiveSet
++                        = [&](osg::PrimitiveSet::Mode mode, const std::vector<unsigned short>& source,
++                              const Nif::NiSkinPartition::Partition& partition) {
++                              if (source.empty())
++                                  return;
++
++                              std::vector<unsigned short> remapped;
++                              const std::vector<unsigned short>* indices = &source;
++                              bool needsRemap = false;
++                              bool valid = true;
++                              for (unsigned short index : source)
++                              {
++                                  maxIndexSeen = std::max(maxIndexSeen, static_cast<unsigned int>(index));
++                                  if (index >= vertexCount)
++                                  {
++                                      needsRemap = true;
++                                      break;
++                                  }
++                              }
++
++                              if (needsRemap)
++                              {
++                                  valid = !partition.mVertexMap.empty();
++                                  if (valid)
++                                  {
++                                      remapped.reserve(source.size());
++                                      for (unsigned short index : source)
++                                      {
++                                          if (index >= partition.mVertexMap.size()
++                                              || partition.mVertexMap[index] >= vertexCount)
++                                          {
++                                              valid = false;
++                                              break;
++                                          }
++                                          remapped.push_back(partition.mVertexMap[index]);
++                                          maxIndexSeen = std::max(
++                                              maxIndexSeen, static_cast<unsigned int>(partition.mVertexMap[index]));
++                                      }
++                                  }
++                                  if (valid)
++                                  {
++                                      indices = &remapped;
++                                      ++remappedPrimitiveSets;
++                                  }
++                              }
++
++                              if (!valid)
++                              {
++                                  ++invalidPrimitiveSets;
++                                  return;
++                              }
++
++                              osg::ref_ptr<osg::DrawElementsUShort> draw = new osg::DrawElementsUShort(mode);
++                              draw->reserve(indices->size());
++                              for (unsigned short index : *indices)
++                                  draw->push_back(index);
++                              geometry->addPrimitiveSet(draw);
++                              ++partitionPrimitiveSets;
++                          };
++
++                    for (const Nif::NiSkinPartition::Partition& partition : niSkinPartitions->mPartitions)
++                    {
++                        addPartitionPrimitiveSet(
++                            osg::PrimitiveSet::TRIANGLES, partition.mTrueTriangles, partition);
++                        for (const std::vector<unsigned short>& strip : partition.mTrueStrips)
++                        {
++                            if (strip.size() < 3)
++                                continue;
++                            addPartitionPrimitiveSet(osg::PrimitiveSet::TRIANGLE_STRIP, strip, partition);
++                        }
++                    }
++
++                    std::vector<osg::Vec3f> vertices;
++                    std::vector<osg::Vec3f> normals;
++                    std::vector<osg::Vec4ub> colors;
++                    std::vector<osg::Vec2f> uvlist;
++                    appendBSVertexDataArrays(
++                        niSkinPartitions->mVertexData, niSkinPartitions->mVertexDesc.mFlags, vertices, normals,
++                        colors, uvlist);
++                    const bool ignoredVertexColors
++                        = !colors.empty() && worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS");
++                    if (ignoredVertexColors)
++                        colors.clear();
++                    bool usedDynamicVertices = false;
++                    if (vertices.empty() && bsTriShape->recType == Nif::RC_BSDynamicTriShape)
++                    {
++                        const auto* dynamicTriShape = static_cast<const Nif::BSDynamicTriShape*>(bsTriShape);
++                        if (dynamicTriShape->mDynamicData.size() == vertexCount)
++                        {
++                            vertices.reserve(dynamicTriShape->mDynamicData.size());
++                            for (const osg::Vec4f& dynamicVertex : dynamicTriShape->mDynamicData)
++                                vertices.emplace_back(dynamicVertex.x(), dynamicVertex.y(), dynamicVertex.z());
++                            usedDynamicVertices = true;
++                        }
++                    }
++
++                    if (!vertices.empty())
++                        geometry->setVertexArray(new osg::Vec3Array(vertices.size(), vertices.data()));
++                    if (!normals.empty())
++                        geometry->setNormalArray(
++                            new osg::Vec3Array(normals.size(), normals.data()), osg::Array::BIND_PER_VERTEX);
++                    if (!colors.empty())
++                        geometry->setColorArray(
++                            new osg::Vec4ubArray(colors.size(), colors.data()), osg::Array::BIND_PER_VERTEX);
++                    if (!uvlist.empty())
++                        geometry->setTexCoordArray(
++                            0, new osg::Vec2Array(uvlist.size(), uvlist.data()), osg::Array::BIND_PER_VERTEX);
++
++                    if (geometry->getNumPrimitiveSets() != 0 && geometry->getVertexArray() != nullptr)
++                    {
++                        std::vector<const Nif::NiProperty*> drawableProps;
++                        collectDrawableProperties(nifNode, parent, drawableProps);
++                        if (!bsTriShape->mShaderProperty.empty())
++                            drawableProps.emplace_back(bsTriShape->mShaderProperty.getPtr());
++                        if (!bsTriShape->mAlphaProperty.empty())
++                            drawableProps.emplace_back(bsTriShape->mAlphaProperty.getPtr());
++                        applyDrawableProperties(parentNode, drawableProps, composite, !colors.empty(), animflags);
++
++                        geometry->setName(nifNode->mName);
++                        parentNode->addChild(geometry);
++                    }
++
++                    if (worldViewerBSLedger)
++                    {
++                        Log(Debug::Info)
++                            << "World viewer bs geometry partition-fallback: file=\"" << mFilename.generic_string()
++                            << "\" shape=\"" << nifNode->mName << "\""
++                            << " primitiveSets=" << partitionPrimitiveSets
++                            << " remappedPrimitiveSets=" << remappedPrimitiveSets
++                            << " invalidPrimitiveSets=" << invalidPrimitiveSets
++                            << " vertices=" << vertices.size()
++                            << " normals=" << normals.size()
++                            << " colors=" << colors.size()
++                            << " ignoredVertexColors=" << ignoredVertexColors
++                            << " uvs=" << uvlist.size()
++                            << " maxIndex=" << maxIndexSeen
++                            << " dynamicVertices=" << usedDynamicVertices
++                            << " vertexFlags=0x" << std::hex << niSkinPartitions->mVertexDesc.mFlags << std::dec
++                            << " attached="
++                            << (geometry->getNumPrimitiveSets() != 0 && geometry->getVertexArray() != nullptr);
++                    }
++                }
                  return;
 +            }
  
              osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
              geometry->addPrimitiveSet(
-@@ -2788,6 +3092,175 @@ namespace NifOsg
-             parentNode->addChild(drawable);
-         }
+@@ -2786,6 +3451,186 @@ namespace NifOsg
  
+             drawable->setName(nifNode->mName);
+             parentNode->addChild(drawable);
++            if (worldViewerBSLedger)
++            {
++                Log(Debug::Info) << "World viewer bs geometry attached: file=\"" << mFilename.generic_string()
++                                 << "\" shape=\"" << nifNode->mName << "\""
++                                 << " primitiveSets=" << geometry->getNumPrimitiveSets()
++                                 << " drawableClass=\"" << drawable->className() << "\""
++                                 << " vertices=" << vertices.size()
++                                 << " normals=" << normals.size()
++                                 << " colors=" << colors.size()
++                                 << " skinRig=" << (dynamic_cast<SceneUtil::RigGeometry*>(drawable.get()) != nullptr);
++            }
++        }
++
 +        bool handleStarfieldExternalGeometry(const Nif::BSTriShape* bsTriShape, osg::Group* parentNode)
 +        {
 +            if (bsTriShape->mExternalGeometry.empty())
@@ -10586,12 +12209,35 @@ index a583941dee..1aaff2712c 100644
 +            }
 +            else if (logIndex == 80)
 +                Log(Debug::Info) << "World viewer: further Starfield BSGeometry proxy logs suppressed";
-+        }
-+
+         }
+ 
          osg::BlendFunc::BlendFuncMode getBlendMode(int mode) const
+@@ -3364,6 +4209,9 @@ namespace NifOsg
+             const std::string& nodeName, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
          {
-             switch (mode)
-@@ -3584,6 +4057,55 @@ namespace NifOsg
+             const unsigned int uvSet = 0;
++            const bool worldViewerActorMesh
++                = worldViewerMeshLoadTelemetryEnabled()
++                && isWorldViewerActorMeshPath(Misc::StringUtils::lowerCase(mFilename.generic_string()));
+ 
+             for (size_t i = 0; i < textureSet->mTextures.size(); ++i)
+             {
+@@ -3380,6 +4228,14 @@ namespace NifOsg
+                             "normalMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
+                         break;
+                     case Nif::BSShaderTextureSet::TextureType::Glow:
++                        if (worldViewerActorMesh && isSkyrimSkinAuxTexture(textureSet->mTextures[i]))
++                        {
++                            Log(Debug::Info) << "World viewer texture ledger: file=\"" << mFilename.generic_string()
++                                             << "\" role=\"skinAuxMap\""
++                                             << " path=\"" << textureSet->mTextures[i] << "\""
++                                             << " skippedAsEmissive=1";
++                            break;
++                        }
+                         attachExternalTexture(
+                             "emissiveMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
+                         break;
+@@ -3584,6 +4440,55 @@ namespace NifOsg
                      handleDepthFlags(stateset, texprop->depthTest(), texprop->depthWrite());
                      break;
                  }
@@ -10691,6 +12337,216 @@ index b7a19b4d52..8e054293e5 100644
          }
          return warningImage;
      }
+diff --git a/components/resource/scenemanager.cpp b/components/resource/scenemanager.cpp
+index 1dfc748b93..5bad16510c 100644
+--- a/components/resource/scenemanager.cpp
++++ b/components/resource/scenemanager.cpp
+@@ -6,6 +6,8 @@
+ #include <osg/AlphaFunc>
+ #include <osg/Capability>
+ #include <osg/ColorMaski>
++#include <osg/Geode>
++#include <osg/Geometry>
+ #include <osg/Group>
+ #include <osg/Node>
+ #include <osg/UserDataContainer>
+@@ -43,7 +45,9 @@
+ #include <components/sceneutil/controller.hpp>
+ #include <components/sceneutil/depth.hpp>
+ #include <components/sceneutil/lightmanager.hpp>
++#include <components/sceneutil/morphgeometry.hpp>
+ #include <components/sceneutil/optimizer.hpp>
++#include <components/sceneutil/riggeometry.hpp>
+ #include <components/sceneutil/riggeometryosgaextension.hpp>
+ #include <components/sceneutil/util.hpp>
+ #include <components/sceneutil/visitor.hpp>
+@@ -637,6 +641,149 @@ namespace Resource
+ 
+     namespace
+     {
++        bool worldViewerMeshLoadTelemetryEnabled()
++        {
++            const char* telemetry = std::getenv("OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY");
++            if (telemetry != nullptr && *telemetry != '\0' && telemetry[0] != '0')
++                return true;
++
++            const char* actorTelemetry = std::getenv("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY");
++            if (actorTelemetry != nullptr && *actorTelemetry != '\0' && actorTelemetry[0] != '0')
++                return true;
++
++            const char* worldTelemetry = std::getenv("OPENMW_WORLD_VIEWER_TELEMETRY");
++            return worldTelemetry != nullptr && *worldTelemetry != '\0' && worldTelemetry[0] != '0';
++        }
++
++        bool shouldLogWorldViewerMeshLoad(VFS::Path::NormalizedView path)
++        {
++            if (!worldViewerMeshLoadTelemetryEnabled())
++                return false;
++
++            const std::string lowered = Misc::StringUtils::lowerCase(path.value());
++            return lowered.find("meshes/actors/") != std::string::npos
++                || lowered.find("meshes/characters/") != std::string::npos
++                || lowered.find("meshes/armor/") != std::string::npos
++                || lowered.find("meshes/clothes/") != std::string::npos;
++        }
++
++        class WorldViewerMeshAuditVisitor : public osg::NodeVisitor
++        {
++        public:
++            WorldViewerMeshAuditVisitor()
++                : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
++            {
++            }
++
++            void apply(osg::Node& node) override
++            {
++                ++mNodes;
++                if (node.getNodeMask() == 0)
++                    ++mZeroMaskNodes;
++                if (osg::Drawable* drawable = node.asDrawable())
++                    auditDrawable(*drawable);
++                traverse(node);
++            }
++
++            void apply(osg::Geode& geode) override
++            {
++                ++mNodes;
++                ++mGeodes;
++                if (geode.getNodeMask() == 0)
++                    ++mZeroMaskNodes;
++                for (unsigned int i = 0; i < geode.getNumDrawables(); ++i)
++                    if (osg::Drawable* drawable = geode.getDrawable(i))
++                        auditDrawable(*drawable);
++                traverse(geode);
++            }
++
++            void apply(osg::Drawable& drawable) override
++            {
++                ++mNodes;
++                auditDrawable(drawable);
++            }
++
++            void apply(osg::Geometry& geometry) override
++            {
++                ++mNodes;
++                auditDrawable(geometry);
++            }
++
++            unsigned int mNodes = 0;
++            unsigned int mZeroMaskNodes = 0;
++            unsigned int mGeodes = 0;
++            unsigned int mDrawables = 0;
++            unsigned int mGeometry = 0;
++            unsigned int mRigGeometry = 0;
++            unsigned int mRigGeometryHolder = 0;
++            unsigned int mRigRenderGeometry = 0;
++            unsigned int mMorphGeometry = 0;
++            unsigned int mMorphSourceGeometry = 0;
++            unsigned int mParticles = 0;
++
++        private:
++            void auditDrawable(osg::Drawable& drawable)
++            {
++                ++mDrawables;
++                if (drawable.asGeometry() != nullptr)
++                    ++mGeometry;
++                if (dynamic_cast<osgParticle::ParticleSystem*>(&drawable) != nullptr)
++                    ++mParticles;
++                if (SceneUtil::RigGeometry* rig = dynamic_cast<SceneUtil::RigGeometry*>(&drawable))
++                {
++                    ++mRigGeometry;
++                    if (rig->getSourceGeometry() != nullptr)
++                        ++mGeometry;
++                    for (unsigned int i = 0; i < 2; ++i)
++                        if (rig->getRenderGeometry(i) != nullptr)
++                            ++mRigRenderGeometry;
++                }
++                if (SceneUtil::RigGeometryHolder* holder = dynamic_cast<SceneUtil::RigGeometryHolder*>(&drawable))
++                {
++                    ++mRigGeometryHolder;
++                    if (holder->getSourceRigGeometry() != nullptr)
++                        ++mGeometry;
++                    for (unsigned int i = 0; i < 2; ++i)
++                        if (holder->getGeometry(i) != nullptr)
++                            ++mRigRenderGeometry;
++                }
++                if (SceneUtil::MorphGeometry* morph = dynamic_cast<SceneUtil::MorphGeometry*>(&drawable))
++                {
++                    ++mMorphGeometry;
++                    if (morph->getSourceGeometry() != nullptr)
++                    {
++                        ++mMorphSourceGeometry;
++                        ++mGeometry;
++                    }
++                }
++            }
++        };
++
++        void logWorldViewerMeshAudit(VFS::Path::NormalizedView path, std::string_view stage, osg::Node* node)
++        {
++            if (!shouldLogWorldViewerMeshLoad(path) || node == nullptr)
++                return;
++
++            WorldViewerMeshAuditVisitor visitor;
++            node->accept(visitor);
++            const osg::BoundingSphere sphere = node->getBound();
++            Log(Debug::Info) << "World viewer mesh ledger: stage=" << stage
++                             << " path=\"" << path.value() << "\""
++                             << " nodes=" << visitor.mNodes
++                             << " zeroMaskNodes=" << visitor.mZeroMaskNodes
++                             << " geodes=" << visitor.mGeodes
++                             << " drawables=" << visitor.mDrawables
++                             << " geometry=" << visitor.mGeometry
++                             << " rigGeometry=" << visitor.mRigGeometry
++                             << " rigGeometryHolder=" << visitor.mRigGeometryHolder
++                             << " rigRenderGeometry=" << visitor.mRigRenderGeometry
++                             << " morphGeometry=" << visitor.mMorphGeometry
++                             << " morphSourceGeometry=" << visitor.mMorphSourceGeometry
++                             << " particles=" << visitor.mParticles
++                             << " boundValid=" << sphere.valid()
++                             << " boundRadius=" << (sphere.valid() ? sphere.radius() : 0.f);
++        }
++
+         osg::ref_ptr<osg::Node> loadNonNif(
+             VFS::Path::NormalizedView normalizedFilename, std::istream& model, Resource::ImageManager* imageManager)
+         {
+@@ -1001,6 +1148,7 @@ namespace Resource
+                 Log(Debug::Error) << "Failed to load '" << path << "': " << e.what() << ", using marker_error instead";
+                 loaded = cloneErrorMarker();
+             }
++            logWorldViewerMeshAudit(path, "loaded", loaded.get());
+ 
+             // set filtering settings
+             SetFilterSettingsVisitor setFilterSettingsVisitor(mMinFilter, mMagFilter, mMaxAnisotropy);
+@@ -1011,6 +1159,7 @@ namespace Resource
+ 
+             osg::ref_ptr<Shader::ShaderVisitor> shaderVisitor(createShaderVisitor());
+             loaded->accept(*shaderVisitor);
++            logWorldViewerMeshAudit(path, "shader", loaded.get());
+ 
+             if (canOptimize(path.value()))
+             {
+@@ -1022,15 +1171,20 @@ namespace Resource
+                     = getOptimizationOptions() | SceneUtil::Optimizer::SHARE_DUPLICATE_STATE;
+ 
+                 optimizer.optimize(loaded, options);
++                logWorldViewerMeshAudit(path, "optimized", loaded.get());
+             }
+             else
++            {
+                 shareState(loaded);
++                logWorldViewerMeshAudit(path, "shared", loaded.get());
++            }
+ 
+             if (compile && mIncrementalCompileOperation)
+                 mIncrementalCompileOperation->add(loaded);
+             else
+                 loaded->getBound();
+ 
++            logWorldViewerMeshAudit(path, "template-final", loaded.get());
+             mCache->addEntryToObjectCache(path.value(), loaded);
+             return loaded;
+         }
 diff --git a/components/sceneutil/riggeometry.cpp b/components/sceneutil/riggeometry.cpp
 index 885a59f975..8e43db7415 100644
 --- a/components/sceneutil/riggeometry.cpp
