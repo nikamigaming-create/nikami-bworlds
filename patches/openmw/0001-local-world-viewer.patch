@@ -14115,12 +14115,13 @@ index a583941dee..452a97cc65 100644
 +            geometry->setName(bsTriShape->mName.empty() ? bsTriShape->recName : bsTriShape->mName);
 +            parentNode->addChild(geometry);
 +
-+            logStarfieldMeshLoaded(normalizedPath.view(), *mesh, meshRef);
++            logStarfieldMeshLoaded(normalizedPath.view(), *mesh, meshRef, mFilename.generic_string(),
++                bsTriShape->mName.empty() ? bsTriShape->recName : bsTriShape->mName);
 +            return true;
 +        }
 +
 +        static void logStarfieldMeshLoaded(std::string_view path, const StarfieldExternalMeshData& mesh,
-+            const Nif::BSTriShape::BSGeometryMeshRef& meshRef)
++            const Nif::BSTriShape::BSGeometryMeshRef& meshRef, std::string_view nifPath, std::string_view shapeName)
 +        {
 +            static std::atomic<int> meshLogCount{ 0 };
 +            const int logIndex = meshLogCount.fetch_add(1);
@@ -14136,7 +14137,9 @@ index a583941dee..452a97cc65 100644
 +                                 << " uv1=" << mesh.mUv1Count
 +                                 << " normals=" << mesh.mNormalCount
 +                                 << " lods=" << mesh.mLodCount
-+                                 << " meshlets=" << mesh.mMeshletCount;
++                                 << " meshlets=" << mesh.mMeshletCount
++                                 << " nif=\"" << nifPath << "\""
++                                 << " shape=\"" << shapeName << "\"";
 +            }
 +            else if (logIndex == 80)
 +                Log(Debug::Info) << "World viewer: further Starfield mesh load logs suppressed";
