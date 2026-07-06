@@ -3175,7 +3175,7 @@ index 8575f471a0..e480eebb38 100644
          }
      }
 diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
-index 49a7175149..b400691bda 100644
+index 49a7175149..bc2c875dab 100644
 --- a/apps/openmw/mwrender/esm4npcanimation.cpp
 +++ b/apps/openmw/mwrender/esm4npcanimation.cpp
 @@ -28,6 +28,7 @@
@@ -3933,18 +3933,132 @@ index 49a7175149..b400691bda 100644
                  || lowered.find("characters\\head\\eye") != std::string::npos;
          }
  
-@@ -2682,6 +3345,10 @@ namespace MWRender
-                 return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_BEARD_OFFSET_X", 0.f),
-                     readFalloutProofFloat("OPENMW_FNV_BEARD_OFFSET_Y", 0.f),
-                     readFalloutProofFloat("OPENMW_FNV_BEARD_OFFSET_Z", 0.f));
+@@ -2661,36 +3324,18 @@ namespace MWRender
+             return fallback;
+         }
+ 
+-        osg::Vec3f getFalloutHeadFrameSurfaceOffset(std::string_view model, bool headgearStaticPart)
++        float readFalloutProofFloatWithLegacy(const std::string& name, const std::string& legacyName, float fallback)
+         {
+-            std::string lowered(model);
+-            Misc::StringUtils::lowerCaseInPlace(lowered);
+-
+-            if (headgearStaticPart)
+-                return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_HEADGEAR_OFFSET_X", 0.f),
+-                    readFalloutProofFloat("OPENMW_FNV_HEADGEAR_OFFSET_Y", 0.f),
+-                    readFalloutProofFloat("OPENMW_FNV_HEADGEAR_OFFSET_Z", 0.f));
+-            if (lowered.find("brow") != std::string::npos)
+-                return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_BROW_OFFSET_X", -0.12f),
+-                    readFalloutProofFloat("OPENMW_FNV_BROW_OFFSET_Y", 0.f),
+-                    readFalloutProofFloat("OPENMW_FNV_BROW_OFFSET_Z", 0.f));
+-            if (lowered.find("eye") != std::string::npos)
+-                return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_EYE_OFFSET_X", -0.18f),
+-                    readFalloutProofFloat("OPENMW_FNV_EYE_OFFSET_Y", 0.f),
+-                    readFalloutProofFloat("OPENMW_FNV_EYE_OFFSET_Z", 0.f));
+-            if (lowered.find("beard") != std::string::npos)
+-                return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_BEARD_OFFSET_X", 0.f),
+-                    readFalloutProofFloat("OPENMW_FNV_BEARD_OFFSET_Y", 0.f),
+-                    readFalloutProofFloat("OPENMW_FNV_BEARD_OFFSET_Z", 0.f));
+-            if (lowered.find("mouth") != std::string::npos || lowered.find("teeth") != std::string::npos
+-                || lowered.find("tongue") != std::string::npos)
+-                return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_MOUTH_OFFSET_X", -0.35f),
+-                    readFalloutProofFloat("OPENMW_FNV_MOUTH_OFFSET_Y", 0.f),
+-                    readFalloutProofFloat("OPENMW_FNV_MOUTH_OFFSET_Z", 0.f));
+-            return osg::Vec3f();
++            if (!name.empty() && std::getenv(name.c_str()) != nullptr)
++                return readFalloutProofFloat(name.c_str(), fallback);
++            if (!legacyName.empty() && legacyName != name)
++                return readFalloutProofFloat(legacyName.c_str(), fallback);
++            if (!name.empty())
++                return readFalloutProofFloat(name.c_str(), fallback);
++            return fallback;
+         }
+ 
+-        std::string getFalloutHeadFrameSurfacePrefix(std::string_view model, bool headgearStaticPart)
++        std::string getFalloutHeadFrameSurfaceLegacyPrefix(std::string_view model, bool headgearStaticPart)
+         {
+             if (headgearStaticPart)
+                 return "OPENMW_FNV_HEADGEAR";
+@@ -2711,19 +3356,72 @@ namespace MWRender
+             return {};
+         }
+ 
++        bool useTes5HeadFrameSurfacePrefix(std::string_view model, bool headgearStaticPart)
++        {
++            if (headgearStaticPart)
++                return false;
++
++            std::string lowered(model);
++            Misc::StringUtils::lowerCaseInPlace(lowered);
++            return isStarfieldHumanHeadSurfaceModelLowered(lowered)
++                || isStarfieldHumanFaceAttachmentModelLowered(lowered)
++                || lowered.find("meshes/actors/human/") != std::string::npos;
++        }
++
++        std::string getFalloutHeadFrameSurfacePrefix(std::string_view model, bool headgearStaticPart)
++        {
++            const std::string legacyPrefix = getFalloutHeadFrameSurfaceLegacyPrefix(model, headgearStaticPart);
++            constexpr std::string_view legacyRoot = "OPENMW_FNV_";
++            if (legacyPrefix.empty() || !useTes5HeadFrameSurfacePrefix(model, headgearStaticPart)
++                || !Misc::StringUtils::ciStartsWith(legacyPrefix, legacyRoot))
++                return legacyPrefix;
++
++            return "OPENMW_WORLD_VIEWER_TES5_" + legacyPrefix.substr(legacyRoot.size());
++        }
++
++        osg::Vec3f getFalloutHeadFrameSurfaceOffset(std::string_view model, bool headgearStaticPart)
++        {
++            std::string lowered(model);
++            Misc::StringUtils::lowerCaseInPlace(lowered);
++            const std::string prefix = getFalloutHeadFrameSurfacePrefix(model, headgearStaticPart);
++            const std::string legacyPrefix = getFalloutHeadFrameSurfaceLegacyPrefix(model, headgearStaticPart);
++            const auto readAxis = [&](std::string_view suffix, float fallback) {
++                return readFalloutProofFloatWithLegacy(prefix + std::string(suffix), legacyPrefix + std::string(suffix), fallback);
++            };
++
++            if (headgearStaticPart)
++                return osg::Vec3f(readAxis("_OFFSET_X", 0.f), readAxis("_OFFSET_Y", 0.f), readAxis("_OFFSET_Z", 0.f));
++            if (lowered.find("brow") != std::string::npos)
++                return osg::Vec3f(readAxis("_OFFSET_X", -0.12f), readAxis("_OFFSET_Y", 0.f), readAxis("_OFFSET_Z", 0.f));
++            if (lowered.find("eye") != std::string::npos)
++                return osg::Vec3f(readAxis("_OFFSET_X", -0.18f), readAxis("_OFFSET_Y", 0.f), readAxis("_OFFSET_Z", 0.f));
++            if (lowered.find("beard") != std::string::npos)
++                return osg::Vec3f(readAxis("_OFFSET_X", 0.f), readAxis("_OFFSET_Y", 0.f), readAxis("_OFFSET_Z", 0.f));
 +            if (isFalloutScalpHairModel(lowered))
-+                return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_HAIR_OFFSET_X", 0.f),
-+                    readFalloutProofFloat("OPENMW_FNV_HAIR_OFFSET_Y", 0.f),
-+                    readFalloutProofFloat("OPENMW_FNV_HAIR_OFFSET_Z", 0.f));
-             if (lowered.find("mouth") != std::string::npos || lowered.find("teeth") != std::string::npos
-                 || lowered.find("tongue") != std::string::npos)
-                 return osg::Vec3f(readFalloutProofFloat("OPENMW_FNV_MOUTH_OFFSET_X", -0.35f),
-@@ -2791,6 +3458,62 @@ namespace MWRender
++                return osg::Vec3f(readAxis("_OFFSET_X", 0.f), readAxis("_OFFSET_Y", 0.f), readAxis("_OFFSET_Z", 0.f));
++            if (lowered.find("mouth") != std::string::npos || lowered.find("teeth") != std::string::npos
++                || lowered.find("tongue") != std::string::npos)
++                return osg::Vec3f(readAxis("_OFFSET_X", -0.35f), readAxis("_OFFSET_Y", 0.f), readAxis("_OFFSET_Z", 0.f));
++            return osg::Vec3f();
++        }
++
+         osg::Quat getFalloutHeadFrameSurfaceAttitude(std::string_view model, bool headgearStaticPart)
+         {
+             const std::string prefix = getFalloutHeadFrameSurfacePrefix(model, headgearStaticPart);
+             if (prefix.empty())
+                 return osg::Quat();
+ 
++            const std::string legacyPrefix = getFalloutHeadFrameSurfaceLegacyPrefix(model, headgearStaticPart);
+             constexpr float degreesToRadians = 0.017453292519943295f;
+-            const float xDegrees = readFalloutProofFloat((prefix + "_ROTATION_X").c_str(), 0.f);
+-            const float yDegrees = readFalloutProofFloat((prefix + "_ROTATION_Y").c_str(), 0.f);
+-            const bool faceInternal = prefix == "OPENMW_FNV_EYE" || prefix == "OPENMW_FNV_MOUTH"
+-                || prefix == "OPENMW_FNV_BEARD" || prefix == "OPENMW_FNV_BROW";
+-            const float zFallback = (faceInternal || prefix == "OPENMW_FNV_HAIR") ? -90.f : 0.f;
+-            const float zDegrees = readFalloutProofFloat((prefix + "_ROTATION_Z").c_str(), zFallback);
++            const float xDegrees
++                = readFalloutProofFloatWithLegacy(prefix + "_ROTATION_X", legacyPrefix + "_ROTATION_X", 0.f);
++            const float yDegrees
++                = readFalloutProofFloatWithLegacy(prefix + "_ROTATION_Y", legacyPrefix + "_ROTATION_Y", 0.f);
++            const bool faceInternal = legacyPrefix == "OPENMW_FNV_EYE" || legacyPrefix == "OPENMW_FNV_MOUTH"
++                || legacyPrefix == "OPENMW_FNV_BEARD" || legacyPrefix == "OPENMW_FNV_BROW";
++            const float zFallback = (faceInternal || legacyPrefix == "OPENMW_FNV_HAIR") ? -90.f : 0.f;
++            const float zDegrees
++                = readFalloutProofFloatWithLegacy(prefix + "_ROTATION_Z", legacyPrefix + "_ROTATION_Z", zFallback);
+             const osg::Quat x(xDegrees * degreesToRadians, osg::Vec3f(1.f, 0.f, 0.f));
+             const osg::Quat y(yDegrees * degreesToRadians, osg::Vec3f(0.f, 1.f, 0.f));
+             const osg::Quat z(zDegrees * degreesToRadians, osg::Vec3f(0.f, 0.f, 1.f));
+@@ -2791,6 +3489,62 @@ namespace MWRender
              return helper.get();
          }
  
@@ -4007,7 +4121,7 @@ index 49a7175149..b400691bda 100644
          bool isFalloutStaticFaceChildPart(std::string_view model)
          {
              return shouldAttachFalloutStaticPartToHead(model) && !isFalloutStaticHeadgearPart(model)
-@@ -2970,6 +3693,7 @@ namespace MWRender
+@@ -2970,6 +3724,7 @@ namespace MWRender
              attached->accept(visitor);
              Log(Debug::Info) << "FNV/ESM4 diag: NPC part shape summary " << model << " for "
                               << ptr.getCellRef().getRefId() << " rigGeometry=" << visitor.mRigGeometryCount
@@ -4015,7 +4129,7 @@ index 49a7175149..b400691bda 100644
                               << " staticGeometry=" << visitor.mStaticGeometryCount
                               << " firstRigRoot='" << visitor.mFirstRigRootBone << "' firstRigBones="
                               << visitor.mFirstRigBoneCount << " sample=[" << visitor.mFirstRigBoneSample.str() << "]";
-@@ -3002,7 +3726,9 @@ namespace MWRender
+@@ -3002,7 +3757,9 @@ namespace MWRender
          {
              std::string lowered(model);
              Misc::StringUtils::lowerCaseInPlace(lowered);
@@ -4026,7 +4140,7 @@ index 49a7175149..b400691bda 100644
                  || lowered.find("characters\\head\\head") != std::string::npos
                  || containsAny(
                      lowered, { "headgear", "hat", "hair", "beard", "brow", "eye", "mouth", "teeth", "tongue" });
-@@ -3012,7 +3738,9 @@ namespace MWRender
+@@ -3012,7 +3769,9 @@ namespace MWRender
          {
              std::string lowered(model);
              Misc::StringUtils::lowerCaseInPlace(lowered);
@@ -4037,7 +4151,7 @@ index 49a7175149..b400691bda 100644
                  || lowered.find("characters\\head\\head") != std::string::npos
                  || containsAny(lowered, { "beard", "brow", "eye", "mouth", "teeth", "tongue" });
          }
-@@ -3121,6 +3849,106 @@ namespace MWRender
+@@ -3121,6 +3880,106 @@ namespace MWRender
              return cloned;
          }
  
@@ -4144,7 +4258,7 @@ index 49a7175149..b400691bda 100644
          void logFalloutAttachmentBounds(osg::Node* attached, osg::Group* attachNode, osg::Group* headNode,
              std::string_view model, const MWWorld::Ptr& ptr)
          {
-@@ -4162,9 +4990,65 @@ namespace MWRender
+@@ -4162,9 +5021,65 @@ namespace MWRender
          : Animation(ptr, std::move(parentNode), resourceSystem)
      {
          const std::string skeletonModel = mPtr.getClass().getCorrectedModel(mPtr);
@@ -4212,7 +4326,7 @@ index 49a7175149..b400691bda 100644
          if (traits != nullptr && traits->mIsFONV)
          {
              const NodeMap& currentNodeMap = getNodeMap();
-@@ -4202,7 +5086,21 @@ namespace MWRender
+@@ -4202,7 +5117,21 @@ namespace MWRender
                      return;
                  Log(Debug::Info) << "FNV/ESM4 diag: adding FONV NPC " << reason << " animation source " << kfPath
                                   << " for " << traits->mEditorId;
@@ -4235,7 +4349,7 @@ index 49a7175149..b400691bda 100644
                      addedAnimationSource = addedAnimationSource || countsAsPrimary;
              };
  
-@@ -4306,21 +5204,50 @@ namespace MWRender
+@@ -4306,21 +5235,50 @@ namespace MWRender
      void ESM4NpcAnimation::updateParts()
      {
          if (mObjectRoot == nullptr)
@@ -4289,7 +4403,7 @@ index 49a7175149..b400691bda 100644
      }
  
      osg::ref_ptr<osg::Node> ESM4NpcAnimation::insertPart(
-@@ -4330,6 +5257,7 @@ namespace MWRender
+@@ -4330,6 +5288,7 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped empty NPC model part for "
                                  << mPtr.getCellRef().getRefId();
@@ -4297,7 +4411,7 @@ index 49a7175149..b400691bda 100644
              return nullptr;
          }
          if (Misc::StringUtils::ciEndsWith(model, ".egt") || Misc::StringUtils::ciEndsWith(model, ".egm")
-@@ -4337,9 +5265,32 @@ namespace MWRender
+@@ -4337,9 +5296,32 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped non-render NPC data part " << model << " for "
                                  << mPtr.getCellRef().getRefId();
@@ -4330,7 +4444,7 @@ index 49a7175149..b400691bda 100644
          const std::string loweredModel = Misc::StringUtils::lowerCase(std::string(model));
          if (std::getenv("OPENMW_FNV_PROOF_HIDE_FACE_HAIR") != nullptr && isFalloutFaceHairModel(loweredModel))
          {
-@@ -4378,13 +5329,53 @@ namespace MWRender
+@@ -4378,13 +5360,53 @@ namespace MWRender
                               << " for " << mPtr.getCellRef().getRefId();
              return nullptr;
          }
@@ -4385,7 +4499,7 @@ index 49a7175149..b400691bda 100644
          if (headAttachedStaticPart)
          {
              const std::string_view mode = headgearStaticPart ? std::string_view("headgear") : getFonvStaticFaceAttachMode(model);
-@@ -4443,9 +5434,46 @@ namespace MWRender
+@@ -4443,9 +5465,46 @@ namespace MWRender
              Log(Debug::Info) << "FNV/ESM4 diag: static head attachment mode=" << mode << " model="
                               << correctedModel.value() << " attachNode=" << attachNode->getName() << " for "
                               << mPtr.getCellRef().getRefId();
@@ -4433,7 +4547,7 @@ index 49a7175149..b400691bda 100644
          if (bareHandSurfacePart)
          {
              osg::Group* bip01 = nullptr;
-@@ -4490,6 +5518,43 @@ namespace MWRender
+@@ -4490,6 +5549,43 @@ namespace MWRender
                              << " to " << mPtr.getCellRef().getRefId() << " at " << attachNode->getName();
          FalloutPartShapeSummaryVisitor rigProbe;
          const_cast<osg::Node*>(templateNode.get())->accept(rigProbe);
@@ -4477,7 +4591,7 @@ index 49a7175149..b400691bda 100644
          osg::ref_ptr<const osg::Node> attachTemplateNode = templateNode;
          bool staticizedHeadPartRig = false;
          bool staticizedBareHandPartRig = false;
-@@ -4606,6 +5671,18 @@ namespace MWRender
+@@ -4606,6 +5702,18 @@ namespace MWRender
                               << correctedModel.value() << " to " << mPtr.getCellRef().getRefId()
                               << " rigGeometry=" << rigProbe.mRigGeometryCount << " master=" << rigPartMaster->getName();
          }
@@ -4496,7 +4610,7 @@ index 49a7175149..b400691bda 100644
          else
          {
              osg::Quat headgearAttitude;
-@@ -4631,7 +5708,18 @@ namespace MWRender
+@@ -4631,7 +5739,18 @@ namespace MWRender
                                   << " attachNode=" << attachNode->getName();
              }
          }
@@ -4516,7 +4630,7 @@ index 49a7175149..b400691bda 100644
          {
              const osg::Vec3f surfaceOffset = getFalloutHeadFrameSurfaceOffset(model, headgearStaticPart);
              const osg::Quat surfaceAttitude = getFalloutHeadFrameSurfaceAttitude(model, headgearStaticPart);
-@@ -4687,9 +5775,11 @@ namespace MWRender
+@@ -4687,9 +5806,11 @@ namespace MWRender
                  mouthDriverNode->addChild(attached);
              attached = mouthDriverNode;
              attached->setUpdateCallback(new FalloutProofMouthDriver(mPtr, correctedModel.value()));
@@ -4530,7 +4644,7 @@ index 49a7175149..b400691bda 100644
          if (!diffuseTexture.empty() && attached != nullptr)
          {
              Log(Debug::Info) << "FNV/ESM4 diag: overriding NPC part texture " << diffuseTexture << " on "
-@@ -4721,6 +5811,14 @@ namespace MWRender
+@@ -4721,6 +5842,14 @@ namespace MWRender
              Log(Debug::Info) << "FNV/ESM4 diag: enabled cutout alpha on " << cutoutAlpha.getAppliedCount()
                               << " hair/brow state(s) for " << correctedModel.value() << " on "
                               << mPtr.getCellRef().getRefId();
@@ -4545,7 +4659,7 @@ index 49a7175149..b400691bda 100644
          }
          if (attached != nullptr && isFalloutEyeSurfaceModel(correctedModel.value()))
          {
-@@ -4757,16 +5855,74 @@ namespace MWRender
+@@ -4757,16 +5886,74 @@ namespace MWRender
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
          logFalloutFaceDrawableAudit(attached.get(), correctedModel.value(), mPtr);
@@ -4621,7 +4735,7 @@ index 49a7175149..b400691bda 100644
  
          const NodeMap& nodeMap = getNodeMap();
          osg::Group* attachNode = nullptr;
-@@ -4794,6 +5950,15 @@ namespace MWRender
+@@ -4794,6 +5981,15 @@ namespace MWRender
          logFalloutAttachmentBounds(
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
@@ -4637,7 +4751,7 @@ index 49a7175149..b400691bda 100644
          return attached;
      }
  
-@@ -4927,6 +6092,21 @@ namespace MWRender
+@@ -4927,6 +6123,21 @@ namespace MWRender
          if (!npcBodyNormalTexture.empty())
              Log(Debug::Info) << "FNV/ESM4 diag: using baked NPC body normal texture " << npcBodyNormalTexture
                               << " for " << traits.mEditorId;
@@ -4659,7 +4773,7 @@ index 49a7175149..b400691bda 100644
  
          const bool proofTargetActor = isFonvProofTargetActor(mPtr, traits);
          const bool proofActor = isEasyPeteProofActor(traits);
-@@ -5282,37 +6462,85 @@ namespace MWRender
+@@ -5282,37 +6493,85 @@ namespace MWRender
          std::vector<const ESM4::ArmorAddon*> armorAddons;
  
          auto findArmorAddons = [&](const ESM4::Armor* armor) {
@@ -4748,7 +4862,7 @@ index 49a7175149..b400691bda 100644
                  findArmorAddons(armor);
              else
                  Log(Debug::Error) << "Skin not found: " << ESM::RefId(race->mSkin);
-@@ -5326,20 +6554,114 @@ namespace MWRender
+@@ -5326,20 +6585,114 @@ namespace MWRender
                  [](auto x, auto y) { return x->mMalePriority > y->mMalePriority; });
  
          uint32_t usedParts = 0;
