@@ -1256,7 +1256,7 @@ $viewerProofEnvNames = @(
 )
 
 $previousEnv = @{}
-foreach ($name in @("OPENMW_PROOF_SCREENSHOT_FRAME", "OPENMW_FNV_BOOTSTRAP_HOUR", "OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI", "OPENMW_PROOF_HIDE_GUI") + $viewerStartEnvNames + $viewerProofEnvNames) {
+foreach ($name in @("OPENMW_PROOF_SCREENSHOT_FRAME", "OPENMW_PROOF_SCREENSHOT_READY_FRAMES", "OPENMW_FNV_BOOTSTRAP_HOUR", "OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI", "OPENMW_PROOF_HIDE_GUI") + $viewerStartEnvNames + $viewerProofEnvNames) {
     $previousEnv[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
 }
 
@@ -1265,6 +1265,12 @@ $results = New-Object System.Collections.Generic.List[object]
 try {
     [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_PROOF_SCREENSHOT_FRAME", $ScreenshotFrames, "Process")
+    if ([string]::IsNullOrWhiteSpace($ScreenshotFrames)) {
+        [Environment]::SetEnvironmentVariable("OPENMW_PROOF_SCREENSHOT_READY_FRAMES", "90", "Process")
+    }
+    else {
+        [Environment]::SetEnvironmentVariable("OPENMW_PROOF_SCREENSHOT_READY_FRAMES", "120", "Process")
+    }
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_BOOTSTRAP_HOUR", "12", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI", "1", "Process")
     if ($ShowGui) {
@@ -1340,7 +1346,13 @@ try {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
     }
-    [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED", "1", "Process")
+    $starfieldOnlyProof = $selected.Count -eq 1 -and $selected[0].id -eq "starfield"
+    if ($starfieldOnlyProof) {
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED", $null, "Process")
+    }
+    else {
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED", "1", "Process")
+    }
     if ($DisableSky) {
         [Environment]::SetEnvironmentVariable("OPENMW_PROOF_DISABLE_SKY", "1", "Process")
     }
