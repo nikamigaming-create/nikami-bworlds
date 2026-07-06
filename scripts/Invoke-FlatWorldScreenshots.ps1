@@ -567,6 +567,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $bsPartitionFallbackEmptyVertices = 0
     $bsPartitionFallbackGeneratedNormals = 0
     $bsAttachedEvents = 0
+    $bsGeometryQuarantineEvents = 0
     $osgUpdateCallbackEvents = 0
     $osgUpdateCallbackSummaries = 0
     $osgUpdateNodeCallbacks = 0
@@ -840,6 +841,17 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
             continue
         }
 
+        $bsQuarantineIndex = $line.IndexOf("World viewer bs geometry quarantine:")
+        if ($bsQuarantineIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($bsQuarantineIndex + "World viewer bs geometry quarantine:".Length).Trim())
+            $bsGeometryQuarantineEvents++
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "bs-quarantine" -Force
+            if ($geometryLedger.Count -lt 240) {
+                $geometryLedger.Add($entry)
+            }
+            continue
+        }
+
         $bsGeometryIndex = $line.IndexOf("World viewer bs geometry ledger:")
         if ($bsGeometryIndex -ge 0) {
             $entry = Parse-WorldViewerKeyValues ($line.Substring($bsGeometryIndex + "World viewer bs geometry ledger:".Length).Trim())
@@ -1068,6 +1080,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         bsPartitionFallbackEmptyVertices = $bsPartitionFallbackEmptyVertices
         bsPartitionFallbackGeneratedNormals = $bsPartitionFallbackGeneratedNormals
         bsAttachedEvents = $bsAttachedEvents
+        bsGeometryQuarantineEvents = $bsGeometryQuarantineEvents
         osgUpdateCallbackEvents = $osgUpdateCallbackEvents
         osgUpdateCallbackSummaries = $osgUpdateCallbackSummaries
         osgUpdateNodeCallbacks = $osgUpdateNodeCallbacks
@@ -1214,6 +1227,7 @@ $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY",
     "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK",
     "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS",
+    "OPENMW_WORLD_VIEWER_QUARANTINE_FO4_ACTOR_BSSUBINDEXTRISHAPE",
     "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS",
     "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS",
     "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS",
@@ -1373,6 +1387,12 @@ try {
         }
         else {
             [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_DISABLE_ESM4_ACTORS", $null, "Process")
+        }
+        if ($world.id -eq "fallout4" -or $world.id -eq "fallout4_vr") {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_QUARANTINE_FO4_ACTOR_BSSUBINDEXTRISHAPE", "1", "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_QUARANTINE_FO4_ACTOR_BSSUBINDEXTRISHAPE", $null, "Process")
         }
         $esm4ActorProxies = ((Get-PropertyValue $start "esm4ActorProxies") -eq $true)
         if ($esm4ActorProxies) {
@@ -1664,7 +1684,7 @@ try {
                 $notes.Add("TES5 static face surface fallbacks: $($worldViewerTelemetry.tes5StaticFaceSurfaceFallbackEvents)")
             }
             if ($null -ne $worldViewerTelemetry -and ($worldViewerTelemetry.bsGeometryLedgerEvents -gt 0 -or $worldViewerTelemetry.nifGeometryLedgerEvents -gt 0)) {
-                $notes.Add("Geometry ledger: NIF vertices $($worldViewerTelemetry.nifGeometryWithVertices)/$($worldViewerTelemetry.nifGeometryLedgerEvents), BS skin partitions $($worldViewerTelemetry.bsGeometryWithPartitionTriangles)/$($worldViewerTelemetry.bsGeometryLedgerEvents), partition fallback attached $($worldViewerTelemetry.bsPartitionFallbackAttached)/$($worldViewerTelemetry.bsPartitionFallbackEvents), generatedNormals $($worldViewerTelemetry.bsPartitionFallbackGeneratedNormals)")
+                $notes.Add("Geometry ledger: NIF vertices $($worldViewerTelemetry.nifGeometryWithVertices)/$($worldViewerTelemetry.nifGeometryLedgerEvents), BS skin partitions $($worldViewerTelemetry.bsGeometryWithPartitionTriangles)/$($worldViewerTelemetry.bsGeometryLedgerEvents), partition fallback attached $($worldViewerTelemetry.bsPartitionFallbackAttached)/$($worldViewerTelemetry.bsPartitionFallbackEvents), BS quarantined $($worldViewerTelemetry.bsGeometryQuarantineEvents), generatedNormals $($worldViewerTelemetry.bsPartitionFallbackGeneratedNormals)")
             }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.textureLedgerEvents -gt 0) {
                 $notes.Add("Texture ledger: resolved $($worldViewerTelemetry.textureImagesResolved), missing $($worldViewerTelemetry.textureImagesMissing), skinAuxSkipped $($worldViewerTelemetry.textureSkinAuxSkipped)")

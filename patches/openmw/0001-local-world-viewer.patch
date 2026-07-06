@@ -11414,7 +11414,7 @@ index e9306fa83f..2212b59439 100644
          void read(NIFStream* nif) override;
          void post(Reader& nif) override;
 diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
-index a583941dee..a8cff374ef 100644
+index a583941dee..3b06671116 100644
 --- a/components/nifosg/nifloader.cpp
 +++ b/components/nifosg/nifloader.cpp
 @@ -1,12 +1,18 @@
@@ -11444,7 +11444,7 @@ index a583941dee..a8cff374ef 100644
  
  // particle
  #include <osgParticle/BoxPlacer>
-@@ -148,6 +155,42 @@ namespace
+@@ -148,6 +155,47 @@ namespace
          return false;
      }
  
@@ -11484,10 +11484,15 @@ index a583941dee..a8cff374ef 100644
 +        return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS");
 +    }
 +
++    bool worldViewerQuarantineFo4ActorSubIndexTriShapeEnabled()
++    {
++        return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_QUARANTINE_FO4_ACTOR_BSSUBINDEXTRISHAPE");
++    }
++
      bool isAmbientEmbeddedAnimationPath(std::string_view filename)
      {
          return containsAny(filename,
-@@ -173,6 +216,21 @@ namespace
+@@ -173,6 +221,21 @@ namespace
              || name.find("bip01 root") != std::string::npos;
      }
  
@@ -11509,7 +11514,7 @@ index a583941dee..a8cff374ef 100644
      bool isActivationOnlyAnimationPath(std::string_view filename)
      {
          return containsAny(filename,
-@@ -270,6 +328,9 @@ namespace
+@@ -270,6 +333,9 @@ namespace
          const bool ambientPath = isAmbientEmbeddedAnimationPath(filename);
          const bool falloutFlagPath = isFalloutFlagPath(filename);
  
@@ -11519,7 +11524,7 @@ index a583941dee..a8cff374ef 100644
          std::string key = sequenceName;
          for (const Nif::ControlledBlock& block : sequence.mControlledBlocks)
          {
-@@ -332,6 +393,270 @@ namespace
+@@ -332,6 +398,270 @@ namespace
          return true;
      }
  
@@ -11790,7 +11795,7 @@ index a583941dee..a8cff374ef 100644
      bool isTypeBSGeometry(int type)
      {
          switch (type)
-@@ -345,6 +670,74 @@ namespace
+@@ -345,6 +675,74 @@ namespace
          return false;
      }
  
@@ -11865,7 +11870,7 @@ index a583941dee..a8cff374ef 100644
      // Collect all properties affecting the given drawable that should be handled on drawable basis rather than on the
      // node hierarchy above it.
      void collectDrawableProperties(
-@@ -1279,6 +1672,15 @@ namespace NifOsg
+@@ -1279,6 +1677,15 @@ namespace NifOsg
              if (args.mRootNode && Misc::StringUtils::ciEqual(nifNode->mName, "Bounding Box"))
                  return nullptr;
  
@@ -11881,7 +11886,7 @@ index a583941dee..a8cff374ef 100644
              osg::ref_ptr<osg::Group> node = createNode(nifNode);
  
              if (nifNode->recType == Nif::RC_NiBillboardNode)
-@@ -1416,7 +1818,6 @@ namespace NifOsg
+@@ -1416,7 +1823,6 @@ namespace NifOsg
              if (isGeometry && !args.mSkipMeshes)
              {
                  bool skip = false;
@@ -11889,7 +11894,7 @@ index a583941dee..a8cff374ef 100644
                  if (isFalloutHiddenMorphShape(nifNode->mName)
                      && containsAny(filename, { "meshes/characters/", "meshes\\characters\\", "meshes/armor/",
                             "meshes\\armor\\", "characters/", "characters\\", "armor/", "armor\\" }))
-@@ -1753,7 +2154,27 @@ namespace NifOsg
+@@ -1753,7 +2159,27 @@ namespace NifOsg
          osg::ref_ptr<osg::Texture2D> attachExternalTexture(const std::string& name, const std::string& path, bool wrapS,
              bool wrapT, unsigned int uvSet, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
          {
@@ -11918,7 +11923,7 @@ index a583941dee..a8cff374ef 100644
          }
  
          osg::ref_ptr<osg::Texture2D> attachNiSourceTexture(const std::string& name, const Nif::NiSourceTexture* st,
-@@ -2380,7 +2801,11 @@ namespace NifOsg
+@@ -2380,7 +2806,11 @@ namespace NifOsg
              if (niGeometry->mData.empty())
                  return;
  
@@ -11930,7 +11935,7 @@ index a583941dee..a8cff374ef 100644
              if (!niGeometry->mSkin.empty())
              {
                  const Nif::NiSkinInstance* skin = niGeometry->mSkin.getPtr();
-@@ -2388,10 +2813,10 @@ namespace NifOsg
+@@ -2388,10 +2818,10 @@ namespace NifOsg
                  hasPartitions = partitions != nullptr;
                  if (hasPartitions)
                  {
@@ -11942,7 +11947,7 @@ index a583941dee..a8cff374ef 100644
                      const bool logDismemberParts = dismemberSkin != nullptr
                          && (filename.find("meshes/characters/") != std::string::npos
                              || filename.find("meshes/armor/") != std::string::npos
-@@ -2423,6 +2848,8 @@ namespace NifOsg
+@@ -2423,6 +2853,8 @@ namespace NifOsg
  
                          const Nif::NiSkinPartition::Partition& partition = partitions->mPartitions[partitionIndex];
                          const std::vector<unsigned short>& trueTriangles = partition.mTrueTriangles;
@@ -11951,7 +11956,7 @@ index a583941dee..a8cff374ef 100644
                          if (!trueTriangles.empty())
                          {
                              geometry->addPrimitiveSet(new osg::DrawElementsUShort(
-@@ -2440,41 +2867,56 @@ namespace NifOsg
+@@ -2440,41 +2872,56 @@ namespace NifOsg
              }
  
              const Nif::NiGeometryData* niGeometryData = niGeometry->mData.getPtr();
@@ -12024,7 +12029,7 @@ index a583941dee..a8cff374ef 100644
              }
  
              const auto& vertices = niGeometryData->mVertices;
-@@ -2488,6 +2930,24 @@ namespace NifOsg
+@@ -2488,6 +2935,24 @@ namespace NifOsg
              if (!colors.empty())
                  geometry->setColorArray(new osg::Vec4Array(colors.size(), colors.data()), osg::Array::BIND_PER_VERTEX);
  
@@ -12049,7 +12054,7 @@ index a583941dee..a8cff374ef 100644
              const auto& uvlist = niGeometryData->mUVList;
              int textureStage = 0;
              for (std::vector<unsigned int>::const_iterator it = boundTextures.begin(); it != boundTextures.end();
-@@ -2517,7 +2977,8 @@ namespace NifOsg
+@@ -2517,7 +2982,8 @@ namespace NifOsg
                  drawableProps.emplace_back(niGeometry->mShaderProperty.getPtr());
              if (!niGeometry->mAlphaProperty.empty())
                  drawableProps.emplace_back(niGeometry->mAlphaProperty.getPtr());
@@ -12059,7 +12064,7 @@ index a583941dee..a8cff374ef 100644
          }
  
          void handleNiGeometry(const Nif::NiAVObject* nifNode, const Nif::Parent* parent, osg::Group* parentNode,
-@@ -2659,8 +3120,289 @@ namespace NifOsg
+@@ -2659,8 +3125,304 @@ namespace NifOsg
  
              auto bsTriShape = static_cast<const Nif::BSTriShape*>(nifNode);
              const std::vector<unsigned short>& triangles = bsTriShape->mTriangles;
@@ -12118,6 +12123,21 @@ index a583941dee..a8cff374ef 100644
 +                                 << " skinRecType="
 +                                 << (!bsTriShape->mSkin.empty() ? bsTriShape->mSkin->recType : 0)
 +                                 << " flags=0x" << std::hex << bsTriShape->mVertDesc.mFlags << std::dec;
++            }
++            if (worldViewerQuarantineFo4ActorSubIndexTriShapeEnabled()
++                && bsTriShape->recType == Nif::RC_BSSubIndexTriShape && isWorldViewerActorMeshPath(filename))
++            {
++                Log(Debug::Warning) << "World viewer bs geometry quarantine: file=\"" << mFilename.generic_string()
++                                    << "\" shape=\"" << nifNode->mName << "\""
++                                    << " recName=\"" << bsTriShape->recName << "\""
++                                    << " recType=" << bsTriShape->recType
++                                    << " reason=\"fo4 actor BSSubIndexTriShape attach crash guard\""
++                                    << " triangles=" << triangles.size()
++                                    << " vertices=" << bsTriShape->mVertData.size()
++                                    << " skin=" << !bsTriShape->mSkin.empty()
++                                    << " skinRecType="
++                                    << (!bsTriShape->mSkin.empty() ? bsTriShape->mSkin->recType : 0);
++                return;
 +            }
              if (triangles.empty())
 +            {
@@ -12349,7 +12369,7 @@ index a583941dee..a8cff374ef 100644
  
              osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
              geometry->addPrimitiveSet(
-@@ -2782,10 +3524,190 @@ namespace NifOsg
+@@ -2782,10 +3544,190 @@ namespace NifOsg
                  drawableProps.emplace_back(bsTriShape->mShaderProperty.getPtr());
              if (!bsTriShape->mAlphaProperty.empty())
                  drawableProps.emplace_back(bsTriShape->mAlphaProperty.getPtr());
@@ -12541,7 +12561,7 @@ index a583941dee..a8cff374ef 100644
          }
  
          osg::BlendFunc::BlendFuncMode getBlendMode(int mode) const
-@@ -3364,6 +4286,9 @@ namespace NifOsg
+@@ -3364,6 +4306,9 @@ namespace NifOsg
              const std::string& nodeName, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
          {
              const unsigned int uvSet = 0;
@@ -12551,7 +12571,7 @@ index a583941dee..a8cff374ef 100644
  
              for (size_t i = 0; i < textureSet->mTextures.size(); ++i)
              {
-@@ -3380,6 +4305,14 @@ namespace NifOsg
+@@ -3380,6 +4325,14 @@ namespace NifOsg
                              "normalMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
                      case Nif::BSShaderTextureSet::TextureType::Glow:
@@ -12566,7 +12586,7 @@ index a583941dee..a8cff374ef 100644
                          attachExternalTexture(
                              "emissiveMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
-@@ -3584,6 +4517,55 @@ namespace NifOsg
+@@ -3584,6 +4537,55 @@ namespace NifOsg
                      handleDepthFlags(stateset, texprop->depthTest(), texprop->depthWrite());
                      break;
                  }
@@ -12622,7 +12642,7 @@ index a583941dee..a8cff374ef 100644
                  case Nif::RC_BSLightingShaderProperty:
                  {
                      auto texprop = static_cast<const Nif::BSLightingShaderProperty*>(property);
-@@ -3722,7 +4704,8 @@ namespace NifOsg
+@@ -3722,7 +4724,8 @@ namespace NifOsg
          }
  
          void applyDrawableProperties(osg::Node* node, const std::vector<const Nif::NiProperty*>& properties,
@@ -12632,7 +12652,7 @@ index a583941dee..a8cff374ef 100644
          {
              // Specular lighting is enabled by default, but there's a quirk...
              bool specEnabled = true;
-@@ -3742,6 +4725,16 @@ namespace NifOsg
+@@ -3742,6 +4745,16 @@ namespace NifOsg
              auto lightmode = Nif::NiVertexColorProperty::LightMode::LightMode_EmiAmbDif;
              float emissiveMult = 1.f;
              float specStrength = 1.f;
@@ -12649,7 +12669,7 @@ index a583941dee..a8cff374ef 100644
  
              for (const Nif::NiProperty* property : properties)
              {
-@@ -3757,6 +4750,7 @@ namespace NifOsg
+@@ -3757,6 +4770,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiMaterialProperty:
                      {
@@ -12657,7 +12677,7 @@ index a583941dee..a8cff374ef 100644
                          const Nif::NiMaterialProperty* matprop = static_cast<const Nif::NiMaterialProperty*>(property);
  
                          mat->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(matprop->mDiffuse, matprop->mAlpha));
-@@ -3780,6 +4774,7 @@ namespace NifOsg
+@@ -3780,6 +4794,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiVertexColorProperty:
                      {
@@ -12665,7 +12685,7 @@ index a583941dee..a8cff374ef 100644
                          const Nif::NiVertexColorProperty* vertprop
                              = static_cast<const Nif::NiVertexColorProperty*>(property);
  
-@@ -3822,6 +4817,7 @@ namespace NifOsg
+@@ -3822,6 +4837,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiAlphaProperty:
                      {
@@ -12673,7 +12693,7 @@ index a583941dee..a8cff374ef 100644
                          const Nif::NiAlphaProperty* alphaprop = static_cast<const Nif::NiAlphaProperty*>(property);
                          handleAlphaBlending(alphaprop->useAlphaBlending(), alphaprop->sourceBlendMode(),
                              alphaprop->destinationBlendMode(), !alphaprop->noSorter(), hasSortAlpha, *node);
-@@ -3831,15 +4827,21 @@ namespace NifOsg
+@@ -3831,15 +4847,21 @@ namespace NifOsg
                      }
                      case Nif::RC_BSShaderPPLightingProperty:
                      {
@@ -12695,7 +12715,7 @@ index a583941dee..a8cff374ef 100644
                              handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
                              if (shaderMat->mShaderType == Bgsm::ShaderType::Lighting)
                              {
-@@ -3863,9 +4865,12 @@ namespace NifOsg
+@@ -3863,9 +4885,12 @@ namespace NifOsg
                      }
                      case Nif::RC_BSEffectShaderProperty:
                      {
@@ -12708,7 +12728,7 @@ index a583941dee..a8cff374ef 100644
                              handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
                              break;
                          }
-@@ -3938,6 +4943,65 @@ namespace NifOsg
+@@ -3938,6 +4963,65 @@ namespace NifOsg
              if (specStrength != 1.f)
                  node->getOrCreateStateSet()->addUniform(new osg::Uniform("specStrength", specStrength));
  
