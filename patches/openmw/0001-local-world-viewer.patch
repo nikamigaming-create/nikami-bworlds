@@ -3275,7 +3275,7 @@ index 8575f471a0..e480eebb38 100644
          }
      }
 diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
-index 49a7175149..bc2c875dab 100644
+index 49a7175149..4cca5d1bdf 100644
 --- a/apps/openmw/mwrender/esm4npcanimation.cpp
 +++ b/apps/openmw/mwrender/esm4npcanimation.cpp
 @@ -28,6 +28,7 @@
@@ -4079,7 +4079,7 @@ index 49a7175149..bc2c875dab 100644
          {
              if (headgearStaticPart)
                  return "OPENMW_FNV_HEADGEAR";
-@@ -2711,19 +3356,72 @@ namespace MWRender
+@@ -2711,19 +3356,78 @@ namespace MWRender
              return {};
          }
  
@@ -4090,9 +4090,11 @@ index 49a7175149..bc2c875dab 100644
 +
 +            std::string lowered(model);
 +            Misc::StringUtils::lowerCaseInPlace(lowered);
++            std::replace(lowered.begin(), lowered.end(), '\\', '/');
 +            return isStarfieldHumanHeadSurfaceModelLowered(lowered)
 +                || isStarfieldHumanFaceAttachmentModelLowered(lowered)
-+                || lowered.find("meshes/actors/human/") != std::string::npos;
++                || lowered.find("meshes/actors/human/") != std::string::npos
++                || lowered.find("actors/human/") != std::string::npos;
 +        }
 +
 +        std::string getFalloutHeadFrameSurfacePrefix(std::string_view model, bool headgearStaticPart)
@@ -4112,6 +4114,7 @@ index 49a7175149..bc2c875dab 100644
 +            Misc::StringUtils::lowerCaseInPlace(lowered);
 +            const std::string prefix = getFalloutHeadFrameSurfacePrefix(model, headgearStaticPart);
 +            const std::string legacyPrefix = getFalloutHeadFrameSurfaceLegacyPrefix(model, headgearStaticPart);
++            const bool tes5Surface = prefix.find("OPENMW_WORLD_VIEWER_TES5_") == 0;
 +            const auto readAxis = [&](std::string_view suffix, float fallback) {
 +                return readFalloutProofFloatWithLegacy(prefix + std::string(suffix), legacyPrefix + std::string(suffix), fallback);
 +            };
@@ -4128,7 +4131,10 @@ index 49a7175149..bc2c875dab 100644
 +                return osg::Vec3f(readAxis("_OFFSET_X", 0.f), readAxis("_OFFSET_Y", 0.f), readAxis("_OFFSET_Z", 0.f));
 +            if (lowered.find("mouth") != std::string::npos || lowered.find("teeth") != std::string::npos
 +                || lowered.find("tongue") != std::string::npos)
-+                return osg::Vec3f(readAxis("_OFFSET_X", -0.35f), readAxis("_OFFSET_Y", 0.f), readAxis("_OFFSET_Z", 0.f));
++            {
++                const float xFallback = tes5Surface ? 0.f : -0.35f;
++                return osg::Vec3f(readAxis("_OFFSET_X", xFallback), readAxis("_OFFSET_Y", 0.f), readAxis("_OFFSET_Z", 0.f));
++            }
 +            return osg::Vec3f();
 +        }
 +
@@ -4158,7 +4164,7 @@ index 49a7175149..bc2c875dab 100644
              const osg::Quat x(xDegrees * degreesToRadians, osg::Vec3f(1.f, 0.f, 0.f));
              const osg::Quat y(yDegrees * degreesToRadians, osg::Vec3f(0.f, 1.f, 0.f));
              const osg::Quat z(zDegrees * degreesToRadians, osg::Vec3f(0.f, 0.f, 1.f));
-@@ -2791,6 +3489,62 @@ namespace MWRender
+@@ -2791,6 +3495,62 @@ namespace MWRender
              return helper.get();
          }
  
@@ -4221,7 +4227,7 @@ index 49a7175149..bc2c875dab 100644
          bool isFalloutStaticFaceChildPart(std::string_view model)
          {
              return shouldAttachFalloutStaticPartToHead(model) && !isFalloutStaticHeadgearPart(model)
-@@ -2970,6 +3724,7 @@ namespace MWRender
+@@ -2970,6 +3730,7 @@ namespace MWRender
              attached->accept(visitor);
              Log(Debug::Info) << "FNV/ESM4 diag: NPC part shape summary " << model << " for "
                               << ptr.getCellRef().getRefId() << " rigGeometry=" << visitor.mRigGeometryCount
@@ -4229,7 +4235,7 @@ index 49a7175149..bc2c875dab 100644
                               << " staticGeometry=" << visitor.mStaticGeometryCount
                               << " firstRigRoot='" << visitor.mFirstRigRootBone << "' firstRigBones="
                               << visitor.mFirstRigBoneCount << " sample=[" << visitor.mFirstRigBoneSample.str() << "]";
-@@ -3002,7 +3757,9 @@ namespace MWRender
+@@ -3002,7 +3763,9 @@ namespace MWRender
          {
              std::string lowered(model);
              Misc::StringUtils::lowerCaseInPlace(lowered);
@@ -4240,7 +4246,7 @@ index 49a7175149..bc2c875dab 100644
                  || lowered.find("characters\\head\\head") != std::string::npos
                  || containsAny(
                      lowered, { "headgear", "hat", "hair", "beard", "brow", "eye", "mouth", "teeth", "tongue" });
-@@ -3012,7 +3769,9 @@ namespace MWRender
+@@ -3012,7 +3775,9 @@ namespace MWRender
          {
              std::string lowered(model);
              Misc::StringUtils::lowerCaseInPlace(lowered);
@@ -4251,7 +4257,7 @@ index 49a7175149..bc2c875dab 100644
                  || lowered.find("characters\\head\\head") != std::string::npos
                  || containsAny(lowered, { "beard", "brow", "eye", "mouth", "teeth", "tongue" });
          }
-@@ -3121,6 +3880,106 @@ namespace MWRender
+@@ -3121,6 +3886,108 @@ namespace MWRender
              return cloned;
          }
  
@@ -4283,6 +4289,8 @@ index 49a7175149..bc2c875dab 100644
 +            }
 +            else if (isFalloutScalpHairModel(lowered))
 +                applyScaleOverride("OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS");
++            else if (isFalloutMouthSurfaceModel(lowered))
++                applyScaleOverride("OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_MOUTH_PARTS");
 +            else if (isFalloutBareHandSurfaceModel(lowered) || isStarfieldHumanHandSurfaceModelLowered(lowered))
 +                applyScaleOverride("OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS");
 +            if (scale <= 0.f || std::abs(scale - 1.f) < 0.001f)
@@ -4358,7 +4366,7 @@ index 49a7175149..bc2c875dab 100644
          void logFalloutAttachmentBounds(osg::Node* attached, osg::Group* attachNode, osg::Group* headNode,
              std::string_view model, const MWWorld::Ptr& ptr)
          {
-@@ -4162,9 +5021,65 @@ namespace MWRender
+@@ -4162,9 +5029,65 @@ namespace MWRender
          : Animation(ptr, std::move(parentNode), resourceSystem)
      {
          const std::string skeletonModel = mPtr.getClass().getCorrectedModel(mPtr);
@@ -4426,7 +4434,7 @@ index 49a7175149..bc2c875dab 100644
          if (traits != nullptr && traits->mIsFONV)
          {
              const NodeMap& currentNodeMap = getNodeMap();
-@@ -4202,7 +5117,21 @@ namespace MWRender
+@@ -4202,7 +5125,21 @@ namespace MWRender
                      return;
                  Log(Debug::Info) << "FNV/ESM4 diag: adding FONV NPC " << reason << " animation source " << kfPath
                                   << " for " << traits->mEditorId;
@@ -4449,7 +4457,7 @@ index 49a7175149..bc2c875dab 100644
                      addedAnimationSource = addedAnimationSource || countsAsPrimary;
              };
  
-@@ -4306,21 +5235,50 @@ namespace MWRender
+@@ -4306,21 +5243,50 @@ namespace MWRender
      void ESM4NpcAnimation::updateParts()
      {
          if (mObjectRoot == nullptr)
@@ -4503,7 +4511,7 @@ index 49a7175149..bc2c875dab 100644
      }
  
      osg::ref_ptr<osg::Node> ESM4NpcAnimation::insertPart(
-@@ -4330,6 +5288,7 @@ namespace MWRender
+@@ -4330,6 +5296,7 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped empty NPC model part for "
                                  << mPtr.getCellRef().getRefId();
@@ -4511,7 +4519,7 @@ index 49a7175149..bc2c875dab 100644
              return nullptr;
          }
          if (Misc::StringUtils::ciEndsWith(model, ".egt") || Misc::StringUtils::ciEndsWith(model, ".egm")
-@@ -4337,9 +5296,32 @@ namespace MWRender
+@@ -4337,9 +5304,32 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped non-render NPC data part " << model << " for "
                                  << mPtr.getCellRef().getRefId();
@@ -4544,7 +4552,7 @@ index 49a7175149..bc2c875dab 100644
          const std::string loweredModel = Misc::StringUtils::lowerCase(std::string(model));
          if (std::getenv("OPENMW_FNV_PROOF_HIDE_FACE_HAIR") != nullptr && isFalloutFaceHairModel(loweredModel))
          {
-@@ -4378,13 +5360,53 @@ namespace MWRender
+@@ -4378,13 +5368,53 @@ namespace MWRender
                               << " for " << mPtr.getCellRef().getRefId();
              return nullptr;
          }
@@ -4599,7 +4607,7 @@ index 49a7175149..bc2c875dab 100644
          if (headAttachedStaticPart)
          {
              const std::string_view mode = headgearStaticPart ? std::string_view("headgear") : getFonvStaticFaceAttachMode(model);
-@@ -4443,9 +5465,46 @@ namespace MWRender
+@@ -4443,9 +5473,46 @@ namespace MWRender
              Log(Debug::Info) << "FNV/ESM4 diag: static head attachment mode=" << mode << " model="
                               << correctedModel.value() << " attachNode=" << attachNode->getName() << " for "
                               << mPtr.getCellRef().getRefId();
@@ -4647,7 +4655,7 @@ index 49a7175149..bc2c875dab 100644
          if (bareHandSurfacePart)
          {
              osg::Group* bip01 = nullptr;
-@@ -4490,6 +5549,43 @@ namespace MWRender
+@@ -4490,6 +5557,43 @@ namespace MWRender
                              << " to " << mPtr.getCellRef().getRefId() << " at " << attachNode->getName();
          FalloutPartShapeSummaryVisitor rigProbe;
          const_cast<osg::Node*>(templateNode.get())->accept(rigProbe);
@@ -4691,7 +4699,7 @@ index 49a7175149..bc2c875dab 100644
          osg::ref_ptr<const osg::Node> attachTemplateNode = templateNode;
          bool staticizedHeadPartRig = false;
          bool staticizedBareHandPartRig = false;
-@@ -4606,6 +5702,18 @@ namespace MWRender
+@@ -4606,6 +5710,18 @@ namespace MWRender
                               << correctedModel.value() << " to " << mPtr.getCellRef().getRefId()
                               << " rigGeometry=" << rigProbe.mRigGeometryCount << " master=" << rigPartMaster->getName();
          }
@@ -4710,7 +4718,7 @@ index 49a7175149..bc2c875dab 100644
          else
          {
              osg::Quat headgearAttitude;
-@@ -4631,7 +5739,18 @@ namespace MWRender
+@@ -4631,7 +5747,18 @@ namespace MWRender
                                   << " attachNode=" << attachNode->getName();
              }
          }
@@ -4730,7 +4738,7 @@ index 49a7175149..bc2c875dab 100644
          {
              const osg::Vec3f surfaceOffset = getFalloutHeadFrameSurfaceOffset(model, headgearStaticPart);
              const osg::Quat surfaceAttitude = getFalloutHeadFrameSurfaceAttitude(model, headgearStaticPart);
-@@ -4687,9 +5806,11 @@ namespace MWRender
+@@ -4687,9 +5814,11 @@ namespace MWRender
                  mouthDriverNode->addChild(attached);
              attached = mouthDriverNode;
              attached->setUpdateCallback(new FalloutProofMouthDriver(mPtr, correctedModel.value()));
@@ -4744,7 +4752,7 @@ index 49a7175149..bc2c875dab 100644
          if (!diffuseTexture.empty() && attached != nullptr)
          {
              Log(Debug::Info) << "FNV/ESM4 diag: overriding NPC part texture " << diffuseTexture << " on "
-@@ -4721,6 +5842,14 @@ namespace MWRender
+@@ -4721,6 +5850,14 @@ namespace MWRender
              Log(Debug::Info) << "FNV/ESM4 diag: enabled cutout alpha on " << cutoutAlpha.getAppliedCount()
                               << " hair/brow state(s) for " << correctedModel.value() << " on "
                               << mPtr.getCellRef().getRefId();
@@ -4759,7 +4767,28 @@ index 49a7175149..bc2c875dab 100644
          }
          if (attached != nullptr && isFalloutEyeSurfaceModel(correctedModel.value()))
          {
-@@ -4757,16 +5886,74 @@ namespace MWRender
+@@ -4735,12 +5872,18 @@ namespace MWRender
+         }
+         if (attached != nullptr && isFalloutMouthSurfaceModel(correctedModel.value()))
+         {
+-            TintMaterialVisitor mouthMaterial(osg::Vec4f(1.f, 1.f, 1.f, 1.f));
++            std::string loweredMouthModel = Misc::StringUtils::lowerCase(correctedModel.value());
++            const osg::Vec4f mouthColor = loweredMouthModel.find("tongue") != std::string::npos
++                ? osg::Vec4f(0.48f, 0.13f, 0.11f, 1.f)
++                : osg::Vec4f(1.f, 1.f, 1.f, 1.f);
++            TintMaterialVisitor mouthMaterial(mouthColor);
+             attached->accept(mouthMaterial);
+             DisableCullVisitor visitor;
+             attached->accept(visitor);
+             Log(Debug::Info) << "FNV/ESM4 diag: made mouth interior surface double-sided "
+-                             << correctedModel.value() << " for " << mPtr.getCellRef().getRefId();
++                             << correctedModel.value() << " color=(" << mouthColor.r() << "," << mouthColor.g()
++                             << "," << mouthColor.b() << "," << mouthColor.a() << ") for "
++                             << mPtr.getCellRef().getRefId();
+         }
+         if (attached != nullptr)
+         {
+@@ -4757,16 +5900,74 @@ namespace MWRender
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
          logFalloutFaceDrawableAudit(attached.get(), correctedModel.value(), mPtr);
@@ -4835,7 +4864,7 @@ index 49a7175149..bc2c875dab 100644
  
          const NodeMap& nodeMap = getNodeMap();
          osg::Group* attachNode = nullptr;
-@@ -4794,6 +5981,15 @@ namespace MWRender
+@@ -4794,6 +5995,15 @@ namespace MWRender
          logFalloutAttachmentBounds(
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
@@ -4851,7 +4880,7 @@ index 49a7175149..bc2c875dab 100644
          return attached;
      }
  
-@@ -4927,6 +6123,21 @@ namespace MWRender
+@@ -4927,6 +6137,21 @@ namespace MWRender
          if (!npcBodyNormalTexture.empty())
              Log(Debug::Info) << "FNV/ESM4 diag: using baked NPC body normal texture " << npcBodyNormalTexture
                               << " for " << traits.mEditorId;
@@ -4873,7 +4902,7 @@ index 49a7175149..bc2c875dab 100644
  
          const bool proofTargetActor = isFonvProofTargetActor(mPtr, traits);
          const bool proofActor = isEasyPeteProofActor(traits);
-@@ -5282,37 +6493,85 @@ namespace MWRender
+@@ -5282,37 +6507,85 @@ namespace MWRender
          std::vector<const ESM4::ArmorAddon*> armorAddons;
  
          auto findArmorAddons = [&](const ESM4::Armor* armor) {
@@ -4962,7 +4991,7 @@ index 49a7175149..bc2c875dab 100644
                  findArmorAddons(armor);
              else
                  Log(Debug::Error) << "Skin not found: " << ESM::RefId(race->mSkin);
-@@ -5326,20 +6585,114 @@ namespace MWRender
+@@ -5326,20 +6599,114 @@ namespace MWRender
                  [](auto x, auto y) { return x->mMalePriority > y->mMalePriority; });
  
          uint32_t usedParts = 0;
@@ -13089,7 +13118,7 @@ index fe38cc4cad..396679da19 100644
          RC_TallGrassShaderProperty,
          RC_TileShaderProperty,
 diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
-index a583941dee..baeb62edca 100644
+index a583941dee..76e2a6ff77 100644
 --- a/components/nifosg/nifloader.cpp
 +++ b/components/nifosg/nifloader.cpp
 @@ -1,12 +1,19 @@
@@ -13368,7 +13397,7 @@ index a583941dee..baeb62edca 100644
          std::string key = sequenceName;
          for (const Nif::ControlledBlock& block : sequence.mControlledBlocks)
          {
-@@ -332,6 +560,500 @@ namespace
+@@ -332,6 +560,527 @@ namespace
          return true;
      }
  
@@ -13521,7 +13550,11 @@ index a583941dee..baeb62edca 100644
 +        return path.find("actors/human/mesh/hairs/") != std::string::npos
 +            || path.find("actors/human/mesh/beards/") != std::string::npos
 +            || path.find("actors/human/characterassets/male/eyebrow") != std::string::npos
-+            || path.find("actors/human/characterassets/female/eyebrow") != std::string::npos;
++            || path.find("actors/human/characterassets/female/eyebrow") != std::string::npos
++            || path.find("actors/human/characterassets/male/eyelashes") != std::string::npos
++            || path.find("actors/human/characterassets/female/eyelashes") != std::string::npos
++            || path.find("actors/human/characterassets/male/eyes_tears") != std::string::npos
++            || path.find("actors/human/characterassets/female/eyes_tears") != std::string::npos;
 +    }
 +
 +    bool isStarfieldActorProofEyeSurface(std::string_view filename)
@@ -13535,8 +13568,21 @@ index a583941dee..baeb62edca 100644
 +
 +    osg::Vec4f getStarfieldActorProofBaseColor(std::string_view filename)
 +    {
-+        if (isStarfieldActorProofEyeSurface(filename))
++        const std::string path = Misc::StringUtils::lowerCase(filename);
++        if (isStarfieldActorProofEyeSurface(path))
 +            return osg::Vec4f(0.09f, 0.065f, 0.035f, 1.f);
++        if (path.find("actors/human/characterassets/male/eyelashes") != std::string::npos
++            || path.find("actors/human/characterassets/female/eyelashes") != std::string::npos)
++            return osg::Vec4f(0.055f, 0.04f, 0.025f, 1.f);
++        if (path.find("actors/human/characterassets/male/eyes_tears") != std::string::npos
++            || path.find("actors/human/characterassets/female/eyes_tears") != std::string::npos)
++            return osg::Vec4f(0.9f, 0.95f, 1.f, 0.08f);
++        if (path.find("actors/human/characterassets/male/teeth") != std::string::npos
++            || path.find("actors/human/characterassets/female/teeth") != std::string::npos)
++            return osg::Vec4f(0.88f, 0.82f, 0.68f, 1.f);
++        if (path.find("actors/human/characterassets/male/tongue") != std::string::npos
++            || path.find("actors/human/characterassets/female/tongue") != std::string::npos)
++            return osg::Vec4f(0.48f, 0.13f, 0.11f, 1.f);
 +        return osg::Vec4f(0.84f, 0.86f, 0.82f, 1.f);
 +    }
 +
@@ -13557,6 +13603,16 @@ index a583941dee..baeb62edca 100644
 +            return getStarfieldActorProofTexturePath("textures/actors/human/faces/eyebrows/eyebrows_fluffy_brown_color.dds");
 +        if (path.find("actors/human/characterassets/female/eyebrow") != std::string::npos)
 +            return getStarfieldActorProofTexturePath("textures/actors/human/faces/eyebrows/femaleeyebrows01_color.dds");
++        if (path.find("actors/human/characterassets/male/eyelashes") != std::string::npos)
++            return getStarfieldActorProofTexturePath("textures/actors/human/faces/eyelashes/malelashes01_color.dds");
++        if (path.find("actors/human/characterassets/female/eyelashes") != std::string::npos)
++            return getStarfieldActorProofTexturePath("textures/actors/human/faces/eyelashes/femalelashes01_color.dds");
++        if (path.find("actors/human/characterassets/male/eyes_tears") != std::string::npos
++            || path.find("actors/human/characterassets/female/eyes_tears") != std::string::npos)
++            return getStarfieldActorProofTexturePath("textures/actors/human/faces/eyes/eye_tear_color.dds");
++        if (path.find("actors/human/characterassets/male/teeth") != std::string::npos
++            || path.find("actors/human/characterassets/female/teeth") != std::string::npos)
++            return getStarfieldActorProofTexturePath("textures/actors/human/faces/teeth/nnteeth_color.dds");
 +        if (path.find("clothes/outfit_service_uniform_01/") != std::string::npos)
 +        {
 +            if (path.find("lowerbody") != std::string::npos)
@@ -13869,7 +13925,7 @@ index a583941dee..baeb62edca 100644
      bool isTypeBSGeometry(int type)
      {
          switch (type)
-@@ -345,6 +1067,74 @@ namespace
+@@ -345,6 +1094,74 @@ namespace
          return false;
      }
  
@@ -13944,7 +14000,7 @@ index a583941dee..baeb62edca 100644
      // Collect all properties affecting the given drawable that should be handled on drawable basis rather than on the
      // node hierarchy above it.
      void collectDrawableProperties(
-@@ -1279,6 +2069,15 @@ namespace NifOsg
+@@ -1279,6 +2096,15 @@ namespace NifOsg
              if (args.mRootNode && Misc::StringUtils::ciEqual(nifNode->mName, "Bounding Box"))
                  return nullptr;
  
@@ -13960,7 +14016,7 @@ index a583941dee..baeb62edca 100644
              osg::ref_ptr<osg::Group> node = createNode(nifNode);
  
              if (nifNode->recType == Nif::RC_NiBillboardNode)
-@@ -1416,7 +2215,6 @@ namespace NifOsg
+@@ -1416,7 +2242,6 @@ namespace NifOsg
              if (isGeometry && !args.mSkipMeshes)
              {
                  bool skip = false;
@@ -13968,7 +14024,7 @@ index a583941dee..baeb62edca 100644
                  if (isFalloutHiddenMorphShape(nifNode->mName)
                      && containsAny(filename, { "meshes/characters/", "meshes\\characters\\", "meshes/armor/",
                             "meshes\\armor\\", "characters/", "characters\\", "armor/", "armor\\" }))
-@@ -1742,6 +2540,8 @@ namespace NifOsg
+@@ -1742,6 +2567,8 @@ namespace NifOsg
              if (stateset)
              {
                  stateset->setTextureAttributeAndModes(texUnit, texture2d, osg::StateAttribute::ON);
@@ -13977,7 +14033,7 @@ index a583941dee..baeb62edca 100644
                  osg::ref_ptr<SceneUtil::TextureType> textureType = new SceneUtil::TextureType(name);
                  textureType = shareAttribute(textureType);
                  stateset->setTextureAttributeAndModes(texUnit, textureType, osg::StateAttribute::ON);
-@@ -1753,7 +2553,32 @@ namespace NifOsg
+@@ -1753,7 +2580,32 @@ namespace NifOsg
          osg::ref_ptr<osg::Texture2D> attachExternalTexture(const std::string& name, const std::string& path, bool wrapS,
              bool wrapT, unsigned int uvSet, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
          {
@@ -14011,7 +14067,7 @@ index a583941dee..baeb62edca 100644
          }
  
          osg::ref_ptr<osg::Texture2D> attachNiSourceTexture(const std::string& name, const Nif::NiSourceTexture* st,
-@@ -2380,7 +3205,11 @@ namespace NifOsg
+@@ -2380,7 +3232,11 @@ namespace NifOsg
              if (niGeometry->mData.empty())
                  return;
  
@@ -14023,7 +14079,7 @@ index a583941dee..baeb62edca 100644
              if (!niGeometry->mSkin.empty())
              {
                  const Nif::NiSkinInstance* skin = niGeometry->mSkin.getPtr();
-@@ -2388,10 +3217,10 @@ namespace NifOsg
+@@ -2388,10 +3244,10 @@ namespace NifOsg
                  hasPartitions = partitions != nullptr;
                  if (hasPartitions)
                  {
@@ -14035,7 +14091,7 @@ index a583941dee..baeb62edca 100644
                      const bool logDismemberParts = dismemberSkin != nullptr
                          && (filename.find("meshes/characters/") != std::string::npos
                              || filename.find("meshes/armor/") != std::string::npos
-@@ -2423,6 +3252,8 @@ namespace NifOsg
+@@ -2423,6 +3279,8 @@ namespace NifOsg
  
                          const Nif::NiSkinPartition::Partition& partition = partitions->mPartitions[partitionIndex];
                          const std::vector<unsigned short>& trueTriangles = partition.mTrueTriangles;
@@ -14044,7 +14100,7 @@ index a583941dee..baeb62edca 100644
                          if (!trueTriangles.empty())
                          {
                              geometry->addPrimitiveSet(new osg::DrawElementsUShort(
-@@ -2440,41 +3271,56 @@ namespace NifOsg
+@@ -2440,41 +3298,56 @@ namespace NifOsg
              }
  
              const Nif::NiGeometryData* niGeometryData = niGeometry->mData.getPtr();
@@ -14117,7 +14173,7 @@ index a583941dee..baeb62edca 100644
              }
  
              const auto& vertices = niGeometryData->mVertices;
-@@ -2488,6 +3334,24 @@ namespace NifOsg
+@@ -2488,6 +3361,24 @@ namespace NifOsg
              if (!colors.empty())
                  geometry->setColorArray(new osg::Vec4Array(colors.size(), colors.data()), osg::Array::BIND_PER_VERTEX);
  
@@ -14142,7 +14198,7 @@ index a583941dee..baeb62edca 100644
              const auto& uvlist = niGeometryData->mUVList;
              int textureStage = 0;
              for (std::vector<unsigned int>::const_iterator it = boundTextures.begin(); it != boundTextures.end();
-@@ -2517,7 +3381,8 @@ namespace NifOsg
+@@ -2517,7 +3408,8 @@ namespace NifOsg
                  drawableProps.emplace_back(niGeometry->mShaderProperty.getPtr());
              if (!niGeometry->mAlphaProperty.empty())
                  drawableProps.emplace_back(niGeometry->mAlphaProperty.getPtr());
@@ -14152,7 +14208,7 @@ index a583941dee..baeb62edca 100644
          }
  
          void handleNiGeometry(const Nif::NiAVObject* nifNode, const Nif::Parent* parent, osg::Group* parentNode,
-@@ -2648,6 +3513,7 @@ namespace NifOsg
+@@ -2648,6 +3540,7 @@ namespace NifOsg
              }
  
              drawable->setName(nifNode->mName);
@@ -14160,7 +14216,7 @@ index a583941dee..baeb62edca 100644
              parentNode->addChild(drawable);
          }
  
-@@ -2659,8 +3525,305 @@ namespace NifOsg
+@@ -2659,8 +3552,305 @@ namespace NifOsg
  
              auto bsTriShape = static_cast<const Nif::BSTriShape*>(nifNode);
              const std::vector<unsigned short>& triangles = bsTriShape->mTriangles;
@@ -14466,7 +14522,7 @@ index a583941dee..baeb62edca 100644
  
              osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
              geometry->addPrimitiveSet(
-@@ -2782,10 +3945,277 @@ namespace NifOsg
+@@ -2782,10 +3972,277 @@ namespace NifOsg
                  drawableProps.emplace_back(bsTriShape->mShaderProperty.getPtr());
              if (!bsTriShape->mAlphaProperty.empty())
                  drawableProps.emplace_back(bsTriShape->mAlphaProperty.getPtr());
@@ -14745,7 +14801,7 @@ index a583941dee..baeb62edca 100644
          }
  
          osg::BlendFunc::BlendFuncMode getBlendMode(int mode) const
-@@ -3364,6 +4794,9 @@ namespace NifOsg
+@@ -3364,6 +4821,9 @@ namespace NifOsg
              const std::string& nodeName, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
          {
              const unsigned int uvSet = 0;
@@ -14755,7 +14811,7 @@ index a583941dee..baeb62edca 100644
  
              for (size_t i = 0; i < textureSet->mTextures.size(); ++i)
              {
-@@ -3380,6 +4813,14 @@ namespace NifOsg
+@@ -3380,6 +4840,14 @@ namespace NifOsg
                              "normalMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
                      case Nif::BSShaderTextureSet::TextureType::Glow:
@@ -14770,7 +14826,7 @@ index a583941dee..baeb62edca 100644
                          attachExternalTexture(
                              "emissiveMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
-@@ -3584,6 +5025,55 @@ namespace NifOsg
+@@ -3584,6 +5052,55 @@ namespace NifOsg
                      handleDepthFlags(stateset, texprop->depthTest(), texprop->depthWrite());
                      break;
                  }
@@ -14826,7 +14882,7 @@ index a583941dee..baeb62edca 100644
                  case Nif::RC_BSLightingShaderProperty:
                  {
                      auto texprop = static_cast<const Nif::BSLightingShaderProperty*>(property);
-@@ -3722,7 +5212,8 @@ namespace NifOsg
+@@ -3722,7 +5239,8 @@ namespace NifOsg
          }
  
          void applyDrawableProperties(osg::Node* node, const std::vector<const Nif::NiProperty*>& properties,
@@ -14836,7 +14892,7 @@ index a583941dee..baeb62edca 100644
          {
              // Specular lighting is enabled by default, but there's a quirk...
              bool specEnabled = true;
-@@ -3742,6 +5233,16 @@ namespace NifOsg
+@@ -3742,6 +5260,16 @@ namespace NifOsg
              auto lightmode = Nif::NiVertexColorProperty::LightMode::LightMode_EmiAmbDif;
              float emissiveMult = 1.f;
              float specStrength = 1.f;
@@ -14853,7 +14909,7 @@ index a583941dee..baeb62edca 100644
  
              for (const Nif::NiProperty* property : properties)
              {
-@@ -3757,6 +5258,7 @@ namespace NifOsg
+@@ -3757,6 +5285,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiMaterialProperty:
                      {
@@ -14861,7 +14917,7 @@ index a583941dee..baeb62edca 100644
                          const Nif::NiMaterialProperty* matprop = static_cast<const Nif::NiMaterialProperty*>(property);
  
                          mat->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(matprop->mDiffuse, matprop->mAlpha));
-@@ -3780,6 +5282,7 @@ namespace NifOsg
+@@ -3780,6 +5309,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiVertexColorProperty:
                      {
@@ -14869,7 +14925,7 @@ index a583941dee..baeb62edca 100644
                          const Nif::NiVertexColorProperty* vertprop
                              = static_cast<const Nif::NiVertexColorProperty*>(property);
  
-@@ -3822,6 +5325,7 @@ namespace NifOsg
+@@ -3822,6 +5352,7 @@ namespace NifOsg
                      }
                      case Nif::RC_NiAlphaProperty:
                      {
@@ -14877,7 +14933,7 @@ index a583941dee..baeb62edca 100644
                          const Nif::NiAlphaProperty* alphaprop = static_cast<const Nif::NiAlphaProperty*>(property);
                          handleAlphaBlending(alphaprop->useAlphaBlending(), alphaprop->sourceBlendMode(),
                              alphaprop->destinationBlendMode(), !alphaprop->noSorter(), hasSortAlpha, *node);
-@@ -3831,15 +5335,21 @@ namespace NifOsg
+@@ -3831,15 +5362,21 @@ namespace NifOsg
                      }
                      case Nif::RC_BSShaderPPLightingProperty:
                      {
@@ -14899,7 +14955,7 @@ index a583941dee..baeb62edca 100644
                              handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
                              if (shaderMat->mShaderType == Bgsm::ShaderType::Lighting)
                              {
-@@ -3863,9 +5373,12 @@ namespace NifOsg
+@@ -3863,9 +5400,12 @@ namespace NifOsg
                      }
                      case Nif::RC_BSEffectShaderProperty:
                      {
@@ -14912,7 +14968,7 @@ index a583941dee..baeb62edca 100644
                              handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
                              break;
                          }
-@@ -3938,6 +5451,65 @@ namespace NifOsg
+@@ -3938,6 +5478,65 @@ namespace NifOsg
              if (specStrength != 1.f)
                  node->getOrCreateStateSet()->addUniform(new osg::Uniform("specStrength", specStrength));
  
