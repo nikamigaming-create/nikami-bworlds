@@ -10,8 +10,12 @@ param(
     [int]$WindowCaptureSeconds = 0,
     [int]$TelemetryInterval = 30,
     [int]$RefTelemetryLimit = 2000,
+    [int]$ScreenshotReadyFrames = -1,
     [int]$Esm4GridRadius = -1,
     [switch]$NoTelemetry,
+    [switch]$PreserveNativeMaterials,
+    [switch]$FullbrightNativeMaterials,
+    [switch]$FullbrightActorMaterialsOnly,
     [switch]$DisableActors,
     [switch]$DisableSky,
     [switch]$AllowOsgUpdateTraversal,
@@ -153,6 +157,149 @@ function New-ProofRunConfig($World, [string]$WorldRunDir, [string]$UserDataDir) 
         dataLocalDirectory = (Resolve-Path -LiteralPath $dataLocalDir).Path
         openmwCfg = (Resolve-Path -LiteralPath $cfgPath).Path
     }
+}
+
+function Get-OpenMwConfigDataDirectories([string]$OpenMwCfg) {
+    $dirs = New-Object System.Collections.Generic.List[string]
+    foreach ($line in Get-Content -LiteralPath $OpenMwCfg) {
+        $match = [regex]::Match($line, '^\s*data\s*=\s*(?<path>.+?)\s*$')
+        if (-not $match.Success) {
+            continue
+        }
+        $path = ($match.Groups["path"].Value -replace '/', '\').Trim()
+        if (-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -LiteralPath $path)) {
+            $dirs.Add((Resolve-Path -LiteralPath $path).Path)
+        }
+    }
+    return @($dirs.ToArray() | Select-Object -Unique)
+}
+
+function Find-StarfieldTextureArchive([string[]]$DataDirectories, [string]$RelativeTexturePath, [string]$BsaTool) {
+    foreach ($dataDir in $DataDirectories) {
+        $archives = Get-ChildItem -LiteralPath $dataDir -File -Filter "Starfield - Textures*.ba2" -ErrorAction SilentlyContinue |
+            Sort-Object Name
+        foreach ($archive in $archives) {
+            $match = & $BsaTool list $archive.FullName 2>$null |
+                Select-String -SimpleMatch $RelativeTexturePath |
+                Select-Object -First 1
+            if ($null -ne $match) {
+                return $archive.FullName
+            }
+        }
+    }
+    return ""
+}
+
+function Convert-StarfieldActorProofTextures([string]$OpenMwCfg, [string]$DataLocalDirectory, [string]$BinaryRoot) {
+    $bsaTool = Join-Path $BinaryRoot "bsatool.exe"
+    if (-not (Test-Path -LiteralPath $bsaTool)) {
+        Write-Warning "Starfield actor texture cache skipped: missing bsatool.exe at $bsaTool"
+        return 0
+    }
+
+    $dataDirs = @(Get-OpenMwConfigDataDirectories -OpenMwCfg $OpenMwCfg)
+    if ($dataDirs.Count -eq 0) {
+        Write-Warning "Starfield actor texture cache skipped: no data= directories in $OpenMwCfg"
+        return 0
+    }
+
+    $textures = @(
+        "textures/actors/human/faces/chargen/male_default_sk3_color.dds",
+        "textures/actors/human/faces/chargen/female_default_sk3_color.dds",
+        "textures/actors/human/faces/beards/beard_shared_brown_color.dds",
+        "textures/actors/human/faces/hair/afro_hair_shared_brown_color.dds",
+        "textures/actors/human/faces/hair/short_hair_shared_brown_color.dds",
+        "textures/actors/human/faces/eyebrows/eyebrows_fluffy_brown_color.dds",
+        "textures/actors/human/faces/eyebrows/femaleeyebrows01_color.dds"
+    )
+    $extractRoot = Join-Path $DataLocalDirectory "__starfield_texture_extract"
+    $converted = 0
+    $converter = @'
+import sys
+from pathlib import Path
+from PIL import Image
+
+src = Path(sys.argv[1])
+dst = Path(sys.argv[2])
+dst.parent.mkdir(parents=True, exist_ok=True)
+image = Image.open(src)
+image.load()
+if image.mode not in ("RGB", "RGBA"):
+    image = image.convert("RGBA")
+image.save(dst)
+'@
+
+    foreach ($texture in $textures) {
+        $pngRelative = $texture -replace '\.dds$', '.png'
+        $pngDestination = Join-Path $DataLocalDirectory ($pngRelative -replace '/', '\')
+        if (Test-Path -LiteralPath $pngDestination) {
+            $converted++
+            continue
+        }
+
+        $archive = Find-StarfieldTextureArchive -DataDirectories $dataDirs -RelativeTexturePath $texture -BsaTool $bsaTool
+        if ([string]::IsNullOrWhiteSpace($archive)) {
+            Write-Warning "Starfield actor texture cache: not found in Starfield texture BA2s: $texture"
+            continue
+        }
+
+        New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
+        & $bsaTool extract -f $archive $texture $extractRoot | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Starfield actor texture cache: extraction failed for $texture from $archive"
+            continue
+        }
+
+        $extracted = Join-Path $extractRoot ($texture -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $extracted)) {
+            Write-Warning "Starfield actor texture cache: extracted texture missing: $extracted"
+            continue
+        }
+
+        $decodeOk = $false
+        $pythonError = Join-Path $extractRoot "python-dds-decode.err"
+        $nativeErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $converter | python - $extracted $pngDestination 2>$pythonError | Out-Null
+            $pythonExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $nativeErrorActionPreference
+        }
+        if ($pythonExitCode -eq 0 -and (Test-Path -LiteralPath $pngDestination)) {
+            $decodeOk = $true
+        }
+        else {
+            Remove-Item -LiteralPath $pngDestination -Force -ErrorAction SilentlyContinue
+            $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -ne $ffmpeg) {
+                $ffmpegError = Join-Path $extractRoot "ffmpeg-dds-decode.err"
+                $nativeErrorActionPreference = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
+                try {
+                    & $ffmpeg.Source -hide_banner -loglevel error -y -i $extracted -frames:v 1 -update 1 $pngDestination 2>$ffmpegError | Out-Null
+                    $ffmpegExitCode = $LASTEXITCODE
+                }
+                finally {
+                    $ErrorActionPreference = $nativeErrorActionPreference
+                }
+                if ($ffmpegExitCode -eq 0 -and (Test-Path -LiteralPath $pngDestination)) {
+                    $decodeOk = $true
+                }
+            }
+        }
+
+        if (-not $decodeOk) {
+            Write-Warning "Starfield actor texture cache: decode failed for $texture"
+            Remove-Item -LiteralPath $pngDestination -Force -ErrorAction SilentlyContinue
+            continue
+        }
+        $converted++
+    }
+
+    Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+    return $converted
 }
 
 function Copy-LatestScreenshot([string]$ScreenshotDir, [string]$DestinationDir, [string]$WorldId) {
@@ -1225,6 +1372,7 @@ $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY",
     "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY",
     "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY",
+    "OPENMW_WORLD_VIEWER_ALLOW_MISSING_SKIN_BONES",
     "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK",
     "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS",
     "OPENMW_WORLD_VIEWER_QUARANTINE_FO4_ACTOR_BSSUBINDEXTRISHAPE",
@@ -1232,6 +1380,12 @@ $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS",
     "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS",
     "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS",
+    "OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS",
+    "OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS",
+    "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS",
+    "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_PARTS",
+    "OPENMW_WORLD_VIEWER_DISABLE_TES5_STATIC_FACE_SURFACE_ANCHOR",
     "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS",
     "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS",
     "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS",
@@ -1267,7 +1421,10 @@ $results = New-Object System.Collections.Generic.List[object]
 try {
     [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_PROOF_SCREENSHOT_FRAME", $ScreenshotFrames, "Process")
-    if ([string]::IsNullOrWhiteSpace($ScreenshotFrames)) {
+    if ($ScreenshotReadyFrames -ge 0) {
+        [Environment]::SetEnvironmentVariable("OPENMW_PROOF_SCREENSHOT_READY_FRAMES", [string]$ScreenshotReadyFrames, "Process")
+    }
+    elseif ([string]::IsNullOrWhiteSpace($ScreenshotFrames)) {
         [Environment]::SetEnvironmentVariable("OPENMW_PROOF_SCREENSHOT_READY_FRAMES", "90", "Process")
     }
     else {
@@ -1290,12 +1447,33 @@ try {
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ALLOW_MISSING_SKIN_BONES", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "1", "Process")
-        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "1", "Process")
-        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "1", "Process")
+        if ($PreserveNativeMaterials) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", $null, "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", $null, "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "1", "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "1", "Process")
+        }
+        if ($FullbrightNativeMaterials -or $FullbrightActorMaterialsOnly) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", "1", "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", $null, "Process")
+        }
+        if ($FullbrightNativeMaterials) {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS", "1", "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS", "1", "Process")
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS", $null, "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS", $null, "Process")
+        }
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "1", "Process")
@@ -1346,7 +1524,7 @@ try {
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "1", "Process")
     }
     else {
-        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES")) {
+        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "OPENMW_WORLD_VIEWER_ALLOW_MISSING_SKIN_BONES", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES")) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
     }
@@ -1432,6 +1610,22 @@ try {
         $windowCapture = Join-Path $screensDir "$($world.id).window.png"
         New-Item -ItemType Directory -Force -Path $worldRunDir | Out-Null
         $runConfig = New-ProofRunConfig -World $world -WorldRunDir $worldRunDir -UserDataDir $userDataDir
+        if ($world.id -eq "starfield") {
+            $convertedStarfieldTextures = Convert-StarfieldActorProofTextures `
+                -OpenMwCfg $runConfig.openmwCfg `
+                -DataLocalDirectory $runConfig.dataLocalDirectory `
+                -BinaryRoot $BinaryRoot
+            if ($convertedStarfieldTextures -gt 0) {
+                [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", "1", "Process")
+                Write-Host "Starfield actor texture cache: $convertedStarfieldTextures PNGs"
+            }
+            else {
+                [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", $null, "Process")
+            }
+        }
+        else {
+            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", $null, "Process")
+        }
         $resourcesDir = Join-Path $BinaryRoot "resources"
 
         $argsList = New-Object System.Collections.Generic.List[string]
