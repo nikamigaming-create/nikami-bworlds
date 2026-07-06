@@ -906,6 +906,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $proofGroundSnaps = New-Object System.Collections.Generic.List[object]
     $proofActorBounds = New-Object System.Collections.Generic.List[object]
     $proofActorCameraRaycasts = New-Object System.Collections.Generic.List[object]
+    $proofActorOrbitCandidates = New-Object System.Collections.Generic.List[object]
     $problemRefs = New-Object System.Collections.Generic.List[object]
     $refsByType = [ordered]@{}
     $rayKinds = [ordered]@{}
@@ -1021,10 +1022,15 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $proofActorCameraRaycastAdjusted = 0
     $proofActorCameraRaycastClear = 0
     $proofActorCameraRaycastTooClose = 0
+    $proofActorOrbitCandidateEvents = 0
+    $proofActorOrbitCandidateClear = 0
+    $proofActorOrbitSelectedEvents = 0
+    $proofActorOrbitKeptEvents = 0
     $latestProofActorBounds = $null
     $latestProofGroundSnap = $null
     $latestProofActorStage = $null
     $latestProofActorCameraRaycast = $null
+    $latestProofActorOrbitSelection = $null
 
     foreach ($line in Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue) {
         $telemetryIndex = $line.IndexOf("World viewer telemetry:")
@@ -1550,6 +1556,44 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
             continue
         }
 
+        $proofActorOrbitCandidateIndex = $line.IndexOf("FNV/ESM4 proof: actor orbit camera candidate ")
+        if ($proofActorOrbitCandidateIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($proofActorOrbitCandidateIndex + "FNV/ESM4 proof: actor orbit camera candidate ".Length).Trim())
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "actor-camera-orbit-candidate" -Force
+            $proofActorOrbitCandidateEvents++
+            if ((Convert-WorldViewerInt (Get-PropertyValue $entry "blockers")) -eq 0) {
+                $proofActorOrbitCandidateClear++
+            }
+            if ($proofActorOrbitCandidates.Count -lt 120) {
+                $proofActorOrbitCandidates.Add($entry)
+            }
+            continue
+        }
+
+        $proofActorOrbitSelectedIndex = $line.IndexOf("FNV/ESM4 proof: actor orbit camera selected ")
+        if ($proofActorOrbitSelectedIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($proofActorOrbitSelectedIndex + "FNV/ESM4 proof: actor orbit camera selected ".Length).Trim())
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "actor-camera-orbit-selected" -Force
+            $proofActorOrbitSelectedEvents++
+            $latestProofActorOrbitSelection = $entry
+            if ($proofActorOrbitCandidates.Count -lt 120) {
+                $proofActorOrbitCandidates.Add($entry)
+            }
+            continue
+        }
+
+        $proofActorOrbitKeptIndex = $line.IndexOf("FNV/ESM4 proof: actor orbit camera kept ")
+        if ($proofActorOrbitKeptIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($proofActorOrbitKeptIndex + "FNV/ESM4 proof: actor orbit camera kept ".Length).Trim())
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "actor-camera-orbit-kept" -Force
+            $proofActorOrbitKeptEvents++
+            $latestProofActorOrbitSelection = $entry
+            if ($proofActorOrbitCandidates.Count -lt 120) {
+                $proofActorOrbitCandidates.Add($entry)
+            }
+            continue
+        }
+
         $refIndex = $line.IndexOf("World viewer ref:")
         if ($refIndex -ge 0) {
             $ref = Parse-WorldViewerKeyValues ($line.Substring($refIndex + "World viewer ref:".Length).Trim())
@@ -1727,10 +1771,15 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         proofActorCameraRaycastAdjusted = $proofActorCameraRaycastAdjusted
         proofActorCameraRaycastClear = $proofActorCameraRaycastClear
         proofActorCameraRaycastTooClose = $proofActorCameraRaycastTooClose
+        proofActorOrbitCandidateEvents = $proofActorOrbitCandidateEvents
+        proofActorOrbitCandidateClear = $proofActorOrbitCandidateClear
+        proofActorOrbitSelectedEvents = $proofActorOrbitSelectedEvents
+        proofActorOrbitKeptEvents = $proofActorOrbitKeptEvents
         latestProofActorStage = $latestProofActorStage
         latestProofGroundSnap = $latestProofGroundSnap
         latestProofActorBounds = $latestProofActorBounds
         latestProofActorCameraRaycast = $latestProofActorCameraRaycast
+        latestProofActorOrbitSelection = $latestProofActorOrbitSelection
         rayKinds = [pscustomobject]$rayKinds
         cells = @($cells.ToArray())
         rays = @($rays.ToArray())
@@ -1749,6 +1798,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         proofGroundSnaps = @($proofGroundSnaps.ToArray())
         proofActorBounds = @($proofActorBounds.ToArray())
         proofActorCameraRaycasts = @($proofActorCameraRaycasts.ToArray())
+        proofActorOrbitCandidates = @($proofActorOrbitCandidates.ToArray())
         problemRefs = @($problemRefs.ToArray())
     }
 }
@@ -2448,6 +2498,14 @@ try {
             }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.proofActorCameraRaycastEvents -gt 0) {
                 $notes.Add("Proof actor camera raycast: adjusted $($worldViewerTelemetry.proofActorCameraRaycastAdjusted), clear $($worldViewerTelemetry.proofActorCameraRaycastClear), tooClose $($worldViewerTelemetry.proofActorCameraRaycastTooClose)")
+            }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.proofActorOrbitCandidateEvents -gt 0) {
+                $selectedText = ""
+                if ($null -ne $worldViewerTelemetry.latestProofActorOrbitSelection) {
+                    $selection = $worldViewerTelemetry.latestProofActorOrbitSelection
+                    $selectedText = ", latest $($selection.phase) angle $($selection.angle) blockers $($selection.blockers)"
+                }
+                $notes.Add("Proof actor orbit raycast: candidates $($worldViewerTelemetry.proofActorOrbitCandidateEvents), clear $($worldViewerTelemetry.proofActorOrbitCandidateClear), selected $($worldViewerTelemetry.proofActorOrbitSelectedEvents), kept $($worldViewerTelemetry.proofActorOrbitKeptEvents)$selectedText")
             }
             $crashDump = Get-OpenMwCrashDumpInfo -Roots @($runConfig.configDirectory, $userDataDir) -Since $worldStartedAt.AddSeconds(-2)
             if ($null -ne $crashDump) {
