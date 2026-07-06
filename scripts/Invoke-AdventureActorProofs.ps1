@@ -37,6 +37,61 @@ function Format-ArgValue($Value) {
     return [string]$Value
 }
 
+function ConvertTo-HarnessParameterMap($ArgList) {
+    $switchNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @(
+        "NoTelemetry",
+        "DisableActors",
+        "DisableSky",
+        "AllowOsgUpdateTraversal",
+        "StripOsgUpdateCallbacks",
+        "StripOsgNodeUpdateCallbacks",
+        "StripOsgStateSetUpdateCallbacks",
+        "AllowBadScreenshots",
+        "ShowGui",
+        "DryRun",
+        "KeepRunning"
+    )) {
+        [void]$switchNames.Add($name)
+    }
+
+    $arrayNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @("WorldId", "StripOsgUpdateCallbackClass", "KeepOsgUpdateCallbackPath")) {
+        [void]$arrayNames.Add($name)
+    }
+
+    $map = @{}
+    for ($i = 0; $i -lt $ArgList.Count; $i++) {
+        $token = [string]$ArgList[$i]
+        if (-not $token.StartsWith("-")) {
+            throw "Unexpected harness argument value without parameter name: $token"
+        }
+        $name = $token.TrimStart("-")
+        if ($switchNames.Contains($name)) {
+            $map[$name] = $true
+            continue
+        }
+        if ($i + 1 -ge $ArgList.Count) {
+            throw "Harness parameter -$name is missing a value."
+        }
+        $value = [string]$ArgList[$i + 1]
+        $i++
+        if ($arrayNames.Contains($name)) {
+            if ($map.ContainsKey($name)) {
+                $existing = @($map[$name])
+                $map[$name] = @($existing + $value)
+            }
+            else {
+                $map[$name] = @($value)
+            }
+        }
+        else {
+            $map[$name] = $value
+        }
+    }
+    return $map
+}
+
 $absCatalog = (Resolve-Path -LiteralPath $CatalogPath).Path
 $catalog = Get-Content -LiteralPath $absCatalog -Raw | ConvertFrom-Json
 $worldFilter = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -96,31 +151,31 @@ foreach ($item in $targets) {
     $targetSlug = Convert-ToSlug "$worldId-$categoryId-$targetLabel"
     $targetProofRoot = Join-Path $ProofRoot $targetSlug
 
-    $args = New-Object System.Collections.Generic.List[object]
+    $harnessArgs = New-Object System.Collections.Generic.List[object]
     foreach ($value in @($target.proofHarnessArgs)) {
         if ($null -ne $value) {
-            $args.Add((Format-ArgValue $value)) | Out-Null
+            $harnessArgs.Add((Format-ArgValue $value)) | Out-Null
         }
     }
-    if ($args.Count -eq 0) {
-        $args.Add("-WorldId") | Out-Null
-        $args.Add($worldId) | Out-Null
+    if ($harnessArgs.Count -eq 0) {
+        $harnessArgs.Add("-WorldId") | Out-Null
+        $harnessArgs.Add($worldId) | Out-Null
     }
-    $args.Add("-ProofRoot") | Out-Null
-    $args.Add($targetProofRoot) | Out-Null
+    $harnessArgs.Add("-ProofRoot") | Out-Null
+    $harnessArgs.Add($targetProofRoot) | Out-Null
     if ($ShowGui) {
-        $args.Add("-ShowGui") | Out-Null
+        $harnessArgs.Add("-ShowGui") | Out-Null
     }
     if ($DisableSky) {
-        $args.Add("-DisableSky") | Out-Null
+        $harnessArgs.Add("-DisableSky") | Out-Null
     }
     if ($DryRun) {
-        $args.Add("-DryRun") | Out-Null
+        $harnessArgs.Add("-DryRun") | Out-Null
     }
 
     Write-Host ""
     Write-Host "[$worldId/$categoryId] $targetLabel"
-    Write-Host ("& {0} {1}" -f $driver, (($args.ToArray() | ForEach-Object {
+    Write-Host ("& {0} {1}" -f $driver, (($harnessArgs.ToArray() | ForEach-Object {
         if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
     }) -join " "))
 
@@ -139,14 +194,16 @@ foreach ($item in $targets) {
     if (Test-Path -LiteralPath $targetProofRoot) {
         $beforeRuns = @(Get-ChildItem -LiteralPath $targetProofRoot -Directory -ErrorAction SilentlyContinue)
     }
+    $beforeRunPaths = @($beforeRuns | ForEach-Object { $_.FullName })
 
-    & $driver @($args.ToArray())
+    $harnessParams = ConvertTo-HarnessParameterMap -ArgList $harnessArgs
+    & $driver @harnessParams
 
     $afterRuns = @()
     if (Test-Path -LiteralPath $targetProofRoot) {
         $afterRuns = @(Get-ChildItem -LiteralPath $targetProofRoot -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
     }
-    $latestRun = $afterRuns | Where-Object { $beforeRuns.FullName -notcontains $_.FullName } | Select-Object -First 1
+    $latestRun = $afterRuns | Where-Object { $beforeRunPaths -notcontains $_.FullName } | Select-Object -First 1
     if ($null -eq $latestRun) {
         $latestRun = $afterRuns | Select-Object -First 1
     }
