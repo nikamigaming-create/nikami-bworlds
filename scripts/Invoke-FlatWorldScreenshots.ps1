@@ -291,6 +291,8 @@ function Convert-StarfieldActorProofTextures([string]$OpenMwCfg, [string]$DataLo
         "textures/actors/human/faces/eyelashes/femalelashes01_color.dds",
         "textures/actors/human/faces/eyes/eye_tear_color.dds",
         "textures/actors/human/faces/teeth/nnteeth_color.dds",
+        "textures/actors/human/hands/defaulthandsm_sk3_color.dds",
+        "textures/actors/human/hands/defaulthandsf_sk3_color.dds",
         "textures/clothes/outfit_service_uniform_01/outfit_service_uniform_lowerbody_01_color.dds",
         "textures/clothes/outfit_service_uniform_01/outfit_service_uniform_sleeves_01_color.dds",
         "textures/clothes/outfit_service_uniform_01/outfit_service_uniform_upperbody_01_color.dds",
@@ -749,7 +751,7 @@ function Get-ProofLogSummary([string]$Path) {
         [pscustomobject]@{ Name = "shaderIssues"; Pattern = "shader|purple|magenta|fallback" },
         [pscustomobject]@{ Name = "actorIssues"; Pattern = "actor|npc|creature|skeleton|bone|animation|rig" },
         [pscustomobject]@{ Name = "terrainIssues"; Pattern = "World viewer terrain:|LandTexture not found|missing ESM4 LTEX|missing ESM4 LTEX diffuse" },
-        [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:|World viewer actor ledger:|World viewer mesh ledger:|World viewer texture ledger:|World viewer material ledger:|World viewer nif geometry ledger:|World viewer bs geometry|World viewer osg-update-callback" }
+        [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:|World viewer actor ledger:|World viewer mesh ledger:|World viewer texture ledger:|World viewer material ledger:|World viewer nif geometry ledger:|World viewer bs geometry|World viewer osg-update-callback|FNV/ESM4 proof:" }
     )
 
     $categories = [ordered]@{}
@@ -900,6 +902,10 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $meshLoadFailures = New-Object System.Collections.Generic.List[object]
     $staticSkeletonAttaches = New-Object System.Collections.Generic.List[object]
     $tes5FaceSurfaceFallbacks = New-Object System.Collections.Generic.List[object]
+    $proofActorStages = New-Object System.Collections.Generic.List[object]
+    $proofGroundSnaps = New-Object System.Collections.Generic.List[object]
+    $proofActorBounds = New-Object System.Collections.Generic.List[object]
+    $proofActorCameraRaycasts = New-Object System.Collections.Generic.List[object]
     $problemRefs = New-Object System.Collections.Generic.List[object]
     $refsByType = [ordered]@{}
     $rayKinds = [ordered]@{}
@@ -1003,6 +1009,22 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $centerRenderHits = 0
     $actorRayHits = 0
     $actorRayActorHits = 0
+    $proofActorStageEvents = 0
+    $proofGroundSnapEvents = 0
+    $proofGroundSnapHits = 0
+    $proofGroundSnapMisses = 0
+    $proofGroundSnapFailures = 0
+    $proofActorBoundsEvents = 0
+    $proofActorBoundsValid = 0
+    $proofActorBoundsInvalid = 0
+    $proofActorCameraRaycastEvents = 0
+    $proofActorCameraRaycastAdjusted = 0
+    $proofActorCameraRaycastClear = 0
+    $proofActorCameraRaycastTooClose = 0
+    $latestProofActorBounds = $null
+    $latestProofGroundSnap = $null
+    $latestProofActorStage = $null
+    $latestProofActorCameraRaycast = $null
 
     foreach ($line in Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue) {
         $telemetryIndex = $line.IndexOf("World viewer telemetry:")
@@ -1438,6 +1460,96 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
             continue
         }
 
+        $proofStageIndex = $line.IndexOf("FNV/ESM4 proof: staged actor")
+        if ($proofStageIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($proofStageIndex + "FNV/ESM4 proof: staged actor".Length).Trim())
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "stage" -Force
+            $proofActorStageEvents++
+            $latestProofActorStage = $entry
+            if ($proofActorStages.Count -lt 80) {
+                $proofActorStages.Add($entry)
+            }
+            continue
+        }
+
+        $proofGroundSnapIndex = $line.IndexOf("FNV/ESM4 proof: render-ground ")
+        if ($proofGroundSnapIndex -ge 0) {
+            $body = $line.Substring($proofGroundSnapIndex + "FNV/ESM4 proof: render-ground ".Length).Trim()
+            $entry = Parse-WorldViewerKeyValues $body
+            $status = "<unknown>"
+            if ($body.StartsWith("snapped actor")) {
+                $status = "snapped"
+                $proofGroundSnapHits++
+            }
+            elseif ($body.StartsWith("snap already grounded")) {
+                $status = "already-grounded"
+                $proofGroundSnapHits++
+            }
+            elseif ($body.StartsWith("snap missed")) {
+                $status = "missed"
+                $proofGroundSnapMisses++
+            }
+            elseif ($body.StartsWith("snap failed")) {
+                $status = "failed"
+                $proofGroundSnapFailures++
+            }
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "render-ground-snap" -Force
+            $entry | Add-Member -NotePropertyName status -NotePropertyValue $status -Force
+            $proofGroundSnapEvents++
+            $latestProofGroundSnap = $entry
+            if ($proofGroundSnaps.Count -lt 80) {
+                $proofGroundSnaps.Add($entry)
+            }
+            continue
+        }
+
+        $proofActorBoundsIndex = $line.IndexOf("FNV/ESM4 proof: actor render bounds")
+        if ($proofActorBoundsIndex -ge 0) {
+            $body = $line.Substring($proofActorBoundsIndex + "FNV/ESM4 proof: actor render bounds".Length).Trim()
+            $entry = Parse-WorldViewerKeyValues $body
+            $valid = -not $body.StartsWith("invalid")
+            $entry | Add-Member -NotePropertyName valid -NotePropertyValue $valid -Force
+            $proofActorBoundsEvents++
+            if ($valid) {
+                $proofActorBoundsValid++
+                $latestProofActorBounds = $entry
+            }
+            else {
+                $proofActorBoundsInvalid++
+            }
+            if ($proofActorBounds.Count -lt 80) {
+                $proofActorBounds.Add($entry)
+            }
+            continue
+        }
+
+        $proofActorCameraRaycastIndex = $line.IndexOf("FNV/ESM4 proof: actor orbit camera raycast ")
+        if ($proofActorCameraRaycastIndex -ge 0) {
+            $body = $line.Substring($proofActorCameraRaycastIndex + "FNV/ESM4 proof: actor orbit camera raycast ".Length).Trim()
+            $entry = Parse-WorldViewerKeyValues $body
+            $status = "<unknown>"
+            if ($body.StartsWith("adjusted")) {
+                $status = "adjusted"
+                $proofActorCameraRaycastAdjusted++
+            }
+            elseif ($body.StartsWith("clear")) {
+                $status = "clear"
+                $proofActorCameraRaycastClear++
+            }
+            elseif ($body.StartsWith("hit too close")) {
+                $status = "too-close"
+                $proofActorCameraRaycastTooClose++
+            }
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "actor-camera-raycast" -Force
+            $entry | Add-Member -NotePropertyName status -NotePropertyValue $status -Force
+            $proofActorCameraRaycastEvents++
+            $latestProofActorCameraRaycast = $entry
+            if ($proofActorCameraRaycasts.Count -lt 80) {
+                $proofActorCameraRaycasts.Add($entry)
+            }
+            continue
+        }
+
         $refIndex = $line.IndexOf("World viewer ref:")
         if ($refIndex -ge 0) {
             $ref = Parse-WorldViewerKeyValues ($line.Substring($refIndex + "World viewer ref:".Length).Trim())
@@ -1603,6 +1715,22 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         centerRenderHits = $centerRenderHits
         actorRayHits = $actorRayHits
         actorRayActorHits = $actorRayActorHits
+        proofActorStageEvents = $proofActorStageEvents
+        proofGroundSnapEvents = $proofGroundSnapEvents
+        proofGroundSnapHits = $proofGroundSnapHits
+        proofGroundSnapMisses = $proofGroundSnapMisses
+        proofGroundSnapFailures = $proofGroundSnapFailures
+        proofActorBoundsEvents = $proofActorBoundsEvents
+        proofActorBoundsValid = $proofActorBoundsValid
+        proofActorBoundsInvalid = $proofActorBoundsInvalid
+        proofActorCameraRaycastEvents = $proofActorCameraRaycastEvents
+        proofActorCameraRaycastAdjusted = $proofActorCameraRaycastAdjusted
+        proofActorCameraRaycastClear = $proofActorCameraRaycastClear
+        proofActorCameraRaycastTooClose = $proofActorCameraRaycastTooClose
+        latestProofActorStage = $latestProofActorStage
+        latestProofGroundSnap = $latestProofGroundSnap
+        latestProofActorBounds = $latestProofActorBounds
+        latestProofActorCameraRaycast = $latestProofActorCameraRaycast
         rayKinds = [pscustomobject]$rayKinds
         cells = @($cells.ToArray())
         rays = @($rays.ToArray())
@@ -1617,6 +1745,10 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         meshLoadFailures = @($meshLoadFailures.ToArray())
         staticSkeletonAttaches = @($staticSkeletonAttaches.ToArray())
         tes5FaceSurfaceFallbacks = @($tes5FaceSurfaceFallbacks.ToArray())
+        proofActorStages = @($proofActorStages.ToArray())
+        proofGroundSnaps = @($proofGroundSnaps.ToArray())
+        proofActorBounds = @($proofActorBounds.ToArray())
+        proofActorCameraRaycasts = @($proofActorCameraRaycasts.ToArray())
         problemRefs = @($problemRefs.ToArray())
     }
 }
@@ -2305,6 +2437,18 @@ try {
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.materialLedgerEvents -gt 0) {
                 $notes.Add("Material ledger: textureUnits $($worldViewerTelemetry.materialWithTextureUnits)/$($worldViewerTelemetry.materialLedgerEvents), shaderRequired $($worldViewerTelemetry.materialShaderRequired), colorModeOff $($worldViewerTelemetry.materialColorModeOff), alphaSort $($worldViewerTelemetry.materialWithAlphaSort)")
             }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.proofActorBoundsValid -gt 0 -and $null -ne $worldViewerTelemetry.latestProofActorBounds) {
+                $bounds = $worldViewerTelemetry.latestProofActorBounds
+                $centerText = if ($null -ne (Get-PropertyValue $bounds "center")) { [string](Get-PropertyValue $bounds "center") } elseif ($null -ne (Get-PropertyValue $bounds "focus")) { "focus $([string](Get-PropertyValue $bounds "focus"))" } else { "<unknown>" }
+                $bottomText = if ($null -ne (Get-PropertyValue $bounds "bottomDelta")) { ", bottomDelta $([string](Get-PropertyValue $bounds "bottomDelta"))" } else { "" }
+                $notes.Add("Proof actor bounds: size $($bounds.size), center $centerText$bottomText")
+            }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.proofGroundSnapEvents -gt 0) {
+                $notes.Add("Proof render-ground snap: hits $($worldViewerTelemetry.proofGroundSnapHits), misses $($worldViewerTelemetry.proofGroundSnapMisses), failures $($worldViewerTelemetry.proofGroundSnapFailures)")
+            }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.proofActorCameraRaycastEvents -gt 0) {
+                $notes.Add("Proof actor camera raycast: adjusted $($worldViewerTelemetry.proofActorCameraRaycastAdjusted), clear $($worldViewerTelemetry.proofActorCameraRaycastClear), tooClose $($worldViewerTelemetry.proofActorCameraRaycastTooClose)")
+            }
             $crashDump = Get-OpenMwCrashDumpInfo -Roots @($runConfig.configDirectory, $userDataDir) -Since $worldStartedAt.AddSeconds(-2)
             if ($null -ne $crashDump) {
                 $notes.Add("crash dump detected: $($crashDump.path)")
@@ -2322,8 +2466,8 @@ try {
                     if ($worldViewerTelemetry.cellRendered -le 0 -and $worldViewerTelemetry.loggedRenderedRefs -le 0) {
                         $telemetryRejectReasons.Add("telemetry found no rendered refs")
                     }
-                    if ($worldViewerTelemetry.groundRayHits -le 0) {
-                        $telemetryRejectReasons.Add("ground ray did not hit world/heightmap/water")
+                    if ($worldViewerTelemetry.groundRayHits -le 0 -and $worldViewerTelemetry.proofGroundSnapHits -le 0) {
+                        $telemetryRejectReasons.Add("ground ray did not hit world/heightmap/water and proof render-ground snap did not hit")
                     }
                     if ($worldViewerTelemetry.centerRenderHits -le 0) {
                         $telemetryRejectReasons.Add("center render ray hit nothing")
