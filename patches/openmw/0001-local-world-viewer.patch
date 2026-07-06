@@ -3103,7 +3103,7 @@ index 8575f471a0..e480eebb38 100644
          }
      }
 diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
-index 49a7175149..6b9fe1fd40 100644
+index 49a7175149..5541db03cb 100644
 --- a/apps/openmw/mwrender/esm4npcanimation.cpp
 +++ b/apps/openmw/mwrender/esm4npcanimation.cpp
 @@ -28,6 +28,7 @@
@@ -3401,7 +3401,68 @@ index 49a7175149..6b9fe1fd40 100644
          bool shouldAttachFalloutStaticPartToHead(std::string_view model)
          {
              std::string lowered(model);
-@@ -2970,6 +3202,7 @@ namespace MWRender
+@@ -2791,6 +3023,60 @@ namespace MWRender
+             return helper.get();
+         }
+ 
++        bool tes5StaticFaceSurfaceFallbackEnabled()
++        {
++            return !worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_DISABLE_TES5_STATIC_FACE_SURFACE_ANCHOR");
++        }
++
++        bool tes5UnstableFaceSurfaceQuarantineEnabled()
++        {
++            return !worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_DISABLE_TES5_UNSTABLE_FACE_SURFACE_QUARANTINE");
++        }
++
++        bool isTes5UnstableStaticFaceSurfaceModel(std::string_view model)
++        {
++            std::string lowered(model);
++            Misc::StringUtils::lowerCaseInPlace(lowered);
++            return isFalloutEyeModel(lowered) || lowered.find("mouth") != std::string::npos
++                || lowered.find("teeth") != std::string::npos || lowered.find("tongue") != std::string::npos;
++        }
++
++        osg::Vec3f getTes5StaticFaceSurfacePosition(std::string_view model)
++        {
++            std::string lowered(model);
++            Misc::StringUtils::lowerCaseInPlace(lowered);
++            const bool child = lowered.find("child") != std::string::npos;
++            return osg::Vec3f(readFalloutProofFloat("OPENMW_TES5_STATIC_FACE_SURFACE_X", 0.f),
++                readFalloutProofFloat("OPENMW_TES5_STATIC_FACE_SURFACE_Y", child ? 0.25f : 1.3f),
++                readFalloutProofFloat("OPENMW_TES5_STATIC_FACE_SURFACE_Z", 120.7f));
++        }
++
++        osg::Group* makeTes5StaticFaceSurfaceFrameHelper(osg::Group& parent, std::string_view model)
++        {
++            constexpr std::string_view helperName = "TES5 Static Face Surface Frame";
++            const osg::Vec3f position = getTes5StaticFaceSurfacePosition(model);
++            for (unsigned int i = 0; i < parent.getNumChildren(); ++i)
++            {
++                osg::PositionAttitudeTransform* existing
++                    = dynamic_cast<osg::PositionAttitudeTransform*>(parent.getChild(i));
++                if (existing != nullptr && existing->getName() == std::string(helperName))
++                {
++                    existing->setPosition(position);
++                    existing->setAttitude(osg::Quat());
++                    return existing;
++                }
++            }
++
++            osg::ref_ptr<osg::PositionAttitudeTransform> helper = new osg::PositionAttitudeTransform;
++            helper->setName(std::string(helperName));
++            helper->setPosition(position);
++            parent.addChild(helper);
++            Log(Debug::Info) << "World viewer: inserted TES5 static face surface frame under " << parent.getName()
++                             << " offset=(" << position.x() << "," << position.y() << "," << position.z()
++                             << ") seedModel=" << model;
++            return helper.get();
++        }
++
+         bool isFalloutStaticFaceChildPart(std::string_view model)
+         {
+             return shouldAttachFalloutStaticPartToHead(model) && !isFalloutStaticHeadgearPart(model)
+@@ -2970,6 +3256,7 @@ namespace MWRender
              attached->accept(visitor);
              Log(Debug::Info) << "FNV/ESM4 diag: NPC part shape summary " << model << " for "
                               << ptr.getCellRef().getRefId() << " rigGeometry=" << visitor.mRigGeometryCount
@@ -3409,7 +3470,7 @@ index 49a7175149..6b9fe1fd40 100644
                               << " staticGeometry=" << visitor.mStaticGeometryCount
                               << " firstRigRoot='" << visitor.mFirstRigRootBone << "' firstRigBones="
                               << visitor.mFirstRigBoneCount << " sample=[" << visitor.mFirstRigBoneSample.str() << "]";
-@@ -4162,9 +4395,64 @@ namespace MWRender
+@@ -4162,9 +4449,64 @@ namespace MWRender
          : Animation(ptr, std::move(parentNode), resourceSystem)
      {
          const std::string skeletonModel = mPtr.getClass().getCorrectedModel(mPtr);
@@ -3476,7 +3537,7 @@ index 49a7175149..6b9fe1fd40 100644
          if (traits != nullptr && traits->mIsFONV)
          {
              const NodeMap& currentNodeMap = getNodeMap();
-@@ -4202,7 +4490,21 @@ namespace MWRender
+@@ -4202,7 +4544,21 @@ namespace MWRender
                      return;
                  Log(Debug::Info) << "FNV/ESM4 diag: adding FONV NPC " << reason << " animation source " << kfPath
                                   << " for " << traits->mEditorId;
@@ -3499,7 +3560,7 @@ index 49a7175149..6b9fe1fd40 100644
                      addedAnimationSource = addedAnimationSource || countsAsPrimary;
              };
  
-@@ -4306,21 +4608,48 @@ namespace MWRender
+@@ -4306,21 +4662,48 @@ namespace MWRender
      void ESM4NpcAnimation::updateParts()
      {
          if (mObjectRoot == nullptr)
@@ -3551,7 +3612,7 @@ index 49a7175149..6b9fe1fd40 100644
      }
  
      osg::ref_ptr<osg::Node> ESM4NpcAnimation::insertPart(
-@@ -4330,6 +4659,7 @@ namespace MWRender
+@@ -4330,6 +4713,7 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped empty NPC model part for "
                                  << mPtr.getCellRef().getRefId();
@@ -3559,7 +3620,7 @@ index 49a7175149..6b9fe1fd40 100644
              return nullptr;
          }
          if (Misc::StringUtils::ciEndsWith(model, ".egt") || Misc::StringUtils::ciEndsWith(model, ".egm")
-@@ -4337,9 +4667,30 @@ namespace MWRender
+@@ -4337,9 +4721,32 @@ namespace MWRender
          {
              Log(Debug::Verbose) << "FNV/ESM4 diag: skipped non-render NPC data part " << model << " for "
                                  << mPtr.getCellRef().getRefId();
@@ -3571,6 +3632,8 @@ index 49a7175149..6b9fe1fd40 100644
          const VFS::Path::Normalized correctedModel = Misc::ResourceHelpers::correctMeshPath(VFS::Path::Normalized(model));
 +        const VFS::Manager* vfs = mResourceSystem != nullptr ? mResourceSystem->getVFS() : nullptr;
 +        const bool modelExists = vfs != nullptr && vfs->exists(correctedModel);
++        const ESM4::Npc* traitsRecord = MWClass::ESM4Npc::getTraitsRecord(mPtr);
++        const bool tes5StaticPart = traitsRecord != nullptr && !traitsRecord->mIsTES4 && !traitsRecord->mIsFONV;
 +        {
 +            std::ostringstream details;
 +            details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
@@ -3590,7 +3653,7 @@ index 49a7175149..6b9fe1fd40 100644
          const std::string loweredModel = Misc::StringUtils::lowerCase(std::string(model));
          if (std::getenv("OPENMW_FNV_PROOF_HIDE_FACE_HAIR") != nullptr && isFalloutFaceHairModel(loweredModel))
          {
-@@ -4378,7 +4729,30 @@ namespace MWRender
+@@ -4378,13 +4785,53 @@ namespace MWRender
                               << " for " << mPtr.getCellRef().getRefId();
              return nullptr;
          }
@@ -3619,10 +3682,52 @@ index 49a7175149..6b9fe1fd40 100644
 +            logWorldViewerActorLedger(mPtr, "part-template-null", details.str());
 +            return nullptr;
 +        }
++        if (tes5StaticPart && tes5UnstableFaceSurfaceQuarantineEnabled()
++            && isTes5UnstableStaticFaceSurfaceModel(model))
++        {
++            std::ostringstream details;
++            details << "reason=\"tes5 unstable face surface\""
++                    << " model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
++                    << " vfsExists=" << modelExists
++                    << " template=1"
++                    << " actor=\"" << (traitsRecord != nullptr ? traitsRecord->mEditorId : std::string()) << "\"";
++            logWorldViewerActorLedger(mPtr, "part-quarantine", details.str());
++            Log(Debug::Info) << "World viewer: quarantined TES5 unstable face surface model="
++                             << correctedModel.value()
++                             << " actor=" << (traitsRecord != nullptr ? traitsRecord->mEditorId : std::string())
++                             << " reason=eye-mouth-surface";
++            return nullptr;
++        }
  
          osg::Group* attachNode = mObjectRoot.get();
          const NodeMap& nodeMap = getNodeMap();
-@@ -4490,6 +4864,43 @@ namespace MWRender
+         const bool headAttachedStaticPart = isFalloutStaticHeadAttachmentPart(model);
+         const bool headgearStaticPart = isFalloutStaticHeadgearPart(model);
+         const bool bareHandSurfacePart = isFalloutBareHandSurfaceModel(model);
++        bool tes5StaticFaceSurfaceFallback = false;
+         if (headAttachedStaticPart)
+         {
+             const std::string_view mode = headgearStaticPart ? std::string_view("headgear") : getFonvStaticFaceAttachMode(model);
+@@ -4444,7 +4891,17 @@ namespace MWRender
+                              << correctedModel.value() << " attachNode=" << attachNode->getName() << " for "
+                              << mPtr.getCellRef().getRefId();
+         }
+-        if (isFalloutStaticFaceChildPart(model) && attachNode != nullptr)
++        if (tes5StaticPart && isFalloutStaticFaceChildPart(model) && attachNode == mObjectRoot.get()
++            && tes5StaticFaceSurfaceFallbackEnabled())
++        {
++            attachNode = makeTes5StaticFaceSurfaceFrameHelper(*mObjectRoot, model);
++            tes5StaticFaceSurfaceFallback = true;
++            Log(Debug::Info) << "World viewer: TES5 static face surface fallback model=" << correctedModel.value()
++                             << " actor=" << (traitsRecord != nullptr ? traitsRecord->mEditorId : std::string())
++                             << " attachNode=" << attachNode->getName()
++                             << " nodeMap=" << nodeMap.size();
++        }
++        else if (isFalloutStaticFaceChildPart(model) && attachNode != nullptr)
+             attachNode = makeFalloutFaceSurfaceFrameHelper(*attachNode);
+         if (bareHandSurfacePart)
+         {
+@@ -4490,6 +4947,43 @@ namespace MWRender
                              << " to " << mPtr.getCellRef().getRefId() << " at " << attachNode->getName();
          FalloutPartShapeSummaryVisitor rigProbe;
          const_cast<osg::Node*>(templateNode.get())->accept(rigProbe);
@@ -3666,7 +3771,7 @@ index 49a7175149..6b9fe1fd40 100644
          osg::ref_ptr<const osg::Node> attachTemplateNode = templateNode;
          bool staticizedHeadPartRig = false;
          bool staticizedBareHandPartRig = false;
-@@ -4606,6 +5017,18 @@ namespace MWRender
+@@ -4606,6 +5100,18 @@ namespace MWRender
                               << correctedModel.value() << " to " << mPtr.getCellRef().getRefId()
                               << " rigGeometry=" << rigProbe.mRigGeometryCount << " master=" << rigPartMaster->getName();
          }
@@ -3685,7 +3790,21 @@ index 49a7175149..6b9fe1fd40 100644
          else
          {
              osg::Quat headgearAttitude;
-@@ -4757,16 +5180,74 @@ namespace MWRender
+@@ -4631,7 +5137,12 @@ namespace MWRender
+                                  << " attachNode=" << attachNode->getName();
+             }
+         }
+-        if (attached != nullptr && headAttachedStaticPart)
++        if (attached != nullptr && headAttachedStaticPart && tes5StaticFaceSurfaceFallback)
++        {
++            Log(Debug::Info) << "World viewer: skipped Fallout head-frame surface offset for TES5 static face part "
++                             << correctedModel.value() << " on " << mPtr.getCellRef().getRefId();
++        }
++        else if (attached != nullptr && headAttachedStaticPart)
+         {
+             const osg::Vec3f surfaceOffset = getFalloutHeadFrameSurfaceOffset(model, headgearStaticPart);
+             const osg::Quat surfaceAttitude = getFalloutHeadFrameSurfaceAttitude(model, headgearStaticPart);
+@@ -4757,16 +5268,74 @@ namespace MWRender
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
          logFalloutFaceDrawableAudit(attached.get(), correctedModel.value(), mPtr);
@@ -3761,7 +3880,7 @@ index 49a7175149..6b9fe1fd40 100644
  
          const NodeMap& nodeMap = getNodeMap();
          osg::Group* attachNode = nullptr;
-@@ -4794,6 +5275,15 @@ namespace MWRender
+@@ -4794,6 +5363,15 @@ namespace MWRender
          logFalloutAttachmentBounds(
              attached.get(), attachNode, findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" }),
              correctedModel.value(), mPtr);
@@ -3777,7 +3896,7 @@ index 49a7175149..6b9fe1fd40 100644
          return attached;
      }
  
-@@ -4927,6 +5417,21 @@ namespace MWRender
+@@ -4927,6 +5505,21 @@ namespace MWRender
          if (!npcBodyNormalTexture.empty())
              Log(Debug::Info) << "FNV/ESM4 diag: using baked NPC body normal texture " << npcBodyNormalTexture
                               << " for " << traits.mEditorId;
@@ -11176,7 +11295,7 @@ index e9306fa83f..2212b59439 100644
          void read(NIFStream* nif) override;
          void post(Reader& nif) override;
 diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
-index a583941dee..bb07beb8a5 100644
+index a583941dee..a8cff374ef 100644
 --- a/components/nifosg/nifloader.cpp
 +++ b/components/nifosg/nifloader.cpp
 @@ -1,12 +1,18 @@
@@ -11206,7 +11325,7 @@ index a583941dee..bb07beb8a5 100644
  
  // particle
  #include <osgParticle/BoxPlacer>
-@@ -148,6 +155,31 @@ namespace
+@@ -148,6 +155,42 @@ namespace
          return false;
      }
  
@@ -11235,10 +11354,21 @@ index a583941dee..bb07beb8a5 100644
 +            || worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
 +    }
 +
++    bool worldViewerMaterialTelemetryEnabled()
++    {
++        return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY")
++            || worldViewerMeshLoadTelemetryEnabled();
++    }
++
++    bool worldViewerGenerateMissingBSNormalsEnabled()
++    {
++        return worldViewerEnvEnabled("OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS");
++    }
++
      bool isAmbientEmbeddedAnimationPath(std::string_view filename)
      {
          return containsAny(filename,
-@@ -173,6 +205,21 @@ namespace
+@@ -173,6 +216,21 @@ namespace
              || name.find("bip01 root") != std::string::npos;
      }
  
@@ -11260,7 +11390,7 @@ index a583941dee..bb07beb8a5 100644
      bool isActivationOnlyAnimationPath(std::string_view filename)
      {
          return containsAny(filename,
-@@ -270,6 +317,9 @@ namespace
+@@ -270,6 +328,9 @@ namespace
          const bool ambientPath = isAmbientEmbeddedAnimationPath(filename);
          const bool falloutFlagPath = isFalloutFlagPath(filename);
  
@@ -11270,7 +11400,7 @@ index a583941dee..bb07beb8a5 100644
          std::string key = sequenceName;
          for (const Nif::ControlledBlock& block : sequence.mControlledBlocks)
          {
-@@ -332,6 +382,270 @@ namespace
+@@ -332,6 +393,270 @@ namespace
          return true;
      }
  
@@ -11541,7 +11671,7 @@ index a583941dee..bb07beb8a5 100644
      bool isTypeBSGeometry(int type)
      {
          switch (type)
-@@ -345,6 +659,74 @@ namespace
+@@ -345,6 +670,74 @@ namespace
          return false;
      }
  
@@ -11616,7 +11746,7 @@ index a583941dee..bb07beb8a5 100644
      // Collect all properties affecting the given drawable that should be handled on drawable basis rather than on the
      // node hierarchy above it.
      void collectDrawableProperties(
-@@ -1279,6 +1661,15 @@ namespace NifOsg
+@@ -1279,6 +1672,15 @@ namespace NifOsg
              if (args.mRootNode && Misc::StringUtils::ciEqual(nifNode->mName, "Bounding Box"))
                  return nullptr;
  
@@ -11632,7 +11762,7 @@ index a583941dee..bb07beb8a5 100644
              osg::ref_ptr<osg::Group> node = createNode(nifNode);
  
              if (nifNode->recType == Nif::RC_NiBillboardNode)
-@@ -1416,7 +1807,6 @@ namespace NifOsg
+@@ -1416,7 +1818,6 @@ namespace NifOsg
              if (isGeometry && !args.mSkipMeshes)
              {
                  bool skip = false;
@@ -11640,7 +11770,7 @@ index a583941dee..bb07beb8a5 100644
                  if (isFalloutHiddenMorphShape(nifNode->mName)
                      && containsAny(filename, { "meshes/characters/", "meshes\\characters\\", "meshes/armor/",
                             "meshes\\armor\\", "characters/", "characters\\", "armor/", "armor\\" }))
-@@ -1753,7 +2143,27 @@ namespace NifOsg
+@@ -1753,7 +2154,27 @@ namespace NifOsg
          osg::ref_ptr<osg::Texture2D> attachExternalTexture(const std::string& name, const std::string& path, bool wrapS,
              bool wrapT, unsigned int uvSet, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
          {
@@ -11669,7 +11799,7 @@ index a583941dee..bb07beb8a5 100644
          }
  
          osg::ref_ptr<osg::Texture2D> attachNiSourceTexture(const std::string& name, const Nif::NiSourceTexture* st,
-@@ -2380,7 +2790,11 @@ namespace NifOsg
+@@ -2380,7 +2801,11 @@ namespace NifOsg
              if (niGeometry->mData.empty())
                  return;
  
@@ -11681,7 +11811,7 @@ index a583941dee..bb07beb8a5 100644
              if (!niGeometry->mSkin.empty())
              {
                  const Nif::NiSkinInstance* skin = niGeometry->mSkin.getPtr();
-@@ -2388,10 +2802,10 @@ namespace NifOsg
+@@ -2388,10 +2813,10 @@ namespace NifOsg
                  hasPartitions = partitions != nullptr;
                  if (hasPartitions)
                  {
@@ -11693,7 +11823,7 @@ index a583941dee..bb07beb8a5 100644
                      const bool logDismemberParts = dismemberSkin != nullptr
                          && (filename.find("meshes/characters/") != std::string::npos
                              || filename.find("meshes/armor/") != std::string::npos
-@@ -2423,6 +2837,8 @@ namespace NifOsg
+@@ -2423,6 +2848,8 @@ namespace NifOsg
  
                          const Nif::NiSkinPartition::Partition& partition = partitions->mPartitions[partitionIndex];
                          const std::vector<unsigned short>& trueTriangles = partition.mTrueTriangles;
@@ -11702,7 +11832,7 @@ index a583941dee..bb07beb8a5 100644
                          if (!trueTriangles.empty())
                          {
                              geometry->addPrimitiveSet(new osg::DrawElementsUShort(
-@@ -2440,41 +2856,56 @@ namespace NifOsg
+@@ -2440,41 +2867,56 @@ namespace NifOsg
              }
  
              const Nif::NiGeometryData* niGeometryData = niGeometry->mData.getPtr();
@@ -11775,7 +11905,7 @@ index a583941dee..bb07beb8a5 100644
              }
  
              const auto& vertices = niGeometryData->mVertices;
-@@ -2488,6 +2919,24 @@ namespace NifOsg
+@@ -2488,6 +2930,24 @@ namespace NifOsg
              if (!colors.empty())
                  geometry->setColorArray(new osg::Vec4Array(colors.size(), colors.data()), osg::Array::BIND_PER_VERTEX);
  
@@ -11800,7 +11930,17 @@ index a583941dee..bb07beb8a5 100644
              const auto& uvlist = niGeometryData->mUVList;
              int textureStage = 0;
              for (std::vector<unsigned int>::const_iterator it = boundTextures.begin(); it != boundTextures.end();
-@@ -2659,8 +3108,224 @@ namespace NifOsg
+@@ -2517,7 +2977,8 @@ namespace NifOsg
+                 drawableProps.emplace_back(niGeometry->mShaderProperty.getPtr());
+             if (!niGeometry->mAlphaProperty.empty())
+                 drawableProps.emplace_back(niGeometry->mAlphaProperty.getPtr());
+-            applyDrawableProperties(parentNode, drawableProps, composite, !niGeometryData->mColors.empty(), animflags);
++            applyDrawableProperties(
++                parentNode, drawableProps, composite, !niGeometryData->mColors.empty(), animflags, &boundTextures);
+         }
+ 
+         void handleNiGeometry(const Nif::NiAVObject* nifNode, const Nif::Parent* parent, osg::Group* parentNode,
+@@ -2659,8 +3120,289 @@ namespace NifOsg
  
              auto bsTriShape = static_cast<const Nif::BSTriShape*>(nifNode);
              const std::vector<unsigned short>& triangles = bsTriShape->mTriangles;
@@ -11877,6 +12017,7 @@ index a583941dee..bb07beb8a5 100644
 +                    std::size_t invalidPrimitiveSets = 0;
 +                    unsigned int maxIndexSeen = 0;
 +                    const std::size_t vertexCount = niSkinPartitions->mVertexData.size();
++                    std::vector<unsigned int> fallbackTriangleIndices;
 +
 +                    auto addPartitionPrimitiveSet
 +                        = [&](osg::PrimitiveSet::Mode mode, const std::vector<unsigned short>& source,
@@ -11935,6 +12076,38 @@ index a583941dee..bb07beb8a5 100644
 +                              for (unsigned short index : *indices)
 +                                  draw->push_back(index);
 +                              geometry->addPrimitiveSet(draw);
++                              if (mode == osg::PrimitiveSet::TRIANGLES)
++                              {
++                                  for (std::size_t i = 0; i + 2 < indices->size(); i += 3)
++                                  {
++                                      fallbackTriangleIndices.push_back((*indices)[i]);
++                                      fallbackTriangleIndices.push_back((*indices)[i + 1]);
++                                      fallbackTriangleIndices.push_back((*indices)[i + 2]);
++                                  }
++                              }
++                              else if (mode == osg::PrimitiveSet::TRIANGLE_STRIP)
++                              {
++                                  for (std::size_t i = 2; i < indices->size(); ++i)
++                                  {
++                                      const unsigned int i0 = (*indices)[i - 2];
++                                      const unsigned int i1 = (*indices)[i - 1];
++                                      const unsigned int i2 = (*indices)[i];
++                                      if (i0 == i1 || i1 == i2 || i0 == i2)
++                                          continue;
++                                      if ((i % 2) == 0)
++                                      {
++                                          fallbackTriangleIndices.push_back(i0);
++                                          fallbackTriangleIndices.push_back(i1);
++                                          fallbackTriangleIndices.push_back(i2);
++                                      }
++                                      else
++                                      {
++                                          fallbackTriangleIndices.push_back(i1);
++                                          fallbackTriangleIndices.push_back(i0);
++                                          fallbackTriangleIndices.push_back(i2);
++                                      }
++                                  }
++                              }
 +                              ++partitionPrimitiveSets;
 +                          };
 +
@@ -11973,6 +12146,36 @@ index a583941dee..bb07beb8a5 100644
 +                            usedDynamicVertices = true;
 +                        }
 +                    }
++                    bool generatedNormals = false;
++                    if (normals.empty() && worldViewerGenerateMissingBSNormalsEnabled() && !vertices.empty()
++                        && !fallbackTriangleIndices.empty())
++                    {
++                        normals.assign(vertices.size(), osg::Vec3f());
++                        for (std::size_t i = 0; i + 2 < fallbackTriangleIndices.size(); i += 3)
++                        {
++                            const unsigned int i0 = fallbackTriangleIndices[i];
++                            const unsigned int i1 = fallbackTriangleIndices[i + 1];
++                            const unsigned int i2 = fallbackTriangleIndices[i + 2];
++                            if (i0 >= vertices.size() || i1 >= vertices.size() || i2 >= vertices.size())
++                                continue;
++                            const osg::Vec3f edge1 = vertices[i1] - vertices[i0];
++                            const osg::Vec3f edge2 = vertices[i2] - vertices[i0];
++                            osg::Vec3f normal = edge1 ^ edge2;
++                            if (normal.length2() <= 1e-10f)
++                                continue;
++                            normals[i0] += normal;
++                            normals[i1] += normal;
++                            normals[i2] += normal;
++                        }
++                        for (osg::Vec3f& normal : normals)
++                        {
++                            if (normal.length2() <= 1e-10f)
++                                normal.set(0.f, 0.f, 1.f);
++                            else
++                                normal.normalize();
++                        }
++                        generatedNormals = true;
++                    }
 +
 +                    if (!vertices.empty())
 +                        geometry->setVertexArray(new osg::Vec3Array(vertices.size(), vertices.data()));
@@ -11994,7 +12197,8 @@ index a583941dee..bb07beb8a5 100644
 +                            drawableProps.emplace_back(bsTriShape->mShaderProperty.getPtr());
 +                        if (!bsTriShape->mAlphaProperty.empty())
 +                            drawableProps.emplace_back(bsTriShape->mAlphaProperty.getPtr());
-+                        applyDrawableProperties(parentNode, drawableProps, composite, !colors.empty(), animflags);
++                        applyDrawableProperties(
++                            parentNode, drawableProps, composite, !colors.empty(), animflags, &boundTextures);
 +
 +                        geometry->setName(nifNode->mName);
 +                        parentNode->addChild(geometry);
@@ -12010,6 +12214,7 @@ index a583941dee..bb07beb8a5 100644
 +                            << " invalidPrimitiveSets=" << invalidPrimitiveSets
 +                            << " vertices=" << vertices.size()
 +                            << " normals=" << normals.size()
++                            << " generatedNormals=" << generatedNormals
 +                            << " colors=" << colors.size()
 +                            << " ignoredVertexColors=" << ignoredVertexColors
 +                            << " uvs=" << uvlist.size()
@@ -12025,7 +12230,12 @@ index a583941dee..bb07beb8a5 100644
  
              osg::ref_ptr<osg::Geometry> geometry(new osg::Geometry);
              geometry->addPrimitiveSet(
-@@ -2786,6 +3451,186 @@ namespace NifOsg
+@@ -2782,10 +3524,190 @@ namespace NifOsg
+                 drawableProps.emplace_back(bsTriShape->mShaderProperty.getPtr());
+             if (!bsTriShape->mAlphaProperty.empty())
+                 drawableProps.emplace_back(bsTriShape->mAlphaProperty.getPtr());
+-            applyDrawableProperties(parentNode, drawableProps, composite, !colors.empty(), animflags);
++            applyDrawableProperties(parentNode, drawableProps, composite, !colors.empty(), animflags, &boundTextures);
  
              drawable->setName(nifNode->mName);
              parentNode->addChild(drawable);
@@ -12212,7 +12422,7 @@ index a583941dee..bb07beb8a5 100644
          }
  
          osg::BlendFunc::BlendFuncMode getBlendMode(int mode) const
-@@ -3364,6 +4209,9 @@ namespace NifOsg
+@@ -3364,6 +4286,9 @@ namespace NifOsg
              const std::string& nodeName, osg::StateSet* stateset, std::vector<unsigned int>& boundTextures) const
          {
              const unsigned int uvSet = 0;
@@ -12222,7 +12432,7 @@ index a583941dee..bb07beb8a5 100644
  
              for (size_t i = 0; i < textureSet->mTextures.size(); ++i)
              {
-@@ -3380,6 +4228,14 @@ namespace NifOsg
+@@ -3380,6 +4305,14 @@ namespace NifOsg
                              "normalMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
                      case Nif::BSShaderTextureSet::TextureType::Glow:
@@ -12237,7 +12447,7 @@ index a583941dee..bb07beb8a5 100644
                          attachExternalTexture(
                              "emissiveMap", textureSet->mTextures[i], wrapS, wrapT, uvSet, stateset, boundTextures);
                          break;
-@@ -3584,6 +4440,55 @@ namespace NifOsg
+@@ -3584,6 +4517,55 @@ namespace NifOsg
                      handleDepthFlags(stateset, texprop->depthTest(), texprop->depthWrite());
                      break;
                  }
@@ -12293,6 +12503,158 @@ index a583941dee..bb07beb8a5 100644
                  case Nif::RC_BSLightingShaderProperty:
                  {
                      auto texprop = static_cast<const Nif::BSLightingShaderProperty*>(property);
+@@ -3722,7 +4704,8 @@ namespace NifOsg
+         }
+ 
+         void applyDrawableProperties(osg::Node* node, const std::vector<const Nif::NiProperty*>& properties,
+-            SceneUtil::CompositeStateSetUpdater* composite, bool hasVertexColors, int animflags)
++            SceneUtil::CompositeStateSetUpdater* composite, bool hasVertexColors, int animflags,
++            const std::vector<unsigned int>* boundTextures = nullptr)
+         {
+             // Specular lighting is enabled by default, but there's a quirk...
+             bool specEnabled = true;
+@@ -3742,6 +4725,16 @@ namespace NifOsg
+             auto lightmode = Nif::NiVertexColorProperty::LightMode::LightMode_EmiAmbDif;
+             float emissiveMult = 1.f;
+             float specStrength = 1.f;
++            int niMaterialProperties = 0;
++            int niVertexColorProperties = 0;
++            int niAlphaProperties = 0;
++            int bsPPLightingProperties = 0;
++            int bsLightingProperties = 0;
++            int bsEffectProperties = 0;
++            int bsLightingType = -1;
++            int bsShaderType = -1;
++            std::string shaderMaterialName;
++            int shaderMaterialType = -1;
+ 
+             for (const Nif::NiProperty* property : properties)
+             {
+@@ -3757,6 +4750,7 @@ namespace NifOsg
+                     }
+                     case Nif::RC_NiMaterialProperty:
+                     {
++                        ++niMaterialProperties;
+                         const Nif::NiMaterialProperty* matprop = static_cast<const Nif::NiMaterialProperty*>(property);
+ 
+                         mat->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(matprop->mDiffuse, matprop->mAlpha));
+@@ -3780,6 +4774,7 @@ namespace NifOsg
+                     }
+                     case Nif::RC_NiVertexColorProperty:
+                     {
++                        ++niVertexColorProperties;
+                         const Nif::NiVertexColorProperty* vertprop
+                             = static_cast<const Nif::NiVertexColorProperty*>(property);
+ 
+@@ -3822,6 +4817,7 @@ namespace NifOsg
+                     }
+                     case Nif::RC_NiAlphaProperty:
+                     {
++                        ++niAlphaProperties;
+                         const Nif::NiAlphaProperty* alphaprop = static_cast<const Nif::NiAlphaProperty*>(property);
+                         handleAlphaBlending(alphaprop->useAlphaBlending(), alphaprop->sourceBlendMode(),
+                             alphaprop->destinationBlendMode(), !alphaprop->noSorter(), hasSortAlpha, *node);
+@@ -3831,15 +4827,21 @@ namespace NifOsg
+                     }
+                     case Nif::RC_BSShaderPPLightingProperty:
+                     {
++                        ++bsPPLightingProperties;
+                         auto shaderprop = static_cast<const Nif::BSShaderPPLightingProperty*>(property);
++                        bsShaderType = static_cast<int>(shaderprop->mType);
+                         specEnabled = shaderprop->specular();
+                         break;
+                     }
+                     case Nif::RC_BSLightingShaderProperty:
+                     {
++                        ++bsLightingProperties;
+                         auto shaderprop = static_cast<const Nif::BSLightingShaderProperty*>(property);
++                        bsLightingType = static_cast<int>(shaderprop->mType);
+                         if (Bgsm::MaterialFilePtr shaderMat = getShaderMaterial(shaderprop->mName, mMaterialManager))
+                         {
++                            shaderMaterialName = shaderprop->mName;
++                            shaderMaterialType = static_cast<int>(shaderMat->mShaderType);
+                             handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
+                             if (shaderMat->mShaderType == Bgsm::ShaderType::Lighting)
+                             {
+@@ -3863,9 +4865,12 @@ namespace NifOsg
+                     }
+                     case Nif::RC_BSEffectShaderProperty:
+                     {
++                        ++bsEffectProperties;
+                         auto shaderprop = static_cast<const Nif::BSEffectShaderProperty*>(property);
+                         if (Bgsm::MaterialFilePtr shaderMat = getShaderMaterial(shaderprop->mName, mMaterialManager))
+                         {
++                            shaderMaterialName = shaderprop->mName;
++                            shaderMaterialType = static_cast<int>(shaderMat->mShaderType);
+                             handleShaderMaterialDrawableProperties(shaderMat.get(), mat, *node, hasSortAlpha);
+                             break;
+                         }
+@@ -3938,6 +4943,65 @@ namespace NifOsg
+             if (specStrength != 1.f)
+                 node->getOrCreateStateSet()->addUniform(new osg::Uniform("specStrength", specStrength));
+ 
++            if (worldViewerMaterialTelemetryEnabled()
++                && isWorldViewerActorMeshPath(Misc::StringUtils::lowerCase(mFilename.generic_string())))
++            {
++                std::string shaderPrefix;
++                bool shaderRequired = false;
++                node->getUserValue("shaderPrefix", shaderPrefix);
++                node->getUserValue("shaderRequired", shaderRequired);
++                const osg::Vec4f diffuse = mat->getDiffuse(osg::Material::FRONT_AND_BACK);
++                const osg::Vec4f ambient = mat->getAmbient(osg::Material::FRONT_AND_BACK);
++                const osg::Vec4f emission = mat->getEmission(osg::Material::FRONT_AND_BACK);
++                const osg::Vec4f specular = mat->getSpecular(osg::Material::FRONT_AND_BACK);
++                const osg::StateSet* stateset = node->getStateSet();
++                unsigned int stateTextureUnits = 0;
++                const unsigned int textureProbeLimit
++                    = std::max<unsigned int>(8, boundTextures != nullptr ? boundTextures->size() + 2 : 8);
++                if (stateset != nullptr)
++                {
++                    for (unsigned int i = 0; i < textureProbeLimit; ++i)
++                    {
++                        if (stateset->getTextureAttribute(i, osg::StateAttribute::TEXTURE) != nullptr)
++                            ++stateTextureUnits;
++                    }
++                }
++                Log(Debug::Info) << "World viewer material ledger: file=\"" << mFilename.generic_string()
++                                 << "\" node=\"" << node->getName() << "\""
++                                 << " properties=" << properties.size()
++                                 << " niMaterial=" << niMaterialProperties
++                                 << " niVertexColor=" << niVertexColorProperties
++                                 << " niAlpha=" << niAlphaProperties
++                                 << " bsPPLighting=" << bsPPLightingProperties
++                                 << " bsLighting=" << bsLightingProperties
++                                 << " bsEffect=" << bsEffectProperties
++                                 << " bsShaderType=" << bsShaderType
++                                 << " bsLightingType=" << bsLightingType
++                                 << " shaderPrefix=\"" << shaderPrefix << "\""
++                                 << " shaderRequired=" << shaderRequired
++                                 << " shaderMaterialType=" << shaderMaterialType
++                                 << " shaderMaterial=\"" << shaderMaterialName << "\""
++                                 << " hasVertexColors=" << hasVertexColors
++                                 << " colorMode=" << static_cast<int>(mat->getColorMode())
++                                 << " lightMode=" << static_cast<int>(lightmode)
++                                 << " boundTextureSlots=" << (boundTextures != nullptr ? boundTextures->size() : 0)
++                                 << " stateTextureUnits=" << stateTextureUnits
++                                 << " hasSortAlpha=" << hasSortAlpha
++                                 << " hasMatCtrl=" << hasMatCtrl
++                                 << " specEnabled=" << specEnabled
++                                 << " specStrength=" << specStrength
++                                 << " emissiveMult=" << emissiveMult
++                                 << " shininess=" << mat->getShininess(osg::Material::FRONT_AND_BACK)
++                                 << " diffuse=(" << diffuse.r() << "," << diffuse.g() << "," << diffuse.b() << ","
++                                 << diffuse.a() << ")"
++                                 << " ambient=(" << ambient.r() << "," << ambient.g() << "," << ambient.b() << ","
++                                 << ambient.a() << ")"
++                                 << " emission=(" << emission.r() << "," << emission.g() << "," << emission.b() << ","
++                                 << emission.a() << ")"
++                                 << " specular=(" << specular.r() << "," << specular.g() << "," << specular.b() << ","
++                                 << specular.a() << ")";
++            }
++
+             if (!mPushedSorter)
+             {
+                 if (!hasSortAlpha && mHasStencilProperty)
 diff --git a/components/resource/imagemanager.cpp b/components/resource/imagemanager.cpp
 index b7a19b4d52..8e054293e5 100644
 --- a/components/resource/imagemanager.cpp

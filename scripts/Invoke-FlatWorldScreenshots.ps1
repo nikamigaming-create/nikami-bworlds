@@ -21,6 +21,20 @@ param(
     [string[]]$StripOsgUpdateCallbackClass = @(),
     [string[]]$KeepOsgUpdateCallbackPath = @(),
     [int]$OsgUpdateCallbackAuditLimit = 120,
+    [double]$StartPosX = [double]::NaN,
+    [double]$StartPosY = [double]::NaN,
+    [double]$StartPosZ = [double]::NaN,
+    [double]$StartRotX = [double]::NaN,
+    [double]$StartRotY = [double]::NaN,
+    [double]$StartRotZ = [double]::NaN,
+    [int]$StartGridX = [int]::MinValue,
+    [int]$StartGridY = [int]::MinValue,
+    [double]$CameraPosX = [double]::NaN,
+    [double]$CameraPosY = [double]::NaN,
+    [double]$CameraPosZ = [double]::NaN,
+    [double]$CameraTargetX = [double]::NaN,
+    [double]$CameraTargetY = [double]::NaN,
+    [double]$CameraTargetZ = [double]::NaN,
     [switch]$AllowBadScreenshots,
     [switch]$ShowGui,
     [switch]$DryRun,
@@ -63,6 +77,28 @@ function Set-ProcessEnvValue([string]$Name, $Value) {
     }
 
     [Environment]::SetEnvironmentVariable($Name, $text, "Process")
+}
+
+function Set-ProcessEnvFloatOverride([string]$Name, [double]$Value) {
+    if ([double]::IsNaN($Value)) {
+        return $false
+    }
+    [Environment]::SetEnvironmentVariable(
+        $Name,
+        $Value.ToString("R", [System.Globalization.CultureInfo]::InvariantCulture),
+        "Process")
+    return $true
+}
+
+function Set-ProcessEnvIntOverride([string]$Name, [int]$Value) {
+    if ($Value -eq [int]::MinValue) {
+        return $false
+    }
+    [Environment]::SetEnvironmentVariable(
+        $Name,
+        $Value.ToString([System.Globalization.CultureInfo]::InvariantCulture),
+        "Process")
+    return $true
 }
 
 function New-ProofRunConfig($World, [string]$WorldRunDir, [string]$UserDataDir) {
@@ -303,7 +339,7 @@ function Get-ProofLogSummary([string]$Path) {
         [pscustomobject]@{ Name = "shaderIssues"; Pattern = "shader|purple|magenta|fallback" },
         [pscustomobject]@{ Name = "actorIssues"; Pattern = "actor|npc|creature|skeleton|bone|animation|rig" },
         [pscustomobject]@{ Name = "terrainIssues"; Pattern = "World viewer terrain:|LandTexture not found|missing ESM4 LTEX|missing ESM4 LTEX diffuse" },
-        [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:|World viewer actor ledger:|World viewer osg-update-callback" }
+        [pscustomobject]@{ Name = "viewerTelemetry"; Pattern = "World viewer telemetry:|World viewer ref:|World viewer cell:|World viewer ray:|World viewer actor ledger:|World viewer mesh ledger:|World viewer texture ledger:|World viewer material ledger:|World viewer nif geometry ledger:|World viewer bs geometry|World viewer osg-update-callback" }
     )
 
     $categories = [ordered]@{}
@@ -444,9 +480,20 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $cells = New-Object System.Collections.Generic.List[object]
     $rays = New-Object System.Collections.Generic.List[object]
     $actorLedger = New-Object System.Collections.Generic.List[object]
+    $meshLedger = New-Object System.Collections.Generic.List[object]
+    $geometryLedger = New-Object System.Collections.Generic.List[object]
+    $textureLedger = New-Object System.Collections.Generic.List[object]
+    $materialLedger = New-Object System.Collections.Generic.List[object]
+    $meshLoadFailures = New-Object System.Collections.Generic.List[object]
+    $staticSkeletonAttaches = New-Object System.Collections.Generic.List[object]
+    $tes5FaceSurfaceFallbacks = New-Object System.Collections.Generic.List[object]
     $problemRefs = New-Object System.Collections.Generic.List[object]
     $refsByType = [ordered]@{}
     $rayKinds = [ordered]@{}
+    $meshStages = [ordered]@{}
+    $textureRoles = [ordered]@{}
+    $materialShaderPrefixes = [ordered]@{}
+    $materialBsLightingTypes = [ordered]@{}
     $latestTelemetry = $null
     $refDumpTruncated = $null
 
@@ -477,6 +524,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $nativeActorPartsTemplated = 0
     $nativeActorPartsAttached = 0
     $nativeActorPartsMissing = 0
+    $nativeActorPartsQuarantined = 0
     $nativeActorTemplateExceptions = 0
     $nativeActorAnimSources = 0
     $nativeActorAnimSourcesBound = 0
@@ -484,6 +532,41 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $nativeActorControllersBound = 0
     $nativeActorControllersTotal = 0
     $nativeActorControllerZeroSources = 0
+    $staticSkeletonAttachEvents = 0
+    $tes5StaticFaceSurfaceFallbackEvents = 0
+    $meshLedgerEvents = 0
+    $meshLoadFailureEvents = 0
+    $meshTemplateFinalEvents = 0
+    $meshTemplateFinalWithGeometry = 0
+    $meshTemplateFinalEmptyGeometry = 0
+    $meshTemplateFinalInvalidBounds = 0
+    $actorMeshTemplateEvents = 0
+    $actorMeshTemplateWithGeometry = 0
+    $actorMeshTemplateEmptyGeometry = 0
+    $textureLedgerEvents = 0
+    $textureImagesResolved = 0
+    $textureImagesMissing = 0
+    $textureSkinAuxSkipped = 0
+    $materialLedgerEvents = 0
+    $materialWithTextureUnits = 0
+    $materialWithoutTextureUnits = 0
+    $materialShaderRequired = 0
+    $materialWithVertexColors = 0
+    $materialWithAlphaSort = 0
+    $materialColorModeOff = 0
+    $materialColorModeNonOff = 0
+    $nifGeometryLedgerEvents = 0
+    $nifGeometryWithVertices = 0
+    $nifGeometryWithTriangles = 0
+    $bsGeometryLedgerEvents = 0
+    $bsGeometryWithInlineTriangles = 0
+    $bsGeometryWithSkinPartitions = 0
+    $bsGeometryWithPartitionTriangles = 0
+    $bsPartitionFallbackEvents = 0
+    $bsPartitionFallbackAttached = 0
+    $bsPartitionFallbackEmptyVertices = 0
+    $bsPartitionFallbackGeneratedNormals = 0
+    $bsAttachedEvents = 0
     $osgUpdateCallbackEvents = 0
     $osgUpdateCallbackSummaries = 0
     $osgUpdateNodeCallbacks = 0
@@ -557,6 +640,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
                 "part-template" { $nativeActorPartsTemplated++ }
                 "part-attached" { $nativeActorPartsAttached++ }
                 "part-missing" { $nativeActorPartsMissing++ }
+                "part-quarantine" { $nativeActorPartsQuarantined++ }
                 "part-template-exception" { $nativeActorTemplateExceptions++ }
                 "animation-source" {
                     $nativeActorAnimSources++
@@ -567,6 +651,240 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
             }
             if ($actorLedger.Count -lt 240) {
                 $actorLedger.Add($entry)
+            }
+            continue
+        }
+
+        $meshLedgerIndex = $line.IndexOf("World viewer mesh ledger:")
+        if ($meshLedgerIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($meshLedgerIndex + "World viewer mesh ledger:".Length).Trim())
+            $meshLedgerEvents++
+            $stageValue = Get-PropertyValue $entry "stage"
+            $stage = if ($null -ne $stageValue) { [string]$stageValue } else { "<unknown>" }
+            if (-not $meshStages.Contains($stage)) {
+                $meshStages[$stage] = 0
+            }
+            $meshStages[$stage]++
+
+            $geometryCount = Convert-WorldViewerInt (Get-PropertyValue $entry "geometry")
+            $drawables = Convert-WorldViewerInt (Get-PropertyValue $entry "drawables")
+            $rigRenderGeometry = Convert-WorldViewerInt (Get-PropertyValue $entry "rigRenderGeometry")
+            $boundValid = Convert-WorldViewerFlag (Get-PropertyValue $entry "boundValid")
+            $pathText = [string](Get-PropertyValue $entry "path")
+            $looksLikeActorMesh = $pathText -match '(?i)(^|/)(actors|characters|creatures|meshes/actors|meshes/characters|meshes/creatures)(/|$)'
+
+            if ($stage -eq "template-final") {
+                $meshTemplateFinalEvents++
+                if ($geometryCount -gt 0 -or $drawables -gt 0 -or $rigRenderGeometry -gt 0) {
+                    $meshTemplateFinalWithGeometry++
+                }
+                else {
+                    $meshTemplateFinalEmptyGeometry++
+                }
+                if (-not $boundValid) {
+                    $meshTemplateFinalInvalidBounds++
+                }
+                if ($looksLikeActorMesh) {
+                    $actorMeshTemplateEvents++
+                    if ($geometryCount -gt 0 -or $drawables -gt 0 -or $rigRenderGeometry -gt 0) {
+                        $actorMeshTemplateWithGeometry++
+                    }
+                    else {
+                        $actorMeshTemplateEmptyGeometry++
+                    }
+                }
+            }
+
+            if ($meshLedger.Count -lt 240) {
+                $meshLedger.Add($entry)
+            }
+            continue
+        }
+
+        $meshFailureMatch = [regex]::Match($line, "Failed to load '(?<path>[^']+)': (?<reason>.*?)(?:, using marker_error instead)?$")
+        if ($meshFailureMatch.Success) {
+            $meshLoadFailureEvents++
+            if ($meshLoadFailures.Count -lt 120) {
+                $meshLoadFailures.Add([pscustomobject][ordered]@{
+                    path = $meshFailureMatch.Groups["path"].Value
+                    reason = $meshFailureMatch.Groups["reason"].Value
+                })
+            }
+            continue
+        }
+
+        $textureLedgerIndex = $line.IndexOf("World viewer texture ledger:")
+        if ($textureLedgerIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($textureLedgerIndex + "World viewer texture ledger:".Length).Trim())
+            $textureLedgerEvents++
+            $roleValue = Get-PropertyValue $entry "role"
+            $role = if ($null -ne $roleValue) { [string]$roleValue } else { "<unknown>" }
+            if (-not $textureRoles.Contains($role)) {
+                $textureRoles[$role] = 0
+            }
+            $textureRoles[$role]++
+
+            if (Convert-WorldViewerFlag (Get-PropertyValue $entry "skippedAsEmissive")) {
+                $textureSkinAuxSkipped++
+            }
+            elseif ($null -ne (Get-PropertyValue $entry "image")) {
+                $imageResolved = Convert-WorldViewerFlag (Get-PropertyValue $entry "image")
+                $width = Convert-WorldViewerInt (Get-PropertyValue $entry "width")
+                $height = Convert-WorldViewerInt (Get-PropertyValue $entry "height")
+                if ($imageResolved -and $width -gt 0 -and $height -gt 0) {
+                    $textureImagesResolved++
+                }
+                else {
+                    $textureImagesMissing++
+                }
+            }
+
+            if ($textureLedger.Count -lt 240) {
+                $textureLedger.Add($entry)
+            }
+            continue
+        }
+
+        $materialLedgerIndex = $line.IndexOf("World viewer material ledger:")
+        if ($materialLedgerIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($materialLedgerIndex + "World viewer material ledger:".Length).Trim())
+            $materialLedgerEvents++
+
+            $shaderPrefixValue = Get-PropertyValue $entry "shaderPrefix"
+            $shaderPrefix = if ($null -ne $shaderPrefixValue -and -not [string]::IsNullOrWhiteSpace([string]$shaderPrefixValue)) { [string]$shaderPrefixValue } else { "<none>" }
+            if (-not $materialShaderPrefixes.Contains($shaderPrefix)) {
+                $materialShaderPrefixes[$shaderPrefix] = 0
+            }
+            $materialShaderPrefixes[$shaderPrefix]++
+
+            $bsLightingTypeValue = Get-PropertyValue $entry "bsLightingType"
+            $bsLightingType = if ($null -ne $bsLightingTypeValue) { [string]$bsLightingTypeValue } else { "<none>" }
+            if (-not $materialBsLightingTypes.Contains($bsLightingType)) {
+                $materialBsLightingTypes[$bsLightingType] = 0
+            }
+            $materialBsLightingTypes[$bsLightingType]++
+
+            $stateTextureUnits = Convert-WorldViewerInt (Get-PropertyValue $entry "stateTextureUnits")
+            $boundTextureSlots = Convert-WorldViewerInt (Get-PropertyValue $entry "boundTextureSlots")
+            if ($stateTextureUnits -gt 0 -or $boundTextureSlots -gt 0) {
+                $materialWithTextureUnits++
+            }
+            else {
+                $materialWithoutTextureUnits++
+            }
+            if (Convert-WorldViewerFlag (Get-PropertyValue $entry "shaderRequired")) {
+                $materialShaderRequired++
+            }
+            if (Convert-WorldViewerFlag (Get-PropertyValue $entry "hasVertexColors")) {
+                $materialWithVertexColors++
+            }
+            if (Convert-WorldViewerFlag (Get-PropertyValue $entry "hasSortAlpha")) {
+                $materialWithAlphaSort++
+            }
+            if ((Convert-WorldViewerInt (Get-PropertyValue $entry "colorMode")) -eq 0) {
+                $materialColorModeOff++
+            }
+            else {
+                $materialColorModeNonOff++
+            }
+            if ($materialLedger.Count -lt 240) {
+                $materialLedger.Add($entry)
+            }
+            continue
+        }
+
+        $nifGeometryIndex = $line.IndexOf("World viewer nif geometry ledger:")
+        if ($nifGeometryIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($nifGeometryIndex + "World viewer nif geometry ledger:".Length).Trim())
+            $nifGeometryLedgerEvents++
+            if (Convert-WorldViewerInt (Get-PropertyValue $entry "vertices") -gt 0) {
+                $nifGeometryWithVertices++
+            }
+            if (Convert-WorldViewerInt (Get-PropertyValue $entry "triangles") -gt 0) {
+                $nifGeometryWithTriangles++
+            }
+            if ($geometryLedger.Count -lt 240) {
+                $geometryLedger.Add($entry)
+            }
+            continue
+        }
+
+        $bsPartitionFallbackIndex = $line.IndexOf("World viewer bs geometry partition-fallback:")
+        if ($bsPartitionFallbackIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($bsPartitionFallbackIndex + "World viewer bs geometry partition-fallback:".Length).Trim())
+            $bsPartitionFallbackEvents++
+            if (Convert-WorldViewerFlag (Get-PropertyValue $entry "attached")) {
+                $bsPartitionFallbackAttached++
+            }
+            if (Convert-WorldViewerInt (Get-PropertyValue $entry "vertices") -le 0) {
+                $bsPartitionFallbackEmptyVertices++
+            }
+            if (Convert-WorldViewerFlag (Get-PropertyValue $entry "generatedNormals")) {
+                $bsPartitionFallbackGeneratedNormals++
+            }
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "bs-partition-fallback" -Force
+            if ($geometryLedger.Count -lt 240) {
+                $geometryLedger.Add($entry)
+            }
+            continue
+        }
+
+        $bsAttachedIndex = $line.IndexOf("World viewer bs geometry attached:")
+        if ($bsAttachedIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($bsAttachedIndex + "World viewer bs geometry attached:".Length).Trim())
+            $bsAttachedEvents++
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "bs-attached" -Force
+            if ($geometryLedger.Count -lt 240) {
+                $geometryLedger.Add($entry)
+            }
+            continue
+        }
+
+        $bsGeometryIndex = $line.IndexOf("World viewer bs geometry ledger:")
+        if ($bsGeometryIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($bsGeometryIndex + "World viewer bs geometry ledger:".Length).Trim())
+            $bsGeometryLedgerEvents++
+            if (Convert-WorldViewerInt (Get-PropertyValue $entry "triangles") -gt 0) {
+                $bsGeometryWithInlineTriangles++
+            }
+            if (Convert-WorldViewerFlag (Get-PropertyValue $entry "niSkinPartitions")) {
+                $bsGeometryWithSkinPartitions++
+            }
+            if (Convert-WorldViewerInt (Get-PropertyValue $entry "partitionTriangles") -gt 0) {
+                $bsGeometryWithPartitionTriangles++
+            }
+            $entry | Add-Member -NotePropertyName phase -NotePropertyValue "bs-ledger" -Force
+            if ($geometryLedger.Count -lt 240) {
+                $geometryLedger.Add($entry)
+            }
+            continue
+        }
+
+        $staticSkeletonMatch = [regex]::Match($line, "World viewer: static-skeleton attached NPC model part (?<model>.+?) to (?<ref>.+?) attachNode=(?<attachNode>.+?) staticGeometry=(?<staticGeometry>\d+) nodeMap=(?<nodeMap>\d+)")
+        if ($staticSkeletonMatch.Success) {
+            $staticSkeletonAttachEvents++
+            if ($staticSkeletonAttaches.Count -lt 120) {
+                $staticSkeletonAttaches.Add([pscustomobject][ordered]@{
+                    model = $staticSkeletonMatch.Groups["model"].Value
+                    ref = $staticSkeletonMatch.Groups["ref"].Value
+                    attachNode = $staticSkeletonMatch.Groups["attachNode"].Value
+                    staticGeometry = [int]$staticSkeletonMatch.Groups["staticGeometry"].Value
+                    nodeMap = [int]$staticSkeletonMatch.Groups["nodeMap"].Value
+                })
+            }
+            continue
+        }
+
+        $tes5FaceFallbackMatch = [regex]::Match($line, "World viewer: TES5 static face surface fallback model=(?<model>.+?) actor=(?<actor>.+?) attachNode=(?<attachNode>.+?) nodeMap=(?<nodeMap>\d+)")
+        if ($tes5FaceFallbackMatch.Success) {
+            $tes5StaticFaceSurfaceFallbackEvents++
+            if ($tes5FaceSurfaceFallbacks.Count -lt 120) {
+                $tes5FaceSurfaceFallbacks.Add([pscustomobject][ordered]@{
+                    model = $tes5FaceFallbackMatch.Groups["model"].Value
+                    actor = $tes5FaceFallbackMatch.Groups["actor"].Value
+                    attachNode = $tes5FaceFallbackMatch.Groups["attachNode"].Value
+                    nodeMap = [int]$tes5FaceFallbackMatch.Groups["nodeMap"].Value
+                })
             }
             continue
         }
@@ -703,6 +1021,7 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         nativeActorPartsTemplated = $nativeActorPartsTemplated
         nativeActorPartsAttached = $nativeActorPartsAttached
         nativeActorPartsMissing = $nativeActorPartsMissing
+        nativeActorPartsQuarantined = $nativeActorPartsQuarantined
         nativeActorTemplateExceptions = $nativeActorTemplateExceptions
         nativeActorAnimSources = $nativeActorAnimSources
         nativeActorAnimSourcesBound = $nativeActorAnimSourcesBound
@@ -710,6 +1029,45 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         nativeActorControllersBound = $nativeActorControllersBound
         nativeActorControllersTotal = $nativeActorControllersTotal
         nativeActorControllerZeroSources = $nativeActorControllerZeroSources
+        staticSkeletonAttachEvents = $staticSkeletonAttachEvents
+        tes5StaticFaceSurfaceFallbackEvents = $tes5StaticFaceSurfaceFallbackEvents
+        meshLedgerEvents = $meshLedgerEvents
+        meshLoadFailureEvents = $meshLoadFailureEvents
+        meshTemplateFinalEvents = $meshTemplateFinalEvents
+        meshTemplateFinalWithGeometry = $meshTemplateFinalWithGeometry
+        meshTemplateFinalEmptyGeometry = $meshTemplateFinalEmptyGeometry
+        meshTemplateFinalInvalidBounds = $meshTemplateFinalInvalidBounds
+        actorMeshTemplateEvents = $actorMeshTemplateEvents
+        actorMeshTemplateWithGeometry = $actorMeshTemplateWithGeometry
+        actorMeshTemplateEmptyGeometry = $actorMeshTemplateEmptyGeometry
+        meshStages = [pscustomobject]$meshStages
+        textureLedgerEvents = $textureLedgerEvents
+        textureImagesResolved = $textureImagesResolved
+        textureImagesMissing = $textureImagesMissing
+        textureSkinAuxSkipped = $textureSkinAuxSkipped
+        textureRoles = [pscustomobject]$textureRoles
+        materialLedgerEvents = $materialLedgerEvents
+        materialWithTextureUnits = $materialWithTextureUnits
+        materialWithoutTextureUnits = $materialWithoutTextureUnits
+        materialShaderRequired = $materialShaderRequired
+        materialWithVertexColors = $materialWithVertexColors
+        materialWithAlphaSort = $materialWithAlphaSort
+        materialColorModeOff = $materialColorModeOff
+        materialColorModeNonOff = $materialColorModeNonOff
+        materialShaderPrefixes = [pscustomobject]$materialShaderPrefixes
+        materialBsLightingTypes = [pscustomobject]$materialBsLightingTypes
+        nifGeometryLedgerEvents = $nifGeometryLedgerEvents
+        nifGeometryWithVertices = $nifGeometryWithVertices
+        nifGeometryWithTriangles = $nifGeometryWithTriangles
+        bsGeometryLedgerEvents = $bsGeometryLedgerEvents
+        bsGeometryWithInlineTriangles = $bsGeometryWithInlineTriangles
+        bsGeometryWithSkinPartitions = $bsGeometryWithSkinPartitions
+        bsGeometryWithPartitionTriangles = $bsGeometryWithPartitionTriangles
+        bsPartitionFallbackEvents = $bsPartitionFallbackEvents
+        bsPartitionFallbackAttached = $bsPartitionFallbackAttached
+        bsPartitionFallbackEmptyVertices = $bsPartitionFallbackEmptyVertices
+        bsPartitionFallbackGeneratedNormals = $bsPartitionFallbackGeneratedNormals
+        bsAttachedEvents = $bsAttachedEvents
         osgUpdateCallbackEvents = $osgUpdateCallbackEvents
         osgUpdateCallbackSummaries = $osgUpdateCallbackSummaries
         osgUpdateNodeCallbacks = $osgUpdateNodeCallbacks
@@ -728,6 +1086,13 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         cells = @($cells.ToArray())
         rays = @($rays.ToArray())
         actorLedger = @($actorLedger.ToArray())
+        meshLedger = @($meshLedger.ToArray())
+        geometryLedger = @($geometryLedger.ToArray())
+        textureLedger = @($textureLedger.ToArray())
+        materialLedger = @($materialLedger.ToArray())
+        meshLoadFailures = @($meshLoadFailures.ToArray())
+        staticSkeletonAttaches = @($staticSkeletonAttaches.ToArray())
+        tes5FaceSurfaceFallbacks = @($tes5FaceSurfaceFallbacks.ToArray())
         problemRefs = @($problemRefs.ToArray())
     }
 }
@@ -846,7 +1211,9 @@ $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT",
     "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY",
     "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY",
+    "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY",
     "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK",
+    "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS",
     "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS",
     "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS",
     "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS",
@@ -900,7 +1267,9 @@ try {
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_REF_TELEMETRY_LIMIT", [string]$RefTelemetryLimit, "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "1", "Process")
@@ -953,7 +1322,7 @@ try {
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "1", "Process")
     }
     else {
-        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES")) {
+        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES")) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
     }
@@ -1098,6 +1467,18 @@ try {
             if ((Get-PropertyValue $anchor "dry") -ne $false) {
                 Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_DRY" "1"
             }
+            $usedStartOverride = $false
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_POS_X" $StartPosX) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_POS_Y" $StartPosY) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_POS_Z" $StartPosZ) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_ROT_X" $StartRotX) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_ROT_Y" $StartRotY) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_ROT_Z" $StartRotZ) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvIntOverride "OPENMW_WORLD_VIEWER_START_GRID_X" $StartGridX) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvIntOverride "OPENMW_WORLD_VIEWER_START_GRID_Y" $StartGridY) -or $usedStartOverride
+            if ($usedStartOverride) {
+                $notes.Add("used command-line start override")
+            }
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_MODE" (Get-PropertyValue $camera "mode")
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_DISTANCE" (Get-PropertyValue $camera "distance")
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_PITCH" (Get-PropertyValue $camera "pitch")
@@ -1110,6 +1491,16 @@ try {
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X" (Get-PropertyValue $cameraTarget "x")
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y" (Get-PropertyValue $cameraTarget "y")
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z" (Get-PropertyValue $cameraTarget "z")
+            $usedCameraOverride = $false
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_POS_X" $CameraPosX) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Y" $CameraPosY) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z" $CameraPosZ) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X" $CameraTargetX) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y" $CameraTargetY) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z" $CameraTargetZ) -or $usedCameraOverride
+            if ($usedCameraOverride) {
+                $notes.Add("used command-line camera override")
+            }
             if ((Get-PropertyValue $camera "orbitRaycast") -eq $true) {
                 Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_RAYCAST" "1"
             }
@@ -1255,7 +1646,7 @@ try {
                 $notes.Add("ESM4 actor proxy proof: $($worldViewerTelemetry.proxyActorRefs) proxy refs, $($worldViewerTelemetry.proxyTposeRefs) t-pose, $($worldViewerTelemetry.proxyAnimatedRefs) animated")
             }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.nativeActorLedgerEvents -gt 0) {
-                $notes.Add("Native actor ledger: roots $($worldViewerTelemetry.nativeActorRootEnds)/$($worldViewerTelemetry.nativeActorRootBegins), parts $($worldViewerTelemetry.nativeActorPartsAttached)/$($worldViewerTelemetry.nativeActorPartsRequested), missing $($worldViewerTelemetry.nativeActorPartsMissing), templateErrors $($worldViewerTelemetry.nativeActorTemplateExceptions), animSources $($worldViewerTelemetry.nativeActorAnimSourcesBound)/$($worldViewerTelemetry.nativeActorAnimSources)")
+                $notes.Add("Native actor ledger: roots $($worldViewerTelemetry.nativeActorRootEnds)/$($worldViewerTelemetry.nativeActorRootBegins), parts $($worldViewerTelemetry.nativeActorPartsAttached)/$($worldViewerTelemetry.nativeActorPartsRequested), missing $($worldViewerTelemetry.nativeActorPartsMissing), quarantined $($worldViewerTelemetry.nativeActorPartsQuarantined), templateErrors $($worldViewerTelemetry.nativeActorTemplateExceptions), animSources $($worldViewerTelemetry.nativeActorAnimSourcesBound)/$($worldViewerTelemetry.nativeActorAnimSources)")
                 if ($worldViewerTelemetry.nativeActorModelFallbacks -gt 0) {
                     $notes.Add("Native actor model fallbacks: $($worldViewerTelemetry.nativeActorModelFallbacks)")
                 }
@@ -1265,6 +1656,21 @@ try {
                 if ($worldViewerTelemetry.nativeActorRootExceptions -gt 0) {
                     $notes.Add("Native actor root exceptions: $($worldViewerTelemetry.nativeActorRootExceptions)")
                 }
+            }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.meshLedgerEvents -gt 0) {
+                $notes.Add("Mesh ledger: template finals $($worldViewerTelemetry.meshTemplateFinalWithGeometry)/$($worldViewerTelemetry.meshTemplateFinalEvents) with geometry, actor templates $($worldViewerTelemetry.actorMeshTemplateWithGeometry)/$($worldViewerTelemetry.actorMeshTemplateEvents), loadFailures $($worldViewerTelemetry.meshLoadFailureEvents)")
+            }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.tes5StaticFaceSurfaceFallbackEvents -gt 0) {
+                $notes.Add("TES5 static face surface fallbacks: $($worldViewerTelemetry.tes5StaticFaceSurfaceFallbackEvents)")
+            }
+            if ($null -ne $worldViewerTelemetry -and ($worldViewerTelemetry.bsGeometryLedgerEvents -gt 0 -or $worldViewerTelemetry.nifGeometryLedgerEvents -gt 0)) {
+                $notes.Add("Geometry ledger: NIF vertices $($worldViewerTelemetry.nifGeometryWithVertices)/$($worldViewerTelemetry.nifGeometryLedgerEvents), BS skin partitions $($worldViewerTelemetry.bsGeometryWithPartitionTriangles)/$($worldViewerTelemetry.bsGeometryLedgerEvents), partition fallback attached $($worldViewerTelemetry.bsPartitionFallbackAttached)/$($worldViewerTelemetry.bsPartitionFallbackEvents), generatedNormals $($worldViewerTelemetry.bsPartitionFallbackGeneratedNormals)")
+            }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.textureLedgerEvents -gt 0) {
+                $notes.Add("Texture ledger: resolved $($worldViewerTelemetry.textureImagesResolved), missing $($worldViewerTelemetry.textureImagesMissing), skinAuxSkipped $($worldViewerTelemetry.textureSkinAuxSkipped)")
+            }
+            if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.materialLedgerEvents -gt 0) {
+                $notes.Add("Material ledger: textureUnits $($worldViewerTelemetry.materialWithTextureUnits)/$($worldViewerTelemetry.materialLedgerEvents), shaderRequired $($worldViewerTelemetry.materialShaderRequired), colorModeOff $($worldViewerTelemetry.materialColorModeOff), alphaSort $($worldViewerTelemetry.materialWithAlphaSort)")
             }
             $crashDump = Get-OpenMwCrashDumpInfo -Roots @($runConfig.configDirectory, $userDataDir) -Since $worldStartedAt.AddSeconds(-2)
             if ($null -ne $crashDump) {
@@ -1300,6 +1706,15 @@ try {
                     }
                     elseif ($worldViewerTelemetry.cellRenderedActors -gt 0 -and $worldViewerTelemetry.actorRayActorHits -le 0) {
                         $telemetryRejectReasons.Add("rendered actor nodes present but actor ray probes hit no actors")
+                    }
+                    if ($worldViewerTelemetry.nativeActorPartsAttached -gt 0 -and $worldViewerTelemetry.bsPartitionFallbackEvents -gt 0 -and $worldViewerTelemetry.bsPartitionFallbackAttached -le 0) {
+                        $telemetryRejectReasons.Add("actor BS skin partitions were found but none attached geometry")
+                    }
+                    if ($worldViewerTelemetry.actorMeshTemplateEvents -gt 0 -and $worldViewerTelemetry.actorMeshTemplateWithGeometry -le 0) {
+                        $telemetryRejectReasons.Add("actor mesh templates loaded with zero geometry")
+                    }
+                    if ($worldViewerTelemetry.materialLedgerEvents -gt 0 -and $worldViewerTelemetry.materialWithTextureUnits -le 0) {
+                        $telemetryRejectReasons.Add("actor material ledger found zero bound texture units")
                     }
                 }
 
@@ -1360,7 +1775,7 @@ $manifest = [ordered]@{
 }
 
 $manifestPath = Join-Path $absProofDir "manifest.json"
-$manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding ASCII
+$manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath -Encoding ASCII
 
 Write-Host ""
 $results | Format-Table -AutoSize worldId, status, startCell, screenshot
