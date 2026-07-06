@@ -112,6 +112,15 @@ GENERIC_FULL_NAMES = {
 
 NO_CHILD_WORLDS = {"morrowind", "oblivion"}
 NO_ROBOT_WORLDS = {"morrowind", "oblivion", "skyrim_2011", "skyrim_vr"}
+STABLE_ACTOR_PROOF_WORLDS = {
+    "oblivion",
+    "fallout3",
+    "fallout_new_vegas",
+    "skyrim_2011",
+    "skyrim_vr",
+    "fallout4",
+    "fallout4_vr",
+}
 
 VISIT_BIAS = {
     "morrowind": [
@@ -358,8 +367,8 @@ def actor_proof_camera_for(candidate):
 
 
 def proof_args_for(world_id, candidate):
-    args = ["-WorldId", world_id, "-RunSeconds", "12", "-AllowBadScreenshots"]
-    if world_id in {"skyrim_2011", "skyrim_vr"}:
+    args = ["-WorldId", world_id, "-RunSeconds", "12"]
+    if world_id in STABLE_ACTOR_PROOF_WORLDS:
         args += [
             "-ScreenshotFrames",
             "170",

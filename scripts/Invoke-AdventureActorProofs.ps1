@@ -6,7 +6,8 @@ param(
     [string]$ProofRoot = "proof/adventure-actor-proofs",
     [switch]$DryRun,
     [switch]$ShowGui,
-    [switch]$DisableSky
+    [switch]$DisableSky,
+    [switch]$AllowBadScreenshots
 )
 
 Set-StrictMode -Version Latest
@@ -168,6 +169,9 @@ foreach ($item in $targets) {
     }
     if ($DisableSky) {
         $harnessArgs.Add("-DisableSky") | Out-Null
+    }
+    if ($AllowBadScreenshots) {
+        $harnessArgs.Add("-AllowBadScreenshots") | Out-Null
     }
     if ($DryRun) {
         $harnessArgs.Add("-DryRun") | Out-Null

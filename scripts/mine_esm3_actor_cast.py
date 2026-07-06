@@ -213,7 +213,7 @@ def parse_cell(record_data, encoding):
                 triplet = read_i32_triplet(sub_data)
                 if triplet:
                     flags, x, y = triplet
-                    cell["isExterior"] = bool(flags & 0x1)
+                    cell["isExterior"] = not bool(flags & 0x1)
                     cell["grid"] = {"x": x, "y": y}
                     if cell["isExterior"]:
                         cell["id"] = cell["id"] or f"Exterior {x},{y}"
