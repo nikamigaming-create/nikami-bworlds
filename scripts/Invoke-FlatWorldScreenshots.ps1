@@ -148,7 +148,7 @@ function New-ProofRunConfig($World, [string]$WorldRunDir, [string]$UserDataDir) 
 
     $runConfigDir = Join-Path $WorldRunDir "config"
     $dataLocalDir = Join-Path $UserDataDir "data"
-    if ([string]$World.id -eq "starfield" -and $dataLocalDir.Length -gt 120) {
+    if ([string]$World.id -eq "starfield" -and $dataLocalDir.Length -gt 80) {
         $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
         $dataLocalDir = Join-Path (Join-Path $repoRoot "local\proof-data") ("starfield-{0}" -f ([System.Guid]::NewGuid().ToString("N").Substring(0, 12)))
     }
@@ -229,17 +229,54 @@ function Find-StarfieldTextureArchive([string[]]$DataDirectories, [string]$Relat
     return ""
 }
 
+function Get-StarfieldOpacityTexturePath([string]$Texture) {
+    $normalized = $Texture -replace '\\', '/'
+    $lower = $normalized.ToLowerInvariant()
+    if ($lower -notmatch '^textures/actors/human/faces/(hair|beards|eyebrows)/') {
+        return ""
+    }
+    if ($lower -notmatch '_color\.dds$') {
+        return ""
+    }
+
+    $directory = [System.IO.Path]::GetDirectoryName($normalized).Replace('\', '/')
+    $filename = [System.IO.Path]::GetFileName($normalized)
+    $stem = [System.IO.Path]::GetFileNameWithoutExtension($filename)
+
+    if ($stem -match '^(?<base>.+_shared)_[^_]+_color$') {
+        return "$directory/$($Matches.base)_opacity.dds"
+    }
+    if ($stem -match '^(?<base>eyebrows_[^_]+)_[^_]+_color$') {
+        return "$directory/$($Matches.base)_opacity.dds"
+    }
+    if ($stem -match '^(?<base>child_eyebrows_[^_]+)_[^_]+_color$') {
+        return "$directory/$($Matches.base)_opacity.dds"
+    }
+
+    return ($normalized -replace '_color\.dds$', '_opacity.dds')
+}
+
 function Convert-StarfieldActorProofTextures([string]$OpenMwCfg, [string]$DataLocalDirectory, [string]$BinaryRoot) {
     $bsaTool = Join-Path $BinaryRoot "bsatool.exe"
     if (-not (Test-Path -LiteralPath $bsaTool)) {
         Write-Warning "Starfield actor texture cache skipped: missing bsatool.exe at $bsaTool"
-        return 0
+        return [pscustomobject][ordered]@{
+            count = 0
+            alphaMerged = 0
+            alphaNonOpaquePixels = 0
+            ledgerPath = $null
+        }
     }
 
     $dataDirs = @(Get-OpenMwConfigDataDirectories -OpenMwCfg $OpenMwCfg)
     if ($dataDirs.Count -eq 0) {
         Write-Warning "Starfield actor texture cache skipped: no data= directories in $OpenMwCfg"
-        return 0
+        return [pscustomobject][ordered]@{
+            count = 0
+            alphaMerged = 0
+            alphaNonOpaquePixels = 0
+            ledgerPath = $null
+        }
     }
 
     $textures = @(
@@ -282,19 +319,48 @@ function Convert-StarfieldActorProofTextures([string]$OpenMwCfg, [string]$DataLo
     )
     $extractRoot = Join-Path $DataLocalDirectory "__starfield_texture_extract"
     $converted = 0
+    $alphaMerged = 0
+    $alphaNonOpaquePixels = 0
+    $cacheLedger = New-Object System.Collections.Generic.List[object]
     $converter = @'
 import sys
+import json
 from pathlib import Path
 from PIL import Image
 
 src = Path(sys.argv[1])
 dst = Path(sys.argv[2])
+opacity = Path(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] else None
 dst.parent.mkdir(parents=True, exist_ok=True)
 image = Image.open(src)
 image.load()
-if image.mode not in ("RGB", "RGBA"):
+if image.mode != "RGBA":
     image = image.convert("RGBA")
+alpha_source = "color-alpha" if image.getextrema()[3] != (255, 255) else "opaque"
+if opacity and opacity.exists():
+    mask = Image.open(opacity)
+    mask.load()
+    if mask.mode != "L":
+        mask = mask.convert("L")
+    if mask.size != image.size:
+        mask = mask.resize(image.size, Image.Resampling.LANCZOS)
+    image.putalpha(mask)
+    alpha_source = "opacity-map"
 image.save(dst)
+a = image.getchannel("A")
+hist = a.histogram()
+print(json.dumps({
+    "source": str(src),
+    "destination": str(dst),
+    "opacity": str(opacity) if opacity else "",
+    "alphaSource": alpha_source,
+    "width": image.size[0],
+    "height": image.size[1],
+    "alphaMin": a.getextrema()[0],
+    "alphaMax": a.getextrema()[1],
+    "alphaNonOpaquePixels": sum(hist[:255]),
+    "alphaTransparentPixels": hist[0]
+}))
 '@
 
     foreach ($texture in $textures) {
@@ -302,12 +368,21 @@ image.save(dst)
         $pngDestination = Join-Path $DataLocalDirectory ($pngRelative -replace '/', '\')
         if (Test-Path -LiteralPath $pngDestination) {
             $converted++
+            $cacheLedger.Add([pscustomobject][ordered]@{
+                texture = $texture
+                png = (Convert-ToForwardSlash $pngDestination)
+                status = "already-cached"
+            }) | Out-Null
             continue
         }
 
         $archive = Find-StarfieldTextureArchive -DataDirectories $dataDirs -RelativeTexturePath $texture -BsaTool $bsaTool
         if ([string]::IsNullOrWhiteSpace($archive)) {
             Write-Warning "Starfield actor texture cache: not found in Starfield texture BA2s: $texture"
+            $cacheLedger.Add([pscustomobject][ordered]@{
+                texture = $texture
+                status = "missing-source"
+            }) | Out-Null
             continue
         }
 
@@ -321,15 +396,38 @@ image.save(dst)
         $extracted = Join-Path $extractRoot ($texture -replace '/', '\')
         if (-not (Test-Path -LiteralPath $extracted)) {
             Write-Warning "Starfield actor texture cache: extracted texture missing: $extracted"
+            $cacheLedger.Add([pscustomobject][ordered]@{
+                texture = $texture
+                archive = (Convert-ToForwardSlash $archive)
+                status = "missing-extracted-source"
+            }) | Out-Null
             continue
         }
 
+        $opacityTexture = Get-StarfieldOpacityTexturePath -Texture $texture
+        $opacityArchive = ""
+        $opacityExtracted = ""
+        if (-not [string]::IsNullOrWhiteSpace($opacityTexture)) {
+            $opacityArchive = Find-StarfieldTextureArchive -DataDirectories $dataDirs -RelativeTexturePath $opacityTexture -BsaTool $bsaTool
+            if (-not [string]::IsNullOrWhiteSpace($opacityArchive)) {
+                & $bsaTool extract -f $opacityArchive $opacityTexture $extractRoot | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    $candidateOpacity = Join-Path $extractRoot ($opacityTexture -replace '/', '\')
+                    if (Test-Path -LiteralPath $candidateOpacity) {
+                        $opacityExtracted = $candidateOpacity
+                    }
+                }
+            }
+        }
+
         $decodeOk = $false
+        $stats = $null
+        $ledgerRecorded = $false
         $pythonError = Join-Path $extractRoot "python-dds-decode.err"
         $nativeErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         try {
-            $converter | python - $extracted $pngDestination 2>$pythonError | Out-Null
+            $decodeOutput = @($converter | python - $extracted $pngDestination $opacityExtracted 2>$pythonError)
             $pythonExitCode = $LASTEXITCODE
         }
         finally {
@@ -337,6 +435,35 @@ image.save(dst)
         }
         if ($pythonExitCode -eq 0 -and (Test-Path -LiteralPath $pngDestination)) {
             $decodeOk = $true
+            if ($decodeOutput.Count -gt 0) {
+                try {
+                    $stats = $decodeOutput[-1] | ConvertFrom-Json
+                }
+                catch {
+                    $stats = $null
+                }
+            }
+            if ($null -ne $stats) {
+                if ([string](Get-PropertyValue $stats "alphaSource") -eq "opacity-map") {
+                    $alphaMerged++
+                }
+                $nonOpaque = [int64](Get-PropertyValue $stats "alphaNonOpaquePixels")
+                $alphaNonOpaquePixels += $nonOpaque
+                $cacheLedger.Add([pscustomobject][ordered]@{
+                    texture = $texture
+                    opacityTexture = $opacityTexture
+                    archive = (Convert-ToForwardSlash $archive)
+                    opacityArchive = if ([string]::IsNullOrWhiteSpace($opacityArchive)) { "" } else { (Convert-ToForwardSlash $opacityArchive) }
+                    png = (Convert-ToForwardSlash $pngDestination)
+                    status = "converted"
+                    alphaSource = [string](Get-PropertyValue $stats "alphaSource")
+                    alphaMin = [int](Get-PropertyValue $stats "alphaMin")
+                    alphaMax = [int](Get-PropertyValue $stats "alphaMax")
+                    alphaNonOpaquePixels = $nonOpaque
+                    alphaTransparentPixels = [int64](Get-PropertyValue $stats "alphaTransparentPixels")
+                }) | Out-Null
+                $ledgerRecorded = $true
+            }
         }
         else {
             Remove-Item -LiteralPath $pngDestination -Force -ErrorAction SilentlyContinue
@@ -354,20 +481,84 @@ image.save(dst)
                 }
                 if ($ffmpegExitCode -eq 0 -and (Test-Path -LiteralPath $pngDestination)) {
                     $decodeOk = $true
+                    $ffmpegMergeError = Join-Path $extractRoot "ffmpeg-alpha-merge.err"
+                    $nativeErrorActionPreference = $ErrorActionPreference
+                    $ErrorActionPreference = "Continue"
+                    try {
+                        $decodeOutput = @($converter | python - $pngDestination $pngDestination $opacityExtracted 2>$ffmpegMergeError)
+                        $mergeExitCode = $LASTEXITCODE
+                    }
+                    finally {
+                        $ErrorActionPreference = $nativeErrorActionPreference
+                    }
+                    if ($mergeExitCode -eq 0 -and $decodeOutput.Count -gt 0) {
+                        try {
+                            $stats = $decodeOutput[-1] | ConvertFrom-Json
+                        }
+                        catch {
+                            $stats = $null
+                        }
+                    }
                 }
+            }
+        }
+
+        if ($decodeOk -and -not $ledgerRecorded) {
+            if ($null -ne $stats) {
+                if ([string](Get-PropertyValue $stats "alphaSource") -eq "opacity-map") {
+                    $alphaMerged++
+                }
+                $nonOpaque = [int64](Get-PropertyValue $stats "alphaNonOpaquePixels")
+                $alphaNonOpaquePixels += $nonOpaque
+                $cacheLedger.Add([pscustomobject][ordered]@{
+                    texture = $texture
+                    opacityTexture = $opacityTexture
+                    archive = (Convert-ToForwardSlash $archive)
+                    opacityArchive = if ([string]::IsNullOrWhiteSpace($opacityArchive)) { "" } else { (Convert-ToForwardSlash $opacityArchive) }
+                    png = (Convert-ToForwardSlash $pngDestination)
+                    status = "converted"
+                    alphaSource = [string](Get-PropertyValue $stats "alphaSource")
+                    alphaMin = [int](Get-PropertyValue $stats "alphaMin")
+                    alphaMax = [int](Get-PropertyValue $stats "alphaMax")
+                    alphaNonOpaquePixels = $nonOpaque
+                    alphaTransparentPixels = [int64](Get-PropertyValue $stats "alphaTransparentPixels")
+                }) | Out-Null
+            }
+            else {
+                $cacheLedger.Add([pscustomobject][ordered]@{
+                    texture = $texture
+                    opacityTexture = $opacityTexture
+                    archive = (Convert-ToForwardSlash $archive)
+                    opacityArchive = if ([string]::IsNullOrWhiteSpace($opacityArchive)) { "" } else { (Convert-ToForwardSlash $opacityArchive) }
+                    png = (Convert-ToForwardSlash $pngDestination)
+                    status = "converted-no-alpha-stats"
+                }) | Out-Null
             }
         }
 
         if (-not $decodeOk) {
             Write-Warning "Starfield actor texture cache: decode failed for $texture"
             Remove-Item -LiteralPath $pngDestination -Force -ErrorAction SilentlyContinue
+            $cacheLedger.Add([pscustomobject][ordered]@{
+                texture = $texture
+                opacityTexture = $opacityTexture
+                archive = (Convert-ToForwardSlash $archive)
+                status = "decode-failed"
+            }) | Out-Null
             continue
         }
         $converted++
     }
 
     Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
-    return $converted
+    $ledgerPath = Join-Path $DataLocalDirectory "starfield-texture-cache-ledger.json"
+    @($cacheLedger.ToArray()) | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ledgerPath -Encoding ASCII
+    return [pscustomobject][ordered]@{
+        count = $converted
+        alphaMerged = $alphaMerged
+        alphaNonOpaquePixels = $alphaNonOpaquePixels
+        ledgerPath = (Resolve-Path -LiteralPath $ledgerPath).Path
+    }
 }
 
 function Copy-LatestScreenshot([string]$ScreenshotDir, [string]$DestinationDir, [string]$WorldId) {
@@ -1806,14 +1997,15 @@ try {
         $windowCapture = Join-Path $screensDir "$($world.id).window.png"
         New-Item -ItemType Directory -Force -Path $worldRunDir | Out-Null
         $runConfig = New-ProofRunConfig -World $world -WorldRunDir $worldRunDir -UserDataDir $userDataDir
+        $starfieldTextureCache = $null
         if ($world.id -eq "starfield") {
-            $convertedStarfieldTextures = Convert-StarfieldActorProofTextures `
+            $starfieldTextureCache = Convert-StarfieldActorProofTextures `
                 -OpenMwCfg $runConfig.openmwCfg `
                 -DataLocalDirectory $runConfig.dataLocalDirectory `
                 -BinaryRoot $BinaryRoot
-            if ($convertedStarfieldTextures -gt 0) {
+            if ($starfieldTextureCache.count -gt 0) {
                 [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", "1", "Process")
-                Write-Host "Starfield actor texture cache: $convertedStarfieldTextures PNGs"
+                Write-Host "Starfield actor texture cache: $($starfieldTextureCache.count) PNGs, $($starfieldTextureCache.alphaMerged) opacity masks merged"
             }
             else {
                 [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", $null, "Process")
@@ -2094,6 +2286,9 @@ try {
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.starfieldExternalMeshEvents -gt 0) {
                 $notes.Add("Starfield external mesh ledger: loaded $($worldViewerTelemetry.starfieldExternalMeshEvents), uv $($worldViewerTelemetry.starfieldExternalMeshWithUv), normals $($worldViewerTelemetry.starfieldExternalMeshWithNormals), vertices $($worldViewerTelemetry.starfieldExternalMeshVertices), indices $($worldViewerTelemetry.starfieldExternalMeshIndices), failures $($worldViewerTelemetry.starfieldExternalMeshFailures), actorTextureUnits $($worldViewerTelemetry.starfieldActorProofTextureUnits), worldTextureUnits $($worldViewerTelemetry.starfieldWorldProofTextureUnits)")
             }
+            if ($null -ne $starfieldTextureCache -and $starfieldTextureCache.count -gt 0) {
+                $notes.Add("Starfield texture cache: $($starfieldTextureCache.count) PNGs, opacity masks merged $($starfieldTextureCache.alphaMerged), nonOpaqueAlphaPixels $($starfieldTextureCache.alphaNonOpaquePixels)")
+            }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.tes5StaticFaceSurfaceFallbackEvents -gt 0) {
                 $notes.Add("TES5 static face surface fallbacks: $($worldViewerTelemetry.tes5StaticFaceSurfaceFallbackEvents)")
             }
@@ -2177,6 +2372,7 @@ try {
             openmwLog = (Convert-ToForwardSlash -Path $copiedOpenMwLog)
             openmwLogSummary = $logSummary
             worldViewerTelemetry = $worldViewerTelemetry
+            starfieldTextureCache = $starfieldTextureCache
             crashDump = $crashDump
             esm4GridRadius = $worldGridRadius
             processLog = (Convert-ToForwardSlash -Path $stdoutLog)
