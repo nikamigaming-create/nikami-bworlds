@@ -45,7 +45,8 @@ param(
     [switch]$ShowGui,
     [switch]$DryRun,
     [string[]]$SetEnv = @(),
-    [switch]$KeepRunning
+    [switch]$KeepRunning,
+    [string]$RunLedgerPath = "proof/world-viewer-run-ledger.jsonl"
 )
 
 Set-StrictMode -Version Latest
@@ -299,6 +300,12 @@ function Convert-StarfieldActorProofTextures([string]$OpenMwCfg, [string]$DataLo
         "textures/clothes/outfit_employee_uniform_formal_01/outfit_employee_uniform_formal_lowerbody_01_color.dds",
         "textures/clothes/outfit_employee_uniform_formal_01/outfit_employee_uniform_formal_sleeves_01_color.dds",
         "textures/clothes/outfit_employee_uniform_formal_01/outfit_employee_uniform_formal_upperbody_01_color.dds",
+        "textures/clothes/outfit_ucpolice/outfit_ucsecurity_arms_mat_color.dds",
+        "textures/clothes/outfit_ucpolice/outfit_ucsecurity_helmet_mat_color.dds",
+        "textures/clothes/outfit_ucpolice/outfit_ucsecurity_legsandacc_mat_color.dds",
+        "textures/clothes/outfit_ucpolice/outfit_ucsecurity_torso_mat_color.dds",
+        "textures/clothes/outfit_ucpolice/outfit_ucsecurity_visor_mat_color.dds",
+        "textures/clothes/spacesuit_ecliptic/spacesuit_ecliptic_flightcap_color.dds",
         "textures/clothes/outfit_colonist_quarterpaddedvest_01/outfit_colonist_quarterpaddedvest_01_hat_color.dds",
         "textures/clothes/outfit_colonist_quarterpaddedvest_01/outfit_colonist_quarterpaddedvest_01_sleeves_color.dds",
         "textures/clothes/outfit_colonist_quarterpaddedvest_01/outfit_colonist_quarterpaddedvest_01_upperbody_color.dds",
@@ -619,6 +626,8 @@ function Get-ScreenshotQuality([string]$Path) {
         $nearWhite = 0
         $skyOrVoid = 0
         $worldSignal = 0
+        $lowSaturationMid = 0
+        $colorSignal = 0
 
         for ($y = 0; $y -lt $height; $y += $step) {
             for ($x = 0; $x -lt $width; $x += $step) {
@@ -640,6 +649,8 @@ function Get-ScreenshotQuality([string]$Path) {
                 $isBlueSkyLike = ($brightness -gt 80 -and $pixel.B -gt ($pixel.R + 20) -and $pixel.B -gt ($pixel.G + 15))
                 $isNearWhite = ($brightness -gt 220 -and $channelSpread -lt 38)
                 $isSkyOrVoid = ($isNearWhite -or ($isBlueSkyLike -and $brightness -gt 150))
+                $isLowSaturationMid = ($brightness -gt 45 -and $brightness -lt 220 -and $channelSpread -lt 35)
+                $isColorSignal = ($brightness -gt 35 -and $channelSpread -gt 55)
 
                 if ($isMagenta) {
                     $magenta++
@@ -659,7 +670,13 @@ function Get-ScreenshotQuality([string]$Path) {
                 if ($isSkyOrVoid) {
                     $skyOrVoid++
                 }
-                elseif ($brightness -gt 25 -and -not $isMagenta -and -not $isPurple) {
+                if ($isLowSaturationMid) {
+                    $lowSaturationMid++
+                }
+                if ($isColorSignal) {
+                    $colorSignal++
+                }
+                if (-not $isSkyOrVoid -and $brightness -gt 25 -and -not $isMagenta -and -not $isPurple) {
                     $worldSignal++
                 }
             }
@@ -686,6 +703,8 @@ function Get-ScreenshotQuality([string]$Path) {
         $nearWhiteRatio = $nearWhite / $sampled
         $skyOrVoidRatio = $skyOrVoid / $sampled
         $worldSignalRatio = $worldSignal / $sampled
+        $lowSaturationMidRatio = $lowSaturationMid / $sampled
+        $colorSignalRatio = $colorSignal / $sampled
         $reasons = New-Object System.Collections.Generic.List[string]
 
         if ($mean -lt 18 -or $darkRatio -gt 0.92) {
@@ -699,6 +718,9 @@ function Get-ScreenshotQuality([string]$Path) {
         }
         if ($brightLowSaturationRatio -gt 0.68 -and $stddev -lt 55) {
             $reasons.Add("large bright low-saturation fallback/void surface")
+        }
+        if ($brightLowSaturationRatio -gt 0.24 -and $stddev -gt 42 -and $colorSignalRatio -lt 0.025) {
+            $reasons.Add("large high-contrast low-color fallback texture")
         }
         if ($blueSkyLikeRatio -gt 0.8) {
             $reasons.Add("mostly sky/blue void")
@@ -730,6 +752,8 @@ function Get-ScreenshotQuality([string]$Path) {
             nearWhiteRatio = [Math]::Round($nearWhiteRatio, 4)
             skyOrVoidRatio = [Math]::Round($skyOrVoidRatio, 4)
             worldSignalRatio = [Math]::Round($worldSignalRatio, 4)
+            lowSaturationMidRatio = [Math]::Round($lowSaturationMidRatio, 4)
+            colorSignalRatio = [Math]::Round($colorSignalRatio, 4)
             acceptable = ($reasons.Count -eq 0)
             reasons = @($reasons)
         }
@@ -899,6 +923,8 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $starfieldMeshLedger = New-Object System.Collections.Generic.List[object]
     $starfieldActorTextureLedger = New-Object System.Collections.Generic.List[object]
     $starfieldWorldTextureLedger = New-Object System.Collections.Generic.List[object]
+    $starfieldWorldMaterialFallbackLedger = New-Object System.Collections.Generic.List[object]
+    $starfieldWorldSkippedGeometryLedger = New-Object System.Collections.Generic.List[object]
     $meshLoadFailures = New-Object System.Collections.Generic.List[object]
     $staticSkeletonAttaches = New-Object System.Collections.Generic.List[object]
     $tes5FaceSurfaceFallbacks = New-Object System.Collections.Generic.List[object]
@@ -973,6 +999,8 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
     $starfieldActorProofTextureUnits = 0
     $starfieldWorldProofTextureEvents = 0
     $starfieldWorldProofTextureUnits = 0
+    $starfieldWorldMaterialFallbackEvents = 0
+    $starfieldWorldSkippedGeometryEvents = 0
     $starfieldBsGeometryProxyEvents = 0
     $textureLedgerEvents = 0
     $textureImagesResolved = 0
@@ -1224,6 +1252,28 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
             if ($starfieldWorldTextureLedger.Count -lt 240) {
                 $entry | Add-Member -NotePropertyName phase -NotePropertyValue "starfield-world-proof-texture" -Force
                 $starfieldWorldTextureLedger.Add($entry)
+            }
+            continue
+        }
+
+        $starfieldWorldMaterialFallbackIndex = $line.IndexOf("World viewer: Starfield world material fallback")
+        if ($starfieldWorldMaterialFallbackIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($starfieldWorldMaterialFallbackIndex + "World viewer: Starfield world material fallback".Length).Trim())
+            $starfieldWorldMaterialFallbackEvents++
+            if ($starfieldWorldMaterialFallbackLedger.Count -lt 240) {
+                $entry | Add-Member -NotePropertyName phase -NotePropertyValue "starfield-world-material-fallback" -Force
+                $starfieldWorldMaterialFallbackLedger.Add($entry)
+            }
+            continue
+        }
+
+        $starfieldWorldSkippedGeometryIndex = $line.IndexOf("World viewer: Starfield world proof skipped geometry")
+        if ($starfieldWorldSkippedGeometryIndex -ge 0) {
+            $entry = Parse-WorldViewerKeyValues ($line.Substring($starfieldWorldSkippedGeometryIndex + "World viewer: Starfield world proof skipped geometry".Length).Trim())
+            $starfieldWorldSkippedGeometryEvents++
+            if ($starfieldWorldSkippedGeometryLedger.Count -lt 240) {
+                $entry | Add-Member -NotePropertyName phase -NotePropertyValue "starfield-world-skipped-geometry" -Force
+                $starfieldWorldSkippedGeometryLedger.Add($entry)
             }
             continue
         }
@@ -1715,6 +1765,8 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         starfieldActorProofTextureUnits = $starfieldActorProofTextureUnits
         starfieldWorldProofTextureEvents = $starfieldWorldProofTextureEvents
         starfieldWorldProofTextureUnits = $starfieldWorldProofTextureUnits
+        starfieldWorldMaterialFallbackEvents = $starfieldWorldMaterialFallbackEvents
+        starfieldWorldSkippedGeometryEvents = $starfieldWorldSkippedGeometryEvents
         starfieldBsGeometryProxyEvents = $starfieldBsGeometryProxyEvents
         meshStages = [pscustomobject]$meshStages
         textureLedgerEvents = $textureLedgerEvents
@@ -1790,6 +1842,8 @@ function Get-WorldViewerTelemetrySummary([string]$Path) {
         textureLedger = @($textureLedger.ToArray())
         starfieldActorTextureLedger = @($starfieldActorTextureLedger.ToArray())
         starfieldWorldTextureLedger = @($starfieldWorldTextureLedger.ToArray())
+        starfieldWorldMaterialFallbackLedger = @($starfieldWorldMaterialFallbackLedger.ToArray())
+        starfieldWorldSkippedGeometryLedger = @($starfieldWorldSkippedGeometryLedger.ToArray())
         materialLedger = @($materialLedger.ToArray())
         meshLoadFailures = @($meshLoadFailures.ToArray())
         staticSkeletonAttaches = @($staticSkeletonAttaches.ToArray())
@@ -1967,7 +2021,10 @@ $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_ESM4_ACTOR_PROXY_ANIMATE",
     "OPENMW_WORLD_VIEWER_ESM4_GRID_RADIUS",
     "OPENMW_WORLD_VIEWER_REQUIRE_CAMERA_SETTLED",
-    "OPENMW_PROOF_DISABLE_SKY"
+    "OPENMW_PROOF_DISABLE_SKY",
+    "OPENMW_PROOF_HIDE_FIRST_PERSON",
+    "OPENMW_PROOF_HIDE_PLAYER_VISUAL",
+    "OPENMW_PROOF_HIDE_WORLD_VISUAL"
 )
 
 $previousEnv = @{}
@@ -2091,7 +2148,7 @@ try {
         }
     }
     else {
-        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "OPENMW_WORLD_VIEWER_ALLOW_MISSING_SKIN_BONES", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HEAD_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_FACE_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_BROW_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_EYE_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_MOUTH_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS", "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "OPENMW_WORLD_VIEWER_RENDER_DISABLED_ACTORS", "OPENMW_WORLD_VIEWER_FOCUS_ACTOR")) {
+        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "OPENMW_WORLD_VIEWER_ALLOW_MISSING_SKIN_BONES", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HEAD_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_FACE_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_BROW_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_EYE_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_MOUTH_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS", "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "OPENMW_WORLD_VIEWER_RENDER_DISABLED_ACTORS", "OPENMW_WORLD_VIEWER_FOCUS_ACTOR", "OPENMW_PROOF_HIDE_FIRST_PERSON", "OPENMW_PROOF_HIDE_PLAYER_VISUAL", "OPENMW_PROOF_HIDE_WORLD_VISUAL")) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
     }
@@ -2356,7 +2413,7 @@ try {
                             $candidatePath = Join-Path $screensDir ("{0}.candidate-{1:000}.png" -f $world.id, $candidateIndex)
                             Copy-Item -LiteralPath $shot.FullName -Destination $candidatePath -Force
                             $candidateQuality = Get-ScreenshotQuality -Path $candidatePath
-                            $candidateAccepted = $AllowBadScreenshots -or ($null -ne $candidateQuality -and $candidateQuality.acceptable)
+                            $candidateAccepted = ($null -ne $candidateQuality -and $candidateQuality.acceptable)
                             $candidateScreenshots.Add([pscustomobject][ordered]@{
                                 path = (Convert-ToForwardSlash -Path $candidatePath)
                                 capturedAt = $shot.LastWriteTime.ToString("o")
@@ -2444,6 +2501,10 @@ try {
                     $status = if ($status -eq "window-screenshot") { "rejected-window-screenshot" } else { "rejected-screenshot" }
                     $notes.Add("rejected screenshot quality: $($screenshotQuality.reasons -join '; ')")
                 }
+                elseif ($null -ne $screenshotQuality -and -not $screenshotQuality.acceptable -and $AllowBadScreenshots) {
+                    $status = if ($status -eq "window-screenshot") { "rejected-window-screenshot" } else { "rejected-screenshot" }
+                    $notes.Add("kept rejected screenshot evidence because AllowBadScreenshots was set: $($screenshotQuality.reasons -join '; ')")
+                }
             }
 
             $logSummary = Get-ProofLogSummary -Path $copiedOpenMwLog
@@ -2470,7 +2531,7 @@ try {
                 $notes.Add("Mesh ledger: template finals $($worldViewerTelemetry.meshTemplateFinalWithGeometry)/$($worldViewerTelemetry.meshTemplateFinalEvents) with geometry, actor templates $($worldViewerTelemetry.actorMeshTemplateWithGeometry)/$($worldViewerTelemetry.actorMeshTemplateEvents), loadFailures $($worldViewerTelemetry.meshLoadFailureEvents)")
             }
             if ($null -ne $worldViewerTelemetry -and $worldViewerTelemetry.starfieldExternalMeshEvents -gt 0) {
-                $notes.Add("Starfield external mesh ledger: loaded $($worldViewerTelemetry.starfieldExternalMeshEvents), uv $($worldViewerTelemetry.starfieldExternalMeshWithUv), normals $($worldViewerTelemetry.starfieldExternalMeshWithNormals), vertices $($worldViewerTelemetry.starfieldExternalMeshVertices), indices $($worldViewerTelemetry.starfieldExternalMeshIndices), failures $($worldViewerTelemetry.starfieldExternalMeshFailures), actorTextureUnits $($worldViewerTelemetry.starfieldActorProofTextureUnits), worldTextureUnits $($worldViewerTelemetry.starfieldWorldProofTextureUnits)")
+                $notes.Add("Starfield external mesh ledger: loaded $($worldViewerTelemetry.starfieldExternalMeshEvents), uv $($worldViewerTelemetry.starfieldExternalMeshWithUv), normals $($worldViewerTelemetry.starfieldExternalMeshWithNormals), vertices $($worldViewerTelemetry.starfieldExternalMeshVertices), indices $($worldViewerTelemetry.starfieldExternalMeshIndices), failures $($worldViewerTelemetry.starfieldExternalMeshFailures), actorTextureUnits $($worldViewerTelemetry.starfieldActorProofTextureUnits), worldTextureUnits $($worldViewerTelemetry.starfieldWorldProofTextureUnits), worldFallbacks $($worldViewerTelemetry.starfieldWorldMaterialFallbackEvents), worldSkippedGeometry $($worldViewerTelemetry.starfieldWorldSkippedGeometryEvents)")
             }
             if ($null -ne $starfieldTextureCache -and $starfieldTextureCache.count -gt 0) {
                 $notes.Add("Starfield texture cache: $($starfieldTextureCache.count) PNGs, opacity masks merged $($starfieldTextureCache.alphaMerged), nonOpaqueAlphaPixels $($starfieldTextureCache.alphaNonOpaquePixels)")
@@ -2503,7 +2564,12 @@ try {
                 $selectedText = ""
                 if ($null -ne $worldViewerTelemetry.latestProofActorOrbitSelection) {
                     $selection = $worldViewerTelemetry.latestProofActorOrbitSelection
-                    $selectedText = ", latest $($selection.phase) angle $($selection.angle) blockers $($selection.blockers)"
+                    $selectionPhase = Get-PropertyValue $selection "phase"
+                    $selectionAngle = Get-PropertyValue $selection "angle"
+                    $selectionBlockers = Get-PropertyValue $selection "blockers"
+                    $angleText = if ($null -ne $selectionAngle) { " angle $selectionAngle" } else { "" }
+                    $blockerText = if ($null -ne $selectionBlockers) { " blockers $selectionBlockers" } else { "" }
+                    $selectedText = ", latest $selectionPhase$angleText$blockerText"
                 }
                 $notes.Add("Proof actor orbit raycast: candidates $($worldViewerTelemetry.proofActorOrbitCandidateEvents), clear $($worldViewerTelemetry.proofActorOrbitCandidateClear), selected $($worldViewerTelemetry.proofActorOrbitSelectedEvents), kept $($worldViewerTelemetry.proofActorOrbitKeptEvents)$selectedText")
             }
@@ -2614,6 +2680,93 @@ $manifest = [ordered]@{
 
 $manifestPath = Join-Path $absProofDir "manifest.json"
 $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath -Encoding ASCII
+
+if (-not [string]::IsNullOrWhiteSpace($RunLedgerPath)) {
+    $ledgerPath = $RunLedgerPath
+    if (-not [System.IO.Path]::IsPathRooted($ledgerPath)) {
+        $ledgerPath = Join-Path (Get-Location) $ledgerPath
+    }
+    $ledgerPath = [System.IO.Path]::GetFullPath($ledgerPath)
+    $ledgerDir = Split-Path -Parent $ledgerPath
+    if (-not [string]::IsNullOrWhiteSpace($ledgerDir)) {
+        New-Item -ItemType Directory -Path $ledgerDir -Force | Out-Null
+    }
+
+    $ledgerResults = @($results.ToArray() | ForEach-Object {
+        $quality = Get-PropertyValue $_ "screenshotQuality"
+        $telemetrySummary = Get-PropertyValue $_ "worldViewerTelemetry"
+        $textureCache = Get-PropertyValue $_ "starfieldTextureCache"
+        [ordered]@{
+            worldId = $_.worldId
+            status = $_.status
+            startCell = $_.startCell
+            focusActor = $FocusActor
+            screenshot = $_.screenshot
+            acceptable = if ($null -ne $quality) { [bool]$quality.acceptable } else { $null }
+            quality = if ($null -ne $quality) {
+                [ordered]@{
+                    meanBrightness = $quality.meanBrightness
+                    brightnessStdDev = $quality.brightnessStdDev
+                    worldSignalRatio = $quality.worldSignalRatio
+                    brightLowSaturationRatio = $quality.brightLowSaturationRatio
+                    skyOrVoidRatio = $quality.skyOrVoidRatio
+                    lowSaturationMidRatio = $quality.lowSaturationMidRatio
+                    colorSignalRatio = $quality.colorSignalRatio
+                    magentaRatio = $quality.magentaRatio
+                    purpleRatio = $quality.purpleRatio
+                    reasons = @($quality.reasons)
+                }
+            } else { $null }
+            candidateCount = @($_.candidateScreenshots).Count
+            telemetry = if ($null -ne $telemetrySummary) {
+                [ordered]@{
+                    textureImagesResolved = $telemetrySummary.textureImagesResolved
+                    textureImagesMissing = $telemetrySummary.textureImagesMissing
+                    materialWithTextureUnits = $telemetrySummary.materialWithTextureUnits
+                    materialLedgerEvents = $telemetrySummary.materialLedgerEvents
+                    nativeActorPartsAttached = $telemetrySummary.nativeActorPartsAttached
+                    nativeActorPartsRequested = $telemetrySummary.nativeActorPartsRequested
+                    starfieldActorProofTextureUnits = $telemetrySummary.starfieldActorProofTextureUnits
+                    starfieldWorldProofTextureUnits = $telemetrySummary.starfieldWorldProofTextureUnits
+                    starfieldWorldMaterialFallbackEvents = $telemetrySummary.starfieldWorldMaterialFallbackEvents
+                    starfieldWorldSkippedGeometryEvents = $telemetrySummary.starfieldWorldSkippedGeometryEvents
+                    latestProofActorBounds = $telemetrySummary.latestProofActorBounds
+                    latestProofActorOrbitSelection = $telemetrySummary.latestProofActorOrbitSelection
+                }
+            } else { $null }
+            starfieldTextureCache = if ($null -ne $textureCache) {
+                [ordered]@{
+                    count = $textureCache.count
+                    alphaMerged = $textureCache.alphaMerged
+                    alphaNonOpaquePixels = $textureCache.alphaNonOpaquePixels
+                }
+            } else { $null }
+            notes = @($_.notes)
+        }
+    })
+
+    $ledgerEntry = [ordered]@{
+        schemaVersion = 1
+        generatedAt = $manifest.generatedAt
+        manifest = (Convert-ToForwardSlash -Path $manifestPath)
+        binary = $manifest.binary
+        runSeconds = $RunSeconds
+        screenshotFrames = $ScreenshotFrames
+        telemetryInterval = $TelemetryInterval
+        esm4GridRadius = $Esm4GridRadius
+        setEnv = $manifest.setEnv
+        flags = [ordered]@{
+            preserveNativeMaterials = [bool]$PreserveNativeMaterials
+            fullbrightNativeMaterials = [bool]$FullbrightNativeMaterials
+            fullbrightActorMaterialsOnly = [bool]$FullbrightActorMaterialsOnly
+            allowBadScreenshots = [bool]$AllowBadScreenshots
+            showGui = [bool]$ShowGui
+            keepRunning = [bool]$KeepRunning
+        }
+        results = $ledgerResults
+    }
+    ($ledgerEntry | ConvertTo-Json -Depth 8 -Compress) | Add-Content -LiteralPath $ledgerPath -Encoding ASCII
+}
 
 Write-Host ""
 $results | Format-Table -AutoSize worldId, status, startCell, screenshot
