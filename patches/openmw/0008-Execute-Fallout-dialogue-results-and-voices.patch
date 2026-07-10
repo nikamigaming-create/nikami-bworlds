@@ -1,0 +1,765 @@
+From 7a159454ed9860b2c02be7cd617dedc8914952dd Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 15:18:05 -0700
+Subject: [PATCH] Execute Fallout dialogue results and voices
+
+---
+ .../esm4/testloadbehavior.cpp                 |   4 +
+ apps/openmw/engine.cpp                        |  21 +++
+ apps/openmw/mwdialogue/dialoguemanagerimp.cpp | 142 ++++++++++++++-
+ apps/openmw/mwdialogue/dialoguemanagerimp.hpp |   5 +
+ apps/openmw/mwworld/esm4questruntime.cpp      | 166 +++++++++++++++++-
+ apps/openmw/mwworld/esm4questruntime.hpp      |   7 +
+ .../mwworld/testesm4questruntime.cpp          |  66 +++++++
+ components/esm4/script.hpp                    |   6 +-
+ 8 files changed, 406 insertions(+), 11 deletions(-)
+
+diff --git a/apps/components_tests/esm4/testloadbehavior.cpp b/apps/components_tests/esm4/testloadbehavior.cpp
+index a8497cc3a0..de652ce03a 100644
+--- a/apps/components_tests/esm4/testloadbehavior.cpp
++++ b/apps/components_tests/esm4/testloadbehavior.cpp
+@@ -198,6 +198,9 @@ namespace
+         ESM4::TargetResponseData firstResponse{};
+         firstResponse.emoType = ESM4::EMO_Happy;
+         firstResponse.responseNo = 1;
++        firstResponse.responsePadding[0] = 0x0f;
++        firstResponse.responsePadding[1] = 0x04;
++        firstResponse.responsePadding[2] = 0x01;
+         appendSubRecord(payload, "TRDT", firstResponse);
+         appendSubRecord(payload, "NAM1", zString("First response"));
+         appendSubRecord(payload, "SNAM", std::uint32_t{ 0x2001 });
+@@ -244,6 +247,7 @@ namespace
+         EXPECT_EQ(info.mNextSpeaker, 1);
+         EXPECT_EQ(info.mInfoFlags, 0x0104);
+         ASSERT_EQ(info.mResponses.size(), 2);
++        EXPECT_EQ(info.mResponses[0].mData.responseNo, 1);
+         EXPECT_EQ(info.mResponses[0].mResponse, "First response");
+         EXPECT_EQ(info.mResponses[0].mSpeakerAnimation, ESM::FormId::fromUint32(0x2001));
+         EXPECT_EQ(info.mResponses[1].mResponse, "Second response");
+diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
+index 9bc84fcc70..4aad8e6603 100644
+--- a/apps/openmw/engine.cpp
++++ b/apps/openmw/engine.cpp
+@@ -2422,6 +2422,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+     static bool proofInventoryOpened = false;
+     static bool proofQuickSaveQueued = false;
+     static bool proofSayQueued = false;
++    static bool proofDialogueTopicQueued = false;
+     static bool proofTimedScript1Executed = false;
+     static bool proofTimedScript2Executed = false;
+     static bool proofActorCameraAligned = false;
+@@ -3782,6 +3783,26 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+         proofSayQueued = true;
+     }
+ 
++    const char* proofDialogueTopic = std::getenv("OPENMW_PROOF_DIALOGUE_TOPIC");
++    const int proofDialogueTopicDelay = std::max(1, getProofFrame("OPENMW_PROOF_DIALOGUE_TOPIC_DELAY"));
++    if (!proofDialogueTopicQueued && proofSayQueued && proofDialogueTopic != nullptr && *proofDialogueTopic != '\0'
++        && proofSayFrame >= 0 && frameNumber >= static_cast<unsigned>(proofSayFrame + proofDialogueTopicDelay)
++        && mDialogueManager != nullptr)
++    {
++        struct ProofDialogueCallback final : MWBase::DialogueManager::ResponseCallback
++        {
++            void addResponse(std::string_view title, std::string_view text) override
++            {
++                Log(Debug::Info) << "FNV/ESM4 proof: dialogue response title=\"" << title << "\" text=\"" << text
++                                 << "\"";
++            }
++        } callback;
++        Log(Debug::Info) << "FNV/ESM4 proof: selecting dialogue topic \"" << proofDialogueTopic << "\" at frame "
++                         << frameNumber;
++        mDialogueManager->keywordSelected(proofDialogueTopic, &callback);
++        proofDialogueTopicQueued = true;
++    }
++
+     if (proofPinnedPlayerToActorView && proofRunning && mWorld != nullptr
+         && std::getenv("OPENMW_PROOF_PIN_PLAYER_TO_ACTOR_VIEW") != nullptr)
+     {
+diff --git a/apps/openmw/mwdialogue/dialoguemanagerimp.cpp b/apps/openmw/mwdialogue/dialoguemanagerimp.cpp
+index a29bd42f25..d8c350ba20 100644
+--- a/apps/openmw/mwdialogue/dialoguemanagerimp.cpp
++++ b/apps/openmw/mwdialogue/dialoguemanagerimp.cpp
+@@ -1,7 +1,9 @@
+ #include "dialoguemanagerimp.hpp"
+ 
+ #include <algorithm>
++#include <iomanip>
+ #include <list>
++#include <limits>
+ #include <optional>
+ #include <sstream>
+ 
+@@ -16,6 +18,8 @@
+ #include <components/esm4/loaddial.hpp>
+ #include <components/esm4/loadinfo.hpp>
+ #include <components/esm4/loadnpc.hpp>
++#include <components/esm4/loadsoun.hpp>
++#include <components/esm4/loadsndr.hpp>
+ #include <components/esm4/script.hpp>
+ 
+ #include <components/compiler/errorhandler.hpp>
+@@ -30,7 +34,11 @@
+ 
+ #include <components/misc/resourcehelpers.hpp>
+ 
++#include <components/resource/resourcesystem.hpp>
++
+ #include <components/settings/values.hpp>
++#include <components/vfs/manager.hpp>
++#include <components/vfs/recursivedirectoryiterator.hpp>
+ 
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/journal.hpp"
+@@ -60,6 +68,26 @@
+ 
+ namespace MWDialogue
+ {
++    namespace
++    {
++        constexpr unsigned int maxEsm4SoundReferenceDepth = 8;
++
++        std::string resolveEsm4SoundFile(const MWWorld::ESMStore& store, ESM::FormId id, unsigned int depth = 0)
++        {
++            if (id.isZeroOrUnset() || depth >= maxEsm4SoundReferenceDepth)
++                return {};
++            if (const ESM4::Sound* sound = store.get<ESM4::Sound>().search(ESM::RefId(id)))
++                return sound->mSoundFile;
++            if (const ESM4::SoundReference* sound = store.get<ESM4::SoundReference>().search(ESM::RefId(id)))
++            {
++                if (!sound->mSoundFile.empty())
++                    return sound->mSoundFile;
++                return resolveEsm4SoundFile(store, sound->mSoundId, depth + 1);
++            }
++            return {};
++        }
++    }
++
+     DialogueManager::DialogueManager(
+         const Compiler::Extensions& extensions, Translation::Storage& translationDataStorage)
+         : mTranslationDataStorage(translationDataStorage)
+@@ -88,6 +116,8 @@ namespace MWDialogue
+         mEsm4TopicIds.clear();
+         mEsm4ChoiceTopics.clear();
+         mEsm4SaidInfos.clear();
++        mEsm4AddedTopics.clear();
++        mEsm4VoicePaths.clear();
+     }
+ 
+     bool DialogueManager::matchesEsm4Info(const ESM4::DialogInfo& info) const
+@@ -227,12 +257,62 @@ namespace MWDialogue
+                 || Misc::StringUtils::ciEqual(dialogue.mEditorId, "GOODBYE"))
+                 continue;
+             const ESM4::DialogInfo* info = selectEsm4Info(dialogue.mId);
+-            if (info == nullptr || getEsm4InfoActorAffinity(*info) == 0)
++            if (info == nullptr
++                || (getEsm4InfoActorAffinity(*info) == 0 && !mEsm4AddedTopics.contains(dialogue.mId)))
+                 continue;
+             const std::string& title = dialogue.mTopicName.empty() ? dialogue.mEditorId : dialogue.mTopicName;
+             if (!title.empty())
++            {
+                 mEsm4TopicIds.emplace(title, dialogue.mId);
++                if (std::getenv("OPENMW_PROOF_DIALOGUE_TOPIC") != nullptr)
++                    Log(Debug::Info) << "FNV/ESM4 dialogue: available topic=\"" << title << "\" form="
++                                     << ESM::RefId(dialogue.mId) << " info=" << ESM::RefId(info->mId);
++            }
++        }
++    }
++
++    std::string DialogueManager::resolveEsm4Voice(
++        const ESM4::DialogInfo& info, const ESM4::DialogResponse& response, std::size_t responseIndex)
++    {
++        const std::uint32_t authoredResponseNumber = response.mData.responseNo;
++        const std::uint32_t responseNumber = authoredResponseNumber != 0 ? authoredResponseNumber
++                                                                         : static_cast<std::uint32_t>(responseIndex + 1);
++        const auto key = std::pair{ info.mId, responseNumber };
++        if (const auto found = mEsm4VoicePaths.find(key); found != mEsm4VoicePaths.end())
++            return found->second;
++
++        const MWWorld::ESMStore& store = *MWBase::Environment::get().getESMStore();
++        const VFS::Manager* vfs = MWBase::Environment::get().getResourceSystem()->getVFS();
++        std::string soundFile;
++        if (response.mData.sound != 0)
++            soundFile = resolveEsm4SoundFile(store, ESM::FormId::fromUint32(response.mData.sound));
++        if (soundFile.empty() && !info.mSound.isZeroOrUnset())
++            soundFile = resolveEsm4SoundFile(store, info.mSound);
++
++        std::string path;
++        if (!soundFile.empty())
++            path = Misc::ResourceHelpers::correctResourcePath({ { "sound" } }, soundFile, vfs);
++
++        if (path.empty() || !vfs->exists(VFS::Path::Normalized(path)))
++        {
++            std::ostringstream suffix;
++            suffix << '_' << std::hex << std::nouppercase << std::setfill('0') << std::setw(8) << info.mId.mIndex
++                   << '_' << std::dec << responseNumber;
++            const std::string stem = suffix.str();
++            for (const VFS::Path::Normalized& candidate : vfs->getRecursiveDirectoryIterator("sound/voice"))
++            {
++                const std::string_view value = candidate.view();
++                if ((value.ends_with(stem + ".ogg") || value.ends_with(stem + ".mp3")
++                        || value.ends_with(stem + ".wav")))
++                {
++                    path = candidate.value();
++                    break;
++                }
++            }
+         }
++
++        mEsm4VoicePaths.emplace(key, path);
++        return path;
+     }
+ 
+     void DialogueManager::executeEsm4Topic(ESM::FormId topic, ResponseCallback* callback, bool greeting)
+@@ -243,14 +323,29 @@ namespace MWDialogue
+         if (dialogue == nullptr || info == nullptr)
+             return;
+ 
+-        std::string response;
++        std::vector<const ESM4::DialogResponse*> orderedResponses;
++        orderedResponses.reserve(info->mResponses.size());
+         for (const ESM4::DialogResponse& item : info->mResponses)
++            orderedResponses.push_back(&item);
++        std::stable_sort(orderedResponses.begin(), orderedResponses.end(),
++            [](const ESM4::DialogResponse* left, const ESM4::DialogResponse* right) {
++                const std::uint32_t leftAuthoredNumber = left->mData.responseNo;
++                const std::uint32_t rightAuthoredNumber = right->mData.responseNo;
++                const std::uint32_t leftNumber = leftAuthoredNumber != 0 ? leftAuthoredNumber
++                                                                         : std::numeric_limits<std::uint32_t>::max();
++                const std::uint32_t rightNumber = rightAuthoredNumber != 0 ? rightAuthoredNumber
++                                                                           : std::numeric_limits<std::uint32_t>::max();
++                return leftNumber < rightNumber;
++            });
++
++        std::string response;
++        for (const ESM4::DialogResponse* item : orderedResponses)
+         {
+-            if (item.mResponse.empty())
++            if (item->mResponse.empty())
+                 continue;
+             if (!response.empty())
+                 response += "\n";
+-            response += item.mResponse;
++            response += item->mResponse;
+         }
+         if (response.empty())
+             response = info->mResponse;
+@@ -260,6 +355,23 @@ namespace MWDialogue
+         if ((info->mInfoFlags & ESM4::INFO_SayOnce) != 0)
+             mEsm4SaidInfos.insert(info->mId);
+ 
++        for (ESM::FormId addedTopic : info->mAddTopics)
++            mEsm4AddedTopics.insert(addedTopic);
++
++        for (std::size_t i = 0; i < orderedResponses.size(); ++i)
++        {
++            const ESM4::DialogResponse& item = *orderedResponses[i];
++            const std::string voice = resolveEsm4Voice(*info, item, i);
++            if (voice.empty())
++                continue;
++            Log(Debug::Info) << "FNV/ESM4 dialogue: resolved authored voice info=" << ESM::RefId(info->mId)
++                             << " response="
++                             << (item.mData.responseNo != 0 ? item.mData.responseNo : i + 1)
++                             << " path=\"" << voice << "\"";
++            MWBase::Environment::get().getSoundManager()->say(mActor, VFS::Path::Normalized(voice));
++            break;
++        }
++
+         mChoices.clear();
+         mEsm4ChoiceTopics.clear();
+         for (ESM::FormId choice : info->mChoices)
+@@ -277,10 +389,23 @@ namespace MWDialogue
+         if ((info->mInfoFlags & ESM4::INFO_Goodbye) != 0)
+             goodbye();
+ 
+-        if (!info->mScript.scriptSource.empty() || !info->mEndScript.scriptSource.empty())
+-            Log(Debug::Info) << "FNV/ESM4 dialogue: deferred result script info=" << ESM::RefId(info->mId)
+-                             << " beginBytes=" << info->mScript.compiledData.size()
+-                             << " endBytes=" << info->mEndScript.compiledData.size();
++        MWWorld::ESM4QuestRuntime& questRuntime
++            = MWBase::Environment::get().getWorld()->getESM4QuestRuntime();
++        const std::size_t unsupportedBefore = questRuntime.getUnsupportedStageCommands().size();
++        if (!info->mScript.scriptSource.empty())
++            questRuntime.executeResultSource(info->mScript.scriptSource);
++        if (!info->mEndScript.scriptSource.empty())
++            questRuntime.executeResultSource(info->mEndScript.scriptSource);
++        const std::size_t unsupportedAfter = questRuntime.getUnsupportedStageCommands().size();
++        if (!info->mScript.scriptSource.empty() || !info->mEndScript.scriptSource.empty()
++            || !info->mScript.compiledData.empty() || !info->mEndScript.compiledData.empty())
++            Log(Debug::Info) << "FNV/ESM4 dialogue: executed result source info=" << ESM::RefId(info->mId)
++                             << " beginSource=" << info->mScript.scriptSource.size()
++                             << " endSource=" << info->mEndScript.scriptSource.size()
++                             << " unsupportedAdded=" << (unsupportedAfter - unsupportedBefore)
++                             << " compiledOnly="
++                             << ((!info->mScript.compiledData.empty() && info->mScript.scriptSource.empty())
++                                     || (!info->mEndScript.compiledData.empty() && info->mEndScript.scriptSource.empty()));
+ 
+         Log(Debug::Info) << "FNV/ESM4 dialogue: selected topic=" << dialogue->mEditorId
+                          << " topicForm=" << ESM::RefId(dialogue->mId) << " info=" << ESM::RefId(info->mId)
+@@ -387,6 +512,7 @@ namespace MWDialogue
+ 
+             executeEsm4Topic(greeting->mId, callback, true);
+             creatureStats.talkedToPlayer();
++            mTalkedTo = true;
+             updateEsm4Topics();
+             return true;
+         }
+diff --git a/apps/openmw/mwdialogue/dialoguemanagerimp.hpp b/apps/openmw/mwdialogue/dialoguemanagerimp.hpp
+index c4b08b5cf0..0a424d7fb6 100644
+--- a/apps/openmw/mwdialogue/dialoguemanagerimp.hpp
++++ b/apps/openmw/mwdialogue/dialoguemanagerimp.hpp
+@@ -27,6 +27,7 @@ namespace ESM4
+ {
+     struct Dialogue;
+     struct DialogInfo;
++    struct DialogResponse;
+ }
+ 
+ namespace MWDialogue
+@@ -66,6 +67,8 @@ namespace MWDialogue
+         std::map<std::string, ESM::FormId, Misc::StringUtils::CiComp> mEsm4TopicIds;
+         std::vector<ESM::FormId> mEsm4ChoiceTopics;
+         std::set<ESM::FormId> mEsm4SaidInfos;
++        std::set<ESM::FormId> mEsm4AddedTopics;
++        std::map<std::pair<ESM::FormId, std::uint32_t>, std::string> mEsm4VoicePaths;
+ 
+         int mOriginalDisposition;
+         int mCurrentDisposition;
+@@ -86,6 +89,8 @@ namespace MWDialogue
+         const ESM4::DialogInfo* selectEsm4Info(ESM::FormId topic) const;
+         bool matchesEsm4Info(const ESM4::DialogInfo& info) const;
+         int getEsm4InfoActorAffinity(const ESM4::DialogInfo& info) const;
++        std::string resolveEsm4Voice(
++            const ESM4::DialogInfo& info, const ESM4::DialogResponse& response, std::size_t responseIndex);
+         void updateEsm4Topics();
+ 
+         const ESM::Dialogue* searchDialogue(const ESM::RefId& id);
+diff --git a/apps/openmw/mwworld/esm4questruntime.cpp b/apps/openmw/mwworld/esm4questruntime.cpp
+index 0452b94504..bc66def321 100644
+--- a/apps/openmw/mwworld/esm4questruntime.cpp
++++ b/apps/openmw/mwworld/esm4questruntime.cpp
+@@ -15,6 +15,7 @@
+ #include <components/esm3/esmwriter.hpp>
+ #include <components/esm4/loadglob.hpp>
+ #include <components/esm4/loadqust.hpp>
++#include <components/esm4/loadscpt.hpp>
+ #include <components/misc/strings/algorithm.hpp>
+ 
+ namespace
+@@ -47,6 +48,14 @@ namespace
+         const auto parsed = std::from_chars(begin, end, result, 10);
+         return parsed.ec == std::errc{} && parsed.ptr == end;
+     }
++
++    bool parseFloat(std::string_view value, float& result)
++    {
++        const char* const begin = value.data();
++        const char* const end = value.data() + value.size();
++        const auto parsed = std::from_chars(begin, end, result);
++        return parsed.ec == std::errc{} && parsed.ptr == end;
++    }
+ }
+ 
+ namespace MWWorld
+@@ -64,6 +73,10 @@ namespace MWWorld
+                 state.mStageDone.emplace(stage.mIndex, false);
+             for (const ESM4::QuestObjective& objective : quest.mObjectives)
+                 state.mObjectiveStatus.emplace(objective.mIndex, 0);
++            if (const ESM4::Script* script = store.get<ESM4::Script>().search(ESM::RefId(quest.mQuestScript)))
++                for (const ESM4::ScriptLocalVariableData& variable : script->mScript.localVarData)
++                    if (!variable.variableName.empty())
++                        state.mVariables.emplace(Misc::StringUtils::lowerCase(variable.variableName), 0.f);
+             mStates.insert_or_assign(quest.mId, std::move(state));
+         }
+     }
+@@ -123,6 +136,38 @@ namespace MWWorld
+         return true;
+     }
+ 
++    bool ESM4QuestRuntime::stopQuest(std::string_view id)
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr)
++            return false;
++        state->mFlags &= ~ESM4QuestState::Flag_Running;
++        return true;
++    }
++
++    bool ESM4QuestRuntime::completeQuest(std::string_view id)
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr)
++            return false;
++        state->mFlags |= ESM4QuestState::Flag_Completed;
++        state->mFlags &= ~(ESM4QuestState::Flag_Running | ESM4QuestState::Flag_Failed);
++        return true;
++    }
++
++    bool ESM4QuestRuntime::failQuest(std::string_view id)
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr)
++            return false;
++        state->mFlags |= ESM4QuestState::Flag_Failed;
++        state->mFlags &= ~(ESM4QuestState::Flag_Running | ESM4QuestState::Flag_Completed);
++        return true;
++    }
++
+     bool ESM4QuestRuntime::setStage(std::string_view id, std::uint8_t stage)
+     {
+         const ESM4::Quest* quest = resolveQuest(id);
+@@ -223,6 +268,39 @@ namespace MWWorld
+                 if (const ESM4QuestState* state = findQuestState())
+                     return (state->mFlags & ESM4QuestState::Flag_Completed) != 0 ? 1.f : 0.f;
+                 return 0.f;
++            case ESM4::FUN_GetQuestVariable:
++                if (const ESM4::Quest* quest = mStore->get<ESM4::Quest>().search(ESM::RefId(parameter)))
++                    if (const ESM4QuestState* state = findState(*quest))
++                        if (const ESM4::Script* script
++                            = mStore->get<ESM4::Script>().search(ESM::RefId(quest->mQuestScript)))
++                            for (const ESM4::ScriptLocalVariableData& variable : script->mScript.localVarData)
++                                if (variable.index == condition.param2)
++                                {
++                                    const auto found = state->mVariables.find(
++                                        Misc::StringUtils::lowerCase(variable.variableName));
++                                    return found != state->mVariables.end() ? found->second : 0.f;
++                                }
++                return 0.f;
++            case ESM4::FUN_GetObjectiveCompleted:
++                if (const ESM4QuestState* state = findQuestState())
++                {
++                    const auto found = state->mObjectiveStatus.find(static_cast<std::int32_t>(condition.param2));
++                    return found != state->mObjectiveStatus.end()
++                            && (found->second & ESM4QuestState::Objective_Completed) != 0
++                        ? 1.f
++                        : 0.f;
++                }
++                return 0.f;
++            case ESM4::FUN_GetObjectiveDisplayed:
++                if (const ESM4QuestState* state = findQuestState())
++                {
++                    const auto found = state->mObjectiveStatus.find(static_cast<std::int32_t>(condition.param2));
++                    return found != state->mObjectiveStatus.end()
++                            && (found->second & ESM4QuestState::Objective_Displayed) != 0
++                        ? 1.f
++                        : 0.f;
++                }
++                return 0.f;
+             default:
+                 if (std::find(mUnsupportedConditionFunctions.begin(), mUnsupportedConditionFunctions.end(),
+                         condition.functionIndex)
+@@ -297,7 +375,9 @@ namespace MWWorld
+                 state.mStageDone.begin(), state.mStageDone.end(), [](const auto& value) { return value.second; }))
+             return true;
+         return std::any_of(state.mObjectiveStatus.begin(), state.mObjectiveStatus.end(),
+-            [](const auto& value) { return value.second != 0; });
++                   [](const auto& value) { return value.second != 0; })
++            || std::any_of(state.mVariables.begin(), state.mVariables.end(),
++                [](const auto& value) { return value.second != 0.f; });
+     }
+ 
+     int ESM4QuestRuntime::countSavedGameRecords() const
+@@ -336,6 +416,12 @@ namespace MWWorld
+                     writer.writeHNT("OIDX", index);
+                     writer.writeHNT("OFLG", status);
+                 }
++            for (const auto& [name, value] : state.mVariables)
++                if (value != 0.f)
++                {
++                    writer.writeHNString("VNAM", name);
++                    writer.writeHNT("VVAL", value);
++                }
+             writer.endRecord(ESM::REC_FQST);
+         }
+     }
+@@ -384,6 +470,17 @@ namespace MWWorld
+             status = 0;
+         for (const auto& [index, status] : objectives)
+             state->mObjectiveStatus[index] = status;
++        for (auto& [_, value] : state->mVariables)
++            value = 0.f;
++        while (reader.isNextSub("VNAM"))
++        {
++            const std::string name = reader.getHString();
++            float value = 0.f;
++            reader.getHNT(value, "VVAL");
++            if (const auto found = state->mVariables.find(Misc::StringUtils::lowerCase(name));
++                found != state->mVariables.end())
++                found->second = value;
++        }
+         if (active != 0)
+             mActiveQuest = id;
+ 
+@@ -437,6 +534,21 @@ namespace MWWorld
+         return true;
+     }
+ 
++    bool ESM4QuestRuntime::setQuestVariable(std::string_view id, std::string_view variable, float value)
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr)
++            return false;
++        const auto found = state->mVariables.find(Misc::StringUtils::lowerCase(variable));
++        if (found == state->mVariables.end())
++            return false;
++        found->second = value;
++        Log(Debug::Info) << "FNV/ESM4 behavior: SetQuestVariable quest=" << quest->mEditorId
++                         << " variable=" << variable << " value=" << value;
++        return true;
++    }
++
+     void ESM4QuestRuntime::executeStageSource(std::string_view source)
+     {
+         std::istringstream stream{ std::string(source) };
+@@ -454,6 +566,43 @@ namespace MWWorld
+                     && setObjectiveDisplayed(tokens[1], objective, displayed != 0))
+                     continue;
+             }
++            else if (tokens.size() >= 4 && Misc::StringUtils::ciEqual(tokens[0], "set")
++                && Misc::StringUtils::ciEqual(tokens[2], "to"))
++            {
++                const std::size_t separator = tokens[1].find('.');
++                float value = 0.f;
++                if (separator != std::string_view::npos && separator != 0 && separator + 1 < tokens[1].size()
++                    && parseFloat(tokens[3], value)
++                    && setQuestVariable(tokens[1].substr(0, separator), tokens[1].substr(separator + 1), value))
++                    continue;
++            }
++            else if (tokens.size() >= 4 && Misc::StringUtils::ciEqual(tokens[0], "SetObjectiveCompleted"))
++            {
++                std::int32_t objective = 0;
++                std::int32_t completed = 0;
++                if (parseInt(tokens[2], objective) && parseInt(tokens[3], completed)
++                    && setObjectiveCompleted(tokens[1], objective, completed != 0))
++                    continue;
++            }
++            else if (tokens.size() >= 3 && Misc::StringUtils::ciEqual(tokens[0], "SetStage"))
++            {
++                std::int32_t stage = 0;
++                if (parseInt(tokens[2], stage) && stage >= 0 && stage <= 255
++                    && setStage(tokens[1], static_cast<std::uint8_t>(stage)))
++                    continue;
++            }
++            else if (tokens.size() >= 2 && Misc::StringUtils::ciEqual(tokens[0], "StartQuest")
++                && startQuest(tokens[1]))
++                continue;
++            else if (tokens.size() >= 2 && Misc::StringUtils::ciEqual(tokens[0], "StopQuest")
++                && stopQuest(tokens[1]))
++                continue;
++            else if (tokens.size() >= 2 && Misc::StringUtils::ciEqual(tokens[0], "CompleteQuest")
++                && completeQuest(tokens[1]))
++                continue;
++            else if (tokens.size() >= 2 && Misc::StringUtils::ciEqual(tokens[0], "FailQuest")
++                && failQuest(tokens[1]))
++                continue;
+             else if (tokens.size() >= 2 && Misc::StringUtils::ciEqual(tokens[0], "ForceActiveQuest")
+                 && forceActiveQuest(tokens[1]))
+                 continue;
+@@ -462,6 +611,11 @@ namespace MWWorld
+         }
+     }
+ 
++    void ESM4QuestRuntime::executeResultSource(std::string_view source)
++    {
++        executeStageSource(source);
++    }
++
+     const ESM4QuestState* ESM4QuestRuntime::search(std::string_view id) const
+     {
+         const ESM4::Quest* quest = resolveQuest(id);
+@@ -473,4 +627,14 @@ namespace MWWorld
+         const auto found = mStates.find(id);
+         return found != mStates.end() ? &found->second : nullptr;
+     }
++
++    std::optional<float> ESM4QuestRuntime::getQuestVariable(std::string_view id, std::string_view variable) const
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        const ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr)
++            return std::nullopt;
++        const auto found = state->mVariables.find(Misc::StringUtils::lowerCase(variable));
++        return found != state->mVariables.end() ? std::optional<float>(found->second) : std::nullopt;
++    }
+ }
+diff --git a/apps/openmw/mwworld/esm4questruntime.hpp b/apps/openmw/mwworld/esm4questruntime.hpp
+index 135ff463ff..23538688ea 100644
+--- a/apps/openmw/mwworld/esm4questruntime.hpp
++++ b/apps/openmw/mwworld/esm4questruntime.hpp
+@@ -51,6 +51,7 @@ namespace MWWorld
+         std::uint8_t mCurrentStage = 0;
+         std::map<std::int16_t, bool> mStageDone;
+         std::map<std::int32_t, std::uint8_t> mObjectiveStatus;
++        std::map<std::string, float, std::less<>> mVariables;
+     };
+ 
+     class ESM4QuestRuntime
+@@ -74,11 +75,16 @@ namespace MWWorld
+         void clear();
+ 
+         bool startQuest(std::string_view id);
++        bool stopQuest(std::string_view id);
++        bool completeQuest(std::string_view id);
++        bool failQuest(std::string_view id);
+         bool setStage(std::string_view id, std::uint8_t stage);
+         bool setStage(ESM::FormId id, std::uint8_t stage);
+         bool setObjectiveDisplayed(std::string_view id, std::int32_t objective, bool displayed);
+         bool setObjectiveCompleted(std::string_view id, std::int32_t objective, bool completed);
++        bool setQuestVariable(std::string_view id, std::string_view variable, float value);
+         bool forceActiveQuest(std::string_view id);
++        void executeResultSource(std::string_view source);
+         bool evaluateConditions(const std::vector<ESM4::TargetCondition>& conditions);
+ 
+         int countSavedGameRecords() const;
+@@ -87,6 +93,7 @@ namespace MWWorld
+ 
+         const ESM4QuestState* search(std::string_view id) const;
+         const ESM4QuestState* search(ESM::FormId id) const;
++        std::optional<float> getQuestVariable(std::string_view id, std::string_view variable) const;
+         std::optional<ESM::FormId> getActiveQuest() const { return mActiveQuest; }
+         const std::vector<std::string>& getUnsupportedStageCommands() const { return mUnsupportedStageCommands; }
+         const std::vector<std::uint32_t>& getUnsupportedConditionFunctions() const
+diff --git a/apps/openmw_tests/mwworld/testesm4questruntime.cpp b/apps/openmw_tests/mwworld/testesm4questruntime.cpp
+index 3cfd61824e..cba2c2d6f6 100644
+--- a/apps/openmw_tests/mwworld/testesm4questruntime.cpp
++++ b/apps/openmw_tests/mwworld/testesm4questruntime.cpp
+@@ -13,6 +13,7 @@
+ #include <components/esm3/esmwriter.hpp>
+ #include <components/esm4/loadglob.hpp>
+ #include <components/esm4/loadqust.hpp>
++#include <components/esm4/loadscpt.hpp>
+ 
+ #include "apps/openmw/mwworld/esm4questruntime.hpp"
+ #include "apps/openmw/mwworld/esmstore.hpp"
+@@ -116,6 +117,58 @@ TEST(ESM4QuestRuntimeTest, ImportsFalloutGlobalsAndCalendarAliases)
+     EXPECT_FLOAT_EQ(globals[MWWorld::Globals::sDaysPassed].getFloat(), 5.f);
+ }
+ 
++TEST(ESM4QuestRuntimeTest, ExecutesDialogueResultQuestCommands)
++{
++    MWWorld::ESMStore store;
++    const ESM::FormId questId{ .mIndex = 0x104eae, .mContentFile = 0 };
++    ESM4::Quest quest = makeQuest(questId, "GS001");
++    const ESM::FormId scriptId{ .mIndex = 0x104eb0, .mContentFile = 0 };
++    quest.mQuestScript = scriptId;
++    quest.mObjectives.push_back(ESM4::QuestObjective{ .mIndex = 10, .mDescription = "Recruit Goodsprings" });
++    quest.mStages.push_back(ESM4::QuestStage{ .mIndex = 20, .mEntries = { ESM4::QuestStageEntry{} } });
++    store.overrideRecord(quest);
++    ESM4::Script script;
++    script.mId = scriptId;
++    script.mEditorId = "VFreeformGoodspringsScript";
++    script.mScript.localVarData = {
++        ESM4::ScriptLocalVariableData{ .index = 1, .variableName = "bMetPete" },
++        ESM4::ScriptLocalVariableData{ .index = 2, .variableName = "bEasyPeteNCR" },
++    };
++    store.overrideRecord(script);
++
++    MWWorld::ESM4QuestRuntime runtime;
++    runtime.initialize(store);
++    runtime.executeResultSource("StartQuest GS001\nSetObjectiveDisplayed GS001 10 1\n"
++                                "SetObjectiveCompleted GS001 10 1\nSetStage GS001 20\n"
++                                "ForceActiveQuest GS001\nset GS001.bMetPete to 1\nset GS001.bEasyPeteNCR to 1");
++
++    const MWWorld::ESM4QuestState* state = runtime.search(questId);
++    ASSERT_NE(state, nullptr);
++    EXPECT_EQ(state->mCurrentStage, 20);
++    EXPECT_TRUE(state->mStageDone.at(20));
++    EXPECT_EQ(state->mObjectiveStatus.at(10),
++        MWWorld::ESM4QuestState::Objective_Displayed | MWWorld::ESM4QuestState::Objective_Completed);
++    EXPECT_EQ(runtime.getActiveQuest(), questId);
++    EXPECT_EQ(runtime.getQuestVariable("GS001", "bMetPete"), 1.f);
++    EXPECT_EQ(runtime.getQuestVariable("gs001", "beasypetencr"), 1.f);
++    EXPECT_TRUE(runtime.getUnsupportedStageCommands().empty());
++
++    EXPECT_TRUE(runtime.evaluateConditions(
++        { makeCondition(ESM4::FUN_GetObjectiveDisplayed, questId, 1.f, ESM4::CTF_EqualTo, 10),
++            makeCondition(ESM4::FUN_GetObjectiveCompleted, questId, 1.f, ESM4::CTF_EqualTo, 10) }));
++    EXPECT_TRUE(runtime.evaluateConditions(
++        { makeCondition(ESM4::FUN_GetQuestVariable, questId, 1.f, ESM4::CTF_EqualTo, 1) }));
++
++    runtime.executeResultSource("CompleteQuest GS001");
++    EXPECT_NE(state->mFlags & MWWorld::ESM4QuestState::Flag_Completed, 0);
++    EXPECT_EQ(state->mFlags & MWWorld::ESM4QuestState::Flag_Running, 0);
++    runtime.executeResultSource("FailQuest GS001");
++    EXPECT_NE(state->mFlags & MWWorld::ESM4QuestState::Flag_Failed, 0);
++    EXPECT_EQ(state->mFlags & MWWorld::ESM4QuestState::Flag_Completed, 0);
++    runtime.executeResultSource("StartQuest GS001\nStopQuest GS001");
++    EXPECT_EQ(state->mFlags & MWWorld::ESM4QuestState::Flag_Running, 0);
++}
++
+ TEST(ESM4QuestRuntimeTest, EvaluatesRetailQuestAndGlobalConditionGroups)
+ {
+     MWWorld::ESMStore store;
+@@ -184,7 +237,9 @@ TEST(ESM4QuestRuntimeTest, EvaluatesRetailQuestAndGlobalConditionGroups)
+ TEST(ESM4QuestRuntimeTest, RoundTripsQuestStateAcrossChangedLoadOrder)
+ {
+     const ESM::FormId originalId{ .mIndex = 0x10a214, .mContentFile = 2 };
++    const ESM::FormId originalScriptId{ .mIndex = 0x10a216, .mContentFile = 2 };
+     ESM4::Quest originalQuest = makeQuest(originalId, "VCG02");
++    originalQuest.mQuestScript = originalScriptId;
+     originalQuest.mObjectives.push_back(ESM4::QuestObjective{ .mIndex = 3, .mDescription = "Choose your skills" });
+     ESM4::QuestStageEntry entry;
+     entry.mScript.scriptSource = "SetObjectiveDisplayed VCG02 3 1;\nForceActiveQuest VCG02";
+@@ -192,10 +247,16 @@ TEST(ESM4QuestRuntimeTest, RoundTripsQuestStateAcrossChangedLoadOrder)
+ 
+     MWWorld::ESMStore originalStore;
+     originalStore.overrideRecord(originalQuest);
++    ESM4::Script originalScript;
++    originalScript.mId = originalScriptId;
++    originalScript.mScript.localVarData
++        = { ESM4::ScriptLocalVariableData{ .index = 1, .variableName = "bDialogueComplete" } };
++    originalStore.overrideRecord(originalScript);
+     originalStore.overrideRecord(makeQuest({ .mIndex = 0x10a212, .mContentFile = 2 }, "VCG00"));
+     MWWorld::ESM4QuestRuntime originalRuntime;
+     originalRuntime.initialize(originalStore);
+     ASSERT_TRUE(originalRuntime.setStage("VCG02", 5));
++    ASSERT_TRUE(originalRuntime.setQuestVariable("VCG02", "bDialogueComplete", 1.f));
+     ASSERT_EQ(originalRuntime.countSavedGameRecords(), 1);
+ 
+     auto stream = std::make_unique<std::stringstream>();
+@@ -217,8 +278,12 @@ TEST(ESM4QuestRuntimeTest, RoundTripsQuestStateAcrossChangedLoadOrder)
+     const ESM::FormId remappedId{ .mIndex = originalId.mIndex, .mContentFile = 7 };
+     ESM4::Quest remappedQuest = originalQuest;
+     remappedQuest.mId = remappedId;
++    remappedQuest.mQuestScript.mContentFile = 7;
+     MWWorld::ESMStore remappedStore;
+     remappedStore.overrideRecord(remappedQuest);
++    ESM4::Script remappedScript = originalScript;
++    remappedScript.mId.mContentFile = 7;
++    remappedStore.overrideRecord(remappedScript);
+     remappedStore.overrideRecord(makeQuest({ .mIndex = 0x10a212, .mContentFile = 7 }, "VCG00"));
+     MWWorld::ESM4QuestRuntime restoredRuntime;
+     restoredRuntime.initialize(remappedStore);
+@@ -231,6 +296,7 @@ TEST(ESM4QuestRuntimeTest, RoundTripsQuestStateAcrossChangedLoadOrder)
+     EXPECT_TRUE(restored->mStageDone.at(5));
+     EXPECT_EQ(restored->mObjectiveStatus.at(3), MWWorld::ESM4QuestState::Objective_Displayed);
+     EXPECT_EQ(restoredRuntime.getActiveQuest(), remappedId);
++    EXPECT_EQ(restoredRuntime.getQuestVariable("VCG02", "bDialogueComplete"), 1.f);
+ 
+     const MWWorld::ESM4QuestState* unchanged = restoredRuntime.search("VCG00");
+     ASSERT_NE(unchanged, nullptr);
+diff --git a/components/esm4/script.hpp b/components/esm4/script.hpp
+index e7d8322c5f..201dd9e804 100644
+--- a/components/esm4/script.hpp
++++ b/components/esm4/script.hpp
+@@ -327,10 +327,12 @@ namespace ESM4
+         std::uint32_t emoType; // EmotionType
+         std::int32_t emoValue;
+         std::uint32_t unknown1;
+-        std::uint32_t responseNo; // 1 byte + padding
++        std::uint8_t responseNo;
++        std::uint8_t responsePadding[3];
+         // below FO3/FONV
+         ESM::FormId32 sound; // when 20 bytes usually 0 but there are exceptions (FO3 INFO FormId = 0x0002241f)
+-        std::uint32_t flags; // 1 byte + padding (0x01 = use emotion anim)
++        std::uint8_t flags; // 0x01 = use emotion anim
++        std::uint8_t flagsPadding[3];
+     };
+ 
+     struct TargetCondition
+-- 
+2.53.0.windows.1
+

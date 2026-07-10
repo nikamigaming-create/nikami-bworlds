@@ -348,11 +348,45 @@ camera remains an in-world moving-pose proof, so a controlled retail/OpenMW
 pixel-differential and a broader NPC matrix are still required before claiming
 every-pixel color parity.
 
+### Authored dialogue voice and result execution
+
+Patch `0008` advances the bridge from visible INFO text to data-backed runtime
+behavior. It preserves the one-byte FO3/FNV TRDT response number separately
+from its three padding bytes, orders multi-response INFO records by that
+authored number, resolves the matching voice from the mounted BSA index, and
+streams it through OpenMW's actor voice path. INFO begin/end source now reaches
+the Fallout quest runtime for `SetStage`, objective display/completion,
+start/stop/complete/fail/active quest commands, and named
+`set Quest.variable to value` assignments. Named quest variables are initialized
+from the linked SCPT locals, participate in `GetQuestVariable`, and persist in
+load-order-remapped saves.
+
+The native FNV result-and-voice proof is
+`run/dialogue-proof/easy-pete-result-voice-v13/fallout_new_vegas-20260710-151502/manifest.json`.
+It exited 0 with two native screenshots and no crash report. Retail INFO
+`0010515c` selected “Why are you called Easy Pete?”, loaded
+`sound/voice/falloutnv.esm/maleold02/vfreeformg_vfreeformgoodsp_0010515c_1.ogg`,
+and applied all four authored `VFreeformGoodsprings` assignments:
+`bMetPete`, `bMentionedProspecting`, `bMentionedBigHorners`, and
+`bEasyPeteNCR`, each to 1 with `unsupportedAdded=0`.
+
+The corresponding FO3 proof is
+`run/dialogue-proof/fo3-lucas-topic-v2/fallout3-20260710-151646/manifest.json`.
+It exited 0 with six native screenshots and no crash report. Lucas Simms loaded
+the authored greeting voice from `fallout3.esm/maleuniquesimms`, then selected
+“What can you tell me about Megaton?”, streamed
+`dialogueme_megtownmegaton_0001e371_1.ogg`, and produced four authored choices.
+
+The focused `ESM4QuestRuntimeTest` suite (five tests) and the four
+`Esm4BehaviorRecordTest` cases pass in Release. The staged flat executable for
+these proofs has SHA-256
+`DD2E882EBA0AF7D17B1C72FB926E111E3E8A06DD1D9633FB0E14EFCC68E79948`.
+
 ## Remaining compatibility work
 
-The first behavior slice is green, but the whole-game claim remains open. The
-next matrices are dialogue/topic selection and result execution, broad CTDA
-function coverage, compiled Fallout script bytecode execution, package
+The first behavior slices are green, but the whole-game claim remains open. The
+next matrices are broad CTDA function and RunOn coverage, compiled Fallout
+script bytecode execution, multi-line voice sequencing and lip synchronization, package
 scheduling/navigation, combat and inventory semantics, and representative
 quest/save differentials across both base games and every configured DLC.
 Animation work must still broaden the oracle across more weapons and animation

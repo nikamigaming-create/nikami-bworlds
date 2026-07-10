@@ -33,6 +33,10 @@ Patch 0007 loads INFO topic inheritance and condition FormIDs, gives ESM4 NPCs
 the real activation-to-dialogue path, renders the first FNV DIAL/INFO topic
 slice, applies FaceGen modulation maps, and corrects FO3/FNV hair tint/material
 handling. It is exported from downstream commit `5d4bfa221a`.
+Patch 0008 fixes the packed TRDT response number, resolves authored FO3/FNV
+voice files from the mounted archive index, executes common INFO quest/result
+commands, persists named quest variables, and adds deterministic topic proof
+selection. It is exported from downstream commit `7a159454ed`.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 
@@ -89,9 +93,11 @@ oracle evidence, unit/sanitizer gates, record-load manifests, quest/save
 differentials, and native FO3/FNV walking proofs used to promote patches 0002
 through 0006. The reproducible xNVSE oracle overlay lives separately under
 `patches/xnvse/`; it is never part of the OpenMW apply queue. Patch 0007's
-current proof boundary is the Easy Pete greeting/topic and FaceGen slice; voice,
-result-script execution, broader CTDA coverage, service menus, and FO3 dialogue
-remain explicit follow-on gates rather than implied compatibility claims.
+FaceGen proof boundary remains the Easy Pete slice. Patch 0008 proves authored
+greeting/topic voice in both FNV and FO3 plus Easy Pete's four retail quest
+variable writes. Broader CTDA/RunOn coverage, compiled bytecode, multi-line
+voice queues/lip sync, and service menus remain explicit follow-on gates rather
+than implied compatibility claims.
 
 If one downstream patch matures into something upstream-worthy, split it into a
 clean branch in the external OpenMW checkout and submit a normal upstream PR.

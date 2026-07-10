@@ -2,7 +2,8 @@ param(
     [string]$ContractPath = "catalog/proof-harness-ui-contract.json",
     [string]$StartsPath = "catalog/flat-world-proof-starts.json",
     [string]$ActorAnimationPolicyPath = "catalog/actor-animation-policy.json",
-    [string]$ScreenshotEvidencePolicyPath = "catalog/screenshot-evidence-policy.json"
+    [string]$ScreenshotEvidencePolicyPath = "catalog/screenshot-evidence-policy.json",
+    [string]$HarnessPath = "scripts/Invoke-RealWorldScreenshots.ps1"
 )
 
 Set-StrictMode -Version Latest
@@ -17,7 +18,7 @@ function Get-PropertyValue($Object, [string]$Name) {
     return $property.Value
 }
 
-foreach ($path in @($ContractPath, $StartsPath, $ActorAnimationPolicyPath, $ScreenshotEvidencePolicyPath)) {
+foreach ($path in @($ContractPath, $StartsPath, $ActorAnimationPolicyPath, $ScreenshotEvidencePolicyPath, $HarnessPath)) {
     if (-not (Test-Path -LiteralPath $path)) {
         $failures.Add("Missing required file: $path")
     }
@@ -28,6 +29,13 @@ if ($failures.Count -eq 0) {
     $starts = Get-Content -LiteralPath $StartsPath -Raw | ConvertFrom-Json
     $actorPolicy = Get-Content -LiteralPath $ActorAnimationPolicyPath -Raw | ConvertFrom-Json
     $screenshotPolicy = Get-Content -LiteralPath $ScreenshotEvidencePolicyPath -Raw | ConvertFrom-Json
+    $harnessSource = Get-Content -LiteralPath $HarnessPath -Raw
+
+    foreach ($fragment in @('[switch]$EnableSound', 'StartsWith("--no-sound"', 'soundEnabled = [bool]$EnableSound')) {
+        if (-not $harnessSource.Contains($fragment)) {
+            $failures.Add("Screenshot harness is missing sound-enabled proof behavior: $fragment")
+        }
+    }
 
     if ($contract.schemaVersion -ne 1) {
         $failures.Add("Unexpected proof harness UI schema version: $($contract.schemaVersion)")

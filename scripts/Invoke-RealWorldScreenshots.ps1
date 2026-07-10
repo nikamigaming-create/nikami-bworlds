@@ -22,6 +22,7 @@ param(
     [string]$BinaryRoot = "",
     [switch]$NoCatalogStart,
     [switch]$UseActorAnimationPolicyEnvironment,
+    [switch]$EnableSound,
     [switch]$ShowGui,
     [switch]$AllowWindowCaptureFallback,
     [switch]$AllowDuplicate,
@@ -1414,6 +1415,12 @@ foreach ($id in $WorldId) {
     }
     $defaultCatalogExtraArgs = @(Get-TextArray (Get-PropertyValue (Get-PropertyValue $startsCatalog "defaults") "extraArgs"))
     $startCatalogExtraArgs = if ($null -ne $catalogStartSpec) { @(Get-TextArray (Get-PropertyValue $catalogStartSpec "extraArgs")) } else { @() }
+    $effectiveExtraArgs = @($defaultCatalogExtraArgs + $startCatalogExtraArgs + $ExtraArgs)
+    if ($EnableSound) {
+        $effectiveExtraArgs = @($effectiveExtraArgs | Where-Object {
+            -not ([string]$_).StartsWith("--no-sound", [StringComparison]::OrdinalIgnoreCase)
+        })
+    }
     $catalogScriptRun = if ($null -ne $catalogStartSpec) { [string](Get-PropertyValue $catalogStartSpec "scriptRun") } else { "" }
     $resolvedCatalogScriptRun = $null
     if (-not [string]::IsNullOrWhiteSpace($catalogScriptRun)) {
@@ -1424,7 +1431,7 @@ foreach ($id in $WorldId) {
         $argsList.Add("--script-run")
         $argsList.Add($resolvedCatalogScriptRun)
     }
-    foreach ($arg in @($defaultCatalogExtraArgs + $startCatalogExtraArgs + $ExtraArgs)) {
+    foreach ($arg in $effectiveExtraArgs) {
         if (-not [string]::IsNullOrWhiteSpace($arg)) {
             $argsList.Add($arg)
         }
@@ -1459,7 +1466,8 @@ foreach ($id in $WorldId) {
         startSlice = if ($null -ne $catalogStartSpec) { Get-PropertyValue $catalogStartSpec "sliceId" } else { $null }
         runSeconds = $effectiveRunSeconds
         captureSeconds = @($effectiveCaptureSeconds)
-        extraArgs = @($defaultCatalogExtraArgs + $startCatalogExtraArgs + $ExtraArgs)
+        extraArgs = @($effectiveExtraArgs)
+        soundEnabled = [bool]$EnableSound
         scriptRun = $resolvedCatalogScriptRun
         engineScreenshotEnabled = [bool]$engineScreenshotEnabled
         engineScreenshotFrames = if ($engineScreenshotEnabled) { $effectiveEngineScreenshotFrames } else { $null }
