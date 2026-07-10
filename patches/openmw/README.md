@@ -16,10 +16,12 @@ Copy-Item config/paths.example.json local/paths.json
 .\scripts\Apply-OpenMWPatches.ps1
 ```
 
-Patch files listed in `series` are applied in order. The current queue is one
-snapshot patch exported from downstream commit `01f8b0935f` against OpenMW VR
-base `c30c830d8e`. It intentionally consolidates the previously loose Bethesda
-world work so a fresh checkout can reproduce the proven flat runtime exactly.
+Patch files listed in `series` are applied in order. Patch 0001 is the world
+viewer snapshot exported from downstream commit `01f8b0935f` against OpenMW VR
+base `c30c830d8e`. Patch 0002 is the focused FO3/FNV actor animation,
+attachment, FormID-script, and weapon-selector correction exported from commit
+`d6c36c6b7e`. Together they reproduce the proven flat runtime without vendoring
+game data or the OpenMW source tree.
 
 For routine downstream updates, rebase the dedicated overlay branch onto the
 new downstream base, resolve conflicts there, rebuild and prove the flat target,
@@ -65,9 +67,13 @@ engine behavior is genuinely configurable. Engine patches should use record
 provenance, content format, or explicit runtime policy instead of brittle path
 guesses when possible.
 
-The current patch contains dormant downstream VR work inherited from the source
-fork, but the promoted runtime evidence is flat `openmw.exe` only. Do not launch
-or test `openmw_vr.exe` as part of the flat compatibility gate.
+Patch 0001 contains dormant downstream VR work inherited from the source fork,
+but the promoted runtime evidence is flat `openmw.exe` only. Do not launch or
+test `openmw_vr.exe` as part of the flat compatibility gate.
+
+See `docs/fallout-flat-overlay-validation-20260710.md` for the exact retail
+oracle evidence, unit/sanitizer gates, and native FO3/FNV walking proofs used to
+promote patch 0002.
 
 If one downstream patch matures into something upstream-worthy, split it into a
 clean branch in the external OpenMW checkout and submit a normal upstream PR.

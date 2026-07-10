@@ -1,0 +1,1809 @@
+From d6c36c6b7e6b025fe587ec417baa5bd45485f6cf Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 02:53:43 -0700
+Subject: [PATCH 2/2] Fix Fallout actor animation and attachment parity
+
+---
+ apps/components_tests/CMakeLists.txt          |   2 +
+ apps/components_tests/esm4/testloadweap.cpp   |  37 +++
+ .../nifosg/testcontroller.cpp                 | 196 ++++++++++++++
+ apps/openmw/engine.cpp                        |  42 ++-
+ apps/openmw/mwgui/console.cpp                 |   2 +
+ apps/openmw/mwmechanics/aitravel.cpp          |  21 +-
+ apps/openmw/mwmechanics/character.cpp         |  15 ++
+ apps/openmw/mwrender/animation.cpp            | 125 ++++++---
+ apps/openmw/mwrender/esm4npcanimation.cpp     | 248 ++++++++++++++----
+ apps/openmw/mwscript/compilercontext.cpp      |  18 +-
+ apps/openmw/mwscript/ref.cpp                  |  16 +-
+ components/compiler/lineparser.cpp            |   8 +-
+ components/esm4/loadweap.cpp                  |  30 ++-
+ components/esm4/loadweap.hpp                  |  15 ++
+ components/nifosg/controller.cpp              | 150 +++++++----
+ components/nifosg/controller.hpp              |   7 +-
+ components/nifosg/nifloader.cpp               |  75 +++++-
+ 17 files changed, 860 insertions(+), 147 deletions(-)
+ create mode 100644 apps/components_tests/esm4/testloadweap.cpp
+ create mode 100644 apps/components_tests/nifosg/testcontroller.cpp
+
+diff --git a/apps/components_tests/CMakeLists.txt b/apps/components_tests/CMakeLists.txt
+index 7e3fef263b..81fd718e92 100644
+--- a/apps/components_tests/CMakeLists.txt
++++ b/apps/components_tests/CMakeLists.txt
+@@ -69,6 +69,7 @@ file(GLOB UNITTEST_SRC_FILES
+     toutf8/toutf8.cpp
+ 
+     esm4/includes.cpp
++    esm4/testloadweap.cpp
+ 
+     fx/lexer.cpp
+     fx/technique.cpp
+@@ -80,6 +81,7 @@ file(GLOB UNITTEST_SRC_FILES
+     esm3/testcstringids.cpp
+ 
+     nifosg/testnifloader.cpp
++    nifosg/testcontroller.cpp
+ 
+     esmterrain/testgridsampling.cpp
+ 
+diff --git a/apps/components_tests/esm4/testloadweap.cpp b/apps/components_tests/esm4/testloadweap.cpp
+new file mode 100644
+index 0000000000..4671a7a827
+--- /dev/null
++++ b/apps/components_tests/esm4/testloadweap.cpp
+@@ -0,0 +1,37 @@
++#include <components/esm4/loadweap.hpp>
++
++#include <gtest/gtest.h>
++
++#include <array>
++#include <cstdint>
++
++namespace
++{
++    TEST(Esm4WeaponTest, shouldParseFalloutAnimationSelectorsFromDnamPrefix)
++    {
++        // Retail FNV WeapNVAssaultCarbine (0008F21E): TwoHandAutomatic, default grip, one ammo/use,
++        // reload animation 5. Bytes between the selectors deliberately contain non-zero payload.
++        const std::array<std::uint8_t, 16> dnam{
++            6, 0x11, 0x22, 0x33, 0x00, 0x00, 0x80, 0x3f, 0x00, 0x00, 0x20, 0x41, 0x7f, 0xff, 1, 5
++        };
++        ESM4::Weapon::Data data;
++
++        ASSERT_TRUE(ESM4::loadFalloutWeaponDnam(dnam, data));
++        EXPECT_EQ(data.animationType, 6);
++        EXPECT_EQ(data.handGrip, 0xff);
++        EXPECT_EQ(data.ammoUse, 1);
++        EXPECT_EQ(data.reloadAnim, 5);
++    }
++
++    TEST(Esm4WeaponTest, shouldRejectTruncatedFalloutDnamWithoutChangingDefaults)
++    {
++        const std::array<std::uint8_t, 15> dnam{};
++        ESM4::Weapon::Data data;
++
++        EXPECT_FALSE(ESM4::loadFalloutWeaponDnam(dnam, data));
++        EXPECT_EQ(data.animationType, 0xff);
++        EXPECT_EQ(data.handGrip, 0xff);
++        EXPECT_EQ(data.ammoUse, 0);
++        EXPECT_EQ(data.reloadAnim, 0);
++    }
++}
+diff --git a/apps/components_tests/nifosg/testcontroller.cpp b/apps/components_tests/nifosg/testcontroller.cpp
+new file mode 100644
+index 0000000000..28e6d93319
+--- /dev/null
++++ b/apps/components_tests/nifosg/testcontroller.cpp
+@@ -0,0 +1,196 @@
++#include <components/nif/controller.hpp>
++#include <components/nif/data.hpp>
++#include <components/nifosg/controller.hpp>
++#include <components/sceneutil/controller.hpp>
++
++#include <gtest/gtest.h>
++
++#include <cmath>
++#include <cstdint>
++#include <limits>
++#include <memory>
++
++namespace
++{
++    class ConstantControllerSource final : public SceneUtil::ControllerSource
++    {
++    public:
++        explicit ConstantControllerSource(float value)
++            : mValue(value)
++        {
++        }
++
++        float getValue(osg::NodeVisitor*) override { return mValue; }
++
++    private:
++        float mValue;
++    };
++
++    TEST(NifOsgControllerTest, shouldDecodeCompactBSplineQuaternionAsWXYZ)
++    {
++        Nif::NiBSplineData splineData;
++        Nif::NiBSplineBasisData basisData;
++        Nif::NiBSplineCompTransformInterpolator interpolator;
++
++        basisData.mNumControlPoints = 4;
++        interpolator.recType = Nif::RC_NiBSplineCompTransformInterpolator;
++        interpolator.mStartTime = 0.f;
++        interpolator.mStopTime = 1.f;
++        interpolator.mSplineData = Nif::NiBSplineDataPtr(&splineData);
++        interpolator.mBasisData = Nif::NiBSplineBasisDataPtr(&basisData);
++        interpolator.mTranslationHandle = std::numeric_limits<std::uint32_t>::max();
++        interpolator.mRotationHandle = 0;
++        interpolator.mScaleHandle = std::numeric_limits<std::uint32_t>::max();
++        interpolator.mRotationOffset = 0.f;
++        interpolator.mRotationHalfRange = 1.f;
++
++        // Four identical identity quaternion control points serialized as W, X, Y, Z.
++        splineData.mCompactControlPoints = {
++            32767, 0, 0, 0,
++            32767, 0, 0, 0,
++            32767, 0, 0, 0,
++            32767, 0, 0, 0,
++        };
++
++        NifOsg::KeyframeController controller(&interpolator);
++        controller.setSource(std::make_shared<ConstantControllerSource>(0.5f));
++        const auto transform = controller.getCurrentTransformation(nullptr);
++
++        ASSERT_TRUE(transform.mRotation.has_value());
++        EXPECT_NEAR(transform.mRotation->x(), 0.f, 1e-6f);
++        EXPECT_NEAR(transform.mRotation->y(), 0.f, 1e-6f);
++        EXPECT_NEAR(transform.mRotation->z(), 0.f, 1e-6f);
++        EXPECT_NEAR(transform.mRotation->w(), 1.f, 1e-6f);
++    }
++
++    TEST(NifOsgControllerTest, shouldUseClampedBSplineEndpoints)
++    {
++        Nif::NiBSplineData splineData;
++        Nif::NiBSplineBasisData basisData;
++        Nif::NiBSplineCompTransformInterpolator interpolator;
++
++        basisData.mNumControlPoints = 5;
++        interpolator.recType = Nif::RC_NiBSplineCompTransformInterpolator;
++        interpolator.mStartTime = 0.f;
++        interpolator.mStopTime = 1.f;
++        interpolator.mSplineData = Nif::NiBSplineDataPtr(&splineData);
++        interpolator.mBasisData = Nif::NiBSplineBasisDataPtr(&basisData);
++        interpolator.mTranslationHandle = 0;
++        interpolator.mRotationHandle = std::numeric_limits<std::uint16_t>::max();
++        interpolator.mScaleHandle = std::numeric_limits<std::uint16_t>::max();
++        interpolator.mTranslationOffset = 0.f;
++        interpolator.mTranslationHalfRange = 32767.f;
++        splineData.mCompactControlPoints = {
++            1, 2, 3,
++            10, 20, 30,
++            100, 200, 300,
++            1000, 2000, 3000,
++            10000, 20000, 30000,
++        };
++
++        NifOsg::KeyframeController controller(&interpolator);
++        auto source = std::make_shared<ConstantControllerSource>(0.f);
++        controller.setSource(source);
++        auto transform = controller.getCurrentTransformation(nullptr);
++        ASSERT_TRUE(transform.mTranslation.has_value());
++        EXPECT_EQ(*transform.mTranslation, osg::Vec3f(1.f, 2.f, 3.f));
++
++        source = std::make_shared<ConstantControllerSource>(0.5f);
++        controller.setSource(source);
++        transform = controller.getCurrentTransformation(nullptr);
++        ASSERT_TRUE(transform.mTranslation.has_value());
++        EXPECT_EQ(*transform.mTranslation, osg::Vec3f(302.5f, 605.f, 907.5f));
++
++        source = std::make_shared<ConstantControllerSource>(1.f);
++        controller.setSource(source);
++        transform = controller.getCurrentTransformation(nullptr);
++        ASSERT_TRUE(transform.mTranslation.has_value());
++        EXPECT_EQ(*transform.mTranslation, osg::Vec3f(10000.f, 20000.f, 30000.f));
++    }
++
++    TEST(NifOsgControllerTest, shouldApplyConstantTransformInterpolatorDefaults)
++    {
++        Nif::NiTransformInterpolator interpolator;
++        interpolator.recType = Nif::RC_NiTransformInterpolator;
++        interpolator.mData = Nif::NiKeyframeDataPtr(nullptr);
++        interpolator.mDefaultValue.mTranslation = osg::Vec3f(7.974f, 3.001f, -1.097f);
++        interpolator.mDefaultValue.mRotation = osg::Quat(0.5f, osg::Vec3f(0.f, 0.f, 1.f));
++        interpolator.mDefaultValue.mScale = 1.25f;
++
++        NifOsg::KeyframeController controller(&interpolator);
++        controller.setSource(std::make_shared<ConstantControllerSource>(0.5f));
++        const auto transform = controller.getCurrentTransformation(nullptr);
++
++        ASSERT_TRUE(transform.mTranslation.has_value());
++        ASSERT_TRUE(transform.mRotation.has_value());
++        ASSERT_TRUE(transform.mScale.has_value());
++        EXPECT_NEAR(transform.mTranslation->x(), interpolator.mDefaultValue.mTranslation.x(), 1e-6f);
++        EXPECT_NEAR(transform.mTranslation->y(), interpolator.mDefaultValue.mTranslation.y(), 1e-6f);
++        EXPECT_NEAR(transform.mTranslation->z(), interpolator.mDefaultValue.mTranslation.z(), 1e-6f);
++        EXPECT_NEAR(transform.mRotation->x(), interpolator.mDefaultValue.mRotation.x(), 1e-6f);
++        EXPECT_NEAR(transform.mRotation->y(), interpolator.mDefaultValue.mRotation.y(), 1e-6f);
++        EXPECT_NEAR(transform.mRotation->z(), interpolator.mDefaultValue.mRotation.z(), 1e-6f);
++        EXPECT_NEAR(transform.mRotation->w(), interpolator.mDefaultValue.mRotation.w(), 1e-6f);
++        EXPECT_FLOAT_EQ(*transform.mScale, interpolator.mDefaultValue.mScale);
++    }
++
++    TEST(NifOsgControllerTest, shouldPreferAuthoredXYZRotationKeysOverInterpolatorDefault)
++    {
++        Nif::NiKeyframeData keyData;
++        keyData.mXRotations = std::make_shared<Nif::FloatKeyMap>();
++        keyData.mXRotations->mInterpolationType = Nif::InterpolationType_Linear;
++        keyData.mXRotations->mKeys = {
++            { 0.f, Nif::KeyT<float>{ 0.f, 0.f, 0.f } },
++            { 1.f, Nif::KeyT<float>{ 1.f, 0.f, 0.f } },
++        };
++
++        Nif::NiTransformInterpolator interpolator;
++        interpolator.recType = Nif::RC_NiTransformInterpolator;
++        interpolator.mData = Nif::NiKeyframeDataPtr(&keyData);
++        interpolator.mDefaultValue.mRotation = osg::Quat();
++
++        NifOsg::KeyframeController controller(&interpolator);
++        controller.setSource(std::make_shared<ConstantControllerSource>(0.5f));
++        const auto transform = controller.getCurrentTransformation(nullptr);
++
++        ASSERT_TRUE(transform.mRotation.has_value());
++        EXPECT_NEAR(transform.mRotation->x(), std::sin(0.25f), 1e-6f);
++        EXPECT_NEAR(transform.mRotation->w(), std::cos(0.25f), 1e-6f);
++    }
++
++    TEST(NifOsgControllerTest, shouldApplyBSplineDefaultsForMissingChannels)
++    {
++        Nif::NiBSplineData splineData;
++        Nif::NiBSplineBasisData basisData;
++        Nif::NiBSplineTransformInterpolator interpolator;
++
++        basisData.mNumControlPoints = 4;
++        interpolator.recType = Nif::RC_NiBSplineTransformInterpolator;
++        interpolator.mStartTime = 0.f;
++        interpolator.mStopTime = 1.f;
++        interpolator.mSplineData = Nif::NiBSplineDataPtr(&splineData);
++        interpolator.mBasisData = Nif::NiBSplineBasisDataPtr(&basisData);
++        interpolator.mTranslationHandle = std::numeric_limits<std::uint32_t>::max();
++        interpolator.mRotationHandle = std::numeric_limits<std::uint32_t>::max();
++        interpolator.mScaleHandle = std::numeric_limits<std::uint32_t>::max();
++        interpolator.mValue.mTranslation = osg::Vec3f(1.f, 2.f, 3.f);
++        interpolator.mValue.mRotation = osg::Quat(0.25f, osg::Vec3f(1.f, 0.f, 0.f));
++        interpolator.mValue.mScale = 0.75f;
++
++        NifOsg::KeyframeController controller(&interpolator);
++        controller.setSource(std::make_shared<ConstantControllerSource>(0.5f));
++        const auto transform = controller.getCurrentTransformation(nullptr);
++
++        ASSERT_TRUE(transform.mTranslation.has_value());
++        ASSERT_TRUE(transform.mRotation.has_value());
++        ASSERT_TRUE(transform.mScale.has_value());
++        EXPECT_NEAR(transform.mTranslation->x(), interpolator.mValue.mTranslation.x(), 1e-6f);
++        EXPECT_NEAR(transform.mTranslation->y(), interpolator.mValue.mTranslation.y(), 1e-6f);
++        EXPECT_NEAR(transform.mTranslation->z(), interpolator.mValue.mTranslation.z(), 1e-6f);
++        EXPECT_NEAR(transform.mRotation->x(), interpolator.mValue.mRotation.x(), 1e-6f);
++        EXPECT_NEAR(transform.mRotation->y(), interpolator.mValue.mRotation.y(), 1e-6f);
++        EXPECT_NEAR(transform.mRotation->z(), interpolator.mValue.mRotation.z(), 1e-6f);
++        EXPECT_NEAR(transform.mRotation->w(), interpolator.mValue.mRotation.w(), 1e-6f);
++        EXPECT_FLOAT_EQ(*transform.mScale, interpolator.mValue.mScale);
++    }
++}
+diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
+index 0a55146e34..7f0b120c9a 100644
+--- a/apps/openmw/engine.cpp
++++ b/apps/openmw/engine.cpp
+@@ -1071,6 +1071,45 @@ namespace
+             readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_POS_Y", position.pos[1] - 4096.f),
+             readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z", position.pos[2] + 2048.f));
+ 
++        const char* followRefText = std::getenv("OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_REF");
++        if (followRefText != nullptr && *followRefText != '\0')
++        {
++            ESM::RefId followRef = ESM::RefId::deserializeText(followRefText);
++            if (followRef.empty())
++                followRef = ESM::RefId::stringRefId(followRefText);
++
++            MWWorld::Ptr followed;
++            if (const ESM::FormId* formId = followRef.getIf<ESM::FormId>())
++                followed = MWBase::Environment::get().getWorldModel()->getPtr(*formId);
++            if (followed.isEmpty())
++                followed = world.searchPtr(followRef, true);
++            if (!followed.isEmpty())
++            {
++                const ESM::Position& followedPosition = followed.getRefData().getPosition();
++                eye.set(followedPosition.pos[0]
++                        + readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_X", 0.f),
++                    followedPosition.pos[1]
++                        + readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_Y", -180.f),
++                    followedPosition.pos[2]
++                        + readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_Z", 115.f));
++                target.set(followedPosition.pos[0]
++                        + readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_X", 0.f),
++                    followedPosition.pos[1]
++                        + readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_Y", 0.f),
++                    followedPosition.pos[2]
++                        + readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_Z", 78.f));
++
++                if (std::getenv("OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEADING") != nullptr)
++                {
++                    const float distance
++                        = readProofFloat("OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEADING_DISTANCE", 180.f);
++                    const float heading = followedPosition.rot[2];
++                    eye.x() = followedPosition.pos[0] + std::sin(heading) * distance;
++                    eye.y() = followedPosition.pos[1] + std::cos(heading) * distance;
++                }
++            }
++        }
++
+         static const std::vector<WorldViewerCameraKeyframe> cameraSequence = getWorldViewerCameraSequence();
+         static int loggedCameraSequenceIndex = -2;
+         int cameraSequenceIndex = -1;
+@@ -4688,7 +4727,8 @@ void OMW::Engine::go()
+         mStateManager->newGame(!mNewGame);
+     }
+ 
+-    if (!mStartupScript.empty() && mStateManager->getState() == MWState::StateManager::State_Running)
++    if (!mStartupScript.empty() && std::getenv("OPENMW_PROOF_DELAY_STARTUP_SCRIPT") == nullptr
++        && mStateManager->getState() == MWState::StateManager::State_Running)
+     {
+         mWindowManager->executeInConsole(mStartupScript);
+     }
+diff --git a/apps/openmw/mwgui/console.cpp b/apps/openmw/mwgui/console.cpp
+index 886b4d381e..ca4039f59a 100644
+--- a/apps/openmw/mwgui/console.cpp
++++ b/apps/openmw/mwgui/console.cpp
+@@ -14,6 +14,7 @@
+ #include <components/compiler/lineparser.hpp>
+ #include <components/compiler/locals.hpp>
+ #include <components/compiler/scanner.hpp>
++#include <components/debug/debuglog.hpp>
+ #include <components/files/conversion.hpp>
+ #include <components/interpreter/interpreter.hpp>
+ #include <components/misc/utf8stream.hpp>
+@@ -211,6 +212,7 @@ namespace MWGui
+ 
+     void Console::printError(const std::string& msg)
+     {
++        Log(Debug::Error) << "Console: " << msg;
+         print(msg + "\n", MWBase::WindowManager::sConsoleColor_Error);
+     }
+ 
+diff --git a/apps/openmw/mwmechanics/aitravel.cpp b/apps/openmw/mwmechanics/aitravel.cpp
+index a669de8339..5bb0549f72 100644
+--- a/apps/openmw/mwmechanics/aitravel.cpp
++++ b/apps/openmw/mwmechanics/aitravel.cpp
+@@ -1,7 +1,9 @@
+ #include "aitravel.hpp"
+ 
+ #include <algorithm>
++#include <cstdlib>
+ 
++#include <components/debug/debuglog.hpp>
+ #include <components/esm3/aisequence.hpp>
+ 
+ #include "../mwbase/environment.hpp"
+@@ -91,7 +93,24 @@ namespace MWMechanics
+         if (!isWithinMaxRange(targetPos, actorPos))
+             return mHidden;
+ 
+-        if (pathTo(actor, targetPos, duration, characterController.getSupportedMovementDirections()))
++        const bool reached
++            = pathTo(actor, targetPos, duration, characterController.getSupportedMovementDirections());
++        if (std::getenv("OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY") != nullptr)
++        {
++            static unsigned int sTravelTelemetryLines = 0;
++            if (sTravelTelemetryLines < 240)
++            {
++                ++sTravelTelemetryLines;
++                Log(Debug::Info) << "World viewer actor travel: ref=" << actor.getCellRef().getRefNum().toString("FormId:")
++                                 << " base=" << actor.getCellRef().getRefId()
++                                 << " pos=(" << actorPos.x() << "," << actorPos.y() << "," << actorPos.z() << ")"
++                                 << " target=(" << targetPos.x() << "," << targetPos.y() << "," << targetPos.z()
++                                 << ") distance=" << (targetPos - actorPos).length()
++                                 << " horizontalDistance=" << distanceIgnoreZ(actorPos, targetPos)
++                                 << " pathPoints=" << mPathFinder.getPathSize() << " reached=" << reached;
++            }
++        }
++        if (reached)
+         {
+             actor.getClass().getMovementSettings(actor).mPosition[1] = 0;
+             return true;
+diff --git a/apps/openmw/mwmechanics/character.cpp b/apps/openmw/mwmechanics/character.cpp
+index e5d1f87ae1..b6944e8716 100644
+--- a/apps/openmw/mwmechanics/character.cpp
++++ b/apps/openmw/mwmechanics/character.cpp
+@@ -966,6 +966,21 @@ namespace MWMechanics
+ 
+         if (isFalloutActor(mPtr))
+         {
++            if (mAnimation->hasAnimation("weaponpose"))
++            {
++                MWRender::Animation::AnimPriority weaponPosePriority(Priority_Default);
++                weaponPosePriority[MWRender::BoneGroup_Torso] = Priority_Weapon;
++                weaponPosePriority[MWRender::BoneGroup_LeftArm] = Priority_Weapon;
++                weaponPosePriority[MWRender::BoneGroup_RightArm] = Priority_Weapon;
++                weaponPosePriority[MWRender::BoneGroup_Head] = Priority_Weapon;
++                if (mAnimation->isPlaying("weaponpose"))
++                    mAnimation->disable("weaponpose");
++                Log(Debug::Info) << "FNV/ESM4 diag: CharacterController layering retail weapon pose for "
++                                 << mPtr.getCellRef().getRefId();
++                playBlendedAnimation("weaponpose", weaponPosePriority, MWRender::BlendMask_UpperBody, false, 1.0f,
++                    "start", "stop", 0.f, std::numeric_limits<uint32_t>::max(), true);
++            }
++
+             if (const char* forcedOverlayGroup = std::getenv("OPENMW_FNV_FORCED_OVERLAY_GROUP"))
+             {
+                 std::string overlayGroup = Misc::StringUtils::lowerCase(forcedOverlayGroup);
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+index bfca8b87ed..0a6f8327c1 100644
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -240,16 +240,7 @@ namespace
+             return false;
+ 
+         const MWWorld::LiveCellRef<ESM4::Npc>* ref = ptr.get<ESM4::Npc>();
+-        return ref != nullptr && ref->mBase != nullptr && ref->mBase->mIsFONV;
+-    }
+-
+-    bool isFallout3NpcAnimationContext(const MWWorld::Ptr& ptr)
+-    {
+-        if (ptr.getType() != ESM::REC_NPC_4)
+-            return false;
+-
+-        const MWWorld::LiveCellRef<ESM4::Npc>* ref = ptr.get<ESM4::Npc>();
+-        return ref != nullptr && ref->mBase != nullptr && ref->mBase->mIsFO3;
++        return ref != nullptr && ref->mBase != nullptr && (ref->mBase->mIsFO3 || ref->mBase->mIsFONV);
+     }
+ 
+     float matrixDifference(const osg::Matrixf& left, const osg::Matrixf& right)
+@@ -299,7 +290,7 @@ namespace
+             return std::string_view(env) != "0";
+         if (const char* env = std::getenv("OPENMW_FNV_SKIP_SYNTHETIC_ATTACHMENT_HELPER_CONTROLLERS"))
+             return std::string_view(env) != "0";
+-        return isFalloutNpcAnimationContext(ptr);
++        return false;
+     }
+ 
+     bool shouldEnableFalloutWeaponIdlePose(const MWWorld::Ptr& ptr)
+@@ -308,7 +299,17 @@ namespace
+             return std::string_view(env) != "0";
+         if (const char* env = std::getenv("OPENMW_FNV_ENABLE_WEAPON_IDLE_POSE"))
+             return std::string_view(env) != "0";
+-        return false;
++        return isFalloutNpcAnimationContext(ptr);
++    }
++
++    bool isFalloutWeaponAimKf(std::string_view lowerKf)
++    {
++        static constexpr std::array<std::string_view, 13> names{ "h2haim.kf", "1hmaim.kf", "2hmaim.kf",
++            "1hpaim.kf", "2hraim.kf", "2haaim.kf", "2hhaim.kf", "2hlaim.kf", "1gtaim.kf", "1mdaim.kf",
++            "1lmaim.kf", "1hgaim.kf", "2hgaim.kf" };
++        return std::any_of(names.begin(), names.end(), [&](std::string_view name) {
++            return Misc::StringUtils::ciEndsWith(lowerKf, name);
++        });
+     }
+ 
+     class FalloutTransformTargetVisitor : public osg::NodeVisitor
+@@ -2214,6 +2215,12 @@ namespace
+         osg::Node* rightHandNode = findFalloutTarget(targets, "bip01 r hand");
+         osg::Node* weaponNode = findFalloutTarget(targets, "weapon");
+ 
++        const auto localMatrix = [](osg::Node* node) {
++            if (const auto* transform = dynamic_cast<const osg::MatrixTransform*>(node))
++                return transform->getMatrix();
++            return osg::Matrix{};
++        };
++
+         const osg::Matrix rootWorld = getFalloutNodeWorldMatrix(objectRoot);
+         const osg::Matrix bip01World = getFalloutNodeWorldMatrix(bip01Node);
+         const osg::Vec3f root = transformFalloutPoint(osg::Vec3f(), rootWorld);
+@@ -2227,6 +2234,9 @@ namespace
+         const osg::Vec3f rightHand = getFalloutTargetWorldOrigin(targets, "bip01 r hand");
+         const osg::Vec3f weapon = getFalloutTargetWorldOrigin(targets, "weapon");
+         const osg::Vec3f footMid = (leftFoot + rightFoot) * 0.5f;
++        const osg::Matrix leftHandLocal = localMatrix(leftHandNode);
++        const osg::Matrix rightHandLocal = localMatrix(rightHandNode);
++        const osg::Matrix weaponLocal = localMatrix(weaponNode);
+ 
+         Log(Debug::Info) << "FNV/ESM4 ACTOR ROOT ATTACHMENT AUDIT " << ptr.getCellRef().getRefId()
+                          << " sample=" << samples
+@@ -2251,10 +2261,22 @@ namespace
+                          << " head=" << formatFalloutAuditVec3(head)
+                          << " leftFoot=" << formatFalloutAuditVec3(leftFoot)
+                          << " rightFoot=" << formatFalloutAuditVec3(rightFoot)
+-                         << " leftHand=" << formatFalloutAuditVec3(leftHand)
+-                         << " rightHand=" << formatFalloutAuditVec3(rightHand)
+-                         << " weapon=" << formatFalloutAuditVec3(weapon)
+-                         << " headMinusPelvis=" << formatFalloutAuditVec3(head - pelvis)
++                          << " leftHand=" << formatFalloutAuditVec3(leftHand)
++                          << " rightHand=" << formatFalloutAuditVec3(rightHand)
++                          << " weapon=" << formatFalloutAuditVec3(weapon)
++                          << " leftHandLocalT=" << formatFalloutAuditVec3(leftHandLocal.getTrans())
++                          << " leftHandLocalX=" << formatFalloutAuditVec3(falloutMatrixBasisRow(leftHandLocal, 0))
++                          << " leftHandLocalY=" << formatFalloutAuditVec3(falloutMatrixBasisRow(leftHandLocal, 1))
++                          << " leftHandLocalZ=" << formatFalloutAuditVec3(falloutMatrixBasisRow(leftHandLocal, 2))
++                          << " rightHandLocalT=" << formatFalloutAuditVec3(rightHandLocal.getTrans())
++                          << " rightHandLocalX=" << formatFalloutAuditVec3(falloutMatrixBasisRow(rightHandLocal, 0))
++                          << " rightHandLocalY=" << formatFalloutAuditVec3(falloutMatrixBasisRow(rightHandLocal, 1))
++                          << " rightHandLocalZ=" << formatFalloutAuditVec3(falloutMatrixBasisRow(rightHandLocal, 2))
++                          << " weaponLocalT=" << formatFalloutAuditVec3(weaponLocal.getTrans())
++                          << " weaponLocalX=" << formatFalloutAuditVec3(falloutMatrixBasisRow(weaponLocal, 0))
++                          << " weaponLocalY=" << formatFalloutAuditVec3(falloutMatrixBasisRow(weaponLocal, 1))
++                          << " weaponLocalZ=" << formatFalloutAuditVec3(falloutMatrixBasisRow(weaponLocal, 2))
++                          << " headMinusPelvis=" << formatFalloutAuditVec3(head - pelvis)
+                          << " footMidMinusPelvis=" << formatFalloutAuditVec3(footMid - pelvis)
+                          << " rootMinusPelvis=" << formatFalloutAuditVec3(root - pelvis);
+     }
+@@ -2882,7 +2904,7 @@ namespace MWRender
+         {
+             osg::Matrix mat = transform->getMatrix();
+             osg::Vec3f position = mat.getTrans();
+-            position = osg::componentMultiply(mResetAxes, position);
++            position = mResetAllTranslation ? osg::Vec3f() : osg::componentMultiply(mResetAxes, position);
+             mat.setTrans(position);
+             transform->setMatrix(mat);
+ 
+@@ -2897,8 +2919,14 @@ namespace MWRender
+             mResetAxes.z() = accumulate.z() != 0.f ? 0.f : 1.f;
+         }
+ 
++        void setResetAllTranslation(bool resetAll)
++        {
++            mResetAllTranslation = resetAll;
++        }
++
+     private:
+         osg::Vec3f mResetAxes;
++        bool mResetAllTranslation = false;
+     };
+ 
+     Animation::Animation(
+@@ -4320,16 +4348,14 @@ namespace MWRender
+             if (forcedOverlayGroup != nullptr)
+                 synthesizeForcedGroup(forcedOverlayGroup, "overlay", overlaySourceMatches);
+             const bool weaponIdlePose = shouldEnableFalloutWeaponIdlePose(mPtr);
+-            if (weaponIdlePose
+-                && (lowerKf == "meshes/characters/_male/2hraim.kf"
+-                    || lowerKf == "meshes/characters/_male/2haaim.kf")
+-                && !animsrc->mKeyframes->mTextKeys.hasGroupStart("idle"))
++            if (weaponIdlePose && isFalloutWeaponAimKf(lowerKf)
++                && !animsrc->mKeyframes->mTextKeys.hasGroupStart("weaponpose"))
+             {
+                 osg::ref_ptr<SceneUtil::KeyframeHolder> keyframes
+                     = new SceneUtil::KeyframeHolder(*animsrc->mKeyframes, osg::CopyOp::SHALLOW_COPY);
+-                addSyntheticLoopingTextKeys(keyframes->mTextKeys, "idle");
++                addSyntheticLoopingTextKeys(keyframes->mTextKeys, "weaponpose");
+                 animsrc->mKeyframes = keyframes;
+-                Log(Debug::Info) << "FNV/ESM4 diag: synthesized weapon idle actor KF text key group 'idle' for "
++                Log(Debug::Info) << "FNV/ESM4 diag: synthesized retail weapon overlay group 'weaponpose' for "
+                                  << kfname;
+             }
+         }
+@@ -4422,7 +4448,7 @@ namespace MWRender
+                         bindScale = nifTarget->mScale;
+                     nifController->setFalloutActorTransformBasis(
+                         bonename, found->second->getMatrix().getTrans(), getFalloutBindRotation(found->second),
+-                        bindScale, isFallout3NpcAnimationContext(mPtr));
++                        bindScale);
+                     ++falloutActorBasisApplied;
+                     static unsigned int sFalloutBasisLogs = 0;
+                     if ((sFalloutBasisLogs < 8
+@@ -5156,6 +5182,7 @@ namespace MWRender
+ //## VR_PATCH END
+         const bool falloutNpc = isFalloutNpc(mPtr);
+         size_t falloutAddedControllers = 0;
++        bool accumResetAttached = false;
+         // remove all previous external controllers from the scene graph
+         for (auto it = mActiveControllers.begin(); it != mActiveControllers.end(); ++it)
+         {
+@@ -5238,22 +5265,40 @@ namespace MWRender
+                     {
+                         mAccumCtrl = it->second;
+ 
+-                        if (!falloutNpc)
++                        // Bethesda locomotion stores actor displacement on the accumulation root. Apply that
++                        // displacement to gameplay movement, then clear its accumulated axes from the rendered
++                        // skeleton just like the native engine. Leaving the callback off for Fallout actors makes
++                        // the complete body surge away from and back to its physics reference every animation cycle.
++                        if (!mResetAccumRootCallback)
+                         {
+-                            // make sure reset is last in the chain of callbacks
+-                            if (!mResetAccumRootCallback)
+-                            {
+-                                mResetAccumRootCallback = new ResetAccumRootCallback;
+-                                mResetAccumRootCallback->setAccumulate(mAccumulate);
+-                            }
+-                            mAccumRoot->addUpdateCallback(mResetAccumRootCallback);
+-                            mActiveControllers.emplace_back(mAccumRoot, mResetAccumRootCallback);
++                            mResetAccumRootCallback = new ResetAccumRootCallback;
++                            mResetAccumRootCallback->setAccumulate(mAccumulate);
+                         }
++                        mResetAccumRootCallback->setResetAllTranslation(falloutNpc);
++                        // Keep the reset last in the callback chain so it sees the sampled controller value.
++                        mAccumRoot->addUpdateCallback(mResetAccumRootCallback);
++                        mActiveControllers.emplace_back(mAccumRoot, mResetAccumRootCallback);
++                        accumResetAttached = true;
+                     }
+                 }
+             }
+         }
+ 
++        if (falloutNpc && mAccumRoot != nullptr && !accumResetAttached)
++        {
++            // Retail FO3/FNV keeps Bip01 neutral even when the active sequence does not contain a Bip01 controller
++            // (notably mtidle.kf).  The skeleton NIF's authored Bip01 bind translation is not the runtime pose; if it
++            // leaks through, idle is one root-height above locomotion and the whole actor drops when walking starts.
++            if (!mResetAccumRootCallback)
++            {
++                mResetAccumRootCallback = new ResetAccumRootCallback;
++                mResetAccumRootCallback->setAccumulate(mAccumulate);
++            }
++            mResetAccumRootCallback->setResetAllTranslation(true);
++            mAccumRoot->addUpdateCallback(mResetAccumRootCallback);
++            mActiveControllers.emplace_back(mAccumRoot, mResetAccumRootCallback);
++        }
++
+         if (falloutNpc)
+             Log(Debug::Info) << "FNV/ESM4 diag: active animation group reset for " << mPtr.getCellRef().getRefId()
+                              << " states=" << mStates.size() << " callbacks=" << falloutAddedControllers
+@@ -6887,6 +6932,20 @@ namespace MWRender
+ 
+     void Animation::removeFromSceneImpl()
+     {
++        // External keyframe callbacks hold animation/controller state that belongs to this Animation instance.
++        // Detach them while both the scene nodes and controller sources are still alive.  Leaving an upper-body
++        // overlay callback on the skeleton until member destruction can make OSG tear the callback chain down after
++        // its AnimationTime source has already gone away (observed as a ucrtbase FAST_FAIL_INVALID_ARG on shutdown).
++        for (const auto& [node, callback] : mActiveControllers)
++        {
++            if (node != nullptr && callback != nullptr)
++            {
++                node->removeUpdateCallback(callback);
++                callback->setNestedCallback(nullptr);
++            }
++        }
++        mActiveControllers.clear();
++
+         if (mGlowLight != nullptr)
+             mInsert->removeChild(mGlowLight);
+ 
+diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
+index 91e715d3b6..99cf1650a9 100644
+--- a/apps/openmw/mwrender/esm4npcanimation.cpp
++++ b/apps/openmw/mwrender/esm4npcanimation.cpp
+@@ -25,6 +25,7 @@
+ #include <components/misc/resourcehelpers.hpp>
+ #include <components/misc/strings/algorithm.hpp>
+ #include <components/misc/strings/lower.hpp>
++#include <components/nifosg/matrixtransform.hpp>
+ #include <components/resource/imagemanager.hpp>
+ #include <components/resource/resourcesystem.hpp>
+ #include <components/resource/scenemanager.hpp>
+@@ -2502,16 +2503,25 @@ namespace MWRender
+             void apply(osg::Geode& geode) override
+             {
+                 for (unsigned int i = 0; i < geode.getNumDrawables(); ++i)
+-                    if (SceneUtil::RigGeometry* rig = dynamic_cast<SceneUtil::RigGeometry*>(geode.getDrawable(i)))
+-                    {
+-                        rig->setFalloutCharacterSkinning(true);
+-                        ++mMarked;
+-                    }
++                    if (osg::Drawable* drawable = geode.getDrawable(i))
++                        mark(*drawable);
+ 
+                 traverse(geode);
+             }
+ 
++            void apply(osg::Drawable& drawable) override { mark(drawable); }
++
+             unsigned int mMarked = 0;
++
++        private:
++            void mark(osg::Drawable& drawable)
++            {
++                if (SceneUtil::RigGeometry* rig = dynamic_cast<SceneUtil::RigGeometry*>(&drawable))
++                {
++                    rig->setFalloutCharacterSkinning(true);
++                    ++mMarked;
++                }
++            }
+         };
+ 
+         class ForceFalloutRigGeometryUpdateVisitor : public osg::NodeVisitor
+@@ -2575,6 +2585,11 @@ namespace MWRender
+             return visitor.mForcedRigGeometry;
+         }
+ 
++        bool isFallout3OrNewVegas(const ESM4::Npc& npc)
++        {
++            return npc.mIsFO3 || npc.mIsFONV;
++        }
++
+         class StaticizeFalloutRiggedGeometryVisitor : public osg::NodeVisitor
+         {
+         public:
+@@ -2920,14 +2935,18 @@ namespace MWRender
+ 
+             void addRig(SceneUtil::RigGeometry& rig)
+             {
+-                if (rig.getSourceGeometry() == nullptr)
++                osg::ref_ptr<osg::Geometry> sourceGeometry = rig.getSourceGeometry();
++                if (sourceGeometry == nullptr)
+                     return;
+ 
+-                const osg::Vec3Array* baseVertices = dynamic_cast<const osg::Vec3Array*>(rig.getSourceGeometry()->getVertexArray());
++                const osg::Vec3Array* baseVertices
++                    = dynamic_cast<const osg::Vec3Array*>(sourceGeometry->getVertexArray());
+                 if (baseVertices == nullptr)
+                     return;
+ 
+-                osg::ref_ptr<osg::Geometry> morphed = new osg::Geometry(*rig.getSourceGeometry(), osg::CopyOp::SHALLOW_COPY);
++                osg::ref_ptr<osg::Vec3Array> baseVertexCopy = new osg::Vec3Array(*baseVertices);
++                osg::ref_ptr<osg::Geometry> morphed
++                    = new osg::Geometry(*sourceGeometry, osg::CopyOp::SHALLOW_COPY);
+                 osg::ref_ptr<osg::Vec3Array> activeVertices = new osg::Vec3Array(*baseVertices);
+                 morphed->setVertexArray(activeVertices);
+ 
+@@ -2940,18 +2959,24 @@ namespace MWRender
+ 
+                 Target t;
+                 t.mRig = &rig;
+-                t.mBaseVertices = new osg::Vec3Array(*baseVertices);
++                t.mBaseVertices = std::move(baseVertexCopy);
+                 t.mActiveVertices = activeVertices;
+                 mTargets.push_back(t);
+             }
+ 
+             void addGeometry(osg::Geometry& geometry)
+             {
+-                const osg::Vec3Array* baseVertices = dynamic_cast<const osg::Vec3Array*>(geometry.getVertexArray());
++                // Replacing the drawable can release the last parent-owned reference to the source geometry. Keep
++                // it and the immutable vertex baseline alive before touching the parent list.
++                osg::ref_ptr<osg::Geometry> sourceGeometry = &geometry;
++                const osg::Vec3Array* baseVertices
++                    = dynamic_cast<const osg::Vec3Array*>(sourceGeometry->getVertexArray());
+                 if (baseVertices == nullptr)
+                     return;
+ 
+-                osg::ref_ptr<osg::Geometry> morphed = new osg::Geometry(geometry, osg::CopyOp::SHALLOW_COPY);
++                osg::ref_ptr<osg::Vec3Array> baseVertexCopy = new osg::Vec3Array(*baseVertices);
++                osg::ref_ptr<osg::Geometry> morphed
++                    = new osg::Geometry(*sourceGeometry, osg::CopyOp::SHALLOW_COPY);
+                 osg::ref_ptr<osg::Vec3Array> activeVertices = new osg::Vec3Array(*baseVertices);
+                 morphed->setVertexArray(activeVertices);
+ 
+@@ -2972,7 +2997,7 @@ namespace MWRender
+ 
+                 Target t;
+                 t.mGeometry = morphed;
+-                t.mBaseVertices = new osg::Vec3Array(*baseVertices);
++                t.mBaseVertices = std::move(baseVertexCopy);
+                 t.mActiveVertices = activeVertices;
+                 mTargets.push_back(t);
+             }
+@@ -3846,7 +3871,7 @@ namespace MWRender
+         {
+             const char* mode = std::getenv("OPENMW_FNV_STATIC_HEAD_ATTACH_MODE");
+             if (mode == nullptr || mode[0] == '\0')
+-                return "headframe";
++                return "animatedheadframe";
+             return mode;
+         }
+ 
+@@ -4070,7 +4095,8 @@ namespace MWRender
+             else if (isFalloutBareHandSurfaceModel(lowered) || isStarfieldHumanHandSurfaceModelLowered(lowered))
+                 applyScaleOverride("OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS");
+             const ESM4::Npc* traits = MWClass::ESM4Npc::getTraitsRecord(ptr);
+-            const bool tes5ActorSpaceStaticPart = traits != nullptr && !traits->mIsTES4 && !traits->mIsFONV;
++            const bool tes5ActorSpaceStaticPart
++                = traits != nullptr && !traits->mIsTES4 && !isFallout3OrNewVegas(*traits);
+             const bool scaleAroundBoundsCenter = shouldAttachFalloutStaticPartToHead(lowered);
+             const bool actorSpacePositionScale = tes5ActorSpaceStaticPart && scaleAroundBoundsCenter;
+             const bool tes5ScalpHairPart = isFalloutScalpHairModel(lowered);
+@@ -4268,7 +4294,8 @@ namespace MWRender
+         {
+             std::string text = weapon.mEditorId + " " + weapon.mFullName + " " + weapon.mModel;
+             Misc::StringUtils::lowerCaseInPlace(text);
+-            return weapon.mData.type == 5 || text.find("2hr") != std::string::npos
++            return (weapon.mData.animationType >= 5 && weapon.mData.animationType <= 9)
++                || text.find("2hr") != std::string::npos
+                 || text.find("rifle") != std::string::npos || text.find("shotgun") != std::string::npos
+                 || text.find("sniper") != std::string::npos || text.find("launcher") != std::string::npos
+                 || text.find("minigun") != std::string::npos;
+@@ -4277,27 +4304,59 @@ namespace MWRender
+         osg::ref_ptr<osg::MatrixTransform> makeFalloutAttachmentHelper(
+             osg::Group& parent, std::string_view name, Animation::NodeMap& nodeMap)
+         {
+-            osg::ref_ptr<osg::MatrixTransform> helper = new osg::MatrixTransform;
++            // These helpers are animation targets. NifOsg keyframe callbacks require a NifOsg::MatrixTransform;
++            // using a plain osg::MatrixTransform here makes the callback reinterpret the object as the larger NIF
++            // transform type and corrupt its matrix when a retail Weapon controller is active.
++            Nif::NiTransform bindTransform = Nif::NiTransform::getIdentity();
++            if (Misc::StringUtils::ciEqual(name, "Weapon"))
++            {
++                // FO3 and FNV ship the same empty Weapon node under Bip01 R Hand. The scene optimizer removes that
++                // empty node, so retain its authored local bind on the replacement animation target.
++                bindTransform.mTranslation = osg::Vec3f(6.171f, 1.989f, 0.759f);
++                bindTransform.mRotation.mValues[0][0] = 0.991f;
++                bindTransform.mRotation.mValues[0][1] = -0.051f;
++                bindTransform.mRotation.mValues[0][2] = -0.123f;
++                bindTransform.mRotation.mValues[1][0] = 0.125f;
++                bindTransform.mRotation.mValues[1][1] = 0.035f;
++                bindTransform.mRotation.mValues[1][2] = 0.992f;
++                bindTransform.mRotation.mValues[2][0] = -0.046f;
++                bindTransform.mRotation.mValues[2][1] = -0.998f;
++                bindTransform.mRotation.mValues[2][2] = 0.041f;
++            }
++
++            osg::ref_ptr<NifOsg::MatrixTransform> helper = new NifOsg::MatrixTransform(bindTransform);
+             helper->setName(std::string(name));
+             helper->setDataVariance(osg::Object::DYNAMIC);
+             helper->setUserValue("esm4SyntheticAttachmentHelper", 1);
+             if (Misc::StringUtils::ciEqual(name, "Weapon"))
+             {
+-                const osg::Vec3f offset(readFalloutProofFloat("OPENMW_FNV_WEAPON_OFFSET_X", 0.f),
+-                    readFalloutProofFloat("OPENMW_FNV_WEAPON_OFFSET_Y", 0.f),
+-                    readFalloutProofFloat("OPENMW_FNV_WEAPON_OFFSET_Z", 0.f));
+-                constexpr float degreesToRadians = 0.017453292519943295f;
+-                const float xDegrees = readFalloutProofFloat("OPENMW_FNV_WEAPON_ROTATION_X", 0.f);
+-                const float yDegrees = readFalloutProofFloat("OPENMW_FNV_WEAPON_ROTATION_Y", 0.f);
+-                const float zDegrees = readFalloutProofFloat("OPENMW_FNV_WEAPON_ROTATION_Z", 0.f);
+-                const osg::Quat x(xDegrees * degreesToRadians, osg::Vec3f(1.f, 0.f, 0.f));
+-                const osg::Quat y(yDegrees * degreesToRadians, osg::Vec3f(0.f, 1.f, 0.f));
+-                const osg::Quat z(zDegrees * degreesToRadians, osg::Vec3f(0.f, 0.f, 1.f));
+-                const osg::Quat rotation = z * y * x;
+-                helper->setMatrix(osg::Matrix::rotate(rotation) * osg::Matrix::translate(offset));
+-                Log(Debug::Info) << "FNV/ESM4 diag: weapon helper bone-local offset=(" << offset.x() << ","
+-                                 << offset.y() << "," << offset.z() << ") rotation=(" << xDegrees << ","
+-                                 << yDegrees << "," << zDegrees << ")";
++                const bool overrideBind = std::getenv("OPENMW_FNV_WEAPON_OFFSET_X") != nullptr
++                    || std::getenv("OPENMW_FNV_WEAPON_OFFSET_Y") != nullptr
++                    || std::getenv("OPENMW_FNV_WEAPON_OFFSET_Z") != nullptr
++                    || std::getenv("OPENMW_FNV_WEAPON_ROTATION_X") != nullptr
++                    || std::getenv("OPENMW_FNV_WEAPON_ROTATION_Y") != nullptr
++                    || std::getenv("OPENMW_FNV_WEAPON_ROTATION_Z") != nullptr;
++                if (overrideBind)
++                {
++                    const osg::Vec3f offset(readFalloutProofFloat("OPENMW_FNV_WEAPON_OFFSET_X", 6.171f),
++                        readFalloutProofFloat("OPENMW_FNV_WEAPON_OFFSET_Y", 1.989f),
++                        readFalloutProofFloat("OPENMW_FNV_WEAPON_OFFSET_Z", 0.759f));
++                    constexpr float degreesToRadians = 0.017453292519943295f;
++                    const float xDegrees = readFalloutProofFloat("OPENMW_FNV_WEAPON_ROTATION_X", -87.648f);
++                    const float yDegrees = readFalloutProofFloat("OPENMW_FNV_WEAPON_ROTATION_Y", 2.636f);
++                    const float zDegrees = readFalloutProofFloat("OPENMW_FNV_WEAPON_ROTATION_Z", 7.187f);
++                    const osg::Quat x(xDegrees * degreesToRadians, osg::Vec3f(1.f, 0.f, 0.f));
++                    const osg::Quat y(yDegrees * degreesToRadians, osg::Vec3f(0.f, 1.f, 0.f));
++                    const osg::Quat z(zDegrees * degreesToRadians, osg::Vec3f(0.f, 0.f, 1.f));
++                    const osg::Quat rotation = z * y * x;
++                    helper->setRotation(rotation);
++                    helper->setTranslation(offset);
++                    Log(Debug::Info) << "FNV/ESM4 diag: weapon helper override offset=(" << offset.x() << ","
++                                     << offset.y() << "," << offset.z() << ") rotation=(" << xDegrees << ","
++                                     << yDegrees << "," << zDegrees << ")";
++                }
++                else
++                    Log(Debug::Info) << "FNV/ESM4 diag: weapon helper uses retail FO3/FNV bind transform";
+             }
+             parent.addChild(helper);
+             nodeMap.emplace(std::string(name), helper);
+@@ -4329,6 +4388,20 @@ namespace MWRender
+             return false;
+         }
+ 
++        bool worldViewerFONVWeaponFrameStabilizerEnabled()
++        {
++            // Diagnostic fallback only. Retail drives the Weapon node from the selected animation family.
++            return worldViewerEnvEnabled("OPENMW_FNV_WEAPON_FRAME_STABILIZER")
++                || worldViewerEnvEnabled("OPENMW_ESM4_WEAPON_FRAME_STABILIZER");
++        }
++
++        bool worldViewerFONVLongGunOffhandIkEnabled()
++        {
++            // Diagnostic fallback only. Authored 2hr/2ha/etc. sequences contain the retail offhand pose.
++            return worldViewerEnvEnabled("OPENMW_FNV_LONG_GUN_OFFHAND_IK")
++                || worldViewerEnvEnabled("OPENMW_ESM4_LONG_GUN_OFFHAND_IK");
++        }
++
+         osg::Vec3f normalizeFalloutIkVector(osg::Vec3f value, const osg::Vec3f& fallback)
+         {
+             if (value.normalize() <= 0.0001f)
+@@ -5622,7 +5695,8 @@ namespace MWRender
+             const Animation::NodeMap& nodeMap, const MWWorld::Ptr& ptr, const ESM4::Npc& traits,
+             const ESM4::Weapon& weapon)
+         {
+-            if ((!traits.mIsFO3 && !traits.mIsFONV) || !isFalloutWeaponIkLongGun(weapon))
++            if (!worldViewerFONVWeaponFrameStabilizerEnabled()
++                || (!traits.mIsFO3 && !traits.mIsFONV) || !isFalloutWeaponIkLongGun(weapon))
+                 return false;
+ 
+             osg::MatrixTransform* weaponFrame = dynamic_cast<osg::MatrixTransform*>(
+@@ -5680,7 +5754,8 @@ namespace MWRender
+             const Animation::NodeMap& nodeMap, const MWWorld::Ptr& ptr, const ESM4::Npc& traits,
+             const ESM4::Weapon& weapon)
+         {
+-            if ((!traits.mIsFO3 && !traits.mIsFONV) || isFalloutWeaponIkLongGun(weapon))
++            if (!worldViewerFONVWeaponFrameStabilizerEnabled()
++                || (!traits.mIsFO3 && !traits.mIsFONV) || isFalloutWeaponIkLongGun(weapon))
+                 return false;
+ 
+             osg::MatrixTransform* weaponFrame = dynamic_cast<osg::MatrixTransform*>(
+@@ -5942,7 +6017,8 @@ namespace MWRender
+         bool applyFalloutLongGunOffhandIk(const Animation::NodeMap& nodeMap, SceneUtil::Skeleton* skeleton,
+             const MWWorld::Ptr& ptr, const ESM4::Npc& traits, const ESM4::Weapon& weapon)
+         {
+-            if ((!traits.mIsFO3 && !traits.mIsFONV) || !isFalloutWeaponIkLongGun(weapon))
++            if (!worldViewerFONVLongGunOffhandIkEnabled()
++                || (!traits.mIsFO3 && !traits.mIsFONV) || !isFalloutWeaponIkLongGun(weapon))
+                 return false;
+ 
+             const auto findMatrix = [&](std::initializer_list<std::string_view> names) {
+@@ -6505,11 +6581,51 @@ namespace MWRender
+             return stream.str();
+         }
+ 
++        std::string_view getFonvWeaponAnimationPrefix(std::uint8_t animationType)
++        {
++            // TESObjectWEAP::EWeaponType, verified against xNVSE's runtime layout and retail sequence telemetry.
++            // In particular, TwoHandAutomatic is the 2ha family; TwoHandMelee is 2hm, not 2ha.
++            switch (animationType)
++            {
++                case 0:
++                    return "h2h";
++                case 1:
++                    return "1hm";
++                case 2:
++                    return "2hm";
++                case 3:
++                case 4:
++                    return "1hp";
++                case 5:
++                case 7:
++                    return "2hr";
++                case 6:
++                    return "2ha";
++                case 8:
++                    return "2hh";
++                case 9:
++                    return "2hl";
++                case 10:
++                case 13:
++                    return "1gt";
++                case 11:
++                    return "1md";
++                case 12:
++                    return "1lm";
++                default:
++                    return {};
++            }
++        }
++
+         std::string getFonvWeaponIdlePoseKf(const ESM4::Weapon* weapon)
+         {
+             if (weapon == nullptr)
+                 return "meshes/characters/_male/idleanims/talk_handsatside_still2.kf";
+ 
++            const std::string_view prefix = getFonvWeaponAnimationPrefix(weapon->mData.animationType);
++            if (!prefix.empty())
++                return "meshes/characters/_male/" + std::string(prefix) + "aim.kf";
++
+             std::string label = weapon->mEditorId + " " + weapon->mModel;
+             Misc::StringUtils::lowerCaseInPlace(label);
+             if (containsAny(label, { "rifle", "shotgun", "sniper", "launcher", "2hand", "2hr", "varmint" }))
+@@ -6957,7 +7073,7 @@ namespace MWRender
+             logWorldViewerActorLedger(mPtr, "npc-root-end", details.str());
+             logWorldViewerNodeMapSnapshot(mPtr, "npc-node-map", getNodeMap(), "afterRoot=1");
+         }
+-        if (traits != nullptr && traits->mIsFONV)
++        if (traits != nullptr && isFallout3OrNewVegas(*traits))
+         {
+             const NodeMap& currentNodeMap = getNodeMap();
+             const auto ensureHelper = [&](std::string_view name, std::initializer_list<std::string_view> parents) {
+@@ -6979,7 +7095,7 @@ namespace MWRender
+         }
+         updateParts();
+ 
+-        if (traits != nullptr && !traits->mIsFONV)
++        if (traits != nullptr && !isFallout3OrNewVegas(*traits))
+         {
+             const std::vector<std::string> configuredSources
+                 = collectWorldViewerNpcAnimationSources(mResourceSystem, *traits);
+@@ -7002,7 +7118,7 @@ namespace MWRender
+             }
+         }
+ 
+-        if (traits != nullptr && traits->mIsFONV)
++        if (traits != nullptr && isFallout3OrNewVegas(*traits))
+         {
+             const ESM4::Npc* animationRecord = MWClass::ESM4Npc::getModelRecord(mPtr);
+             if (animationRecord == nullptr)
+@@ -7105,8 +7221,27 @@ namespace MWRender
+ 
+                 if (const ESM4::Weapon* weapon = MWClass::ESM4Npc::getEquippedWeapon(mPtr))
+                 {
+-                    const bool useWeaponIdlePose = worldViewerEnvEnabled("OPENMW_ESM4_ENABLE_WEAPON_IDLE_POSE")
+-                        || worldViewerEnvEnabled("OPENMW_FNV_ENABLE_WEAPON_IDLE_POSE");
++                    const std::string_view prefix = getFonvWeaponAnimationPrefix(weapon->mData.animationType);
++                    if (!prefix.empty())
++                    {
++                        // Retail FNV resolves locomotion through the equipped weapon family. Some families author
++                        // only a subset (for example 2ha has a walk-forward plus four fast directions), so add the
++                        // complete candidate set and let the VFS-backed source loader ignore absent files.
++                        constexpr std::array<std::string_view, 10> suffixes{ "forward", "backward", "left", "right",
++                            "fastforward", "fastbackward", "fastleft", "fastright", "turnleft", "turnright" };
++                        for (std::string_view suffix : suffixes)
++                        {
++                            addFonvAnimationSource("meshes/characters/_male/locomotion/" + std::string(prefix)
++                                    + std::string(suffix) + ".kf",
++                                "retail weapon-family locomotion", false);
++                        }
++                    }
++
++                    const char* esm4WeaponPose = std::getenv("OPENMW_ESM4_ENABLE_WEAPON_IDLE_POSE");
++                    const char* fnvWeaponPose = std::getenv("OPENMW_FNV_ENABLE_WEAPON_IDLE_POSE");
++                    const bool useWeaponIdlePose = esm4WeaponPose != nullptr
++                        ? std::string_view(esm4WeaponPose) != "0"
++                        : (fnvWeaponPose != nullptr ? std::string_view(fnvWeaponPose) != "0" : true);
+                     if (useWeaponIdlePose)
+                     {
+                         const std::string weaponPose = getFonvWeaponIdlePoseKf(weapon);
+@@ -7229,8 +7364,8 @@ namespace MWRender
+             return;
+         }
+         std::string_view branch = traits->mIsTES4 ? std::string_view("TES4")
+-            : traits->mIsFONV                   ? std::string_view("FALLOUT")
+-                                                : std::string_view("TES5");
++            : isFallout3OrNewVegas(*traits)       ? std::string_view("FALLOUT")
++                                                  : std::string_view("TES5");
+         {
+             std::ostringstream details;
+             details << "branch=" << branch << " game=" << worldViewerNpcGameTag(*traits)
+@@ -7243,7 +7378,7 @@ namespace MWRender
+         }
+         if (traits->mIsTES4)
+             updatePartsTES4(*traits);
+-        else if (traits->mIsFONV)
++        else if (isFallout3OrNewVegas(*traits))
+             updatePartsFONV(*traits);
+         else
+         {
+@@ -7288,8 +7423,9 @@ namespace MWRender
+         const VFS::Manager* vfs = mResourceSystem != nullptr ? mResourceSystem->getVFS() : nullptr;
+         const bool modelExists = vfs != nullptr && vfs->exists(correctedModel);
+         const ESM4::Npc* traitsRecord = MWClass::ESM4Npc::getTraitsRecord(mPtr);
+-        const bool falloutHumanPart = traitsRecord != nullptr && traitsRecord->mIsFONV;
+-        const bool tes5StaticPart = traitsRecord != nullptr && !traitsRecord->mIsTES4 && !traitsRecord->mIsFONV;
++        const bool falloutHumanPart = traitsRecord != nullptr && isFallout3OrNewVegas(*traitsRecord);
++        const bool tes5StaticPart
++            = traitsRecord != nullptr && !traitsRecord->mIsTES4 && !isFallout3OrNewVegas(*traitsRecord);
+         {
+             std::ostringstream details;
+             details << "model=\"" << model << "\" corrected=\"" << correctedModel.value() << "\""
+@@ -7410,10 +7546,11 @@ namespace MWRender
+                     osg::Group* head = findBestAttachmentNode(nodeMap, { "Bip01 Head", "bip01 head" });
+                     if (bip01 != nullptr && head != nullptr)
+                     {
+-                        if (headgearMode != nullptr && Misc::StringUtils::ciEqual(headgearMode, "animatedheadframe"))
+-                            attachNode = makeFalloutAnimatedHeadFrameHelper(*bip01, *head);
+-                        else
++                        if (headgearMode != nullptr && (Misc::StringUtils::ciEqual(headgearMode, "headframe")
++                                                           || Misc::StringUtils::ciEqual(headgearMode, "headtranslation")))
+                             attachNode = makeFalloutHeadFrameHelper(*bip01, *head);
++                        else
++                            attachNode = makeFalloutAnimatedHeadFrameHelper(*bip01, *head);
+                     }
+                 }
+             }
+@@ -7574,10 +7711,23 @@ namespace MWRender
+         bool staticizedHeadPartRig = false;
+         bool staticizedBareHandPartRig = false;
+         const bool wantsStaticizedHeadPartRig = headAttachedStaticPart && rigProbe.mRigGeometryCount > 0
++            && std::getenv("OPENMW_FNV_STATICIZE_RIGGED_HEAD_PARTS") != nullptr
+             && std::getenv("OPENMW_FNV_KEEP_RIGGED_HEAD_PARTS") == nullptr;
+         const bool wantsStaticizedBareHandPartRig = bareHandSurfacePart && rigProbe.mRigGeometryCount > 0
+-            && (falloutHumanPart || std::getenv("OPENMW_FNV_STATICIZE_RIGGED_HAND_PARTS") != nullptr)
++            && std::getenv("OPENMW_FNV_STATICIZE_RIGGED_HAND_PARTS") != nullptr
+             && std::getenv("OPENMW_FNV_KEEP_RIGGED_HAND_PARTS") == nullptr;
++        if (rigProbe.mRigGeometryCount > 0)
++        {
++            // Mark the cached template before SceneManager clones it.  RigGeometry's copy constructor preserves
++            // this bit, so the very first update/cull traversal uses the Fallout skinning convention instead of
++            // briefly treating an attached Bethesda body part as a generic OpenMW rig.
++            MarkFalloutRigGeometryVisitor markFalloutRigs;
++            const_cast<osg::Node*>(attachTemplateNode.get())->accept(markFalloutRigs);
++            if (markFalloutRigs.mMarked > 0)
++                Log(Debug::Info) << "FNV/ESM4 diag: pre-marked " << markFalloutRigs.mMarked
++                                 << " Fallout rigged template drawable(s) on " << correctedModel.value() << " for "
++                                 << mPtr.getCellRef().getRefId();
++        }
+         if (wantsStaticizedHeadPartRig)
+         {
+             osg::ref_ptr<osg::Node> staticTemplate = osg::clone(templateNode.get(), osg::CopyOp::DEEP_COPY_ALL);
+@@ -8417,7 +8567,7 @@ namespace MWRender
+                 Log(Debug::Error) << "Head part not found: " << ESM::RefId(partId);
+                 continue;
+             }
+-            const bool miscPart = traits.mIsFONV && isFonvMiscHeadPart(*part);
++            const bool miscPart = isFallout3OrNewVegas(traits) && isFonvMiscHeadPart(*part);
+             if (miscPart || usedHeadPartTypes.emplace(part->mType).second)
+             {
+                 const osg::Vec4f hairTint = getHairTint(traits);
+diff --git a/apps/openmw/mwscript/compilercontext.cpp b/apps/openmw/mwscript/compilercontext.cpp
+index eb39f57628..e45618795f 100644
+--- a/apps/openmw/mwscript/compilercontext.cpp
++++ b/apps/openmw/mwscript/compilercontext.cpp
+@@ -24,6 +24,7 @@
+ #include <components/esm3/loadscpt.hpp>
+ #include <components/esm3/loadstat.hpp>
+ #include <components/esm3/loadweap.hpp>
++#include <components/esm4/records.hpp>
+ 
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/scriptmanager.hpp"
+@@ -79,6 +80,10 @@ namespace MWScript
+     bool CompilerContext::isId(const ESM::RefId& name) const
+     {
+         const MWWorld::ESMStore& store = *MWBase::Environment::get().getESMStore();
++        const ESM::FormId* formId = name.getIf<ESM::FormId>();
++        const bool isEsm4PlacedReference = formId != nullptr
++            && (store.get<ESM4::ActorCharacter>().search(*formId)
++                || store.get<ESM4::ActorCreature>().search(*formId) || store.get<ESM4::Reference>().search(*formId));
+ 
+         return store.get<ESM::Activator>().search(name) || store.get<ESM::Potion>().search(name)
+             || store.get<ESM::Apparatus>().search(name) || store.get<ESM::Armor>().search(name)
+@@ -90,6 +95,17 @@ namespace MWScript
+             || store.get<ESM::Miscellaneous>().search(name) || store.get<ESM::NPC>().search(name)
+             || store.get<ESM::Probe>().search(name) || store.get<ESM::Repair>().search(name)
+             || store.get<ESM::Static>().search(name) || store.get<ESM::Weapon>().search(name)
+-            || store.get<ESM::Script>().search(name);
++            || store.get<ESM::Script>().search(name) || store.get<ESM4::Activator>().search(name)
++            || store.get<ESM4::Ammunition>().search(name) || store.get<ESM4::Armor>().search(name)
++            || store.get<ESM4::Book>().search(name) || store.get<ESM4::Clothing>().search(name)
++            || store.get<ESM4::Container>().search(name) || store.get<ESM4::Creature>().search(name)
++            || store.get<ESM4::Door>().search(name) || store.get<ESM4::Flora>().search(name)
++            || store.get<ESM4::Furniture>().search(name) || store.get<ESM4::Ingredient>().search(name)
++            || store.get<ESM4::ItemMod>().search(name) || store.get<ESM4::Light>().search(name)
++            || store.get<ESM4::MiscItem>().search(name) || store.get<ESM4::MovableStatic>().search(name)
++            || store.get<ESM4::Npc>().search(name) || store.get<ESM4::Potion>().search(name)
++            || store.get<ESM4::Static>().search(name) || store.get<ESM4::StaticCollection>().search(name)
++            || store.get<ESM4::Terminal>().search(name) || store.get<ESM4::Tree>().search(name)
++            || store.get<ESM4::Weapon>().search(name) || isEsm4PlacedReference;
+     }
+ }
+diff --git a/apps/openmw/mwscript/ref.cpp b/apps/openmw/mwscript/ref.cpp
+index af6b205d37..663fe8f37f 100644
+--- a/apps/openmw/mwscript/ref.cpp
++++ b/apps/openmw/mwscript/ref.cpp
+@@ -5,13 +5,27 @@
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/world.hpp"
+ 
++#include "../mwworld/worldmodel.hpp"
++
+ #include "interpretercontext.hpp"
+ 
++#include <string_view>
++
+ MWWorld::Ptr MWScript::ExplicitRef::operator()(Interpreter::Runtime& runtime, bool required, bool activeOnly) const
+ {
+-    ESM::RefId id = ESM::RefId::stringRefId(runtime.getStringLiteral(runtime[0].mInteger));
++    const std::string_view text = runtime.getStringLiteral(runtime[0].mInteger);
++    ESM::RefId id = ESM::RefId::deserializeText(text);
++    if (id.empty())
++        id = ESM::RefId::stringRefId(text);
+     runtime.pop();
+ 
++    if (const ESM::FormId* formId = id.getIf<ESM::FormId>())
++    {
++        MWWorld::Ptr placed = MWBase::Environment::get().getWorldModel()->getPtr(*formId);
++        if (!placed.isEmpty())
++            return placed;
++    }
++
+     if (required)
+         return MWBase::Environment::get().getWorld()->getPtr(id, activeOnly);
+     else
+diff --git a/components/compiler/lineparser.cpp b/components/compiler/lineparser.cpp
+index 90bdac1610..f496dd7f69 100644
+--- a/components/compiler/lineparser.cpp
++++ b/components/compiler/lineparser.cpp
+@@ -170,10 +170,14 @@ namespace Compiler
+             return true;
+         }
+ 
+-        if (mState == BeginState && getContext().isId(ESM::RefId::stringRefId(name)))
++        ESM::RefId explicitId = ESM::RefId::deserializeText(name);
++        if (explicitId.empty())
++            explicitId = ESM::RefId::stringRefId(name);
++
++        if (mState == BeginState && getContext().isId(explicitId))
+         {
+             mState = PotentialExplicitState;
+-            mExplicit = Misc::StringUtils::lowerCase(name);
++            mExplicit = explicitId.serializeText();
+             return true;
+         }
+ 
+diff --git a/components/esm4/loadweap.cpp b/components/esm4/loadweap.cpp
+index e0b6500854..ecd2f6eb8e 100644
+--- a/components/esm4/loadweap.cpp
++++ b/components/esm4/loadweap.cpp
+@@ -26,17 +26,31 @@
+ */
+ #include "loadweap.hpp"
+ 
++#include <array>
+ #include <stdexcept>
+ 
+ #include "reader.hpp"
+ //#include "writer.hpp"
+ 
++bool ESM4::loadFalloutWeaponDnam(std::span<const std::uint8_t> dnam, Weapon::Data& data)
++{
++    if (dnam.size() < 16)
++        return false;
++
++    data.animationType = dnam[0];
++    data.handGrip = dnam[13];
++    data.ammoUse = dnam[14];
++    data.reloadAnim = dnam[15];
++    return true;
++}
++
+ void ESM4::Weapon::load(ESM4::Reader& reader)
+ {
+     mId = reader.getFormIdFromHeader();
+     mFlags = reader.hdr().record.flags;
+     std::uint32_t esmVer = reader.esmVersion();
+     bool isFONV = esmVer == ESM::VER_132 || esmVer == ESM::VER_133 || esmVer == ESM::VER_134;
++    bool isFalloutWeapon = isFONV;
+ 
+     while (reader.getSubRecordHeader())
+     {
+@@ -60,6 +74,7 @@ void ESM4::Weapon::load(ESM4::Reader& reader)
+                 }
+                 else if (isFONV || subHdr.dataSize == 15)
+                 {
++                    isFalloutWeapon = true;
+                     reader.get(mData.value);
+                     reader.get(mData.health);
+                     reader.get(mData.weight);
+@@ -121,6 +136,20 @@ void ESM4::Weapon::load(ESM4::Reader& reader)
+             case ESM::fourCC("INAM"):
+                 reader.getFormId(mImpactDataSet);
+                 break;
++            case ESM::fourCC("DNAM"):
++                if (isFalloutWeapon && subHdr.dataSize >= 16)
++                {
++                    // FO3/FNV DNAM begins with the runtime TESObjectWEAP animation fields documented by xNVSE:
++                    // type, three padding bytes, animation multiplier, reach, flags, hand grip, ammo use, reload.
++                    std::array<std::uint8_t, 16> dnam{};
++                    reader.get(dnam.data(), dnam.size());
++                    loadFalloutWeaponDnam(dnam, mData);
++                    if (subHdr.dataSize > 16)
++                        reader.skipSubRecordData(subHdr.dataSize - 16);
++                }
++                else
++                    reader.skipSubRecordData();
++                break;
+             case ESM::fourCC("WNAM"):
+                 reader.getFormId(mWorldModel);
+                 break;
+@@ -146,7 +175,6 @@ void ESM4::Weapon::load(ESM4::Reader& reader)
+             case ESM::fourCC("BIDS"):
+             case ESM::fourCC("CNAM"):
+             case ESM::fourCC("CRDT"):
+-            case ESM::fourCC("DNAM"):
+             case ESM::fourCC("EAMT"):
+             case ESM::fourCC("EITM"):
+             case ESM::fourCC("KSIZ"):
+diff --git a/components/esm4/loadweap.hpp b/components/esm4/loadweap.hpp
+index ae1184b58a..f55dcce283 100644
+--- a/components/esm4/loadweap.hpp
++++ b/components/esm4/loadweap.hpp
+@@ -28,6 +28,7 @@
+ #define ESM4_WEAP_H
+ 
+ #include <cstdint>
++#include <span>
+ #include <string>
+ #include <vector>
+ 
+@@ -60,6 +61,13 @@ namespace ESM4
+             std::uint16_t damage;
+             std::uint8_t clipSize; // FO3/FONV only
+ 
++            // FO3/FONV WEAP.DNAM animation selectors. These choose the authored animation family and the
++            // optional HandGrip overlay; they are not part of the TES4 DATA subrecord above.
++            std::uint8_t animationType;
++            std::uint8_t handGrip;
++            std::uint8_t ammoUse;
++            std::uint8_t reloadAnim;
++
+             Data()
+                 : type(0)
+                 , speed(0.f)
+@@ -70,6 +78,10 @@ namespace ESM4
+                 , weight(0.f)
+                 , damage(0)
+                 , clipSize(0)
++                , animationType(0xff)
++                , handGrip(0xff)
++                , ammoUse(0)
++                , reloadAnim(0)
+             {
+             }
+         };
+@@ -118,6 +130,9 @@ namespace ESM4
+         // void blank();
+         static constexpr ESM::RecNameInts sRecordId = ESM::RecNameInts::REC_WEAP4;
+     };
++
++    // Parse the stable 16-byte FO3/FNV prefix of WEAP.DNAM. Later games reuse DNAM with incompatible layouts.
++    [[nodiscard]] bool loadFalloutWeaponDnam(std::span<const std::uint8_t> dnam, Weapon::Data& data);
+ }
+ 
+ #endif // ESM4_WEAP_H
+diff --git a/components/nifosg/controller.cpp b/components/nifosg/controller.cpp
+index 2fdf0ffbc2..80ab1972ae 100644
+--- a/components/nifosg/controller.cpp
++++ b/components/nifosg/controller.cpp
+@@ -1,6 +1,7 @@
+ #include "controller.hpp"
+ 
+ #include <algorithm>
++#include <array>
+ #include <cctype>
+ #include <cmath>
+ #include <cstdlib>
+@@ -98,7 +99,7 @@ namespace NifOsg
+             if (const char* env = getEsm4RuntimeEnv("OPENMW_ESM4_PIN_ACTOR_LOWER_BODY_BIND_ROTATION",
+                     "OPENMW_FNV_PIN_ACTOR_LOWER_BODY_BIND_ROTATION"))
+                 return std::string_view(env) != "0";
+-            return true;
++            return false;
+         }
+ 
+         bool shouldPinFalloutActorBindRotation(const std::string& bone)
+@@ -134,10 +135,10 @@ namespace NifOsg
+             if (const char* env = getEsm4RuntimeEnv(
+                     "OPENMW_ESM4_DROP_ACTOR_KEY_TRANSLATIONS", "OPENMW_FNV_DROP_ACTOR_KEY_TRANSLATIONS"))
+                 return std::string_view(env) != "0";
+-            return true;
++            return false;
+         }
+ 
+-        std::string_view getFalloutActorRotationCompositionMode(bool useRawRotationCompositionDefault)
++        std::string_view getFalloutActorRotationCompositionMode()
+         {
+             if (const char* env = getEsm4RuntimeEnv(
+                     "OPENMW_ESM4_ACTOR_ROTATION_COMPOSITION", "OPENMW_FNV_ACTOR_ROTATION_COMPOSITION"))
+@@ -146,16 +147,13 @@ namespace NifOsg
+                     return env;
+             }
+ 
+-            if (useRawRotationCompositionDefault)
+-                return "raw";
+-            return "rawHalfBind";
++            return "raw";
+         }
+ 
+-        osg::Quat composeFalloutActorRotation(
+-            const osg::Quat& rawRotation, const osg::Quat& bindRotation, bool useRawRotationCompositionDefault)
++        osg::Quat composeFalloutActorRotation(const osg::Quat& rawRotation, const osg::Quat& bindRotation)
+         {
+             const osg::Quat halfTurn = falloutHalfTurnX();
+-            const std::string_view mode = getFalloutActorRotationCompositionMode(useRawRotationCompositionDefault);
++            const std::string_view mode = getFalloutActorRotationCompositionMode();
+             if (mode == "raw")
+                 return rawRotation;
+             if (mode == "bind")
+@@ -331,8 +329,10 @@ namespace NifOsg
+         , mTranslations(copy.mTranslations)
+         , mScales(copy.mScales)
+         , mAxisOrder(copy.mAxisOrder)
++        , mHasDefaultTranslation(copy.mHasDefaultTranslation)
++        , mHasDefaultRotation(copy.mHasDefaultRotation)
++        , mHasDefaultScale(copy.mHasDefaultScale)
+         , mUseFalloutActorRotationBasis(copy.mUseFalloutActorRotationBasis)
+-        , mFalloutUseRawRotationCompositionDefault(copy.mFalloutUseRawRotationCompositionDefault)
+         , mPinFalloutActorBindRotation(copy.mPinFalloutActorBindRotation)
+         , mFalloutLowerBone(copy.mFalloutLowerBone)
+         , mFalloutBindTranslation(copy.mFalloutBindTranslation)
+@@ -351,6 +351,7 @@ namespace NifOsg
+                 const Nif::NiTransformInterpolator* interp
+                     = static_cast<const Nif::NiTransformInterpolator*>(keyctrl->mInterpolator.getPtr());
+                 const Nif::NiQuatTransform& defaultTransform = interp->mDefaultValue;
++                setDefaultTransformChannels(defaultTransform);
+                 if (!interp->mData.empty())
+                 {
+                     mRotations = QuaternionInterpolator(interp->mData->mRotations, defaultTransform.mRotation);
+@@ -387,6 +388,7 @@ namespace NifOsg
+     KeyframeController::KeyframeController(const Nif::NiTransformInterpolator* interp)
+     {
+         const Nif::NiQuatTransform& defaultTransform = interp->mDefaultValue;
++        setDefaultTransformChannels(defaultTransform);
+         if (!interp->mData.empty())
+         {
+             mRotations = QuaternionInterpolator(interp->mData->mRotations, defaultTransform.mRotation);
+@@ -408,18 +410,26 @@ namespace NifOsg
+ 
+     void KeyframeController::initFromDefaultTransform(const Nif::NiQuatTransform& transform)
+     {
++        setDefaultTransformChannels(transform);
+         mRotations = QuaternionInterpolator(Nif::QuaternionKeyMapPtr(), transform.mRotation);
+         mTranslations = Vec3Interpolator(Nif::Vector3KeyMapPtr(), transform.mTranslation);
+         mScales = FloatInterpolator(Nif::FloatKeyMapPtr(), transform.mScale);
+     }
+ 
+-        void KeyframeController::setFalloutActorTransformBasis(
+-        const std::string& lowerBone, const osg::Vec3f& bindTranslation, const osg::Quat& bindRotation, float bindScale,
+-        bool useRawRotationCompositionDefault)
++    void KeyframeController::setDefaultTransformChannels(const Nif::NiQuatTransform& transform)
++    {
++        // Modern NIF interpolators use non-finite/FLT_MAX-style sentinels for channels with no authored default.
++        // Preserve valid constant channels even when the corresponding key array (or spline handle) is absent.
++        mHasDefaultTranslation = isReasonableVec3(transform.mTranslation, 1000000.f);
++        mHasDefaultRotation = isReasonableQuat(transform.mRotation);
++        mHasDefaultScale = isReasonableScale(transform.mScale);
++    }
++
++    void KeyframeController::setFalloutActorTransformBasis(
++        const std::string& lowerBone, const osg::Vec3f& bindTranslation, const osg::Quat& bindRotation, float bindScale)
+     {
+         const bool pinLowerBodyBindRotation = shouldPinFalloutActorLowerBodyBindRotation();
+         const bool pinActorBindRotation = esm4ActorBindPinningEnabled(false);
+-        mFalloutUseRawRotationCompositionDefault = useRawRotationCompositionDefault;
+         mUseFalloutActorRotationBasis = isFalloutActorBasisBone(lowerBone)
+             || (pinLowerBodyBindRotation && isFalloutActorLowerBodyBone(lowerBone));
+         mPinFalloutActorBindRotation = (pinActorBindRotation && shouldPinFalloutActorBindRotation(lowerBone))
+@@ -438,6 +448,7 @@ namespace NifOsg
+         if (interp->recType == Nif::RC_NiTransformInterpolator)
+         {
+             const auto* transform = static_cast<const Nif::NiTransformInterpolator*>(interp);
++            setDefaultTransformChannels(transform->mDefaultValue);
+             if (!transform->mData.empty())
+             {
+                 const Nif::NiQuatTransform& defaultTransform = transform->mDefaultValue;
+@@ -468,6 +479,7 @@ namespace NifOsg
+             data.mStartTime = bspline->mStartTime;
+             data.mStopTime = bspline->mStopTime;
+             data.mDefaultValue = bspline->mValue;
++            setDefaultTransformChannels(bspline->mValue);
+             data.mFloatControlPoints = bspline->mSplineData->mFloatControlPoints;
+             data.mCompactControlPoints = bspline->mSplineData->mCompactControlPoints;
+             data.mNumControlPoints = bspline->mBasisData->mNumControlPoints;
+@@ -529,6 +541,7 @@ namespace NifOsg
+         data.mStartTime = interp->mStartTime;
+         data.mStopTime = interp->mStopTime;
+         data.mDefaultValue = interp->mValue;
++        setDefaultTransformChannels(interp->mValue);
+         data.mFloatControlPoints = interp->mSplineData->mFloatControlPoints;
+         data.mCompactControlPoints = interp->mSplineData->mCompactControlPoints;
+         data.mNumControlPoints = interp->mBasisData->mNumControlPoints;
+@@ -556,40 +569,26 @@ namespace NifOsg
+         initFromInterpolator(interp);
+     }
+ 
+-    static float bsplineBasis(int index, float t)
++    bool isValidBSplineHandle(uint32_t handle)
+     {
+-        const float t2 = t * t;
+-        const float t3 = t2 * t;
+-        switch (index)
+-        {
+-            case 0:
+-                return (1.f - 3.f * t + 3.f * t2 - t3) / 6.f;
+-            case 1:
+-                return (4.f - 6.f * t2 + 3.f * t3) / 6.f;
+-            case 2:
+-                return (1.f + 3.f * t + 3.f * t2 - 3.f * t3) / 6.f;
+-            default:
+-                return t3 / 6.f;
+-        }
++        // Gamebryo serializes these uint32 fields with the historic ushort sentinel used by NifSkope/NIFTools.
++        return handle != std::numeric_limits<uint16_t>::max()
++            && handle != std::numeric_limits<uint32_t>::max();
+     }
+ 
+     float sampleBSplineComponent(
+         const KeyframeController::BSplineTransform& data, uint32_t handle, unsigned int stride, unsigned int component,
+         float time, float defaultValue, float offset, float halfRange)
+     {
+-        if (handle == std::numeric_limits<uint32_t>::max() || data.mNumControlPoints < 4
++        constexpr unsigned int degree = 3;
++        if (!isValidBSplineHandle(handle) || data.mNumControlPoints <= degree
+             || data.mStopTime <= data.mStartTime)
+             return defaultValue;
+ 
+         const float normalized = std::clamp((time - data.mStartTime) / (data.mStopTime - data.mStartTime), 0.f, 1.f);
+-        const float scaled = normalized * static_cast<float>(data.mNumControlPoints - 3);
+-        unsigned int segment = std::min(static_cast<unsigned int>(scaled), data.mNumControlPoints - 4);
+-        const float local = scaled - static_cast<float>(segment);
+-
+-        float value = 0.f;
+-        for (unsigned int i = 0; i < 4; ++i)
++        const auto controlPoint = [&](unsigned int point) -> float
+         {
+-            const size_t index = static_cast<size_t>(handle) + static_cast<size_t>(segment + i) * stride + component;
++            const size_t index = static_cast<size_t>(handle) + static_cast<size_t>(point) * stride + component;
+             float control = defaultValue;
+             if (data.mCompressed)
+             {
+@@ -598,11 +597,45 @@ namespace NifOsg
+             }
+             else if (index < data.mFloatControlPoints.size())
+                 control = data.mFloatControlPoints[index];
++            return control;
++        };
++
++        const unsigned int lastPoint = data.mNumControlPoints - 1;
++        if (normalized >= 1.f)
++            return controlPoint(lastPoint);
++
++        // NIF B-splines use an open/clamped uniform knot vector.  The former four-weight shortcut sampled an
++        // unclamped uniform curve, so the first and last frames were mixtures of neighbouring control points and
++        // did not match NifSkope or the retail Gamebryo evaluator.  Cubic de Boor evaluation is both exact and local.
++        const float knotRange = static_cast<float>(data.mNumControlPoints - degree);
++        const float parameter = normalized * knotRange;
++        const unsigned int span
++            = std::min(degree + static_cast<unsigned int>(parameter), lastPoint);
++        const auto knot = [&](unsigned int index) -> float {
++            if (index <= degree)
++                return 0.f;
++            if (index >= data.mNumControlPoints)
++                return knotRange;
++            return static_cast<float>(index - degree);
++        };
++
++        std::array<float, degree + 1> values;
++        for (unsigned int i = 0; i <= degree; ++i)
++            values[i] = controlPoint(span - degree + i);
+ 
+-            value += control * bsplineBasis(i, local);
++        for (unsigned int level = 1; level <= degree; ++level)
++        {
++            for (unsigned int i = degree; i >= level; --i)
++            {
++                const float left = knot(span - degree + i);
++                const float right = knot(span + 1 + i - level);
++                const float denominator = right - left;
++                const float alpha = denominator > 0.f ? (parameter - left) / denominator : 0.f;
++                values[i] = (1.f - alpha) * values[i - 1] + alpha * values[i];
++            }
+         }
+ 
+-        return value;
++        return values[degree];
+     }
+ 
+     osg::Quat KeyframeController::getXYZRotation(float time) const
+@@ -672,8 +705,7 @@ namespace NifOsg
+                                  << " appliedHasTranslation=" << static_cast<bool>(translation)
+                                  << " rawHasTranslation=" << static_cast<bool>(rawKeyframe.mTranslation)
+                                  << " translationDelta=" << translationDelta
+-                                 << " compositionMode="
+-                                 << getFalloutActorRotationCompositionMode(mFalloutUseRawRotationCompositionDefault)
++                                 << " compositionMode=" << getFalloutActorRotationCompositionMode()
+                                  << " pinnedBindRotation=" << mPinFalloutActorBindRotation;
+                 ++sFalloutActorBasisAuditLines;
+             }
+@@ -722,7 +754,7 @@ namespace NifOsg
+             {
+                 const BSplineTransform& data = *mBSplineTransform;
+ 
+-                if (data.mTranslationHandle != std::numeric_limits<uint32_t>::max())
++                if (isValidBSplineHandle(data.mTranslationHandle))
+                 {
+                     out.mTranslation = osg::Vec3f(
+                         sampleBSplineComponent(data, data.mTranslationHandle, 3, 0, time,
+@@ -735,27 +767,37 @@ namespace NifOsg
+                             data.mDefaultValue.mTranslation.z(), data.mTranslationOffset,
+                             data.mTranslationHalfRange));
+                 }
++                else if (mHasDefaultTranslation)
++                    out.mTranslation = data.mDefaultValue.mTranslation;
+ 
+-                if (data.mRotationHandle != std::numeric_limits<uint32_t>::max())
++                if (isValidBSplineHandle(data.mRotationHandle))
+                 {
+-                    const float x = sampleBSplineComponent(data, data.mRotationHandle, 4, 0, time,
++                    // NiBSplineData stores quaternion control points in serialized Quaternion field order:
++                    // W, X, Y, Z.  osg::Quat's constructor takes X, Y, Z, W.  Treating the compact stream as
++                    // X, Y, Z, W changes the rotation of every controlled bone on every frame and tears a rig
++                    // apart as soon as animation starts.
++                    const float w = sampleBSplineComponent(data, data.mRotationHandle, 4, 0, time,
++                        data.mDefaultValue.mRotation.w(), data.mRotationOffset, data.mRotationHalfRange);
++                    const float x = sampleBSplineComponent(data, data.mRotationHandle, 4, 1, time,
+                         data.mDefaultValue.mRotation.x(), data.mRotationOffset, data.mRotationHalfRange);
+-                    const float y = sampleBSplineComponent(data, data.mRotationHandle, 4, 1, time,
++                    const float y = sampleBSplineComponent(data, data.mRotationHandle, 4, 2, time,
+                         data.mDefaultValue.mRotation.y(), data.mRotationOffset, data.mRotationHalfRange);
+-                    const float z = sampleBSplineComponent(data, data.mRotationHandle, 4, 2, time,
++                    const float z = sampleBSplineComponent(data, data.mRotationHandle, 4, 3, time,
+                         data.mDefaultValue.mRotation.z(), data.mRotationOffset, data.mRotationHalfRange);
+-                    const float w = sampleBSplineComponent(data, data.mRotationHandle, 4, 3, time,
+-                        data.mDefaultValue.mRotation.w(), data.mRotationOffset, data.mRotationHalfRange);
+                     const float length = std::sqrt(x * x + y * y + z * z + w * w);
+                     if (length > 0.f)
+                         out.mRotation = osg::Quat(x / length, y / length, z / length, w / length);
+                 }
++                else if (mHasDefaultRotation)
++                    out.mRotation = data.mDefaultValue.mRotation;
+ 
+-                if (data.mScaleHandle != std::numeric_limits<uint32_t>::max())
++                if (isValidBSplineHandle(data.mScaleHandle))
+                 {
+                     out.mScale = sampleBSplineComponent(data, data.mScaleHandle, 1, 0, time,
+                         data.mDefaultValue.mScale, data.mScaleOffset, data.mScaleHalfRange);
+                 }
++                else if (mHasDefaultScale)
++                    out.mScale = data.mDefaultValue.mScale;
+ 
+                 if (applyFalloutActorBasis && mUseFalloutActorRotationBasis)
+                 {
+@@ -766,8 +808,7 @@ namespace NifOsg
+                         out.mScale = mFalloutBindScale;
+                     }
+                     else if (out.mRotation)
+-                        out.mRotation = composeFalloutActorRotation(
+-                            *out.mRotation, mFalloutBindRotation, mFalloutUseRawRotationCompositionDefault);
++                        out.mRotation = composeFalloutActorRotation(*out.mRotation, mFalloutBindRotation);
+                 }
+ 
+                 if (applyFalloutActorBasis)
+@@ -781,11 +822,13 @@ namespace NifOsg
+                 out.mRotation = mRotations.interpKey(time);
+             else if (!mXRotations.empty() || !mYRotations.empty() || !mZRotations.empty())
+                 out.mRotation = getXYZRotation(time);
++            else if (mHasDefaultRotation)
++                out.mRotation = mRotations.interpKey(time);
+ 
+-            if (!mTranslations.empty())
++            if (!mTranslations.empty() || mHasDefaultTranslation)
+                 out.mTranslation = mTranslations.interpKey(time);
+ 
+-            if (!mScales.empty())
++            if (!mScales.empty() || mHasDefaultScale)
+                 out.mScale = mScales.interpKey(time);
+ 
+             if (applyFalloutActorBasis && mUseFalloutActorRotationBasis)
+@@ -797,8 +840,7 @@ namespace NifOsg
+                     out.mScale = mFalloutBindScale;
+                 }
+                 else if (out.mRotation)
+-                    out.mRotation = composeFalloutActorRotation(
+-                        *out.mRotation, mFalloutBindRotation, mFalloutUseRawRotationCompositionDefault);
++                    out.mRotation = composeFalloutActorRotation(*out.mRotation, mFalloutBindRotation);
+             }
+ 
+             if (applyFalloutActorBasis)
+diff --git a/components/nifosg/controller.hpp b/components/nifosg/controller.hpp
+index 58ff16ca4b..dd67527103 100644
+--- a/components/nifosg/controller.hpp
++++ b/components/nifosg/controller.hpp
+@@ -259,10 +259,11 @@ namespace NifOsg
+         void operator()(NifOsg::MatrixTransform*, osg::NodeVisitor*);
+         void setFalloutActorTransformBasis(
+             const std::string& lowerBone, const osg::Vec3f& bindTranslation, const osg::Quat& bindRotation,
+-            float bindScale, bool useRawRotationCompositionDefault = false);
++            float bindScale);
+ 
+     private:
+         void initFromDefaultTransform(const Nif::NiQuatTransform& transform);
++        void setDefaultTransformChannels(const Nif::NiQuatTransform& transform);
+         bool initFromInterpolator(const Nif::NiInterpolator* interp);
+         KfTransform getCurrentTransformation(osg::NodeVisitor* nv, bool applyFalloutActorBasis);
+ 
+@@ -276,8 +277,10 @@ namespace NifOsg
+         FloatInterpolator mScales;
+ 
+         Nif::NiKeyframeData::AxisOrder mAxisOrder{ Nif::NiKeyframeData::AxisOrder::Order_XYZ };
++        bool mHasDefaultTranslation{ false };
++        bool mHasDefaultRotation{ false };
++        bool mHasDefaultScale{ false };
+         bool mUseFalloutActorRotationBasis{ false };
+-        bool mFalloutUseRawRotationCompositionDefault{ false };
+         bool mPinFalloutActorBindRotation{ false };
+         std::string mFalloutLowerBone;
+         osg::Vec3f mFalloutBindTranslation;
+diff --git a/components/nifosg/nifloader.cpp b/components/nifosg/nifloader.cpp
+index 92f1706a37..3f7001180c 100644
+--- a/components/nifosg/nifloader.cpp
++++ b/components/nifosg/nifloader.cpp
+@@ -1684,18 +1684,89 @@ namespace NifOsg
+                 if (std::getenv("OPENMW_FNV_KF_BLOCK_AUDIT") != nullptr)
+                 {
+                     const std::string lowerTarget = Misc::StringUtils::lowerCase(targetName);
+-                    if (lowerTarget.find("forearm") != std::string::npos
++                    if (lowerTarget == "bip01" || lowerTarget.find("forearm") != std::string::npos
+                         || lowerTarget.find("foretwist") != std::string::npos
+                         || lowerTarget.find("hand") != std::string::npos
+                         || lowerTarget.find("finger") != std::string::npos
+                         || lowerTarget.find("thumb") != std::string::npos
+-                        || lowerTarget.find("head") != std::string::npos)
++                        || lowerTarget.find("head") != std::string::npos || lowerTarget == "weapon")
+                     {
+                         Log(Debug::Info) << "FNV/ESM4 KF BLOCK AUDIT file=" << filename.string()
+                                          << " sequence=" << sequence->mName
+                                          << " target=\"" << targetName << "\" interpolator="
+                                          << block.mInterpolator->recName << " recType="
+                                          << block.mInterpolator->recType;
++                        if (block.mInterpolator->recType == Nif::RC_NiTransformInterpolator)
++                        {
++                            const auto* transform
++                                = static_cast<const Nif::NiTransformInterpolator*>(block.mInterpolator.getPtr());
++                            const auto& value = transform->mDefaultValue;
++                            Log(Debug::Info) << "FNV/ESM4 KF DEFAULT TRANSFORM file=" << filename.string()
++                                             << " sequence=" << sequence->mName << " target=\"" << targetName
++                                             << "\" translation=(" << value.mTranslation.x() << ","
++                                             << value.mTranslation.y() << "," << value.mTranslation.z()
++                                             << ") quaternionXYZW=(" << value.mRotation.x() << ","
++                                             << value.mRotation.y() << "," << value.mRotation.z() << ","
++                                             << value.mRotation.w() << ") scale=" << value.mScale
++                                             << " hasData=" << !transform->mData.empty();
++                        }
++                        else if (block.mInterpolator->recType == Nif::RC_NiBSplineTransformInterpolator
++                            || block.mInterpolator->recType == Nif::RC_NiBSplineCompTransformInterpolator)
++                        {
++                            const auto* transform
++                                = static_cast<const Nif::NiBSplineTransformInterpolator*>(block.mInterpolator.getPtr());
++                            const auto& value = transform->mValue;
++                            Log(Debug::Info) << "FNV/ESM4 KF BSPLINE TRANSFORM file=" << filename.string()
++                                             << " sequence=" << sequence->mName << " target=\"" << targetName
++                                             << "\" translation=(" << value.mTranslation.x() << ","
++                                             << value.mTranslation.y() << "," << value.mTranslation.z()
++                                             << ") quaternionXYZW=(" << value.mRotation.x() << ","
++                                             << value.mRotation.y() << "," << value.mRotation.z() << ","
++                                             << value.mRotation.w() << ") scale=" << value.mScale
++                                             << " translationHandle=" << transform->mTranslationHandle
++                                             << " rotationHandle=" << transform->mRotationHandle
++                                             << " scaleHandle=" << transform->mScaleHandle;
++                            if (block.mInterpolator->recType == Nif::RC_NiBSplineCompTransformInterpolator)
++                            {
++                                const auto* compact = static_cast<const Nif::NiBSplineCompTransformInterpolator*>(
++                                    block.mInterpolator.getPtr());
++                                Log(Debug::Info) << "FNV/ESM4 KF BSPLINE COMPRESSION file=" << filename.string()
++                                                 << " sequence=" << sequence->mName << " target=\"" << targetName
++                                                 << "\" translationOffset=" << compact->mTranslationOffset
++                                                 << " translationHalfRange=" << compact->mTranslationHalfRange
++                                                 << " rotationOffset=" << compact->mRotationOffset
++                                                 << " rotationHalfRange=" << compact->mRotationHalfRange
++                                                 << " scaleOffset=" << compact->mScaleOffset
++                                                 << " scaleHalfRange=" << compact->mScaleHalfRange;
++                                if (lowerTarget == "bip01" && !compact->mSplineData.empty()
++                                    && !compact->mBasisData.empty()
++                                    && compact->mTranslationHandle != std::numeric_limits<uint16_t>::max())
++                                {
++                                    const auto& points = compact->mSplineData->mCompactControlPoints;
++                                    const uint32_t count = compact->mBasisData->mNumControlPoints;
++                                    const auto sample = [&](uint32_t point, uint32_t component) {
++                                        const size_t index = static_cast<size_t>(compact->mTranslationHandle)
++                                            + static_cast<size_t>(point) * 3 + component;
++                                        return index < points.size()
++                                            ? compact->mTranslationOffset
++                                                + compact->mTranslationHalfRange
++                                                    * (static_cast<float>(points[index]) / 32767.f)
++                                            : std::numeric_limits<float>::quiet_NaN();
++                                    };
++                                    if (count > 0)
++                                        Log(Debug::Info)
++                                            << "FNV/ESM4 KF BSPLINE ROOT CONTROL file=" << filename.string()
++                                            << " sequence=" << sequence->mName << " count=" << count
++                                            << " first=(" << sample(0, 0) << "," << sample(0, 1) << ","
++                                            << sample(0, 2) << ")"
++                                            << " second=(" << sample(std::min<uint32_t>(1, count - 1), 0) << ","
++                                            << sample(std::min<uint32_t>(1, count - 1), 1) << ","
++                                            << sample(std::min<uint32_t>(1, count - 1), 2) << ")"
++                                            << " last=(" << sample(count - 1, 0) << "," << sample(count - 1, 1)
++                                            << "," << sample(count - 1, 2) << ")";
++                                }
++                            }
++                        }
+                     }
+                 }
+ 
+-- 
+2.53.0.windows.1
+

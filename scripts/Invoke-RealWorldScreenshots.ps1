@@ -1414,6 +1414,16 @@ foreach ($id in $WorldId) {
     }
     $defaultCatalogExtraArgs = @(Get-TextArray (Get-PropertyValue (Get-PropertyValue $startsCatalog "defaults") "extraArgs"))
     $startCatalogExtraArgs = if ($null -ne $catalogStartSpec) { @(Get-TextArray (Get-PropertyValue $catalogStartSpec "extraArgs")) } else { @() }
+    $catalogScriptRun = if ($null -ne $catalogStartSpec) { [string](Get-PropertyValue $catalogStartSpec "scriptRun") } else { "" }
+    $resolvedCatalogScriptRun = $null
+    if (-not [string]::IsNullOrWhiteSpace($catalogScriptRun)) {
+        $resolvedCatalogScriptRun = Resolve-NikamiRepoRelativePath -Path $catalogScriptRun
+        if (-not (Test-Path -LiteralPath $resolvedCatalogScriptRun -PathType Leaf)) {
+            throw "Flat-world start scriptRun does not exist: $resolvedCatalogScriptRun"
+        }
+        $argsList.Add("--script-run")
+        $argsList.Add($resolvedCatalogScriptRun)
+    }
     foreach ($arg in @($defaultCatalogExtraArgs + $startCatalogExtraArgs + $ExtraArgs)) {
         if (-not [string]::IsNullOrWhiteSpace($arg)) {
             $argsList.Add($arg)
@@ -1450,6 +1460,7 @@ foreach ($id in $WorldId) {
         runSeconds = $effectiveRunSeconds
         captureSeconds = @($effectiveCaptureSeconds)
         extraArgs = @($defaultCatalogExtraArgs + $startCatalogExtraArgs + $ExtraArgs)
+        scriptRun = $resolvedCatalogScriptRun
         engineScreenshotEnabled = [bool]$engineScreenshotEnabled
         engineScreenshotFrames = if ($engineScreenshotEnabled) { $effectiveEngineScreenshotFrames } else { $null }
         engineScreenshotReadyFrames = if ($engineScreenshotEnabled -and $effectiveEngineScreenshotReadyFrames -ge 0) { $effectiveEngineScreenshotReadyFrames } else { $null }
@@ -1465,6 +1476,7 @@ foreach ($id in $WorldId) {
                 anchor = Get-PropertyValue $catalogStartSpec "anchor"
                 presentation = Get-PropertyValue $catalogStartSpec "presentation"
                 capture = Get-PropertyValue $catalogStartSpec "capture"
+                scriptRun = $catalogScriptRun
             }
         } else { $null }
         actorAnimationPolicy = if ($UseActorAnimationPolicyEnvironment) {

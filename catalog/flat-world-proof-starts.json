@@ -806,6 +806,64 @@
             "Run with -UseActorAnimationPolicyEnvironment and keeper audit env before treating this as actor walkaround evidence."
           ]
         },
+        "megaton-entrance-lucas-actor-front-walk": {
+          "label": "Megaton Lucas deterministic front walk",
+          "scriptRun": "config/proofs/fo3-lucas-front-walk.txt",
+          "environment": {
+            "OPENMW_PROOF_DELAY_STARTUP_SCRIPT": "1",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_REF": "FormId:0x1003b46",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_X": "0",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_Y": "-180",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_Z": "115",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_X": "0",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_Y": "0",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_Z": "78",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEADING": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEADING_DISTANCE": "100"
+          },
+          "anchor": {
+            "source": "Fallout3.esm MegatonEntrance LucasSimmsRef FormId:0x1003b46; scripted AiTravel on the exact placed reference",
+            "position": {
+              "x": -2907,
+              "y": -23485,
+              "z": 12643
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 0.2
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -3014.85,
+                "y": -22664.1,
+                "z": 13002
+              },
+              "target": {
+                "x": -3014.85,
+                "y": -22564.1,
+                "z": 12965
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              15
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "120,124,128,132,136,140,144,148,152,156,160,164,168,172,176,180,184,188,192,196,200,204,208,212,216,220,224,228,232,236,240",
+            "expectedScreenshotCount": 31,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "No desktop or input automation: a delayed OpenMW startup script applies real AiTravel locomotion to the exact placed Fallout 3 actor after the exterior is ready.",
+            "The dense capture covers the verified unobstructed first leg of the route, keeping Lucas's face, beard, hat, hands, Chinese assault rifle, torso, and gait visible before the uneven Megaton terrain ends the travel segment."
+          ]
+        },
         "moriartys-saloon-mister-burke-actor-close-burst": {
           "startCell": "MegatonMoriartysSaloon",
           "label": "Moriarty's Saloon Mister Burke actor close burst",
@@ -1322,6 +1380,64 @@
           "notes": [
             "Player-camera proof slice: no static camera, so screenshots should show the game camera after real held movement input.",
             "Run with -UseActorAnimationPolicyEnvironment and keeper audit env before treating this as actor walkaround evidence."
+          ]
+        },
+        "goodsprings-settler-actor-front-walk": {
+          "label": "Goodsprings settler deterministic front walk",
+          "scriptRun": "config/proofs/fnv-front-walk.txt",
+          "environment": {
+            "OPENMW_PROOF_DELAY_STARTUP_SCRIPT": "1",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_REF": "FormId:0x1104f0a",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_X": "0",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_Y": "-180",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_Z": "115",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_X": "0",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_Y": "0",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_Z": "78",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEADING": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEADING_DISTANCE": "100"
+          },
+          "anchor": {
+            "source": "FalloutNV.esm Goodsprings GSSettlerAM placement FormId:0x1104f0a; scripted AiTravel on base FormId:0x1104f07",
+            "position": {
+              "x": -67735,
+              "y": 3204,
+              "z": 8425
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": -1.5707964
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -71492.375,
+                "y": 3300,
+                "z": 8475
+              },
+              "target": {
+                "x": -71492.375,
+                "y": 4000,
+                "z": 8445
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "240,246,252,258,264,270,276,282,288,294,300,306,312,318,324,330,336,342,348,354,360,366,372,378,384,390,396,402,408,414,420",
+            "expectedScreenshotCount": 31,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "No desktop or input automation: a delayed OpenMW startup script applies the real AiTravel package to the exact FNV actor base after the exterior is ready.",
+            "Static camera faces north from the open yard while AiTravel turns the actor south, keeping the authored face, hands, weapon, and torso visible throughout the route."
           ]
         }
       }
