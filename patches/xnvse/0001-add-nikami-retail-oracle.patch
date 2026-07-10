@@ -1,0 +1,848 @@
+diff --git a/nvse_retail_oracle/dllmain.c b/nvse_retail_oracle/dllmain.c
+new file mode 100644
+index 0000000..49e595b
+--- /dev/null
++++ b/nvse_retail_oracle/dllmain.c
+@@ -0,0 +1,6 @@
++#include <Windows.h>
++
++BOOL WINAPI DllMain(HANDLE module, DWORD reason, LPVOID reserved)
++{
++    return TRUE;
++}
+diff --git a/nvse_retail_oracle/exports.def b/nvse_retail_oracle/exports.def
+new file mode 100644
+index 0000000..7d8acdc
+--- /dev/null
++++ b/nvse_retail_oracle/exports.def
+@@ -0,0 +1,4 @@
++LIBRARY "nvse_retail_oracle"
++EXPORTS
++NVSEPlugin_Query
++NVSEPlugin_Load
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+new file mode 100644
+index 0000000..aa6de83
+--- /dev/null
++++ b/nvse_retail_oracle/main.cpp
+@@ -0,0 +1,763 @@
++#include "nvse/PluginAPI.h"
++#include "nvse/GameObjects.h"
++#include "nvse/NiObjects.h"
++
++#include <Windows.h>
++
++#include <algorithm>
++#include <cstdlib>
++#include <fstream>
++#include <iomanip>
++#include <set>
++#include <sstream>
++#include <string>
++#include <vector>
++
++namespace
++{
++    PluginHandle gPluginHandle = kPluginHandle_Invalid;
++    NVSEMessagingInterface* gMessaging = nullptr;
++    NVSEConsoleInterface* gConsole = nullptr;
++    std::ofstream gOutput;
++    unsigned int gFrame = 0;
++    unsigned int gGameLoopFrame = 0;
++    unsigned int gWorldLoopFrame = 0;
++    unsigned int gSampleEvery = 1;
++    unsigned int gMaxFrames = 3600;
++    UInt32 gTargetForm = 0;
++    UInt32 gEquipForm = 0;
++    bool gAllHighActors = true;
++    bool gCaptureAnimation = true;
++    bool gLoadRequested = false;
++    bool gWorldReady = false;
++    bool gPrepareRequested = false;
++    bool gDriveRequested = false;
++    bool gFinishRequested = false;
++    bool gExitWhenDone = false;
++    std::string gSaveName;
++    std::string gPlayGroup;
++    std::vector<UInt32> gQuestForms;
++    std::vector<UInt32> gGlobalForms;
++    std::vector<std::string> gBehaviorCommands;
++    unsigned int gBehaviorBeforeFrame = 60;
++    unsigned int gBehaviorCommandFrame = 90;
++    unsigned int gBehaviorAfterFrame = 150;
++    UInt32 gSetStageQuestForm = 0;
++    unsigned int gSetStageIndex = 0xffff;
++    bool gBehaviorBeforeCaptured = false;
++    bool gBehaviorCommandsRun = false;
++    bool gBehaviorAfterCaptured = false;
++    Actor* gDrivenActor = nullptr;
++
++    constexpr const char* sSchema = "nikami-retail-oracle/v2";
++
++    std::string jsonString(const char* value)
++    {
++        if (value == nullptr)
++            return "null";
++
++        std::ostringstream out;
++        out << '"';
++        for (const unsigned char ch : std::string(value))
++        {
++            switch (ch)
++            {
++                case '\\': out << "\\\\"; break;
++                case '"': out << "\\\""; break;
++                case '\n': out << "\\n"; break;
++                case '\r': out << "\\r"; break;
++                case '\t': out << "\\t"; break;
++                default:
++                    if (ch < 0x20)
++                        out << "\\u" << std::hex << std::setw(4) << std::setfill('0')
++                            << static_cast<unsigned int>(ch) << std::dec;
++                    else
++                        out << static_cast<char>(ch);
++                    break;
++            }
++        }
++        out << '"';
++        return out.str();
++    }
++
++    unsigned int envUInt(const char* name, unsigned int fallback)
++    {
++        char value[64] = {};
++        const DWORD length = GetEnvironmentVariableA(name, value, static_cast<DWORD>(std::size(value)));
++        if (length == 0 || length >= std::size(value))
++            return fallback;
++        char* end = nullptr;
++        const unsigned long parsed = std::strtoul(value, &end, 0);
++        return end != value ? static_cast<unsigned int>(parsed) : fallback;
++    }
++
++    std::string envString(const char* name)
++    {
++        char value[4096] = {};
++        const DWORD length = GetEnvironmentVariableA(name, value, static_cast<DWORD>(std::size(value)));
++        if (length == 0 || length >= std::size(value))
++            return {};
++        return std::string(value, length);
++    }
++
++    std::vector<UInt32> envUIntList(const char* name)
++    {
++        std::vector<UInt32> result;
++        std::string value = envString(name);
++        std::size_t offset = 0;
++        while (offset < value.size())
++        {
++            const std::size_t separator = value.find(',', offset);
++            const std::string token = value.substr(offset,
++                separator == std::string::npos ? std::string::npos : separator - offset);
++            char* end = nullptr;
++            const unsigned long parsed = std::strtoul(token.c_str(), &end, 0);
++            if (end != token.c_str())
++                result.push_back(static_cast<UInt32>(parsed));
++            if (separator == std::string::npos)
++                break;
++            offset = separator + 1;
++        }
++        return result;
++    }
++
++    std::vector<std::string> envCommandList(const char* name)
++    {
++        std::vector<std::string> result;
++        std::string value = envString(name);
++        std::size_t offset = 0;
++        while (offset < value.size())
++        {
++            const std::size_t separator = value.find('|', offset);
++            std::string command = value.substr(offset,
++                separator == std::string::npos ? std::string::npos : separator - offset);
++            const std::size_t first = command.find_first_not_of(" \t");
++            const std::size_t last = command.find_last_not_of(" \t");
++            if (first != std::string::npos)
++                result.push_back(command.substr(first, last - first + 1));
++            if (separator == std::string::npos)
++                break;
++            offset = separator + 1;
++        }
++        return result;
++    }
++
++    unsigned int handGripIndex(UInt8 value)
++    {
++        if (value == TESObjectWEAP::eHandGrip_Default)
++            return 0;
++        if (value >= TESObjectWEAP::eHandGrip_1 && value <= TESObjectWEAP::eHandGrip_6)
++            return static_cast<unsigned int>(value - TESObjectWEAP::eHandGrip_1 + 1);
++        return 0xffff;
++    }
++
++    unsigned int attackAnimationIndex(UInt8 value)
++    {
++        static constexpr UInt8 values[] = { TESObjectWEAP::eAttackAnim_Default,
++            TESObjectWEAP::eAttackAnim_Attack3, TESObjectWEAP::eAttackAnim_Attack4,
++            TESObjectWEAP::eAttackAnim_Attack5, TESObjectWEAP::eAttackAnim_Attack6,
++            TESObjectWEAP::eAttackAnim_Attack7, TESObjectWEAP::eAttackAnim_Attack8,
++            TESObjectWEAP::eAttackAnim_Attack9, TESObjectWEAP::eAttackAnim_AttackLeft,
++            TESObjectWEAP::eAttackAnim_AttackLoop, TESObjectWEAP::eAttackAnim_AttackRight,
++            TESObjectWEAP::eAttackAnim_AttackSpin, TESObjectWEAP::eAttackAnim_AttackSpin2,
++            TESObjectWEAP::eAttackAnim_AttackThrow, TESObjectWEAP::eAttackAnim_AttackThrow2,
++            TESObjectWEAP::eAttackAnim_AttackThrow3, TESObjectWEAP::eAttackAnim_AttackThrow4,
++            TESObjectWEAP::eAttackAnim_AttackThrow5, TESObjectWEAP::eAttackAnim_AttackThrow6,
++            TESObjectWEAP::eAttackAnim_AttackThrow7, TESObjectWEAP::eAttackAnim_AttackThrow8,
++            TESObjectWEAP::eAttackAnim_PlaceMine, TESObjectWEAP::eAttackAnim_PlaceMine2 };
++        for (unsigned int i = 0; i < std::size(values); ++i)
++            if (values[i] == value)
++                return i;
++        return 0xffff;
++    }
++
++    void openOutput()
++    {
++        if (gOutput.is_open())
++            return;
++
++        char path[MAX_PATH * 4] = {};
++        const DWORD length = GetEnvironmentVariableA(
++            "NIKAMI_ORACLE_OUTPUT", path, static_cast<DWORD>(std::size(path)));
++        const char* outputPath = length > 0 && length < std::size(path)
++            ? path
++            : "Data\\NVSE\\Plugins\\nikami_retail_oracle.jsonl";
++        gOutput.open(outputPath, std::ios::out | std::ios::trunc);
++        if (gOutput)
++        {
++            gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"start\","
++                       "\"runtime\":\"FalloutNV-1.4.0.525\"}\n";
++            gOutput.flush();
++        }
++    }
++
++    void writeMatrix(std::ostream& out, const NiMatrix33& value)
++    {
++        out << '[';
++        for (unsigned int i = 0; i < 9; ++i)
++        {
++            if (i != 0)
++                out << ',';
++            out << value.data[i];
++        }
++        out << ']';
++    }
++
++    void writeVector(std::ostream& out, const NiVector3& value)
++    {
++        out << '[' << value.x << ',' << value.y << ',' << value.z << ']';
++    }
++
++    void writeTransform(std::ostream& out, const NiAVObject& node)
++    {
++        out << "{\"localRotation\":";
++        writeMatrix(out, node.dat0034.rotate);
++        out << ",\"localTranslation\":";
++        writeVector(out, node.dat0034.translate);
++        out << ",\"worldRotation\":";
++        writeMatrix(out, node.dat0064.rotate);
++        out << ",\"worldTranslation\":";
++        writeVector(out, node.dat0064.translate);
++        out << ",\"scaleRaw\":" << node.flt002C << '}';
++    }
++
++    void writeNodeRecursive(std::ostream& out, NiAVObject* object, bool& first, unsigned int depth)
++    {
++        if (object == nullptr || depth > 64)
++            return;
++
++        if (object->m_pcName != nullptr && object->m_pcName[0] != '\0')
++        {
++            if (!first)
++                out << ',';
++            first = false;
++            out << "{\"name\":" << jsonString(object->m_pcName) << ",\"depth\":" << depth
++                << ",\"transform\":";
++            writeTransform(out, *object);
++            out << '}';
++        }
++
++        NiNode* node = object->GetAsNiNode();
++        if (node == nullptr || node->m_children.data == nullptr)
++            return;
++        const unsigned int count = std::min<unsigned int>(node->m_children.firstFreeEntry, 2048);
++        for (unsigned int i = 0; i < count; ++i)
++            writeNodeRecursive(out, node->m_children.data[i], first, depth + 1);
++    }
++
++    void writeSequence(std::ostream& out, const BSAnimGroupSequence* sequence)
++    {
++        if (sequence == nullptr)
++        {
++            out << "null";
++            return;
++        }
++
++        out << "{\"file\":" << jsonString(sequence->filePath)
++            << ",\"state\":" << sequence->state
++            << ",\"cycle\":" << sequence->cycleType
++            << ",\"weight\":" << sequence->weight
++            << ",\"frequency\":" << sequence->freq
++            << ",\"begin\":" << sequence->begin
++            << ",\"end\":" << sequence->end
++            << ",\"last\":" << sequence->last
++            << ",\"lastScaled\":" << sequence->lastScaled
++            << ",\"offset\":" << sequence->offset
++            << ",\"start\":" << sequence->start
++            << ",\"end2\":" << sequence->end2
++            << ",\"accumRoot\":" << jsonString(sequence->accumRoot)
++            << ",\"group\":"
++            << (sequence->animGroup != nullptr ? static_cast<unsigned int>(sequence->animGroup->animGroup) : 0xffff)
++            << '}';
++    }
++
++    void writeActor(Actor* actor)
++    {
++        if (actor == nullptr || actor->baseProcess == nullptr)
++            return;
++        if (gTargetForm != 0 && actor->refID != gTargetForm && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm))
++            return;
++
++        __try
++        {
++            BaseProcess* process = actor->baseProcess;
++            const bool middleHigh = process->processLevel <= 1;
++            MiddleHighProcess* mhp = middleHigh ? static_cast<MiddleHighProcess*>(process) : nullptr;
++            HighProcess* hp = process->processLevel == 0 ? static_cast<HighProcess*>(process) : nullptr;
++            TESObjectWEAP* weapon = mhp != nullptr && mhp->weaponInfo != nullptr ? mhp->weaponInfo->weapon : nullptr;
++            NiNode* root = actor->GetNiNode();
++
++            gOutput << std::setprecision(9)
++                << "{\"schema\":\"nikami-retail-oracle/v2\",\"event\":\"actor-frame\""
++                << ",\"frame\":" << gFrame
++                << ",\"refForm\":" << actor->refID
++                << ",\"baseForm\":" << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
++                << ",\"position\":[" << actor->posX << ',' << actor->posY << ',' << actor->posZ << ']'
++                << ",\"rotation\":[" << actor->rotX << ',' << actor->rotY << ',' << actor->rotZ << ']'
++                << ",\"processLevel\":" << process->processLevel
++                << ",\"weaponOut\":" << (mhp != nullptr && mhp->isWeaponOut ? "true" : "false")
++                << ",\"aiming\":" << (mhp != nullptr && mhp->isAiming ? "true" : "false")
++                << ",\"weapon\":";
++            if (weapon != nullptr)
++            {
++                gOutput << "{\"form\":" << weapon->refID
++                    << ",\"animationType\":" << static_cast<unsigned int>(weapon->eWeaponType)
++                    << ",\"handGripRaw\":" << static_cast<unsigned int>(weapon->handGrip)
++                    << ",\"handGripIndex\":" << handGripIndex(weapon->handGrip)
++                    << ",\"reloadAnimation\":" << static_cast<unsigned int>(weapon->reloadAnim)
++                    << ",\"attackAnimationRaw\":" << static_cast<unsigned int>(weapon->attackAnim)
++                    << ",\"attackAnimationIndex\":" << attackAnimationIndex(weapon->attackAnim)
++                    << '}';
++            }
++            else
++                gOutput << "null";
++
++            gOutput << ",\"middleHighSequences\":[";
++            for (unsigned int i = 0; i < 3; ++i)
++            {
++                if (i != 0)
++                    gOutput << ',';
++                writeSequence(gOutput, mhp != nullptr ? mhp->animSequence[i] : nullptr);
++            }
++            gOutput << "] ,\"animDataSequences\":[";
++            for (unsigned int i = 0; i < 8; ++i)
++            {
++                if (i != 0)
++                    gOutput << ',';
++                writeSequence(gOutput, hp != nullptr && hp->animData != nullptr ? hp->animData->animSequence[i] : nullptr);
++            }
++            gOutput << "] ,\"weaponNode\":";
++            NiNode* weaponNode = mhp != nullptr ? mhp->weaponNode : nullptr;
++            if (weaponNode != nullptr)
++                writeTransform(gOutput, *weaponNode);
++            else
++                gOutput << "null";
++
++            gOutput << ",\"bones\":[";
++            bool firstBone = true;
++            writeNodeRecursive(gOutput, root, firstBone, 0);
++            gOutput << "]}\n";
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            gOutput << "{\"schema\":\"nikami-retail-oracle/v2\",\"event\":\"capture-fault\","
++                       "\"frame\":" << gFrame << ",\"refForm\":" << actor->refID << "}\n";
++        }
++    }
++
++    TESForm* lookupForm(UInt32 formId)
++    {
++        auto** formsMap = reinterpret_cast<NiTPointerMap<TESForm>**>(0x011C54C0);
++        return formsMap != nullptr && *formsMap != nullptr ? (*formsMap)->Lookup(formId) : nullptr;
++    }
++
++    void writeQuestState(UInt32 formId)
++    {
++        TESForm* form = lookupForm(formId);
++        if (form == nullptr || form->typeID != kFormType_TESQuest)
++        {
++            gOutput << "{\"form\":" << formId << ",\"available\":false}";
++            return;
++        }
++
++        TESQuest* quest = static_cast<TESQuest*>(form);
++        gOutput << "{\"form\":" << formId
++            << ",\"available\":true"
++            << ",\"editorId\":" << jsonString(quest->editorName.m_data)
++            << ",\"flags\":" << static_cast<unsigned int>(quest->flags)
++            << ",\"running\":" << ((quest->flags & 0x01) != 0 ? "true" : "false")
++            << ",\"completed\":" << ((quest->flags & 0x02) != 0 ? "true" : "false")
++            << ",\"shownInPipBoy\":" << ((quest->flags & 0x20) != 0 ? "true" : "false")
++            << ",\"failed\":" << ((quest->flags & 0x40) != 0 ? "true" : "false")
++            << ",\"priority\":" << static_cast<unsigned int>(quest->priority)
++            << ",\"delay\":" << quest->questDelayTime
++            << ",\"currentStage\":" << static_cast<unsigned int>(quest->currentStage)
++            << ",\"stages\":[";
++
++        bool first = true;
++        for (auto* node = quest->stages.Head(); node != nullptr; node = node->next)
++        {
++            if (node->data == nullptr)
++                continue;
++            if (!first)
++                gOutput << ',';
++            first = false;
++            gOutput << "{\"index\":" << static_cast<unsigned int>(node->data->stage)
++                << ",\"done\":" << (node->data->isDone != 0 ? "true" : "false") << '}';
++        }
++        gOutput << "]}";
++    }
++
++    void writeGlobalState(UInt32 formId)
++    {
++        TESForm* form = lookupForm(formId);
++        if (form == nullptr || form->typeID != kFormType_TESGlobal)
++        {
++            gOutput << "{\"form\":" << formId << ",\"available\":false}";
++            return;
++        }
++
++        TESGlobal* global = static_cast<TESGlobal*>(form);
++        gOutput << "{\"form\":" << formId
++            << ",\"available\":true"
++            << ",\"editorId\":" << jsonString(global->name.m_data)
++            << ",\"type\":" << static_cast<unsigned int>(global->type)
++            << ",\"value\":" << global->data << '}';
++    }
++
++    void captureBehaviorSnapshot(const char* label)
++    {
++        if (gQuestForms.empty() && gGlobalForms.empty())
++            return;
++
++        __try
++        {
++            gOutput << std::setprecision(9)
++                << "{\"schema\":\"nikami-retail-oracle/v2\""
++                << ",\"event\":\"behavior-snapshot\""
++                << ",\"label\":\"" << label << '"'
++                << ",\"frame\":" << gFrame
++                << ",\"quests\":[";
++            for (std::size_t i = 0; i < gQuestForms.size(); ++i)
++            {
++                if (i != 0)
++                    gOutput << ',';
++                writeQuestState(gQuestForms[i]);
++            }
++            gOutput << "],\"globals\":[";
++            for (std::size_t i = 0; i < gGlobalForms.size(); ++i)
++            {
++                if (i != 0)
++                    gOutput << ',';
++                writeGlobalState(gGlobalForms[i]);
++            }
++            gOutput << "]}\n";
++            gOutput.flush();
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            gOutput << "{\"schema\":\"nikami-retail-oracle/v2\""
++                << ",\"event\":\"behavior-capture-fault\""
++                << ",\"label\":\"" << label << '"'
++                << ",\"frame\":" << gFrame << "}\n";
++            gOutput.flush();
++        }
++    }
++
++    bool invokeRetailSetStage(TESQuest* quest, UInt8 stage)
++    {
++        __try
++        {
++            using SetStage = bool(__thiscall*)(TESQuest*, UInt8);
++            return reinterpret_cast<SetStage>(0x0060D510)(quest, stage);
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            return false;
++        }
++    }
++
++    void runBehaviorCommands()
++    {
++        if (gBehaviorCommandsRun || gConsole == nullptr)
++            return;
++        gBehaviorCommandsRun = true;
++        gOutput << "{\"schema\":" << jsonString(sSchema)
++            << ",\"event\":\"behavior-commands\""
++            << ",\"frame\":" << gFrame << ",\"commands\":[";
++        for (std::size_t i = 0; i < gBehaviorCommands.size(); ++i)
++        {
++            const std::string& command = gBehaviorCommands[i];
++            const bool safe = command.find('\n') == std::string::npos && command.find('\r') == std::string::npos;
++            const bool accepted = safe && gConsole->RunScriptLine2(command.c_str(), nullptr, true);
++            if (i != 0)
++                gOutput << ',';
++            gOutput << "{\"text\":" << jsonString(command.c_str())
++                << ",\"accepted\":" << (accepted ? "true" : "false") << '}';
++        }
++        gOutput << ']';
++
++        bool setStageAvailable = false;
++        bool setStageResult = false;
++        if (gSetStageQuestForm != 0 && gSetStageIndex <= 0xff)
++        {
++            TESForm* form = lookupForm(gSetStageQuestForm);
++            setStageAvailable = form != nullptr && form->typeID == kFormType_TESQuest;
++            if (setStageAvailable)
++                setStageResult = invokeRetailSetStage(
++                    static_cast<TESQuest*>(form), static_cast<UInt8>(gSetStageIndex));
++        }
++        gOutput << ",\"setStage\":{"
++            << "\"questForm\":" << gSetStageQuestForm
++            << ",\"stage\":" << gSetStageIndex
++            << ",\"available\":" << (setStageAvailable ? "true" : "false")
++            << ",\"result\":" << (setStageResult ? "true" : "false") << "}}\n";
++        gOutput.flush();
++    }
++
++    Actor* findDriveActor()
++    {
++        PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
++        Actor* fallback = nullptr;
++        ActorProcessManager* manager = reinterpret_cast<ActorProcessManager*>(0x011E0E80);
++        for (auto* node = manager->highActors.Head(); node != nullptr; node = node->next)
++        {
++            Actor* actor = node->data;
++            if (actor == nullptr || actor == player || actor->baseProcess == nullptr || actor->GetNiNode() == nullptr)
++                continue;
++            if (gTargetForm != 0 && actor->refID != gTargetForm
++                && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm))
++                continue;
++            if (fallback == nullptr)
++                fallback = actor;
++            if (actor->baseProcess->processLevel <= 1)
++            {
++                MiddleHighProcess* process = static_cast<MiddleHighProcess*>(actor->baseProcess);
++                if (process->weaponInfo != nullptr && process->weaponInfo->weapon != nullptr)
++                    return actor;
++            }
++        }
++        if (fallback != nullptr)
++            return fallback;
++        if (gTargetForm == 0 || (player != nullptr
++            && (player->refID == gTargetForm || (player->baseForm != nullptr && player->baseForm->refID == gTargetForm))))
++            return player;
++        return nullptr;
++    }
++
++    void requestLoad()
++    {
++        if (gLoadRequested || gSaveName.empty() || gConsole == nullptr)
++            return;
++        gLoadRequested = true;
++        if (gSaveName.find('"') != std::string::npos || gSaveName.find('\n') != std::string::npos
++            || gSaveName.find('\r') != std::string::npos)
++        {
++            gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"load-rejected\","
++                       "\"reason\":\"invalid-save-name\"}\n";
++            gOutput.flush();
++            return;
++        }
++        const std::string command = "LoadGame \"" + gSaveName + "\"";
++        const bool accepted = gConsole->RunScriptLine2(command.c_str(), nullptr, true);
++        gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"load-request\","
++                   "\"save\":" << jsonString(gSaveName.c_str())
++                << ",\"accepted\":" << (accepted ? "true" : "false") << "}\n";
++        gOutput.flush();
++    }
++
++    bool setWeaponOutUnsafe(Actor* actor)
++    {
++        bool succeeded = false;
++        __try
++        {
++            actor->baseProcess->SetWeaponOut(actor, true);
++            succeeded = true;
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            succeeded = false;
++        }
++        return succeeded;
++    }
++
++    void prepareActor()
++    {
++        if (gPrepareRequested || gConsole == nullptr)
++            return;
++        gPrepareRequested = true;
++        gDrivenActor = findDriveActor();
++        bool addAccepted = gEquipForm == 0;
++        bool equipAccepted = gEquipForm == 0;
++        bool weaponOutAccepted = false;
++        if (gDrivenActor != nullptr)
++        {
++            if (gEquipForm != 0)
++            {
++                char command[128] = {};
++                sprintf_s(command, "AddItem %08X 1", gEquipForm);
++                addAccepted = gConsole->RunScriptLine2(command, gDrivenActor, true);
++                sprintf_s(command, "EquipItem %08X 1", gEquipForm);
++                equipAccepted = gConsole->RunScriptLine2(command, gDrivenActor, true);
++            }
++            weaponOutAccepted = setWeaponOutUnsafe(gDrivenActor);
++        }
++        gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"prepare-actor\","
++                   "\"frame\":" << gFrame
++                << ",\"refForm\":" << (gDrivenActor != nullptr ? gDrivenActor->refID : 0)
++                << ",\"equipForm\":" << gEquipForm
++                << ",\"addAccepted\":" << (addAccepted ? "true" : "false")
++                << ",\"equipAccepted\":" << (equipAccepted ? "true" : "false")
++                << ",\"weaponOutAccepted\":" << (weaponOutAccepted ? "true" : "false") << "}\n";
++        gOutput.flush();
++    }
++
++    void driveActor()
++    {
++        if (gDriveRequested || gPlayGroup.empty() || gConsole == nullptr)
++            return;
++        gDriveRequested = true;
++        Actor* actor = gDrivenActor != nullptr ? gDrivenActor : findDriveActor();
++        bool accepted = false;
++        char command[512] = {};
++        sprintf_s(command, "PlayGroup %s 1", gPlayGroup.c_str());
++        if (actor != nullptr)
++            accepted = gConsole->RunScriptLine2(command, actor, true);
++        gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"drive-actor\","
++                   "\"frame\":" << gFrame
++                << ",\"refForm\":" << (actor != nullptr ? actor->refID : 0)
++                << ",\"group\":" << jsonString(gPlayGroup.c_str())
++                << ",\"accepted\":" << (accepted ? "true" : "false") << "}\n";
++        gOutput.flush();
++    }
++
++    void finishCapture()
++    {
++        if (gFinishRequested)
++            return;
++        gFinishRequested = true;
++        gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"capture-complete\","
++                   "\"frames\":" << gFrame << "}\n";
++        gOutput.flush();
++        if (gExitWhenDone && gConsole != nullptr)
++            gConsole->RunScriptLine2("QuitGame", nullptr, true);
++    }
++
++    void captureFrame()
++    {
++        openOutput();
++        if (!gOutput || !gWorldReady || gFrame >= gMaxFrames)
++            return;
++        ++gFrame;
++        if (!gBehaviorBeforeCaptured && gFrame >= gBehaviorBeforeFrame)
++        {
++            gBehaviorBeforeCaptured = true;
++            captureBehaviorSnapshot("before");
++        }
++        if (!gBehaviorCommandsRun && gFrame >= gBehaviorCommandFrame)
++            runBehaviorCommands();
++        if (!gBehaviorAfterCaptured && gFrame >= gBehaviorAfterFrame)
++        {
++            gBehaviorAfterCaptured = true;
++            captureBehaviorSnapshot("after");
++        }
++        if (gFrame % gSampleEvery != 0)
++        {
++            if (gFrame >= gMaxFrames)
++                finishCapture();
++            return;
++        }
++
++        if (gCaptureAnimation)
++        {
++            std::set<Actor*> captured;
++            PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
++            if (player != nullptr)
++            {
++                captured.insert(player);
++                writeActor(player);
++            }
++
++            if (gAllHighActors)
++            {
++                ActorProcessManager* manager = reinterpret_cast<ActorProcessManager*>(0x011E0E80);
++                for (auto* node = manager->highActors.Head(); node != nullptr; node = node->next)
++                {
++                    Actor* actor = node->data;
++                    if (actor != nullptr && captured.insert(actor).second)
++                        writeActor(actor);
++                }
++            }
++        }
++        gOutput.flush();
++        if (gFrame >= gMaxFrames)
++            finishCapture();
++    }
++
++    void messageHandler(NVSEMessagingInterface::Message* message)
++    {
++        if (message == nullptr)
++            return;
++        if (message->type == NVSEMessagingInterface::kMessage_MainGameLoop)
++        {
++            ++gGameLoopFrame;
++            openOutput();
++            if (!gSaveName.empty() && !gLoadRequested && gGameLoopFrame >= 30)
++                requestLoad();
++            if (gWorldReady)
++            {
++                ++gWorldLoopFrame;
++                if (gCaptureAnimation && !gPrepareRequested && gWorldLoopFrame >= 60)
++                    prepareActor();
++                if (gCaptureAnimation && !gPlayGroup.empty() && !gDriveRequested && gWorldLoopFrame >= 180)
++                    driveActor();
++            }
++            captureFrame();
++        }
++        else if (message->type == NVSEMessagingInterface::kMessage_PostLoadGame)
++        {
++            const bool succeeded = message->data != nullptr;
++            gWorldReady = succeeded;
++            gWorldLoopFrame = 0;
++            gFrame = 0;
++            openOutput();
++            gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"load-result\","
++                       "\"succeeded\":" << (succeeded ? "true" : "false") << "}\n";
++            gOutput.flush();
++            if (!succeeded && gExitWhenDone && gConsole != nullptr)
++                gConsole->RunScriptLine2("QuitGame", nullptr, true);
++        }
++        else if (message->type == NVSEMessagingInterface::kMessage_ExitGame
++            || message->type == NVSEMessagingInterface::kMessage_ExitToMainMenu)
++        {
++            if (gOutput)
++            {
++                gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"stop\","
++                           "\"frames\":" << gFrame << "}\n";
++                gOutput.flush();
++                gOutput.close();
++            }
++        }
++    }
++}
++
++extern "C" __declspec(dllexport) bool NVSEPlugin_Query(const NVSEInterface* nvse, PluginInfo* info)
++{
++    info->infoVersion = PluginInfo::kInfoVersion;
++    info->name = "NikamiRetailOracle";
++    info->version = 2;
++    return nvse != nullptr && !nvse->isEditor && !nvse->isNogore
++        && nvse->runtimeVersion >= RUNTIME_VERSION_1_4_0_525;
++}
++
++extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
++{
++    if (nvse == nullptr)
++        return false;
++    gPluginHandle = nvse->GetPluginHandle();
++    gMessaging = static_cast<NVSEMessagingInterface*>(nvse->QueryInterface(kInterface_Messaging));
++    gConsole = static_cast<NVSEConsoleInterface*>(nvse->QueryInterface(kInterface_Console));
++    if (gMessaging == nullptr || gConsole == nullptr)
++        return false;
++
++    gSampleEvery = (std::max)(1u, envUInt("NIKAMI_ORACLE_SAMPLE_EVERY", 1));
++    gMaxFrames = (std::max)(1u, envUInt("NIKAMI_ORACLE_MAX_FRAMES", 3600));
++    gTargetForm = envUInt("NIKAMI_ORACLE_TARGET_FORM", 0);
++    gEquipForm = envUInt("NIKAMI_ORACLE_EQUIP_FORM", 0);
++    gAllHighActors = envUInt("NIKAMI_ORACLE_ALL_HIGH_ACTORS", 1) != 0;
++    gCaptureAnimation = envUInt("NIKAMI_ORACLE_CAPTURE_ANIMATION", 1) != 0;
++    gSaveName = envString("NIKAMI_ORACLE_SAVE");
++    gPlayGroup = envString("NIKAMI_ORACLE_PLAY_GROUP");
++    gQuestForms = envUIntList("NIKAMI_ORACLE_QUEST_FORMS");
++    gGlobalForms = envUIntList("NIKAMI_ORACLE_GLOBAL_FORMS");
++    gBehaviorCommands = envCommandList("NIKAMI_ORACLE_COMMANDS");
++    gBehaviorBeforeFrame = envUInt("NIKAMI_ORACLE_BEFORE_FRAME", 60);
++    gBehaviorCommandFrame = envUInt("NIKAMI_ORACLE_COMMAND_FRAME", 90);
++    gBehaviorAfterFrame = envUInt("NIKAMI_ORACLE_AFTER_FRAME", 150);
++    gSetStageQuestForm = envUInt("NIKAMI_ORACLE_SET_STAGE_QUEST", 0);
++    gSetStageIndex = envUInt("NIKAMI_ORACLE_SET_STAGE_INDEX", 0xffff);
++    gExitWhenDone = envUInt("NIKAMI_ORACLE_EXIT_WHEN_DONE", gSaveName.empty() ? 0 : 1) != 0;
++    gWorldReady = gSaveName.empty();
++    gMessaging->RegisterListener(gPluginHandle, "NVSE", messageHandler);
++    return true;
++}
+diff --git a/nvse_retail_oracle/nvse_retail_oracle.vcxproj b/nvse_retail_oracle/nvse_retail_oracle.vcxproj
+new file mode 100644
+index 0000000..d0a7c7b
+--- /dev/null
++++ b/nvse_retail_oracle/nvse_retail_oracle.vcxproj
+@@ -0,0 +1,51 @@
++<?xml version="1.0" encoding="utf-8"?>
++<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <ItemGroup Label="ProjectConfigurations">
++    <ProjectConfiguration Include="Release|Win32"><Configuration>Release</Configuration><Platform>Win32</Platform></ProjectConfiguration>
++  </ItemGroup>
++  <PropertyGroup Label="Globals">
++    <ProjectGuid>{8D15421C-793E-4EA5-85D6-5980ED9D81B8}</ProjectGuid>
++    <RootNamespace>nvse_retail_oracle</RootNamespace>
++    <Keyword>Win32Proj</Keyword>
++    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
++  </PropertyGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
++    <ConfigurationType>DynamicLibrary</ConfigurationType>
++    <PlatformToolset>v143</PlatformToolset>
++    <CharacterSet>MultiByte</CharacterSet>
++    <WholeProgramOptimization>true</WholeProgramOptimization>
++  </PropertyGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
++    <OutDir>$(ProjectDir)build\</OutDir>
++    <IntDir>$(ProjectDir)build\obj\</IntDir>
++    <LinkIncremental>false</LinkIncremental>
++  </PropertyGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
++    <ClCompile>
++      <AdditionalIncludeDirectories>$(ProjectDir)..;$(ProjectDir)..\nvse;$(ProjectDir)..\nvse\nvse;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;RUNTIME_VERSION=0x040020D0;RUNTIME;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
++      <PrecompiledHeader />
++      <WarningLevel>Level3</WarningLevel>
++      <LanguageStandard>stdcpp20</LanguageStandard>
++      <ForcedIncludeFiles>nvse/prefix.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
++    </ClCompile>
++    <Link>
++      <ModuleDefinitionFile>exports.def</ModuleDefinitionFile>
++      <SubSystem>Windows</SubSystem>
++      <TargetMachine>MachineX86</TargetMachine>
++      <RandomizedBaseAddress>false</RandomizedBaseAddress>
++      <GenerateDebugInformation>true</GenerateDebugInformation>
++      <OptimizeReferences>true</OptimizeReferences>
++      <EnableCOMDATFolding>true</EnableCOMDATFolding>
++    </Link>
++  </ItemDefinitionGroup>
++  <ItemGroup>
++    <ClCompile Include="dllmain.c"><ForcedIncludeFiles /></ClCompile>
++    <ClCompile Include="main.cpp" />
++  </ItemGroup>
++  <ItemGroup><None Include="exports.def" /></ItemGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
++</Project>

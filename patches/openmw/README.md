@@ -20,8 +20,10 @@ Patch files listed in `series` are applied in order. Patch 0001 is the world
 viewer snapshot exported from downstream commit `01f8b0935f` against OpenMW VR
 base `c30c830d8e`. Patch 0002 is the focused FO3/FNV actor animation,
 attachment, FormID-script, and weapon-selector correction exported from commit
-`d6c36c6b7e`. Together they reproduce the proven flat runtime without vendoring
-game data or the OpenMW source tree.
+`d6c36c6b7e`. Patch 0003 is the bounded behavior-record, quest-condition,
+global, VM-command, and save-state foundation exported from downstream commit
+`af8eaca764`. Together they reproduce the currently proven flat runtime without
+vendoring game data or the OpenMW source tree.
 
 For routine downstream updates, rebase the dedicated overlay branch onto the
 new downstream base, resolve conflicts there, rebuild and prove the flat target,
@@ -72,8 +74,10 @@ but the promoted runtime evidence is flat `openmw.exe` only. Do not launch or
 test `openmw_vr.exe` as part of the flat compatibility gate.
 
 See `docs/fallout-flat-overlay-validation-20260710.md` for the exact retail
-oracle evidence, unit/sanitizer gates, and native FO3/FNV walking proofs used to
-promote patch 0002.
+oracle evidence, unit/sanitizer gates, record-load manifests, quest/save
+differentials, and native FO3/FNV walking proofs used to promote patches 0002
+and 0003. The reproducible xNVSE oracle overlay lives separately under
+`patches/xnvse/`; it is never part of the OpenMW apply queue.
 
 If one downstream patch matures into something upstream-worthy, split it into a
 clean branch in the external OpenMW checkout and submit a normal upstream PR.

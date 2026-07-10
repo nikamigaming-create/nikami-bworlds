@@ -1,8 +1,10 @@
 # Fallout 3 / New Vegas Flat Overlay Validation — 2026-07-10
 
-This note is the promotion record for OpenMW overlay patch 0002. It covers the
-actor-animation and attachment milestone only. It does **not** claim complete
-quest, dialogue, condition, script, combat, save, or whole-game parity.
+This note is the promotion record for OpenMW overlay patches 0002 and 0003.
+Patch 0002 covers the actor-animation and attachment milestone. Patch 0003 is
+the first bounded behavioral-runtime milestone. It does **not** claim complete
+dialogue execution, AI scheduling, compiled-script interpretation, combat,
+inventory, or whole-game parity.
 
 XR is intentionally out of scope. Every promoted run used flat `openmw.exe`.
 
@@ -89,10 +91,124 @@ Full native AddressSanitizer runs for both worlds exited 0 with no ASan report:
 - `run/actor-rendering-proofs/asan-final-fnv-native-20260710/fallout_new_vegas-20260710-023445/manifest.json`
 - `run/actor-rendering-proofs/asan-final-fo3-native-20260710/fallout3-20260710-023619/manifest.json`
 
+## Patch 0003: behavior records, quests, conditions, and saves
+
+Downstream commit `af8eaca764` and patch 0003 add a bounded FO3/FNV behavior
+foundation without modifying or redistributing retail data:
+
+- QUST stages, objectives, conditions, and embedded result scripts are retained.
+- INFO response arrays, conditions, links, and result scripts are retained;
+  DIAL shared-info connections are associated with their quest.
+- SCPT compiled bytecode and references are retained for later interpreter work.
+- The runtime store now retains the behavior-facing ESM4 record types, including
+  quests, dialogue, dialogue info, scripts, globals, form lists, classes, and AI
+  package records. Retaining a package record is not yet package execution.
+- `SetStage`, `GetStage`, `StartQuest`, `SetObjectiveDisplayed`,
+  `SetObjectiveCompleted`, and `ForceActiveQuest` are registered in the VM.
+- The condition core implements Bethesda's combine-with-next OR grouping, every
+  comparison operator, comparison-global operands, and functions 56, 58, 59,
+  74, and 546 (`GetQuestRunning`, `GetStage`, `GetStageDone`,
+  `GetGlobalValue`, and `GetQuestCompleted`). Unsupported functions reject the
+  entry and emit a diagnostic instead of silently evaluating true.
+- ESM4 globals populate the runtime global table and calendar aliases.
+- New `FQST` save records preserve flags, current/completed stages, objectives,
+  and the active quest using wide FormIDs remapped through the current content
+  load order.
+
+Patch SHA-256:
+
+- 0001: `F7B166679D8224685CCBAE49DA4A31A32F397E0204F0AE9F206F3247F3FFF3E2`
+- 0002: `36FCD799B930946AB1C6CE2DDAABCFEEB8E6FCC727A8EFF78C576D6299515DA0`
+- 0003: `359B8D5A1E43E167B4A4B86B09783A797856F933553CD66879255434F4CA20C5`
+
+The ordered 0001 through 0003 queue was cumulatively apply-checked from clean
+OpenMW base `c30c830d8e` with `scripts/Apply-OpenMWPatches.ps1 -Check`.
+
+### Retail xNVSE oracle
+
+The isolated oracle is an overlay against xNVSE commit `175bb28`:
+
+- patch: `patches/xnvse/0001-add-nikami-retail-oracle.patch`
+- patch SHA-256: `EE2A6A87539B82A91FA4CCCFA159DD1346EC1D79616D3C5D2473FA4FB91E2271`
+- runner: `scripts/Invoke-FNVRetailOracle.ps1`
+- exact capture: `run/retail-oracle/fnv-goodsprings-direct-vcg02-stage5-timescale12.jsonl`
+
+The xNVSE patch passed `git apply --check --whitespace=error` on a detached clean
+`175bb28` worktree and built Win32 Release with 0 warnings and 0 errors. The
+runner temporarily installs only the oracle DLL, restores any prior DLL and all
+process environment values in `finally`, and removes no retail data.
+
+In retail FNV 1.4.0.525, direct native `SetStage` on VCG02 stage 5 returned true.
+The exact observed delta was:
+
+- VCG02 flags `0 -> 33`, current stage `0 -> 5`, stage 5 `false -> true`;
+- VCG02 became running and visible in the Pip-Boy;
+- stage result script displayed objective 3 and made VCG02 active;
+- `TimeScale` changed `30 -> 12` through the independent console command; and
+- neighbor quests VCG00, VCG01, and VCG03 did not change.
+
+The patch-0003 unit test reproduces that exact quest transition rather than an
+invented approximation.
+
+### Final Release gates
+
+Build the exact staged runtime and run the ten focused tests:
+
+```powershell
+cmake --build . --config Release --target components-tests openmw-tests openmw -j 8
+.\Release\components-tests.exe --gtest_filter='Esm4BehaviorRecordTest.*:Esm4WeaponTest.*'
+.\Release\openmw-tests.exe --gtest_filter='ESM4QuestRuntimeTest.*'
+```
+
+Result: 10/10 passed. These cover QUST/INFO/DIAL/SCPT preservation, condition
+FormID remapping, weapon selector parsing, the retail VCG02 transition, global
+import, OR-grouped quest/global conditions, and save round-trip across a changed
+content slot.
+
+The final flat `openmw.exe` SHA-256 was
+`52030E9FEA8CA2C569993F2243E4EE5B56258C8BBAFC4EA59F71DA42B0B51983`.
+No `openmw_vr.exe` or headset runtime was launched.
+
+Real-data record-load manifests from that exact executable:
+
+- FNV: `run/openmw-record-load-proofs/fallout_new_vegas-20260710-045456/manifest.json`
+- FO3: `run/openmw-record-load-proofs/fallout3-20260710-045503/manifest.json`
+
+FNV loaded 642 quests, 21,298 dialogue topics, 28,896 dialogue infos, 3,709
+scripts, 255 globals, and 608 form lists. FO3 loaded 192 quests, 6,381 dialogue
+topics, 22,327 dialogue infos, 1,257 scripts, 155 globals, and 243 form lists.
+Both exact matrices passed and both flat processes exited 0.
+
+Run those gates reproducibly with:
+
+```powershell
+.\scripts\Invoke-OpenMWRecordLoadProof.ps1 -OpenMWExe D:\path\to\openmw.exe `
+  -ResourcesRoot D:\path\to\resources -WorldId fallout_new_vegas
+.\scripts\Invoke-OpenMWRecordLoadProof.ps1 -OpenMWExe D:\path\to\openmw.exe `
+  -ResourcesRoot D:\path\to\resources -WorldId fallout3
+```
+
+The FNV real-runtime transition and a newly written 48,577-byte save also passed
+against the exact final executable:
+
+- transition/save manifest: `run/openmw-behavior-proofs/fnv-vcg02-20260710-045002/manifest.json`
+- save/reload manifest: `run/openmw-behavior-proofs/fnv-vcg02-20260710-045054/manifest.json`
+
+Reload preserved VCG02 stage 5, flags 33, the completed stage set, objective 3,
+and active-quest state. The harness normalizes only the load-order byte when
+comparing OpenMW's internal `FormId:0x110a214` with retail `0x0010a214`.
+
 ## Remaining compatibility work
 
-The next gates are behavioral rather than skeletal: quest-stage progression,
-dialogue/topic selection, condition evaluation, package scheduling and
-navigation, script opcode coverage, combat/inventory semantics, and save/load
-differentials against the retail xNVSE oracle. No 100% whole-game claim is
-valid until those matrices are green for FO3 and FNV.
+The first behavior slice is green, but the whole-game claim remains open. The
+next matrices are dialogue/topic selection and result execution, broad CTDA
+function coverage, compiled Fallout script bytecode execution, package
+scheduling/navigation, combat and inventory semantics, and representative
+quest/save differentials across both base games and every configured DLC.
+
+Visual parity also remains a permanent release gate: head, face, hair, beard or
+headgear, hands, body, feet, weapon sockets, muzzle and magazine helpers, and
+every sampled animation frame must remain finite, correctly placed, and
+attached in native flat front-walking proofs. A T-pose or a single good frame is
+not sufficient. No 100% whole-game or every-pixel claim is valid until the
+behavioral and visual matrices are green for FO3 and FNV.

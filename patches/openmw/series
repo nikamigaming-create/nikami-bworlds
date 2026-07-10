@@ -1,3 +1,4 @@
 # Add patch files here, one per line, in apply order.
 0001-local-world-viewer.patch
 0002-Fix-Fallout-actor-animation-and-attachment-parity.patch
+0003-Fallout-behavior-records-quests-conditions-and-saves.patch

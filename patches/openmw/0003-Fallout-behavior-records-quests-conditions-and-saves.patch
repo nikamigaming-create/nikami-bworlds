@@ -1,0 +1,3520 @@
+diff --git a/apps/components_tests/CMakeLists.txt b/apps/components_tests/CMakeLists.txt
+index 81fd718e92..74f6d4d8a2 100644
+--- a/apps/components_tests/CMakeLists.txt
++++ b/apps/components_tests/CMakeLists.txt
+@@ -69,6 +69,7 @@ file(GLOB UNITTEST_SRC_FILES
+     toutf8/toutf8.cpp
+ 
+     esm4/includes.cpp
++    esm4/testloadbehavior.cpp
+     esm4/testloadweap.cpp
+ 
+     fx/lexer.cpp
+diff --git a/apps/components_tests/esm4/testloadbehavior.cpp b/apps/components_tests/esm4/testloadbehavior.cpp
+new file mode 100644
+index 0000000000..a8497cc3a0
+--- /dev/null
++++ b/apps/components_tests/esm4/testloadbehavior.cpp
+@@ -0,0 +1,328 @@
++#include <components/esm4/loaddial.hpp>
++#include <components/esm4/loadinfo.hpp>
++#include <components/esm4/loadqust.hpp>
++#include <components/esm4/reader.hpp>
++
++#include <gtest/gtest.h>
++
++#include <array>
++#include <bit>
++#include <cstdint>
++#include <cstring>
++#include <limits>
++#include <memory>
++#include <sstream>
++#include <string>
++#include <string_view>
++#include <type_traits>
++#include <vector>
++
++namespace
++{
++    template <class T>
++    void appendPod(std::string& output, const T& value)
++    {
++        static_assert(std::is_trivially_copyable_v<T>);
++        output.append(reinterpret_cast<const char*>(&value), sizeof(value));
++    }
++
++    void appendFourCC(std::string& output, std::string_view value)
++    {
++        ASSERT_EQ(value.size(), 4);
++        output.append(value);
++    }
++
++    void appendSubRecord(std::string& output, std::string_view type, std::string_view data)
++    {
++        ASSERT_LE(data.size(), std::numeric_limits<std::uint16_t>::max());
++        appendFourCC(output, type);
++        appendPod(output, static_cast<std::uint16_t>(data.size()));
++        output.append(data);
++    }
++
++    void appendSubRecord(std::string& output, std::string_view type, const std::string& data)
++    {
++        appendSubRecord(output, type, std::string_view(data));
++    }
++
++    template <class T>
++    void appendSubRecord(std::string& output, std::string_view type, const T& data)
++    {
++        static_assert(std::is_trivially_copyable_v<T>);
++        appendSubRecord(output, type, std::string_view(reinterpret_cast<const char*>(&data), sizeof(data)));
++    }
++
++    void appendRecord(std::string& output, std::string_view type, std::uint32_t formId, std::string_view payload,
++        std::uint32_t flags = 0)
++    {
++        appendFourCC(output, type);
++        appendPod(output, static_cast<std::uint32_t>(payload.size()));
++        appendPod(output, flags);
++        appendPod(output, formId);
++        appendPod(output, std::uint32_t{ 0 }); // revision
++        appendPod(output, std::uint16_t{ 0 }); // form version
++        appendPod(output, std::uint16_t{ 0 }); // unknown
++        output.append(payload);
++    }
++
++    std::string makePlugin(std::string_view recordType, std::uint32_t formId, std::string_view recordPayload)
++    {
++        std::string headerPayload;
++        std::string hedr;
++        appendPod(hedr, 1.34f);
++        appendPod(hedr, std::int32_t{ 1 });
++        appendPod(hedr, std::uint32_t{ 0x800 });
++        appendSubRecord(headerPayload, "HEDR", hedr);
++
++        std::string result;
++        appendRecord(result, "TES4", 0, headerPayload);
++        appendRecord(result, recordType, formId, recordPayload);
++        return result;
++    }
++
++    std::unique_ptr<ESM4::Reader> makeReader(
++        std::string_view recordType, std::uint32_t formId, const std::string& payload, std::uint32_t modIndex = 0)
++    {
++        const std::string plugin = makePlugin(recordType, formId, payload);
++        auto stream = std::make_unique<std::istringstream>(plugin, std::ios::in | std::ios::binary);
++        auto reader = std::make_unique<ESM4::Reader>(std::move(stream), "synthetic.esm", nullptr, nullptr, true);
++        reader->setModIndex(modIndex);
++        EXPECT_TRUE(reader->getRecordHeader());
++        reader->getRecordData();
++        return reader;
++    }
++
++    std::string zString(std::string_view value)
++    {
++        std::string result(value);
++        result.push_back('\0');
++        return result;
++    }
++
++    ESM4::TargetCondition condition(std::uint32_t function, std::uint32_t parameter, float comparison = 1.f)
++    {
++        ESM4::TargetCondition result{};
++        result.comparison = comparison;
++        result.functionIndex = function;
++        result.param1 = parameter;
++        return result;
++    }
++
++    TEST(Esm4BehaviorRecordTest, shouldPreserveFalloutQuestStagesObjectivesConditionsAndBytecode)
++    {
++        std::string payload;
++        appendSubRecord(payload, "EDID", zString("TestQuest"));
++        appendSubRecord(payload, "FULL", zString("Synthetic Quest"));
++
++        ESM4::QuestData questData{ ESM4::Quest::Flag_StartGameEnabled, 50, 0, 1.5f };
++        appendSubRecord(payload, "DATA", questData);
++        appendSubRecord(payload, "CTDA", condition(56, 0x100));
++
++        appendSubRecord(payload, "INDX", std::int16_t{ 10 });
++        appendSubRecord(payload, "QSDT", std::uint8_t{ ESM4::QuestStageEntry::Flag_CompleteQuest });
++        appendSubRecord(payload, "CTDA", condition(58, 0x200, 10.f));
++        appendSubRecord(payload, "CNAM", zString("First log entry"));
++
++        ESM4::ScriptHeader scriptHeader{};
++        scriptHeader.refCount = 1;
++        scriptHeader.compiledSize = 3;
++        appendSubRecord(payload, "SCHR", scriptHeader);
++        const std::array<std::uint8_t, 3> bytecode{ 0x10, 0x20, 0x30 };
++        appendSubRecord(payload, "SCDA", bytecode);
++        appendSubRecord(payload, "SCTX", std::string_view("SetStage TestQuest 20"));
++
++        ESM4::ScriptLocalVariableData local{};
++        local.index = 7;
++        local.type = 1;
++        std::array<std::uint8_t, 24> localBytes{};
++        std::memcpy(localBytes.data(), &local.index, sizeof(local.index));
++        std::memcpy(localBytes.data() + 16, &local.type, sizeof(local.type));
++        appendSubRecord(payload, "SLSD", localBytes);
++        appendSubRecord(payload, "SCVR", zString("counter"));
++        appendSubRecord(payload, "SCRV", std::uint32_t{ 7 });
++        appendSubRecord(payload, "SCRO", std::uint32_t{ 0x1234 });
++
++        appendSubRecord(payload, "QSDT", std::uint8_t{ ESM4::QuestStageEntry::Flag_FailQuest });
++        appendSubRecord(payload, "CNAM", zString("Second log entry"));
++        appendSubRecord(payload, "NAM0", std::uint32_t{ 0x5678 });
++
++        appendSubRecord(payload, "QOBJ", std::int32_t{ 42 });
++        appendSubRecord(payload, "NNAM", zString("Reach the marker"));
++        std::array<std::uint8_t, 8> target{};
++        const std::uint32_t targetForm = 0xbeef;
++        std::memcpy(target.data(), &targetForm, sizeof(targetForm));
++        target[4] = ESM4::QuestObjectiveTarget::Flag_CompassMarkerIgnoresLocks;
++        appendSubRecord(payload, "QSTA", target);
++        appendSubRecord(payload, "CTDA", condition(72, targetForm));
++
++        auto reader = makeReader("QUST", 0x1000, payload);
++        ESM4::Quest quest;
++        quest.load(*reader);
++
++        EXPECT_EQ(quest.mEditorId, "TestQuest");
++        EXPECT_EQ(quest.mQuestName, "Synthetic Quest");
++        ASSERT_EQ(quest.mTargetConditions.size(), 1);
++        EXPECT_EQ(quest.mTargetConditions[0].functionIndex, 56);
++        ASSERT_EQ(quest.mStages.size(), 1);
++        EXPECT_EQ(quest.mStages[0].mIndex, 10);
++        ASSERT_EQ(quest.mStages[0].mEntries.size(), 2);
++        const ESM4::QuestStageEntry& firstEntry = quest.mStages[0].mEntries[0];
++        EXPECT_EQ(firstEntry.mLogEntry, "First log entry");
++        ASSERT_EQ(firstEntry.mConditions.size(), 1);
++        EXPECT_EQ(firstEntry.mConditions[0].functionIndex, 58);
++        EXPECT_EQ(firstEntry.mScript.compiledData, std::vector<std::uint8_t>(bytecode.begin(), bytecode.end()));
++        EXPECT_EQ(firstEntry.mScript.scriptSource, "SetStage TestQuest 20");
++        ASSERT_EQ(firstEntry.mScript.localVarData.size(), 1);
++        EXPECT_EQ(firstEntry.mScript.localVarData[0].variableName, "counter");
++        EXPECT_EQ(firstEntry.mScript.localRefVarIndex, std::vector<std::uint32_t>{ 7 });
++        ASSERT_EQ(firstEntry.mScript.references.size(), 1);
++        EXPECT_EQ(firstEntry.mScript.references[0], ESM::FormId::fromUint32(0x1234));
++        EXPECT_EQ(quest.mStages[0].mEntries[1].mLogEntry, "Second log entry");
++        EXPECT_EQ(quest.mStages[0].mEntries[1].mNextQuest, ESM::FormId::fromUint32(0x5678));
++        ASSERT_EQ(quest.mObjectives.size(), 1);
++        EXPECT_EQ(quest.mObjectives[0].mIndex, 42);
++        EXPECT_EQ(quest.mObjectives[0].mDescription, "Reach the marker");
++        ASSERT_EQ(quest.mObjectives[0].mTargets.size(), 1);
++        EXPECT_EQ(quest.mObjectives[0].mTargets[0].mTarget, ESM::FormId::fromUint32(targetForm));
++        ASSERT_EQ(quest.mObjectives[0].mTargets[0].mConditions.size(), 1);
++        EXPECT_EQ(quest.mObjectives[0].mTargets[0].mConditions[0].functionIndex, 72);
++    }
++
++    TEST(Esm4BehaviorRecordTest, shouldPreserveAllInfoResponsesConditionsLinksAndResultScripts)
++    {
++        std::string payload;
++        const std::array<std::uint8_t, 4> data{ 0, 1, 0x04, 0x01 };
++        appendSubRecord(payload, "DATA", data);
++        appendSubRecord(payload, "QSTI", std::uint32_t{ 0x1000 });
++
++        ESM4::TargetResponseData firstResponse{};
++        firstResponse.emoType = ESM4::EMO_Happy;
++        firstResponse.responseNo = 1;
++        appendSubRecord(payload, "TRDT", firstResponse);
++        appendSubRecord(payload, "NAM1", zString("First response"));
++        appendSubRecord(payload, "SNAM", std::uint32_t{ 0x2001 });
++
++        ESM4::TargetResponseData secondResponse{};
++        secondResponse.emoType = ESM4::EMO_Anger;
++        secondResponse.responseNo = 2;
++        appendSubRecord(payload, "TRDT", secondResponse);
++        appendSubRecord(payload, "NAM1", zString("Second response"));
++        appendSubRecord(payload, "LNAM", std::uint32_t{ 0x2002 });
++
++        appendSubRecord(payload, "CTDA", condition(56, 0x1000));
++        appendSubRecord(payload, "CTDA", condition(47, 0x3000, 2.f));
++        appendSubRecord(payload, "NAME", std::uint32_t{ 0x4000 });
++        appendSubRecord(payload, "TCLT", std::uint32_t{ 0x4001 });
++        appendSubRecord(payload, "TCLT", std::uint32_t{ 0x4002 });
++        appendSubRecord(payload, "TCLF", std::uint32_t{ 0x4003 });
++        appendSubRecord(payload, "TCFU", std::uint32_t{ 0x5000 });
++
++        ESM4::ScriptHeader beginHeader{};
++        beginHeader.compiledSize = 2;
++        appendSubRecord(payload, "SCHR", beginHeader);
++        const std::array<std::uint8_t, 2> beginBytecode{ 0xaa, 0xbb };
++        appendSubRecord(payload, "SCDA", beginBytecode);
++        appendSubRecord(payload, "SCRO", std::uint32_t{ 0x6000 });
++        appendSubRecord(payload, "NEXT", std::string_view{});
++        ESM4::ScriptHeader endHeader{};
++        endHeader.compiledSize = 1;
++        appendSubRecord(payload, "SCHR", endHeader);
++        const std::array<std::uint8_t, 1> endBytecode{ 0xcc };
++        appendSubRecord(payload, "SCDA", endBytecode);
++
++        appendSubRecord(payload, "RNAM", zString("Ask about the test"));
++        appendSubRecord(payload, "ANAM", std::uint32_t{ 0x7000 });
++        appendSubRecord(payload, "KNAM", std::uint32_t{ 0x7001 });
++        appendSubRecord(payload, "DNAM", std::uint32_t{ 3 });
++
++        auto reader = makeReader("INFO", 0x1010, payload);
++        ESM4::DialogInfo info;
++        info.load(*reader);
++
++        EXPECT_EQ(info.mQuest, ESM::FormId::fromUint32(0x1000));
++        EXPECT_EQ(info.mDialType, 0);
++        EXPECT_EQ(info.mNextSpeaker, 1);
++        EXPECT_EQ(info.mInfoFlags, 0x0104);
++        ASSERT_EQ(info.mResponses.size(), 2);
++        EXPECT_EQ(info.mResponses[0].mResponse, "First response");
++        EXPECT_EQ(info.mResponses[0].mSpeakerAnimation, ESM::FormId::fromUint32(0x2001));
++        EXPECT_EQ(info.mResponses[1].mResponse, "Second response");
++        EXPECT_EQ(info.mResponses[1].mListenerAnimation, ESM::FormId::fromUint32(0x2002));
++        ASSERT_EQ(info.mTargetConditions.size(), 2);
++        EXPECT_EQ(info.mTargetConditions[0].functionIndex, 56);
++        EXPECT_EQ(info.mTargetConditions[1].functionIndex, 47);
++        EXPECT_EQ(info.mAddTopics, std::vector<ESM::FormId>{ ESM::FormId::fromUint32(0x4000) });
++        EXPECT_EQ(info.mChoices,
++            (std::vector<ESM::FormId>{ ESM::FormId::fromUint32(0x4001), ESM::FormId::fromUint32(0x4002) }));
++        EXPECT_EQ(info.mLinkFrom, std::vector<ESM::FormId>{ ESM::FormId::fromUint32(0x4003) });
++        EXPECT_EQ(info.mFollowUps, std::vector<ESM::FormId>{ ESM::FormId::fromUint32(0x5000) });
++        EXPECT_EQ(info.mScript.compiledData, std::vector<std::uint8_t>(beginBytecode.begin(), beginBytecode.end()));
++        EXPECT_EQ(info.mScript.references, std::vector<ESM::FormId>{ ESM::FormId::fromUint32(0x6000) });
++        EXPECT_EQ(info.mEndScript.compiledData, std::vector<std::uint8_t>(endBytecode.begin(), endBytecode.end()));
++        EXPECT_EQ(info.mPrompt, "Ask about the test");
++        EXPECT_EQ(info.mSpeaker, ESM::FormId::fromUint32(0x7000));
++        EXPECT_EQ(info.mActorValueOrPerk, ESM::FormId::fromUint32(0x7001));
++        EXPECT_EQ(info.mSpeechChallenge, 3);
++    }
++
++    TEST(Esm4BehaviorRecordTest, shouldAssociateDialogueInfoConnectionsWithTheirQuest)
++    {
++        std::string payload;
++        appendSubRecord(payload, "EDID", zString("TestTopic"));
++        appendSubRecord(payload, "QSTI", std::uint32_t{ 0x1000 });
++        appendSubRecord(payload, "INFC", std::uint32_t{ 0x2000 });
++        appendSubRecord(payload, "INFX", std::int32_t{ 3 });
++        appendSubRecord(payload, "INFC", std::uint32_t{ 0x2001 });
++        appendSubRecord(payload, "INFX", std::int32_t{ 4 });
++        appendSubRecord(payload, "QSTI", std::uint32_t{ 0x1001 });
++        appendSubRecord(payload, "FULL", zString("Synthetic topic"));
++        appendSubRecord(payload, "PNAM", 42.f);
++        const std::array<std::uint8_t, 2> data{ 0, 2 };
++        appendSubRecord(payload, "DATA", data);
++
++        auto reader = makeReader("DIAL", 0x1020, payload);
++        ESM4::Dialogue dialogue;
++        dialogue.load(*reader);
++
++        EXPECT_EQ(dialogue.mEditorId, "TestTopic");
++        EXPECT_EQ(dialogue.mTopicName, "Synthetic topic");
++        EXPECT_FLOAT_EQ(dialogue.mPriority, 42.f);
++        ASSERT_EQ(dialogue.mQuests.size(), 2);
++        ASSERT_EQ(dialogue.mSharedInfos.size(), 2);
++        EXPECT_EQ(dialogue.mSharedInfos[0].mQuest, ESM::FormId::fromUint32(0x1000));
++        EXPECT_EQ(dialogue.mSharedInfos[0].mInfo, ESM::FormId::fromUint32(0x2000));
++        EXPECT_EQ(dialogue.mSharedInfos[0].mIndex, 3);
++        EXPECT_EQ(dialogue.mSharedInfos[1].mInfo, ESM::FormId::fromUint32(0x2001));
++        EXPECT_EQ(dialogue.mSharedInfos[1].mIndex, 4);
++    }
++
++    TEST(Esm4BehaviorRecordTest, shouldRemapQuestAndGlobalConditionFormIds)
++    {
++        const std::uint32_t questParameter = 0x00000200;
++        const std::uint32_t comparisonGlobal = 0x00000300;
++        ESM4::TargetCondition stageCondition = condition(ESM4::FUN_GetStage, questParameter);
++        stageCondition.condition = ESM4::CTF_GrThOrEqTo | ESM4::CTF_UseGlobal;
++        stageCondition.comparison = std::bit_cast<float>(comparisonGlobal);
++
++        std::string payload;
++        appendSubRecord(payload, "EDID", zString("RemappedConditionQuest"));
++        appendSubRecord(payload, "DATA", ESM4::QuestData{});
++        appendSubRecord(payload, "INDX", std::int16_t{ 10 });
++        appendSubRecord(payload, "QSDT", std::uint8_t{ 0 });
++        appendSubRecord(payload, "CTDA", stageCondition);
++
++        constexpr std::uint32_t modIndex = 7;
++        auto reader = makeReader("QUST", 0x1000, payload, modIndex);
++        ESM4::Quest quest;
++        quest.load(*reader);
++
++        ASSERT_EQ(quest.mStages.size(), 1);
++        ASSERT_EQ(quest.mStages[0].mEntries.size(), 1);
++        ASSERT_EQ(quest.mStages[0].mEntries[0].mConditions.size(), 1);
++        const ESM4::TargetCondition& loaded = quest.mStages[0].mEntries[0].mConditions[0];
++        EXPECT_EQ(ESM::FormId::fromUint32(loaded.param1),
++            (ESM::FormId{ .mIndex = questParameter, .mContentFile = static_cast<std::int32_t>(modIndex) }));
++        EXPECT_EQ(ESM::FormId::fromUint32(std::bit_cast<std::uint32_t>(loaded.comparison)),
++            (ESM::FormId{ .mIndex = comparisonGlobal, .mContentFile = static_cast<std::int32_t>(modIndex) }));
++    }
++}
+diff --git a/apps/openmw/CMakeLists.txt b/apps/openmw/CMakeLists.txt
+index 9edaad744d..d1c90c023f 100644
+--- a/apps/openmw/CMakeLists.txt
++++ b/apps/openmw/CMakeLists.txt
+@@ -82,6 +82,7 @@ add_openmw_dir (mwworld
+     worldmodel localscripts customdata inventorystore ptr actionopen actionread actionharvest
+     actionequip timestamp actionalchemy cellstore actionapply actioneat
+     store esmstore fallback actionrepair actionsoulgem livecellref actiondoor
++    esm4questruntime
+     contentloader esmloader actiontrap cellreflist cellref weather projectilemanager
+     cellpreloader datetimemanager groundcoverstore magiceffects cell ptrregistry
+     positioncellgrid
+diff --git a/apps/openmw/mwbase/world.hpp b/apps/openmw/mwbase/world.hpp
+index 135eeef735..d7c2e2cab4 100644
+--- a/apps/openmw/mwbase/world.hpp
++++ b/apps/openmw/mwbase/world.hpp
+@@ -59,7 +59,7 @@ namespace ESM
+     struct ExteriorCellLocation;
+ }
+ 
+-//## VR_PATCH BEGIN
++// ## VR_PATCH BEGIN
+ namespace Stereo
+ {
+     struct Pose;
+@@ -75,7 +75,7 @@ namespace MWRender
+ {
+     struct RayResult;
+ }
+-//## VR_PATCH END
++// ## VR_PATCH END
+ 
+ namespace MWPhysics
+ {
+@@ -109,6 +109,7 @@ namespace MWWorld
+     class LocalScripts;
+     class TimeStamp;
+     class ESMStore;
++    class ESM4QuestRuntime;
+     class RefData;
+     class Cell;
+     class DateTimeManager;
+@@ -170,6 +171,9 @@ namespace MWBase
+         virtual MWWorld::ESMStore& getStore() = 0;
+         virtual const MWWorld::ESMStore& getStore() const = 0;
+ 
++        virtual MWWorld::ESM4QuestRuntime& getESM4QuestRuntime() = 0;
++        virtual const MWWorld::ESM4QuestRuntime& getESM4QuestRuntime() const = 0;
++
+         virtual const std::vector<int>& getESMVersions() const = 0;
+ 
+         virtual MWWorld::LocalScripts& getLocalScripts() = 0;
+@@ -595,7 +599,8 @@ namespace MWBase
+         virtual DetourNavigator::Navigator* getNavigator() const = 0;
+ 
+         virtual void updateActorPath(const MWWorld::ConstPtr& actor, const std::deque<osg::Vec3f>& path,
+-            const DetourNavigator::AgentBounds& agentBounds, const osg::Vec3f& start, const osg::Vec3f& end) const = 0;
++            const DetourNavigator::AgentBounds& agentBounds, const osg::Vec3f& start, const osg::Vec3f& end) const
++            = 0;
+ 
+         virtual void removeActorPath(const MWWorld::ConstPtr& actor) const = 0;
+ 
+@@ -604,7 +609,8 @@ namespace MWBase
+         virtual DetourNavigator::AgentBounds getPathfindingAgentBounds(const MWWorld::ConstPtr& actor) const = 0;
+ 
+         virtual bool hasCollisionWithDoor(
+-            const MWWorld::ConstPtr& door, const osg::Vec3f& position, const osg::Vec3f& destination) const = 0;
++            const MWWorld::ConstPtr& door, const osg::Vec3f& position, const osg::Vec3f& destination) const
++            = 0;
+ 
+         virtual bool isAreaOccupiedByOtherActor(const MWWorld::ConstPtr& actor, const osg::Vec3f& position) const = 0;
+ 
+@@ -622,7 +628,7 @@ namespace MWBase
+ 
+         virtual void setActorActive(const MWWorld::Ptr& ptr, bool value) = 0;
+ 
+-//## VR_PATCH BEGIN
++        // ## VR_PATCH BEGIN
+         /// @result pointer to the object and/or node the given node is currently pointing at
+         /// @Return distance to the target object, or -1 if no object was targeted / in range
+         virtual float getTargetObject(MWRender::RayResult& result, const osg::Vec3f& origin,
+@@ -644,7 +650,7 @@ namespace MWBase
+         /// @param number of objects to place
+ 
+         virtual float getActivationDistancePlusTelekinesis() = 0;
+-//## VR_PATCH END
++        // ## VR_PATCH END
+     };
+ }
+ 
+diff --git a/apps/openmw/mwscript/dialogueextensions.cpp b/apps/openmw/mwscript/dialogueextensions.cpp
+index 6c219a52a3..3d0d649a4a 100644
+--- a/apps/openmw/mwscript/dialogueextensions.cpp
++++ b/apps/openmw/mwscript/dialogueextensions.cpp
+@@ -16,6 +16,7 @@
+ 
+ #include "../mwmechanics/npcstats.hpp"
+ #include "../mwworld/class.hpp"
++#include "../mwworld/esm4questruntime.hpp"
+ #include "../mwworld/esmstore.hpp"
+ 
+ #include "ref.hpp"
+@@ -315,6 +316,81 @@ namespace MWScript
+             }
+         };
+ 
++        class OpSetStage : public Interpreter::Opcode0
++        {
++        public:
++            void execute(Interpreter::Runtime& runtime) override
++            {
++                const std::string_view quest = runtime.getStringLiteral(runtime[0].mInteger);
++                runtime.pop();
++                const int stage = runtime[0].mInteger;
++                runtime.pop();
++                if (stage < 0 || stage > 255
++                    || !MWBase::Environment::get().getWorld()->getESM4QuestRuntime().setStage(
++                        quest, static_cast<std::uint8_t>(stage)))
++                    runtime.getContext().report("SetStage failed for Fallout quest '" + std::string(quest) + "'");
++            }
++        };
++
++        class OpGetStage : public Interpreter::Opcode0
++        {
++        public:
++            void execute(Interpreter::Runtime& runtime) override
++            {
++                const std::string_view quest = runtime.getStringLiteral(runtime[0].mInteger);
++                runtime.pop();
++                const MWWorld::ESM4QuestState* state
++                    = MWBase::Environment::get().getWorld()->getESM4QuestRuntime().search(quest);
++                runtime.push(state != nullptr ? state->mCurrentStage : 0);
++            }
++        };
++
++        class OpStartQuest : public Interpreter::Opcode0
++        {
++        public:
++            void execute(Interpreter::Runtime& runtime) override
++            {
++                const std::string_view quest = runtime.getStringLiteral(runtime[0].mInteger);
++                runtime.pop();
++                if (!MWBase::Environment::get().getWorld()->getESM4QuestRuntime().startQuest(quest))
++                    runtime.getContext().report("StartQuest failed for Fallout quest '" + std::string(quest) + "'");
++            }
++        };
++
++        template <bool Completed>
++        class OpSetObjective : public Interpreter::Opcode0
++        {
++        public:
++            void execute(Interpreter::Runtime& runtime) override
++            {
++                const std::string_view quest = runtime.getStringLiteral(runtime[0].mInteger);
++                runtime.pop();
++                const int objective = runtime[0].mInteger;
++                runtime.pop();
++                const bool enabled = runtime[0].mInteger != 0;
++                runtime.pop();
++                MWWorld::ESM4QuestRuntime& quests = MWBase::Environment::get().getWorld()->getESM4QuestRuntime();
++                const bool result = Completed ? quests.setObjectiveCompleted(quest, objective, enabled)
++                                              : quests.setObjectiveDisplayed(quest, objective, enabled);
++                if (!result)
++                    runtime.getContext().report("Fallout objective command failed for quest '" + std::string(quest)
++                        + "' objective " + std::to_string(objective));
++            }
++        };
++
++        class OpForceActiveQuest : public Interpreter::Opcode0
++        {
++        public:
++            void execute(Interpreter::Runtime& runtime) override
++            {
++                const std::string_view quest = runtime.getStringLiteral(runtime[0].mInteger);
++                runtime.pop();
++                if (!MWBase::Environment::get().getWorld()->getESM4QuestRuntime().forceActiveQuest(quest))
++                    runtime.getContext().report(
++                        "ForceActiveQuest failed for Fallout quest '" + std::string(quest) + "'");
++            }
++        };
++
+         void installOpcodes(Interpreter::Interpreter& interpreter)
+         {
+             interpreter.installSegment5<OpJournal<ImplicitRef>>(Compiler::Dialogue::opcodeJournal);
+@@ -341,6 +417,12 @@ namespace MWScript
+             interpreter.installSegment5<OpClearInfoActor<ImplicitRef>>(Compiler::Dialogue::opcodeClearInfoActor);
+             interpreter.installSegment5<OpClearInfoActor<ExplicitRef>>(
+                 Compiler::Dialogue::opcodeClearInfoActorExplicit);
++            interpreter.installSegment5<OpSetStage>(Compiler::Dialogue::opcodeSetStage);
++            interpreter.installSegment5<OpGetStage>(Compiler::Dialogue::opcodeGetStage);
++            interpreter.installSegment5<OpStartQuest>(Compiler::Dialogue::opcodeStartQuest);
++            interpreter.installSegment5<OpSetObjective<false>>(Compiler::Dialogue::opcodeSetObjectiveDisplayed);
++            interpreter.installSegment5<OpSetObjective<true>>(Compiler::Dialogue::opcodeSetObjectiveCompleted);
++            interpreter.installSegment5<OpForceActiveQuest>(Compiler::Dialogue::opcodeForceActiveQuest);
+         }
+     }
+ 
+diff --git a/apps/openmw/mwstate/statemanagerimp.cpp b/apps/openmw/mwstate/statemanagerimp.cpp
+index 453d371263..70fe1249ac 100644
+--- a/apps/openmw/mwstate/statemanagerimp.cpp
++++ b/apps/openmw/mwstate/statemanagerimp.cpp
+@@ -63,7 +63,7 @@ void MWState::StateManager::cleanup(bool force)
+         MWBase::Environment::get().getWorld()->clear();
+         MWBase::Environment::get().getInputManager()->clear();
+         MWBase::Environment::get().getMechanicsManager()->clear();
+-        if(VR::getVR())
++        if (VR::getVR())
+         {
+             MWVR::VRGUIManager::instance().clearLua();
+         }
+@@ -551,6 +551,7 @@ void MWState::StateManager::loadGame(const Character* character, const std::file
+                 case ESM::REC_CREA:
+                 case ESM::REC_CONT:
+                 case ESM::REC_RAND:
++                case ESM::REC_FQST:
+                     MWBase::Environment::get().getWorld()->readRecord(reader, n.toInt());
+                     break;
+ 
+diff --git a/apps/openmw/mwworld/esm4questruntime.cpp b/apps/openmw/mwworld/esm4questruntime.cpp
+new file mode 100644
+index 0000000000..0452b94504
+--- /dev/null
++++ b/apps/openmw/mwworld/esm4questruntime.cpp
+@@ -0,0 +1,476 @@
++#include "esm4questruntime.hpp"
++
++#include "esmstore.hpp"
++#include "globals.hpp"
++
++#include <algorithm>
++#include <bit>
++#include <charconv>
++#include <sstream>
++#include <stdexcept>
++
++#include <components/debug/debuglog.hpp>
++#include <components/esm/refid.hpp>
++#include <components/esm3/esmreader.hpp>
++#include <components/esm3/esmwriter.hpp>
++#include <components/esm4/loadglob.hpp>
++#include <components/esm4/loadqust.hpp>
++#include <components/misc/strings/algorithm.hpp>
++
++namespace
++{
++    std::vector<std::string_view> tokenize(std::string_view line)
++    {
++        if (const std::size_t comment = line.find(';'); comment != std::string_view::npos)
++            line = line.substr(0, comment);
++
++        std::vector<std::string_view> result;
++        while (!line.empty())
++        {
++            const std::size_t first = line.find_first_not_of(" \t\r");
++            if (first == std::string_view::npos)
++                break;
++            line.remove_prefix(first);
++            const std::size_t end = line.find_first_of(" \t\r");
++            result.push_back(line.substr(0, end));
++            if (end == std::string_view::npos)
++                break;
++            line.remove_prefix(end);
++        }
++        return result;
++    }
++
++    bool parseInt(std::string_view value, std::int32_t& result)
++    {
++        const char* const begin = value.data();
++        const char* const end = value.data() + value.size();
++        const auto parsed = std::from_chars(begin, end, result, 10);
++        return parsed.ec == std::errc{} && parsed.ptr == end;
++    }
++}
++
++namespace MWWorld
++{
++    void ESM4QuestRuntime::initialize(const ESMStore& store, const Globals* globals)
++    {
++        clear();
++        mStore = &store;
++        mGlobals = globals;
++        for (const ESM4::Quest& quest : store.get<ESM4::Quest>())
++        {
++            ESM4QuestState state;
++            state.mFlags = quest.mData.flags;
++            for (const ESM4::QuestStage& stage : quest.mStages)
++                state.mStageDone.emplace(stage.mIndex, false);
++            for (const ESM4::QuestObjective& objective : quest.mObjectives)
++                state.mObjectiveStatus.emplace(objective.mIndex, 0);
++            mStates.insert_or_assign(quest.mId, std::move(state));
++        }
++    }
++
++    void ESM4QuestRuntime::clear()
++    {
++        mStore = nullptr;
++        mGlobals = nullptr;
++        mStates.clear();
++        mActiveQuest.reset();
++        mUnsupportedStageCommands.clear();
++        mUnsupportedConditionFunctions.clear();
++    }
++
++    const ESM4::Quest* ESM4QuestRuntime::resolveQuest(std::string_view id) const
++    {
++        if (mStore == nullptr || id.empty())
++            return nullptr;
++
++        if (id.starts_with("FormId:"))
++        {
++            try
++            {
++                return mStore->get<ESM4::Quest>().search(ESM::RefId::deserializeText(id));
++            }
++            catch (const std::exception&)
++            {
++                return nullptr;
++            }
++        }
++
++        for (const ESM4::Quest& quest : mStore->get<ESM4::Quest>())
++            if (Misc::StringUtils::ciEqual(quest.mEditorId, id))
++                return &quest;
++        return nullptr;
++    }
++
++    ESM4QuestState* ESM4QuestRuntime::findState(const ESM4::Quest& quest)
++    {
++        const auto found = mStates.find(quest.mId);
++        return found != mStates.end() ? &found->second : nullptr;
++    }
++
++    const ESM4QuestState* ESM4QuestRuntime::findState(const ESM4::Quest& quest) const
++    {
++        const auto found = mStates.find(quest.mId);
++        return found != mStates.end() ? &found->second : nullptr;
++    }
++
++    bool ESM4QuestRuntime::startQuest(std::string_view id)
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr)
++            return false;
++        state->mFlags |= ESM4QuestState::Flag_Running;
++        return true;
++    }
++
++    bool ESM4QuestRuntime::setStage(std::string_view id, std::uint8_t stage)
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        return quest != nullptr && setStage(quest->mId, stage);
++    }
++
++    bool ESM4QuestRuntime::setStage(ESM::FormId id, std::uint8_t stageIndex)
++    {
++        if (mStore == nullptr)
++            return false;
++        const ESM4::Quest* quest = mStore->get<ESM4::Quest>().search(ESM::RefId(id));
++        ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr)
++            return false;
++
++        const auto stage = std::find_if(quest->mStages.begin(), quest->mStages.end(),
++            [stageIndex](const ESM4::QuestStage& value) { return value.mIndex == stageIndex; });
++        if (stage == quest->mStages.end())
++            return false;
++
++        const bool repeatedStages = (state->mFlags & ESM4QuestState::Flag_AllowRepeatedStages) != 0;
++        if (state->mStageDone[stage->mIndex] && !repeatedStages)
++            return true;
++
++        state->mFlags |= ESM4QuestState::Flag_Running;
++        state->mCurrentStage = stageIndex;
++        state->mStageDone[stage->mIndex] = true;
++
++        bool executedEntry = false;
++        for (const ESM4::QuestStageEntry& entry : stage->mEntries)
++        {
++            if (!evaluateConditions(entry.mConditions))
++                continue;
++            executedEntry = true;
++            executeStageSource(entry.mScript.scriptSource);
++            if ((entry.mFlags & ESM4::QuestStageEntry::Flag_CompleteQuest) != 0)
++            {
++                state->mFlags |= ESM4QuestState::Flag_Completed;
++                state->mFlags &= ~ESM4QuestState::Flag_Running;
++            }
++            if ((entry.mFlags & ESM4::QuestStageEntry::Flag_FailQuest) != 0)
++            {
++                state->mFlags |= ESM4QuestState::Flag_Failed;
++                state->mFlags &= ~ESM4QuestState::Flag_Running;
++            }
++        }
++
++        Log(Debug::Info) << "FNV/ESM4 behavior: SetStage quest=" << quest->mEditorId
++                         << " form=" << ESM::RefId(quest->mId).serializeText()
++                         << " stage=" << static_cast<unsigned int>(stageIndex)
++                         << " flags=" << static_cast<unsigned int>(state->mFlags)
++                         << " done=" << state->mStageDone[stage->mIndex] << " entryExecuted=" << executedEntry;
++        return true;
++    }
++
++    std::optional<float> ESM4QuestRuntime::evaluateConditionValue(const ESM4::TargetCondition& condition)
++    {
++        if (mStore == nullptr)
++            return std::nullopt;
++
++        const ESM::FormId parameter = ESM::FormId::fromUint32(condition.param1);
++        const auto findQuestState = [this, parameter]() -> const ESM4QuestState* {
++            const ESM4::Quest* quest = mStore->get<ESM4::Quest>().search(ESM::RefId(parameter));
++            return quest != nullptr ? findState(*quest) : nullptr;
++        };
++
++        switch (condition.functionIndex)
++        {
++            case ESM4::FUN_GetQuestRunning:
++                if (const ESM4QuestState* state = findQuestState())
++                    return (state->mFlags & ESM4QuestState::Flag_Running) != 0 ? 1.f : 0.f;
++                return 0.f;
++            case ESM4::FUN_GetStage:
++                if (const ESM4QuestState* state = findQuestState())
++                    return static_cast<float>(state->mCurrentStage);
++                return 0.f;
++            case ESM4::FUN_GetStageDone:
++                if (const ESM4QuestState* state = findQuestState())
++                {
++                    const auto found = state->mStageDone.find(static_cast<std::int16_t>(condition.param2));
++                    return found != state->mStageDone.end() && found->second ? 1.f : 0.f;
++                }
++                return 0.f;
++            case ESM4::FUN_GetGlobalValue:
++                if (const ESM4::GlobalVariable* global
++                    = mStore->get<ESM4::GlobalVariable>().search(ESM::RefId(parameter)))
++                {
++                    if (mGlobals != nullptr && !global->mEditorId.empty())
++                    {
++                        const GlobalVariableName name{ global->mEditorId };
++                        if (mGlobals->getType(name) != ' ')
++                            return (*mGlobals)[name].getFloat();
++                    }
++                    return global->mValue;
++                }
++                return 0.f;
++            case ESM4::FUN_GetQuestCompleted:
++                if (const ESM4QuestState* state = findQuestState())
++                    return (state->mFlags & ESM4QuestState::Flag_Completed) != 0 ? 1.f : 0.f;
++                return 0.f;
++            default:
++                if (std::find(mUnsupportedConditionFunctions.begin(), mUnsupportedConditionFunctions.end(),
++                        condition.functionIndex)
++                    == mUnsupportedConditionFunctions.end())
++                    mUnsupportedConditionFunctions.push_back(condition.functionIndex);
++                return std::nullopt;
++        }
++    }
++
++    bool ESM4QuestRuntime::evaluateConditions(const std::vector<ESM4::TargetCondition>& conditions)
++    {
++        for (std::size_t i = 0; i < conditions.size(); ++i)
++        {
++            const auto evaluate = [this](const ESM4::TargetCondition& condition) {
++                const std::optional<float> actual = evaluateConditionValue(condition);
++                if (!actual)
++                    return false;
++
++                float expected = condition.comparison;
++                if ((condition.condition & ESM4::CTF_UseGlobal) != 0)
++                {
++                    ESM4::TargetCondition globalCondition;
++                    globalCondition.functionIndex = ESM4::FUN_GetGlobalValue;
++                    globalCondition.param1 = std::bit_cast<std::uint32_t>(condition.comparison);
++                    const std::optional<float> globalValue = evaluateConditionValue(globalCondition);
++                    if (!globalValue)
++                        return false;
++                    expected = *globalValue;
++                }
++
++                switch (condition.condition & 0xe0)
++                {
++                    case ESM4::CTF_EqualTo:
++                        return *actual == expected;
++                    case ESM4::CTF_NotEqualTo:
++                        return *actual != expected;
++                    case ESM4::CTF_GreaterThan:
++                        return *actual > expected;
++                    case ESM4::CTF_GrThOrEqTo:
++                        return *actual >= expected;
++                    case ESM4::CTF_LessThan:
++                        return *actual < expected;
++                    case ESM4::CTF_LeThOrEqTo:
++                        return *actual <= expected;
++                    default:
++                        return false;
++                }
++            };
++
++            bool groupResult = evaluate(conditions[i]);
++            while ((conditions[i].condition & ESM4::CTF_Combine) != 0 && i + 1 < conditions.size())
++            {
++                ++i;
++                if (!groupResult)
++                    groupResult = evaluate(conditions[i]);
++            }
++            if (!groupResult)
++                return false;
++        }
++        return true;
++    }
++
++    bool ESM4QuestRuntime::isStateDirty(ESM::FormId id, const ESM4QuestState& state) const
++    {
++        if (mActiveQuest == id || mStore == nullptr)
++            return true;
++
++        const ESM4::Quest* quest = mStore->get<ESM4::Quest>().search(ESM::RefId(id));
++        if (quest == nullptr || state.mFlags != quest->mData.flags || state.mCurrentStage != 0)
++            return true;
++        if (std::any_of(
++                state.mStageDone.begin(), state.mStageDone.end(), [](const auto& value) { return value.second; }))
++            return true;
++        return std::any_of(state.mObjectiveStatus.begin(), state.mObjectiveStatus.end(),
++            [](const auto& value) { return value.second != 0; });
++    }
++
++    int ESM4QuestRuntime::countSavedGameRecords() const
++    {
++        return static_cast<int>(std::count_if(mStates.begin(), mStates.end(),
++            [this](const auto& value) { return isStateDirty(value.first, value.second); }));
++    }
++
++    void ESM4QuestRuntime::write(ESM::ESMWriter& writer) const
++    {
++        for (const auto& [id, state] : mStates)
++        {
++            if (!isStateDirty(id, state))
++                continue;
++
++            writer.startRecord(ESM::REC_FQST);
++            writer.writeFormId(id, true, "FORM");
++            writer.writeHNT("FLAG", state.mFlags);
++            writer.writeHNT("STAG", state.mCurrentStage);
++            writer.writeHNT("ACTV", static_cast<std::uint8_t>(mActiveQuest == id));
++
++            const std::uint32_t doneCount = static_cast<std::uint32_t>(std::count_if(
++                state.mStageDone.begin(), state.mStageDone.end(), [](const auto& value) { return value.second; }));
++            writer.writeHNT("DNCT", doneCount);
++            for (const auto& [stage, done] : state.mStageDone)
++                if (done)
++                    writer.writeHNT("DONE", stage);
++
++            const std::uint32_t objectiveCount
++                = static_cast<std::uint32_t>(std::count_if(state.mObjectiveStatus.begin(), state.mObjectiveStatus.end(),
++                    [](const auto& value) { return value.second != 0; }));
++            writer.writeHNT("OBCT", objectiveCount);
++            for (const auto& [index, status] : state.mObjectiveStatus)
++                if (status != 0)
++                {
++                    writer.writeHNT("OIDX", index);
++                    writer.writeHNT("OFLG", status);
++                }
++            writer.endRecord(ESM::REC_FQST);
++        }
++    }
++
++    void ESM4QuestRuntime::readRecord(ESM::ESMReader& reader)
++    {
++        ESM::FormId id = reader.getFormId(true, "FORM");
++        const bool contentAvailable = reader.applyContentFileMapping(id);
++        std::uint8_t flags = 0;
++        std::uint8_t stage = 0;
++        std::uint8_t active = 0;
++        reader.getHNT(flags, "FLAG");
++        reader.getHNT(stage, "STAG");
++        reader.getHNT(active, "ACTV");
++
++        std::uint32_t doneCount = 0;
++        reader.getHNT(doneCount, "DNCT");
++        if (doneCount > 65536)
++            throw std::runtime_error("Fallout quest save has an invalid completed-stage count");
++        std::vector<std::int16_t> doneStages(doneCount);
++        for (std::int16_t& doneStage : doneStages)
++            reader.getHNT(doneStage, "DONE");
++
++        std::uint32_t objectiveCount = 0;
++        reader.getHNT(objectiveCount, "OBCT");
++        if (objectiveCount > 65536)
++            throw std::runtime_error("Fallout quest save has an invalid objective count");
++        std::vector<std::pair<std::int32_t, std::uint8_t>> objectives(objectiveCount);
++        for (auto& [index, status] : objectives)
++        {
++            reader.getHNT(index, "OIDX");
++            reader.getHNT(status, "OFLG");
++        }
++
++        const auto found = contentAvailable ? mStates.find(id) : mStates.end();
++        ESM4QuestState* state = found != mStates.end() ? &found->second : nullptr;
++        if (state == nullptr)
++            return;
++        state->mFlags = flags;
++        state->mCurrentStage = stage;
++        for (auto& [_, done] : state->mStageDone)
++            done = false;
++        for (const std::int16_t doneStage : doneStages)
++            state->mStageDone[doneStage] = true;
++        for (auto& [_, status] : state->mObjectiveStatus)
++            status = 0;
++        for (const auto& [index, status] : objectives)
++            state->mObjectiveStatus[index] = status;
++        if (active != 0)
++            mActiveQuest = id;
++
++        const ESM4::Quest* quest = mStore != nullptr ? mStore->get<ESM4::Quest>().search(ESM::RefId(id)) : nullptr;
++        Log(Debug::Info) << "FNV/ESM4 behavior: LoadedQuestState quest="
++                         << (quest != nullptr ? quest->mEditorId : std::string("<missing>"))
++                         << " form=" << ESM::RefId(id).serializeText()
++                         << " stage=" << static_cast<unsigned int>(state->mCurrentStage)
++                         << " flags=" << static_cast<unsigned int>(state->mFlags)
++                         << " active=" << static_cast<unsigned int>(active) << " doneStages=" << doneStages.size()
++                         << " objectives=" << objectives.size();
++    }
++
++    bool ESM4QuestRuntime::setObjectiveDisplayed(std::string_view id, std::int32_t objective, bool displayed)
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr || !state->mObjectiveStatus.contains(objective))
++            return false;
++        if (displayed)
++        {
++            state->mObjectiveStatus[objective] |= ESM4QuestState::Objective_Displayed;
++            state->mFlags |= ESM4QuestState::Flag_ShownInPipBoy;
++        }
++        else
++            state->mObjectiveStatus[objective] &= ~ESM4QuestState::Objective_Displayed;
++        return true;
++    }
++
++    bool ESM4QuestRuntime::setObjectiveCompleted(std::string_view id, std::int32_t objective, bool completed)
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr || !state->mObjectiveStatus.contains(objective))
++            return false;
++        if (completed)
++            state->mObjectiveStatus[objective] |= ESM4QuestState::Objective_Completed;
++        else
++            state->mObjectiveStatus[objective] &= ~ESM4QuestState::Objective_Completed;
++        return true;
++    }
++
++    bool ESM4QuestRuntime::forceActiveQuest(std::string_view id)
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        ESM4QuestState* state = quest != nullptr ? findState(*quest) : nullptr;
++        if (state == nullptr)
++            return false;
++        state->mFlags |= ESM4QuestState::Flag_ShownInPipBoy;
++        mActiveQuest = quest->mId;
++        return true;
++    }
++
++    void ESM4QuestRuntime::executeStageSource(std::string_view source)
++    {
++        std::istringstream stream{ std::string(source) };
++        for (std::string line; std::getline(stream, line);)
++        {
++            const std::vector<std::string_view> tokens = tokenize(line);
++            if (tokens.empty())
++                continue;
++
++            if (tokens.size() >= 4 && Misc::StringUtils::ciEqual(tokens[0], "SetObjectiveDisplayed"))
++            {
++                std::int32_t objective = 0;
++                std::int32_t displayed = 0;
++                if (parseInt(tokens[2], objective) && parseInt(tokens[3], displayed)
++                    && setObjectiveDisplayed(tokens[1], objective, displayed != 0))
++                    continue;
++            }
++            else if (tokens.size() >= 2 && Misc::StringUtils::ciEqual(tokens[0], "ForceActiveQuest")
++                && forceActiveQuest(tokens[1]))
++                continue;
++
++            mUnsupportedStageCommands.push_back(line);
++        }
++    }
++
++    const ESM4QuestState* ESM4QuestRuntime::search(std::string_view id) const
++    {
++        const ESM4::Quest* quest = resolveQuest(id);
++        return quest != nullptr ? findState(*quest) : nullptr;
++    }
++
++    const ESM4QuestState* ESM4QuestRuntime::search(ESM::FormId id) const
++    {
++        const auto found = mStates.find(id);
++        return found != mStates.end() ? &found->second : nullptr;
++    }
++}
+diff --git a/apps/openmw/mwworld/esm4questruntime.hpp b/apps/openmw/mwworld/esm4questruntime.hpp
+new file mode 100644
+index 0000000000..135ff463ff
+--- /dev/null
++++ b/apps/openmw/mwworld/esm4questruntime.hpp
+@@ -0,0 +1,99 @@
++#ifndef OPENMW_MWWORLD_ESM4QUESTRUNTIME_H
++#define OPENMW_MWWORLD_ESM4QUESTRUNTIME_H
++
++#include <cstdint>
++#include <map>
++#include <optional>
++#include <string>
++#include <string_view>
++#include <unordered_map>
++#include <vector>
++
++#include <components/esm/formid.hpp>
++
++namespace ESM4
++{
++    struct Quest;
++    struct TargetCondition;
++}
++
++namespace ESM
++{
++    class ESMReader;
++    class ESMWriter;
++}
++
++namespace MWWorld
++{
++    class ESMStore;
++    class Globals;
++
++    struct ESM4QuestState
++    {
++        enum Flag : std::uint8_t
++        {
++            Flag_Running = 0x01,
++            Flag_Completed = 0x02,
++            Flag_AllowRepeatedTopics = 0x04,
++            Flag_AllowRepeatedStages = 0x08,
++            Flag_RunAfterReset = 0x10,
++            Flag_ShownInPipBoy = 0x20,
++            Flag_Failed = 0x40,
++        };
++
++        enum ObjectiveFlag : std::uint8_t
++        {
++            Objective_Displayed = 0x01,
++            Objective_Completed = 0x02,
++        };
++
++        std::uint8_t mFlags = 0;
++        std::uint8_t mCurrentStage = 0;
++        std::map<std::int16_t, bool> mStageDone;
++        std::map<std::int32_t, std::uint8_t> mObjectiveStatus;
++    };
++
++    class ESM4QuestRuntime
++    {
++        const ESMStore* mStore = nullptr;
++        const Globals* mGlobals = nullptr;
++        std::unordered_map<ESM::FormId, ESM4QuestState> mStates;
++        std::optional<ESM::FormId> mActiveQuest;
++        std::vector<std::string> mUnsupportedStageCommands;
++        std::vector<std::uint32_t> mUnsupportedConditionFunctions;
++
++        const ESM4::Quest* resolveQuest(std::string_view id) const;
++        ESM4QuestState* findState(const ESM4::Quest& quest);
++        const ESM4QuestState* findState(const ESM4::Quest& quest) const;
++        std::optional<float> evaluateConditionValue(const ESM4::TargetCondition& condition);
++        bool isStateDirty(ESM::FormId id, const ESM4QuestState& state) const;
++        void executeStageSource(std::string_view source);
++
++    public:
++        void initialize(const ESMStore& store, const Globals* globals = nullptr);
++        void clear();
++
++        bool startQuest(std::string_view id);
++        bool setStage(std::string_view id, std::uint8_t stage);
++        bool setStage(ESM::FormId id, std::uint8_t stage);
++        bool setObjectiveDisplayed(std::string_view id, std::int32_t objective, bool displayed);
++        bool setObjectiveCompleted(std::string_view id, std::int32_t objective, bool completed);
++        bool forceActiveQuest(std::string_view id);
++        bool evaluateConditions(const std::vector<ESM4::TargetCondition>& conditions);
++
++        int countSavedGameRecords() const;
++        void write(ESM::ESMWriter& writer) const;
++        void readRecord(ESM::ESMReader& reader);
++
++        const ESM4QuestState* search(std::string_view id) const;
++        const ESM4QuestState* search(ESM::FormId id) const;
++        std::optional<ESM::FormId> getActiveQuest() const { return mActiveQuest; }
++        const std::vector<std::string>& getUnsupportedStageCommands() const { return mUnsupportedStageCommands; }
++        const std::vector<std::uint32_t>& getUnsupportedConditionFunctions() const
++        {
++            return mUnsupportedConditionFunctions;
++        }
++    };
++}
++
++#endif
+diff --git a/apps/openmw/mwworld/esmstore.cpp b/apps/openmw/mwworld/esmstore.cpp
+index 8af0b16329..8527e5edd6 100644
+--- a/apps/openmw/mwworld/esmstore.cpp
++++ b/apps/openmw/mwworld/esmstore.cpp
+@@ -98,10 +98,9 @@ namespace
+ 
+     bool containsAsciiNoCase(std::string_view value, std::string_view needle)
+     {
+-        auto it = std::search(value.begin(), value.end(), needle.begin(), needle.end(),
+-            [](char left, char right) {
+-                return std::tolower(static_cast<unsigned char>(left)) == std::tolower(static_cast<unsigned char>(right));
+-            });
++        auto it = std::search(value.begin(), value.end(), needle.begin(), needle.end(), [](char left, char right) {
++            return std::tolower(static_cast<unsigned char>(left)) == std::tolower(static_cast<unsigned char>(right));
++        });
+         return it != value.end();
+     }
+ 
+@@ -125,9 +124,9 @@ namespace
+ 
+     void ensureFalloutCharacterDefaults(MWWorld::Store<ESM::Class>& classes, MWWorld::Store<ESM::Race>& races,
+         MWWorld::Store<ESM::Skill>& skills, MWWorld::Store<ESM::MagicEffect>& magicEffects,
+-        MWWorld::Store<ESM::Dialogue>& dialogues, MWWorld::Store<ESM::NPC>& npcs,
+-        MWWorld::Store<ESM::Weapon>& weapons, MWWorld::Store<ESM::Potion>& potions,
+-        MWWorld::Store<ESM::Miscellaneous>& miscItems, std::string_view playerSkeleton)
++        MWWorld::Store<ESM::Dialogue>& dialogues, MWWorld::Store<ESM::NPC>& npcs, MWWorld::Store<ESM::Weapon>& weapons,
++        MWWorld::Store<ESM::Potion>& potions, MWWorld::Store<ESM::Miscellaneous>& miscItems,
++        std::string_view playerSkeleton)
+     {
+         const ESM::RefId classId = ESM::RefId::stringRefId("FNV_Courier");
+         const ESM::RefId raceId = ESM::RefId::stringRefId("FNV_Wastelander");
+@@ -180,7 +179,8 @@ namespace
+             skill.mIcon.clear();
+             skill.mWerewolfValue = 1.f;
+             skill.mData.mAttribute = i % ESM::Attribute::Length;
+-            skill.mData.mSpecialization = i < 9 ? ESM::Class::Combat : (i < 18 ? ESM::Class::Magic : ESM::Class::Stealth);
++            skill.mData.mSpecialization
++                = i < 9 ? ESM::Class::Combat : (i < 18 ? ESM::Class::Magic : ESM::Class::Stealth);
+             for (float& value : skill.mData.mUseValue)
+                 value = 1.f;
+             skills.insertStatic(skill);
+@@ -251,74 +251,74 @@ namespace
+                              << player.mModel;
+         }
+ 
+-        const auto ensureWeapon = [&weapons](
+-                                      std::string_view id, std::string_view name, std::string_view icon, int value) {
+-            const ESM::RefId refId = ESM::RefId::stringRefId(id);
+-            if (weapons.searchStatic(refId) != nullptr)
+-                return;
+-
+-            ESM::Weapon weapon;
+-            weapon.mId = refId;
+-            weapon.blank();
+-            weapon.mName = std::string(name);
+-            weapon.mIcon = std::string(icon);
+-            weapon.mData.mWeight = 2.f;
+-            weapon.mData.mValue = value;
+-            weapon.mData.mType = ESM::Weapon::MarksmanThrown;
+-            weapon.mData.mHealth = 100;
+-            weapon.mData.mSpeed = 1.f;
+-            weapon.mData.mReach = 1.f;
+-            weapon.mData.mChop = { 4, 12 };
+-            weapon.mData.mSlash = { 4, 12 };
+-            weapon.mData.mThrust = { 4, 12 };
+-            weapons.insertStatic(weapon);
+-            Log(Debug::Info) << "FNV/ESM4: inserted fallback inventory weapon " << id;
+-        };
+-
+-        const auto ensurePotion = [&potions](
+-                                      std::string_view id, std::string_view name, std::string_view icon, int value) {
+-            const ESM::RefId refId = ESM::RefId::stringRefId(id);
+-            if (potions.searchStatic(refId) != nullptr)
+-                return;
+-
+-            ESM::Potion potion;
+-            potion.mId = refId;
+-            potion.blank();
+-            potion.mName = std::string(name);
+-            potion.mIcon = std::string(icon);
+-            potion.mData.mWeight = 0.1f;
+-            potion.mData.mValue = value;
+-            potions.insertStatic(potion);
+-            Log(Debug::Info) << "FNV/ESM4: inserted fallback inventory potion " << id;
+-        };
+-
+-        const auto ensureMisc = [&miscItems](std::string_view id, std::string_view name, std::string_view icon,
+-                                    float weight, int value) {
+-            const ESM::RefId refId = ESM::RefId::stringRefId(id);
+-            if (miscItems.searchStatic(refId) != nullptr)
+-                return;
+-
+-            ESM::Miscellaneous item;
+-            item.mId = refId;
+-            item.blank();
+-            item.mName = std::string(name);
+-            item.mIcon = std::string(icon);
+-            item.mData.mWeight = weight;
+-            item.mData.mValue = value;
+-            miscItems.insertStatic(item);
+-            Log(Debug::Info) << "FNV/ESM4: inserted fallback inventory misc " << id;
+-        };
++        const auto ensureWeapon
++            = [&weapons](std::string_view id, std::string_view name, std::string_view icon, int value) {
++                  const ESM::RefId refId = ESM::RefId::stringRefId(id);
++                  if (weapons.searchStatic(refId) != nullptr)
++                      return;
++
++                  ESM::Weapon weapon;
++                  weapon.mId = refId;
++                  weapon.blank();
++                  weapon.mName = std::string(name);
++                  weapon.mIcon = std::string(icon);
++                  weapon.mData.mWeight = 2.f;
++                  weapon.mData.mValue = value;
++                  weapon.mData.mType = ESM::Weapon::MarksmanThrown;
++                  weapon.mData.mHealth = 100;
++                  weapon.mData.mSpeed = 1.f;
++                  weapon.mData.mReach = 1.f;
++                  weapon.mData.mChop = { 4, 12 };
++                  weapon.mData.mSlash = { 4, 12 };
++                  weapon.mData.mThrust = { 4, 12 };
++                  weapons.insertStatic(weapon);
++                  Log(Debug::Info) << "FNV/ESM4: inserted fallback inventory weapon " << id;
++              };
++
++        const auto ensurePotion
++            = [&potions](std::string_view id, std::string_view name, std::string_view icon, int value) {
++                  const ESM::RefId refId = ESM::RefId::stringRefId(id);
++                  if (potions.searchStatic(refId) != nullptr)
++                      return;
++
++                  ESM::Potion potion;
++                  potion.mId = refId;
++                  potion.blank();
++                  potion.mName = std::string(name);
++                  potion.mIcon = std::string(icon);
++                  potion.mData.mWeight = 0.1f;
++                  potion.mData.mValue = value;
++                  potions.insertStatic(potion);
++                  Log(Debug::Info) << "FNV/ESM4: inserted fallback inventory potion " << id;
++              };
++
++        const auto ensureMisc
++            = [&miscItems](std::string_view id, std::string_view name, std::string_view icon, float weight, int value) {
++                  const ESM::RefId refId = ESM::RefId::stringRefId(id);
++                  if (miscItems.searchStatic(refId) != nullptr)
++                      return;
++
++                  ESM::Miscellaneous item;
++                  item.mId = refId;
++                  item.blank();
++                  item.mName = std::string(name);
++                  item.mIcon = std::string(icon);
++                  item.mData.mWeight = weight;
++                  item.mData.mValue = value;
++                  miscItems.insertStatic(item);
++                  Log(Debug::Info) << "FNV/ESM4: inserted fallback inventory misc " << id;
++              };
+ 
+         ensureWeapon("FNV_PROOF_9MM_PISTOL", "9mm Pistol",
+             "textures/interface/icons/pipboyimages/weapons/weapons_9mm_pistol.dds", 100);
+         ensureWeapon("FNV_PROOF_VARMINT_RIFLE", "Varmint Rifle",
+             "textures/interface/icons/pipboyimages/weapons/weapons_varmint_rifle.dds", 75);
+-        ensurePotion("FNV_PROOF_STIMPAK", "Stimpak",
+-            "textures/interface/icons/pipboyimages/items/items_stimpack.dds", 25);
+-        ensureMisc("FNV_PROOF_9MM_AMMO", "9mm Round",
+-            "textures/interface/icons/pipboyimages/items/items_9mm_ammo.dds", 0.01f, 1);
+-        ensureMisc("FNV_PROOF_BOBBY_PIN", "Bobby Pin",
+-            "textures/interface/icons/pipboyimages/items/item_bobby_pin.dds", 0.01f, 1);
++        ensurePotion(
++            "FNV_PROOF_STIMPAK", "Stimpak", "textures/interface/icons/pipboyimages/items/items_stimpack.dds", 25);
++        ensureMisc("FNV_PROOF_9MM_AMMO", "9mm Round", "textures/interface/icons/pipboyimages/items/items_9mm_ammo.dds",
++            0.01f, 1);
++        ensureMisc("FNV_PROOF_BOBBY_PIN", "Bobby Pin", "textures/interface/icons/pipboyimages/items/item_bobby_pin.dds",
++            0.01f, 1);
+         ensureMisc("FNV_PROOF_CAPS", "Bottle Cap",
+             "textures/interface/icons/pipboyimages/items/items_nuka_cola_cap.dds", 0.f, 1);
+     }
+@@ -338,8 +338,8 @@ namespace
+             return true;
+ 
+         const bool missingEsm3CharacterBasis = classes.begin() == classes.end() || races.begin() == races.end();
+-        const bool hasEsm4CharacterData
+-            = npcs.begin() != npcs.end() || creatures.begin() != creatures.end() || esm4Races.begin() != esm4Races.end();
++        const bool hasEsm4CharacterData = npcs.begin() != npcs.end() || creatures.begin() != creatures.end()
++            || esm4Races.begin() != esm4Races.end();
+         return missingEsm3CharacterBasis && hasEsm4CharacterData;
+     }
+ 
+@@ -608,9 +608,9 @@ namespace MWWorld
+                 static int logged = 0;
+                 if (logged < 120)
+                 {
+-                    Log(Debug::Info) << "World viewer: ESM4 dispatch type=" << ESM::printName(reader.hdr().record.typeId)
+-                                     << " id=" << reader.hdr().record.getFormId().toString()
+-                                     << " handled=" << result;
++                    Log(Debug::Info) << "World viewer: ESM4 dispatch type="
++                                     << ESM::printName(reader.hdr().record.typeId)
++                                     << " id=" << reader.hdr().record.getFormId().toString() << " handled=" << result;
+                     ++logged;
+                 }
+             }
+@@ -813,9 +813,9 @@ namespace MWWorld
+         int handledActors = 0;
+         int handledNpcBases = 0;
+         int handledStatics = 0;
+-        auto visitorRec = [this, listener, &seenWorlds, &seenCells, &seenRefs, &seenActors, &seenNpcBases,
+-                              &seenStatics, &handledWorlds, &handledCells, &handledRefs, &handledActors,
+-                              &handledNpcBases, &handledStatics](ESM4::Reader& r) {
++        auto visitorRec = [this, listener, &seenWorlds, &seenCells, &seenRefs, &seenActors, &seenNpcBases, &seenStatics,
++                              &handledWorlds, &handledCells, &handledRefs, &handledActors, &handledNpcBases,
++                              &handledStatics](ESM4::Reader& r) {
+             const auto recordType = static_cast<ESM4::RecordTypes>(r.hdr().record.typeId);
+             bool result = ESMStoreImp::readRecord(r, *this);
+             switch (recordType)
+@@ -865,31 +865,32 @@ namespace MWWorld
+             if (r.stackSize() == 0 || group.type == ESM4::Grp_RecordType || group.type == ESM4::Grp_WorldChild)
+             {
+                 Log(Debug::Info) << "World viewer: ESM4 group offset=" << r.getFileOffset()
+-                                 << " stack=" << r.stackSize()
+-                                 << " " << ESM4::printLabel(group.label, group.type)
++                                 << " stack=" << r.stackSize() << " " << ESM4::printLabel(group.label, group.type)
+                                  << " size=" << group.groupSize;
+                 ++logged;
+             }
+         };
+         ESM4::ReaderUtils::readAll(reader, visitorRec, visitorGroup);
+         Log(Debug::Info) << "World viewer: ESM4 record counters"
+-                         << " seenWorlds=" << seenWorlds << "/" << handledWorlds
+-                         << " seenCells=" << seenCells << "/" << handledCells
+-                         << " seenRefs=" << seenRefs << "/" << handledRefs
+-                         << " seenActors=" << seenActors << "/" << handledActors
+-                         << " seenNpcBases=" << seenNpcBases << "/" << handledNpcBases
+-                         << " seenStatics=" << seenStatics << "/" << handledStatics;
++                         << " seenWorlds=" << seenWorlds << "/" << handledWorlds << " seenCells=" << seenCells << "/"
++                         << handledCells << " seenRefs=" << seenRefs << "/" << handledRefs
++                         << " seenActors=" << seenActors << "/" << handledActors << " seenNpcBases=" << seenNpcBases
++                         << "/" << handledNpcBases << " seenStatics=" << seenStatics << "/" << handledStatics;
+         Log(Debug::Info) << "World viewer: ESM4 load counts offset=" << reader.getFileOffset() << "/"
+-                         << reader.getFileSize()
+-                         << " worlds=" << get<ESM4::World>().getSize()
+-                         << " cells=" << get<ESM4::Cell>().getSize()
+-                         << " refs=" << get<ESM4::Reference>().getSize()
++                         << reader.getFileSize() << " worlds=" << get<ESM4::World>().getSize()
++                         << " cells=" << get<ESM4::Cell>().getSize() << " refs=" << get<ESM4::Reference>().getSize()
+                          << " actors=" << get<ESM4::ActorCharacter>().getSize()
+                          << " creatures=" << get<ESM4::ActorCreature>().getSize()
+                          << " npcBases=" << get<ESM4::Npc>().getSize()
+                          << " creatureBases=" << get<ESM4::Creature>().getSize()
+                          << " leveledNpcBases=" << get<ESM4::LevelledNpc>().getSize()
+                          << " leveledCreatureBases=" << get<ESM4::LevelledCreature>().getSize()
++                         << " quests=" << get<ESM4::Quest>().getSize()
++                         << " dialogueTopics=" << get<ESM4::Dialogue>().getSize()
++                         << " dialogueInfos=" << get<ESM4::DialogInfo>().getSize()
++                         << " scripts=" << get<ESM4::Script>().getSize()
++                         << " globals=" << get<ESM4::GlobalVariable>().getSize()
++                         << " formLists=" << get<ESM4::FormIdList>().getSize()
+                          << " statics=" << get<ESM4::Static>().getSize()
+                          << " textureSets=" << get<ESM4::TextureSet>().getSize();
+     }
+@@ -1017,10 +1018,9 @@ namespace MWWorld
+         auto& npcs = getWritable<ESM::NPC>();
+         if (shouldEnsureFalloutCharacterDefaults(getWritable<ESM::Class>(), getWritable<ESM::Race>(),
+                 getWritable<ESM4::Npc>(), getWritable<ESM4::Creature>(), getWritable<ESM4::Race>()))
+-            ensureFalloutCharacterDefaults(
+-                getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
+-                getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
+-                getWritable<ESM::Potion>(), getWritable<ESM::Miscellaneous>(),
++            ensureFalloutCharacterDefaults(getWritable<ESM::Class>(), getWritable<ESM::Race>(),
++                getWritable<ESM::Skill>(), getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs,
++                getWritable<ESM::Weapon>(), getWritable<ESM::Potion>(), getWritable<ESM::Miscellaneous>(),
+                 chooseViewerPlayerSkeleton(
+                     getWritable<ESM4::World>(), getWritable<ESM4::ArmorAddon>(), getWritable<ESM4::HeadPart>()));
+         rebuildIdsIndex();
+@@ -1068,10 +1068,9 @@ namespace MWWorld
+         auto& npcs = getWritable<ESM::NPC>();
+         if (shouldEnsureFalloutCharacterDefaults(getWritable<ESM::Class>(), getWritable<ESM::Race>(),
+                 getWritable<ESM4::Npc>(), getWritable<ESM4::Creature>(), getWritable<ESM4::Race>()))
+-            ensureFalloutCharacterDefaults(
+-                getWritable<ESM::Class>(), getWritable<ESM::Race>(), getWritable<ESM::Skill>(),
+-                getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs, getWritable<ESM::Weapon>(),
+-                getWritable<ESM::Potion>(), getWritable<ESM::Miscellaneous>(),
++            ensureFalloutCharacterDefaults(getWritable<ESM::Class>(), getWritable<ESM::Race>(),
++                getWritable<ESM::Skill>(), getWritable<ESM::MagicEffect>(), getWritable<ESM::Dialogue>(), npcs,
++                getWritable<ESM::Weapon>(), getWritable<ESM::Potion>(), getWritable<ESM::Miscellaneous>(),
+                 chooseViewerPlayerSkeleton(
+                     getWritable<ESM4::World>(), getWritable<ESM4::ArmorAddon>(), getWritable<ESM4::HeadPart>()));
+         rebuildIdsIndex();
+diff --git a/apps/openmw/mwworld/esmstore.hpp b/apps/openmw/mwworld/esmstore.hpp
+index 10582d6753..23b64870b3 100644
+--- a/apps/openmw/mwworld/esmstore.hpp
++++ b/apps/openmw/mwworld/esmstore.hpp
+@@ -84,13 +84,18 @@ namespace ESM4
+     struct Book;
+     struct BodyPartData;
+     struct Cell;
++    struct Class;
+     struct Clothing;
+     struct Container;
+     struct Creature;
++    struct Dialogue;
++    struct DialogInfo;
+     struct Door;
+     struct Eyes;
+     struct Flora;
++    struct FormIdList;
+     struct Furniture;
++    struct GlobalVariable;
+     struct Hair;
+     struct HeadPart;
+     struct IdleAnimation;
+@@ -108,8 +113,10 @@ namespace ESM4
+     struct Npc;
+     struct Outfit;
+     struct Potion;
++    struct Quest;
+     struct Race;
+     struct Reference;
++    struct Script;
+     struct Sound;
+     struct SoundReference;
+     struct Static;
+@@ -149,16 +156,17 @@ namespace MWWorld
+ 
+             Store<ESM4::Activator>, Store<ESM4::ActorCharacter>, Store<ESM4::ActorCreature>, Store<ESM4::AIPackage>,
+             Store<ESM4::Ammunition>, Store<ESM4::Armor>, Store<ESM4::ArmorAddon>, Store<ESM4::Book>,
+-            Store<ESM4::BodyPartData>,
+-            Store<ESM4::Cell>, Store<ESM4::Clothing>, Store<ESM4::Container>, Store<ESM4::Creature>, Store<ESM4::Door>, Store<ESM4::Eyes>,
+-            Store<ESM4::Furniture>, Store<ESM4::Flora>, Store<ESM4::Hair>, Store<ESM4::HeadPart>,
+-            Store<ESM4::IdleAnimation>, Store<ESM4::IdleMarker>, Store<ESM4::Ingredient>, Store<ESM4::ItemMod>,
+-            Store<ESM4::Land>, Store<ESM4::LandTexture>, Store<ESM4::LevelledCreature>, Store<ESM4::LevelledItem>,
+-            Store<ESM4::LevelledNpc>, Store<ESM4::Light>,
+-            Store<ESM4::MiscItem>, Store<ESM4::MovableStatic>, Store<ESM4::Npc>, Store<ESM4::Outfit>,
+-            Store<ESM4::Potion>, Store<ESM4::Race>, Store<ESM4::Reference>, Store<ESM4::Sound>,
+-            Store<ESM4::SoundReference>, Store<ESM4::Static>, Store<ESM4::StaticCollection>, Store<ESM4::Terminal>,
+-            Store<ESM4::TextureSet>, Store<ESM4::Tree>, Store<ESM4::Weapon>, Store<ESM4::World>>;
++            Store<ESM4::BodyPartData>, Store<ESM4::Cell>, Store<ESM4::Class>, Store<ESM4::Clothing>,
++            Store<ESM4::Container>, Store<ESM4::Creature>, Store<ESM4::Dialogue>, Store<ESM4::DialogInfo>,
++            Store<ESM4::Door>, Store<ESM4::Eyes>, Store<ESM4::FormIdList>, Store<ESM4::Furniture>, Store<ESM4::Flora>,
++            Store<ESM4::GlobalVariable>, Store<ESM4::Hair>, Store<ESM4::HeadPart>, Store<ESM4::IdleAnimation>,
++            Store<ESM4::IdleMarker>, Store<ESM4::Ingredient>, Store<ESM4::ItemMod>, Store<ESM4::Land>,
++            Store<ESM4::LandTexture>, Store<ESM4::LevelledCreature>, Store<ESM4::LevelledItem>,
++            Store<ESM4::LevelledNpc>, Store<ESM4::Light>, Store<ESM4::MiscItem>, Store<ESM4::MovableStatic>,
++            Store<ESM4::Npc>, Store<ESM4::Outfit>, Store<ESM4::Potion>, Store<ESM4::Quest>, Store<ESM4::Race>,
++            Store<ESM4::Reference>, Store<ESM4::Script>, Store<ESM4::Sound>, Store<ESM4::SoundReference>,
++            Store<ESM4::Static>, Store<ESM4::StaticCollection>, Store<ESM4::Terminal>, Store<ESM4::TextureSet>,
++            Store<ESM4::Tree>, Store<ESM4::Weapon>, Store<ESM4::World>>;
+ 
+     private:
+         template <typename T>
+diff --git a/apps/openmw/mwworld/globals.cpp b/apps/openmw/mwworld/globals.cpp
+index 4977df56c0..edda2a7c2e 100644
+--- a/apps/openmw/mwworld/globals.cpp
++++ b/apps/openmw/mwworld/globals.cpp
+@@ -4,6 +4,7 @@
+ 
+ #include <components/esm3/esmreader.hpp>
+ #include <components/esm3/esmwriter.hpp>
++#include <components/esm4/loadglob.hpp>
+ 
+ #include "esmstore.hpp"
+ 
+@@ -39,6 +40,33 @@ namespace MWWorld
+         {
+             mVariables.emplace(esmGlobal.mId, esmGlobal);
+         }
++
++        const auto insertFalloutGlobal = [this](std::string_view id, float value, std::uint32_t flags) {
++            ESM::Global runtimeGlobal;
++            runtimeGlobal.mRecordFlags = flags;
++            runtimeGlobal.mId = ESM::RefId::stringRefId(id);
++            runtimeGlobal.mValue.setType(ESM::VT_Float);
++            runtimeGlobal.mValue.setFloat(value);
++            mVariables.insert_or_assign(runtimeGlobal.mId, std::move(runtimeGlobal));
++        };
++
++        for (const ESM4::GlobalVariable& esm4Global : store.get<ESM4::GlobalVariable>())
++        {
++            if (esm4Global.mEditorId.empty())
++                continue;
++            insertFalloutGlobal(esm4Global.mEditorId, esm4Global.mValue, esm4Global.mFlags);
++
++            // OpenMW's calendar names predate the TES4-family Game* names. Keep both IDs
++            // backed by the same initial retail value so DateTimeManager uses the master data.
++            if (Misc::StringUtils::ciEqual(esm4Global.mEditorId, "GameYear"))
++                insertFalloutGlobal(sYear.getValue(), esm4Global.mValue, esm4Global.mFlags);
++            else if (Misc::StringUtils::ciEqual(esm4Global.mEditorId, "GameMonth"))
++                insertFalloutGlobal(sMonth.getValue(), esm4Global.mValue, esm4Global.mFlags);
++            else if (Misc::StringUtils::ciEqual(esm4Global.mEditorId, "GameDay"))
++                insertFalloutGlobal(sDay.getValue(), esm4Global.mValue, esm4Global.mFlags);
++            else if (Misc::StringUtils::ciEqual(esm4Global.mEditorId, "GameDaysPassed"))
++                insertFalloutGlobal(sDaysPassed.getValue(), esm4Global.mValue, esm4Global.mFlags);
++        }
+     }
+ 
+     const ESM::Variant& Globals::operator[](GlobalVariableName name) const
+diff --git a/apps/openmw/mwworld/store.cpp b/apps/openmw/mwworld/store.cpp
+index 0c9b55e23e..92c43c6814 100644
+--- a/apps/openmw/mwworld/store.cpp
++++ b/apps/openmw/mwworld/store.cpp
+@@ -1348,13 +1348,18 @@ template class MWWorld::TypedDynamicStore<ESM4::ArmorAddon>;
+ template class MWWorld::TypedDynamicStore<ESM4::Book>;
+ template class MWWorld::TypedDynamicStore<ESM4::BodyPartData>;
+ template class MWWorld::TypedDynamicStore<ESM4::Cell>;
++template class MWWorld::TypedDynamicStore<ESM4::Class>;
+ template class MWWorld::TypedDynamicStore<ESM4::Clothing>;
+ template class MWWorld::TypedDynamicStore<ESM4::Container>;
+ template class MWWorld::TypedDynamicStore<ESM4::Creature>;
++template class MWWorld::TypedDynamicStore<ESM4::Dialogue>;
++template class MWWorld::TypedDynamicStore<ESM4::DialogInfo>;
+ template class MWWorld::TypedDynamicStore<ESM4::Door>;
+ template class MWWorld::TypedDynamicStore<ESM4::Eyes>;
+ template class MWWorld::TypedDynamicStore<ESM4::Flora>;
++template class MWWorld::TypedDynamicStore<ESM4::FormIdList>;
+ template class MWWorld::TypedDynamicStore<ESM4::Furniture>;
++template class MWWorld::TypedDynamicStore<ESM4::GlobalVariable>;
+ template class MWWorld::TypedDynamicStore<ESM4::Hair>;
+ template class MWWorld::TypedDynamicStore<ESM4::HeadPart>;
+ template class MWWorld::TypedDynamicStore<ESM4::IdleAnimation>;
+@@ -1372,7 +1377,9 @@ template class MWWorld::TypedDynamicStore<ESM4::MovableStatic>;
+ template class MWWorld::TypedDynamicStore<ESM4::Npc>;
+ template class MWWorld::TypedDynamicStore<ESM4::Outfit>;
+ template class MWWorld::TypedDynamicStore<ESM4::Potion>;
++template class MWWorld::TypedDynamicStore<ESM4::Quest>;
+ template class MWWorld::TypedDynamicStore<ESM4::Race>;
++template class MWWorld::TypedDynamicStore<ESM4::Script>;
+ template class MWWorld::TypedDynamicStore<ESM4::Sound>;
+ template class MWWorld::TypedDynamicStore<ESM4::SoundReference>;
+ template class MWWorld::TypedDynamicStore<ESM4::Static>;
+diff --git a/apps/openmw/mwworld/worldimp.cpp b/apps/openmw/mwworld/worldimp.cpp
+index 7c2f3ff82c..9450c89f38 100644
+--- a/apps/openmw/mwworld/worldimp.cpp
++++ b/apps/openmw/mwworld/worldimp.cpp
+@@ -62,7 +62,6 @@
+ #include <components/files/conversion.hpp>
+ #include <components/loadinglistener/loadinglistener.hpp>
+ 
+-#include <components/settings/values.hpp>
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/luamanager.hpp"
+ #include "../mwbase/mechanicsmanager.hpp"
+@@ -70,6 +69,7 @@
+ #include "../mwbase/soundmanager.hpp"
+ #include "../mwbase/statemanager.hpp"
+ #include "../mwbase/windowmanager.hpp"
++#include <components/settings/values.hpp>
+ 
+ #include "../mwmechanics/actorutil.hpp"
+ #include "../mwmechanics/aiavoiddoor.hpp" //Used to tell actors to avoid doors
+@@ -97,7 +97,6 @@
+ #include "../mwphysics/object.hpp"
+ #include "../mwphysics/physicssystem.hpp"
+ 
+-
+ #include "actionteleport.hpp"
+ #include "cellstore.hpp"
+ #include "containerstore.hpp"
+@@ -111,16 +110,16 @@
+ #include "contentloader.hpp"
+ #include "esmloader.hpp"
+ 
+-//## VR_PATCH BEGIN
+-#include <components/vr/session.hpp>
+-#include <components/vr/vr.hpp>
++// ## VR_PATCH BEGIN
+ #include "../mwvr/vrgui.hpp"
+ #include "../mwvr/vrinputmanager.hpp"
+ #include "../mwvr/vrpointer.hpp"
+ #include "../mwvr/vrutil.hpp"
++#include <components/vr/session.hpp>
+ #include <components/vr/trackinglistener.hpp>
+ #include <components/vr/trackingmanager.hpp>
+-//## VR_PATCH END
++#include <components/vr/vr.hpp>
++// ## VR_PATCH END
+ 
+ namespace MWWorld
+ {
+@@ -238,8 +237,8 @@ namespace MWWorld
+             }
+             catch (const std::exception& e)
+             {
+-                Log(Debug::Warning) << "World viewer: explicit exterior start ignored; worldspace '"
+-                                    << worldspaceText << "' is invalid: " << e.what();
++                Log(Debug::Warning) << "World viewer: explicit exterior start ignored; worldspace '" << worldspaceText
++                                    << "' is invalid: " << e.what();
+                 return false;
+             }
+         }
+@@ -252,8 +251,7 @@ namespace MWWorld
+ 
+         bool viewerTraceEnabled()
+         {
+-            return viewerEnvEnabled("OPENMW_WORLD_VIEWER_TRACE")
+-                || viewerEnvEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
++            return viewerEnvEnabled("OPENMW_WORLD_VIEWER_TRACE") || viewerEnvEnabled("OPENMW_WORLD_VIEWER_TELEMETRY");
+         }
+ 
+         void viewerTrace(std::string_view phase)
+@@ -274,16 +272,16 @@ namespace MWWorld
+             const char* cameraMode = std::getenv("OPENMW_WORLD_VIEWER_START_CAMERA_MODE");
+             const bool staticCamera = cameraMode != nullptr && std::string(cameraMode) == "static";
+             const bool thirdPerson = cameraMode != nullptr && std::string(cameraMode) == "thirdperson";
+-            const float cameraDistance = readViewerProofFloatOr(
+-                "OPENMW_WORLD_VIEWER_START_CAMERA_DISTANCE", thirdPerson ? 192.f : 0.f);
+-            const float cameraPitch = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_PITCH", -position.rot[0]);
++            const float cameraDistance
++                = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_DISTANCE", thirdPerson ? 192.f : 0.f);
++            const float cameraPitch
++                = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_PITCH", -position.rot[0]);
+             const float cameraYaw = readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_YAW", -position.rot[2]);
+ 
+             if (staticCamera)
+             {
+                 const osg::Vec3d playerTarget(position.pos[0], position.pos[1], position.pos[2] + 128.f);
+-                osg::Vec3d target(
+-                    readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X", playerTarget.x()),
++                osg::Vec3d target(readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X", playerTarget.x()),
+                     readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y", playerTarget.y()),
+                     readViewerProofFloatOr("OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z", playerTarget.z()));
+                 osg::Vec3d eye(
+@@ -301,16 +299,15 @@ namespace MWWorld
+                 camera->instantTransition();
+                 camera->updateCamera();
+ 
+-                Log(Debug::Info) << "World viewer: settled static survey camera eye=(" << eye.x() << ","
+-                                 << eye.y() << "," << eye.z() << ") target=(" << target.x() << ","
+-                                 << target.y() << "," << target.z() << ") pitch=" << camera->getPitch()
+-                                 << " yaw=" << camera->getYaw();
++                Log(Debug::Info) << "World viewer: settled static survey camera eye=(" << eye.x() << "," << eye.y()
++                                 << "," << eye.z() << ") target=(" << target.x() << "," << target.y() << ","
++                                 << target.z() << ") pitch=" << camera->getPitch() << " yaw=" << camera->getYaw();
+                 return;
+             }
+ 
+             camera->attachTo(player);
+-            camera->setMode(thirdPerson ? MWRender::Camera::Mode::ThirdPerson : MWRender::Camera::Mode::FirstPerson,
+-                true);
++            camera->setMode(
++                thirdPerson ? MWRender::Camera::Mode::ThirdPerson : MWRender::Camera::Mode::FirstPerson, true);
+             camera->setPreferredCameraDistance(cameraDistance);
+             camera->processViewChange();
+             camera->update(0.f, false);
+@@ -335,8 +332,8 @@ namespace MWWorld
+             const osg::Vec3d cameraPos = world.getCamera() != nullptr ? world.getCamera()->getPosition() : osg::Vec3d();
+             Log(Debug::Info) << "World viewer: pinned explicit start anchor pos=(" << actual.pos[0] << ", "
+                              << actual.pos[1] << ", " << actual.pos[2] << ") rot=(" << actual.rot[0] << ", "
+-                             << actual.rot[1] << ", " << actual.rot[2] << ") dry="
+-                             << viewerEnvEnabled("OPENMW_WORLD_VIEWER_START_DRY") << " cameraPos=("
++                             << actual.rot[1] << ", " << actual.rot[2]
++                             << ") dry=" << viewerEnvEnabled("OPENMW_WORLD_VIEWER_START_DRY") << " cameraPos=("
+                              << cameraPos.x() << ", " << cameraPos.y() << ", " << cameraPos.z() << ")";
+         }
+ 
+@@ -756,6 +753,7 @@ namespace MWWorld
+         fillGlobalVariables();
+ 
+         mStore.setUp();
++        mESM4QuestRuntime.initialize(mStore, &mGlobalVariables);
+         mStore.validateRecords(mReaders);
+         mStore.movePlayerRecord();
+ 
+@@ -784,11 +782,11 @@ namespace MWWorld
+ 
+         Log(Debug::Info) << "FNV/ESM4 diag: World::init rendering begin";
+         mRendering = std::make_unique<MWRender::RenderingManager>(
+-//## VR_PATCH BEGIN
+-            viewer, rootNode, mResourceSystem, workQueue, *mNavigator, mGroundcoverStore, unrefQueue, std::move(camera));
+-
++            // ## VR_PATCH BEGIN
++            viewer, rootNode, mResourceSystem, workQueue, *mNavigator, mGroundcoverStore, unrefQueue,
++            std::move(camera));
+ 
+-//## VR_PATCH END
++        // ## VR_PATCH END
+         Log(Debug::Info) << "FNV/ESM4 diag: World::init rendering ready";
+         Log(Debug::Info) << "FNV/ESM4 diag: World::init projectile manager begin";
+         mProjectileManager = std::make_unique<ProjectileManager>(
+@@ -819,6 +817,7 @@ namespace MWWorld
+         Log(Debug::Info) << "FNV/ESM4 diag: startNewGame bypass=" << bypass << " startCell='" << mStartCell << "'";
+ 
+         mGoToJail = false;
++        mESM4QuestRuntime.initialize(mStore, &mGlobalVariables);
+         mLevitationEnabled = true;
+         mTeleportEnabled = true;
+ 
+@@ -878,9 +877,9 @@ namespace MWWorld
+                     resolvedPos = anchor;
+                 Log(Debug::Info) << "FNV/ESM4 diag: start cell '" << mStartCell << "' resolved as exterior "
+                                  << resolvedCellId << " explicitAnchor=" << hasExplicitAnchor << " source=" << source;
+-                Log(Debug::Info) << "World viewer: start cell exterior change begin cell=" << resolvedCellId
+-                                 << " pos=(" << resolvedPos.pos[0] << ", " << resolvedPos.pos[1] << ", "
+-                                 << resolvedPos.pos[2] << ")";
++                Log(Debug::Info) << "World viewer: start cell exterior change begin cell=" << resolvedCellId << " pos=("
++                                 << resolvedPos.pos[0] << ", " << resolvedPos.pos[1] << ", " << resolvedPos.pos[2]
++                                 << ")";
+                 viewerTrace("change-to-exterior.begin");
+                 changeToCell(resolvedCellId, resolvedPos, !hasExplicitAnchor);
+                 viewerTrace("change-to-exterior.end");
+@@ -926,8 +925,8 @@ namespace MWWorld
+                     }
+                     catch (const std::exception& e)
+                     {
+-                        Log(Debug::Warning) << "World viewer: explicit exterior start failed for "
+-                                            << explicitExterior << ": " << e.what();
++                        Log(Debug::Warning) << "World viewer: explicit exterior start failed for " << explicitExterior
++                                            << ": " << e.what();
+                     }
+                 }
+ 
+@@ -1101,13 +1100,14 @@ namespace MWWorld
+         mIdsRebuilt = false;
+ 
+         fillGlobalVariables();
++        mESM4QuestRuntime.initialize(mStore, &mGlobalVariables);
+     }
+ 
+     int World::countSavedGameRecords() const
+     {
+         return mWorldModel.countSavedGameRecords() + mStore.countSavedGameRecords()
+             + mGlobalVariables.countSavedGameRecords() + mProjectileManager->countSavedGameRecords()
+-            + 1 // player record
++            + mESM4QuestRuntime.countSavedGameRecords() + 1 // player record
+             + 1 // weather record
+             + 1 // actorId counter
+             + 1 // levitation/teleport enabled state
+@@ -1139,6 +1139,7 @@ namespace MWWorld
+         mWorldModel.write(writer, progress); // the player's cell needs to be loaded before the player
+         mPlayer->write(writer, progress);
+         mGlobalVariables.write(writer, progress);
++        mESM4QuestRuntime.write(writer);
+         mWeatherManager->write(writer, progress);
+         mProjectileManager->write(writer, progress);
+ 
+@@ -1169,6 +1170,9 @@ namespace MWWorld
+                 Misc::Rng::deserialize(data, mPrng);
+             }
+             break;
++            case ESM::REC_FQST:
++                mESM4QuestRuntime.readRecord(reader);
++                break;
+             case ESM::REC_PLAY:
+                 if (reader.getFormatVersion() <= ESM::MaxPlayerBeforeCellDataFormatVersion && !mIdsRebuilt)
+                 {
+@@ -1687,11 +1691,11 @@ namespace MWWorld
+ 
+     MWWorld::Ptr World::getFacedObject()
+     {
+-//## VR_PATCH BEGIN
++        // ## VR_PATCH BEGIN
+         if (VR::getVR())
+             return MWVR::Util::getPointerTarget().first;
+ 
+-//## VR_PATCH END
++        // ## VR_PATCH END
+         MWWorld::Ptr facedObject;
+ 
+         if (MWBase::Environment::get().getStateManager()->getState() == MWBase::StateManager::State_NoGame)
+@@ -1716,14 +1720,14 @@ namespace MWWorld
+ 
+     float World::getDistanceToFacedObject()
+     {
+-//## VR_PATCH BEGIN
++        // ## VR_PATCH BEGIN
+         if (VR::getVR())
+         {
+             return MWVR::Util::getPointerTarget().second;
+         }
+         else
+             return mDistanceToFacedObject;
+-//## VR_PATCH END
++        // ## VR_PATCH END
+     }
+ 
+     osg::Matrixf World::getActorHeadTransform(const MWWorld::ConstPtr& actor) const
+@@ -2132,9 +2136,9 @@ namespace MWWorld
+             spawnPoint.z() += 30; // move up a little to account for slopes, will snap down later
+ 
+             if (!mPhysics
+-                     ->castRay(spawnPoint, osg::Vec3f(pos.x(), pos.y(), pos.z() + 20),
+-                         MWPhysics::CollisionType_World | MWPhysics::CollisionType_Door)
+-                     .mHit)
++                    ->castRay(spawnPoint, osg::Vec3f(pos.x(), pos.y(), pos.z() + 20),
++                        MWPhysics::CollisionType_World | MWPhysics::CollisionType_Door)
++                    .mHit)
+             {
+                 // safe
+                 break;
+@@ -2516,9 +2520,9 @@ namespace MWWorld
+         const float camDist = mRendering->getCamera()->getCameraDistance();
+         maxDistance += camDist;
+         MWWorld::Ptr facedObject;
+-//## VR_PATCH BEGIN
++        // ## VR_PATCH BEGIN
+         MWRender::RayResult rayToObject;
+-//## VR_PATCH END
++        // ## VR_PATCH END
+ 
+         if (MWBase::Environment::get().getWindowManager()->isGuiMode())
+         {
+@@ -2543,9 +2547,9 @@ namespace MWWorld
+         bool ignorePlayer, bool ignoreActors, std::span<const MWWorld::Ptr> ignoreList)
+     {
+         MWRender::RayResult rayRes
+-//## VR_PATCH BEGIN
++            // ## VR_PATCH BEGIN
+             = mRendering->castRay(from, to, ignorePlayer, ignoreActors, true, ignoreList);
+-//## VR_PATCH END
++        // ## VR_PATCH END
+         res.mHit = rayRes.mHit;
+         res.mHitPos = rayRes.mHitPointWorld;
+         res.mHitNormal = rayRes.mHitNormalWorld;
+@@ -2714,9 +2718,9 @@ namespace MWWorld
+     {
+         const float maxDist = 200.f;
+ 
+-//## VR_PATCH BEGIN
++        // ## VR_PATCH BEGIN
+         MWRender::RayResult result = mRendering->castCameraToViewportRay(cursorX, cursorY, maxDist, true, true);
+-//## VR_PATCH END
++        // ## VR_PATCH END
+ 
+         CellStore* cell = getPlayerPtr().getCell();
+ 
+@@ -2744,9 +2748,9 @@ namespace MWWorld
+     bool World::canPlaceObject(float cursorX, float cursorY)
+     {
+         const float maxDist = 200.f;
+-//## VR_PATCH BEGIN
++        // ## VR_PATCH BEGIN
+         MWRender::RayResult result = mRendering->castCameraToViewportRay(cursorX, cursorY, maxDist, true, true);
+-//## VR_PATCH END
++        // ## VR_PATCH END
+ 
+         if (result.mHit)
+         {
+@@ -2850,9 +2854,9 @@ namespace MWWorld
+ 
+         float len = 1000000.0;
+ 
+-//## VR_PATCH BEGIN
++        // ## VR_PATCH BEGIN
+         MWRender::RayResult result = mRendering->castRay(orig, orig + dir * len, true, true, true);
+-//## VR_PATCH END
++        // ## VR_PATCH END
+         if (result.mHit)
+             pos.pos[2] = result.mHitPointWorld.z();
+ 
+@@ -3740,8 +3744,8 @@ namespace MWWorld
+ 
+         const bool casterIsPlayer = actor == MWMechanics::getPlayer();
+         MWWorld::Ptr target;
+-//## VR_PATCH BEGIN
+-        if(VR::getVR())
++        // ## VR_PATCH BEGIN
++        if (VR::getVR())
+         {
+             if (VR::getKBMouseModeActive())
+                 target = getFacedObject();
+@@ -3752,8 +3756,8 @@ namespace MWWorld
+         // if the faced object can not be activated, do not use it
+         if (!target.isEmpty() && !target.getClass().hasToolTip(target))
+             target = nullptr;
+-//## VR_PATCH END
+-        // For scripted spells we should not use hit contact
++        // ## VR_PATCH END
++        //  For scripted spells we should not use hit contact
+         if (scriptedSpell)
+         {
+             if (!casterIsPlayer)
+@@ -3773,7 +3777,7 @@ namespace MWWorld
+             bool aimFromVRPointer = casterIsPlayer && VR::getVR() && !VR::getKBMouseModeActive();
+             if (casterIsPlayer)
+             {
+-                if(aimFromVRPointer)
++                if (aimFromVRPointer)
+                     target = MWVR::Util::getTouchTarget().first;
+                 else
+                     target = getFacedObject();
+@@ -3788,7 +3792,7 @@ namespace MWWorld
+                 // If we used the bounding boxes for static objects, then we would not be able to target e.g.
+                 // objects lying on a shelf.
+                 const float fCombatDistance = mStore.get<ESM::GameSetting>().find("fCombatDistance")->mValue.getFloat();
+-                if(!aimFromVRPointer)
++                if (!aimFromVRPointer)
+                     target = MWMechanics::getHitContact(actor, fCombatDistance).first;
+ 
+                 if (target.isEmpty())
+@@ -3797,8 +3801,8 @@ namespace MWWorld
+                     osg::Vec3f origin = getActorHeadTransform(actor).getTrans();
+                     osg::Quat orient = osg::Quat(actor.getRefData().getPosition().rot[0], osg::Vec3f(-1, 0, 0))
+                         * osg::Quat(actor.getRefData().getPosition().rot[2], osg::Vec3f(0, 0, -1));
+-//## VR_PATCH BEGIN
+-                    // VR should aim from the HAND unless it's KBMouseMode
++                    // ## VR_PATCH BEGIN
++                    //  VR should aim from the HAND unless it's KBMouseMode
+                     if (aimFromVRPointer)
+                     {
+                         auto* node = MWVR::VRInputManager::instance().vrAimNode();
+@@ -3809,7 +3813,7 @@ namespace MWWorld
+                             orient = worldMatrix.getRotate();
+                         }
+                     }
+-//## VR_PATCH END
++                    // ## VR_PATCH END
+                     const osg::Vec3f direction = orient * osg::Vec3f(0, 1, 0);
+                     const osg::Vec3f dest = origin + direction * getMaxActivationDistance();
+                     const MWRender::RayResult result = mRendering->castRay(origin, dest, true, true);
+@@ -4675,7 +4679,7 @@ namespace MWWorld
+         return btRayAabb(localFrom, localTo, aabbMin, aabbMax, hitDistance, hitNormal);
+     }
+ 
+-//## VR_PATCH BEGIN
++    // ## VR_PATCH BEGIN
+     float World::getTargetObject(MWRender::RayResult& result, const osg::Vec3f& origin, const osg::Quat& orientation,
+         float maxDistance, bool ignorePlayer, uint32_t ignoreMask)
+     {
+@@ -4749,7 +4753,7 @@ namespace MWWorld
+         return ESM::Weapon::Type::None;
+     }
+ 
+-//## VR_PATCH END
++    // ## VR_PATCH END
+ 
+     bool World::isAreaOccupiedByOtherActor(const MWWorld::ConstPtr& actor, const osg::Vec3f& position) const
+     {
+@@ -4775,7 +4779,7 @@ namespace MWWorld
+         return mPrng;
+     }
+ 
+-//## VR_PATCH BEGIN
++    // ## VR_PATCH BEGIN
+     void World::enableVRPointer(bool left, bool right)
+     {
+         mRendering->enableVRPointer(left, right);
+@@ -4795,7 +4799,6 @@ namespace MWWorld
+         if (!weapon.isEmpty() && weapon.getType() != ESM::Weapon::sRecordId)
+             weapon = MWWorld::Ptr();
+ 
+-
+         const float fCombatDistance = store.find("fCombatDistance")->mValue.getFloat();
+         float distance = fCombatDistance
+             * (!weapon.isEmpty() ? weapon.get<ESM::Weapon>()->mBase->mData.mReach
+@@ -4812,7 +4815,7 @@ namespace MWWorld
+         return result;
+     }
+ 
+-//## VR_PATCH END
++    // ## VR_PATCH END
+     MWRender::PostProcessor* World::getPostProcessor()
+     {
+         return mRendering->getPostProcessor();
+diff --git a/apps/openmw/mwworld/worldimp.hpp b/apps/openmw/mwworld/worldimp.hpp
+index ba874786f9..013985eb44 100644
+--- a/apps/openmw/mwworld/worldimp.hpp
++++ b/apps/openmw/mwworld/worldimp.hpp
+@@ -15,6 +15,7 @@
+ #include "../mwrender/renderingmanager.hpp"
+ 
+ #include "contentloader.hpp"
++#include "esm4questruntime.hpp"
+ #include "esmstore.hpp"
+ #include "globals.hpp"
+ #include "groundcoverstore.hpp"
+@@ -94,6 +95,7 @@ namespace MWWorld
+         GroundcoverStore mGroundcoverStore;
+         LocalScripts mLocalScripts;
+         MWWorld::Globals mGlobalVariables;
++        MWWorld::ESM4QuestRuntime mESM4QuestRuntime;
+         Misc::Rng::Generator mPrng;
+         WorldModel mWorldModel;
+         std::vector<int> mESMVersions; // the versions of esm files
+@@ -183,9 +185,9 @@ namespace MWWorld
+             Loading::Listener* listener);
+ 
+         float feetToGameUnits(float feet);
+-//## VR_PATCH BEGIN
++        // ## VR_PATCH BEGIN
+         float getActivationDistancePlusTelekinesis() override;
+-//## VR_PATCH END
++        // ## VR_PATCH END
+ 
+         MWWorld::ConstPtr getClosestMarker(const MWWorld::ConstPtr& ptr, const ESM::RefId& id);
+         MWWorld::ConstPtr getClosestMarkerFromExteriorPosition(const osg::Vec3f& worldPos, const ESM::RefId& id);
+@@ -207,7 +209,8 @@ namespace MWWorld
+ 
+         // Must be called after `loadData`.
+         void init(Debug::Level maxRecastLogLevel, osgViewer::Viewer* viewer, osg::ref_ptr<osg::Group> rootNode,
+-            SceneUtil::WorkQueue* workQueue, SceneUtil::UnrefQueue& unrefQueue, std::unique_ptr<MWRender::Camera> camera);
++            SceneUtil::WorkQueue* workQueue, SceneUtil::UnrefQueue& unrefQueue,
++            std::unique_ptr<MWRender::Camera> camera);
+ 
+         virtual ~World();
+ 
+@@ -246,6 +249,10 @@ namespace MWWorld
+ 
+         const MWWorld::ESMStore& getStore() const override { return mStore; }
+ 
++        MWWorld::ESM4QuestRuntime& getESM4QuestRuntime() override { return mESM4QuestRuntime; }
++
++        const MWWorld::ESM4QuestRuntime& getESM4QuestRuntime() const override { return mESM4QuestRuntime; }
++
+         const std::vector<int>& getESMVersions() const override;
+ 
+         LocalScripts& getLocalScripts() override;
+@@ -683,7 +690,7 @@ namespace MWWorld
+ 
+         void setActorActive(const MWWorld::Ptr& ptr, bool value) override;
+ 
+-//## VR_PATCH BEGIN
++        // ## VR_PATCH BEGIN
+         /// Intersects the scene from the origin, in the specified orientation and distance, storing the %result in the
+         /// result structure.
+         /// @Return distance to the target object, or -1 if no object was targeted / in range
+@@ -702,7 +709,7 @@ namespace MWWorld
+         void enableVRPointer(bool left, bool right) override;
+ 
+         std::optional<std::pair<MWWorld::Ptr, osg::Vec3f>> getVRMeleeHitContact(MWWorld::Ptr ptr) override;
+-//## VR_PATCH END
++        // ## VR_PATCH END
+     };
+ }
+ 
+diff --git a/apps/openmw_tests/CMakeLists.txt b/apps/openmw_tests/CMakeLists.txt
+index 9ad72e9199..681bf58fff 100644
+--- a/apps/openmw_tests/CMakeLists.txt
++++ b/apps/openmw_tests/CMakeLists.txt
+@@ -7,6 +7,7 @@ file(GLOB UNITTEST_SRC_FILES
+     options.cpp
+ 
+     mwworld/teststore.cpp
++    mwworld/testesm4questruntime.cpp
+     mwworld/testduration.cpp
+     mwworld/testtimestamp.cpp
+     mwworld/testptr.cpp
+diff --git a/apps/openmw_tests/mwworld/testesm4questruntime.cpp b/apps/openmw_tests/mwworld/testesm4questruntime.cpp
+new file mode 100644
+index 0000000000..3cfd61824e
+--- /dev/null
++++ b/apps/openmw_tests/mwworld/testesm4questruntime.cpp
+@@ -0,0 +1,239 @@
++#include <gtest/gtest.h>
++
++#include <array>
++#include <bit>
++#include <map>
++#include <memory>
++#include <sstream>
++#include <string_view>
++
++#include <components/esm/defs.hpp>
++#include <components/esm/formid.hpp>
++#include <components/esm3/esmreader.hpp>
++#include <components/esm3/esmwriter.hpp>
++#include <components/esm4/loadglob.hpp>
++#include <components/esm4/loadqust.hpp>
++
++#include "apps/openmw/mwworld/esm4questruntime.hpp"
++#include "apps/openmw/mwworld/esmstore.hpp"
++#include "apps/openmw/mwworld/globals.hpp"
++
++namespace
++{
++    ESM4::Quest makeQuest(ESM::FormId id, std::string_view editorId)
++    {
++        ESM4::Quest quest;
++        quest.mId = id;
++        quest.mEditorId = editorId;
++        return quest;
++    }
++
++    ESM4::GlobalVariable makeGlobal(ESM::FormId id, std::string_view editorId, float value)
++    {
++        ESM4::GlobalVariable global;
++        global.mId = id;
++        global.mEditorId = editorId;
++        global.mValue = value;
++        return global;
++    }
++
++    ESM4::TargetCondition makeCondition(std::uint32_t function, ESM::FormId parameter, float comparison,
++        std::uint32_t type = ESM4::CTF_EqualTo, std::uint32_t parameter2 = 0)
++    {
++        ESM4::TargetCondition condition;
++        condition.condition = type;
++        condition.comparison = comparison;
++        condition.functionIndex = function;
++        condition.param1 = parameter.toUint32();
++        condition.param2 = parameter2;
++        return condition;
++    }
++}
++
++TEST(ESM4QuestRuntimeTest, MatchesRetailVcg02StageFiveTransition)
++{
++    MWWorld::ESMStore store;
++
++    const ESM::FormId vcg02Id{ .mIndex = 0x10a214, .mContentFile = 0 };
++    ESM4::Quest vcg02 = makeQuest(vcg02Id, "VCG02");
++    vcg02.mObjectives.push_back(ESM4::QuestObjective{ .mIndex = 3, .mDescription = "Choose your skills" });
++    ESM4::QuestStageEntry entry;
++    entry.mScript.scriptSource = "SetObjectiveDisplayed VCG02 3 1;\nForceActiveQuest VCG02\n";
++    vcg02.mStages.push_back(ESM4::QuestStage{ .mIndex = 5, .mEntries = { std::move(entry) } });
++    store.overrideRecord(vcg02);
++
++    const std::array<std::pair<ESM::FormId, std::string_view>, 3> unchangedQuests = {
++        std::pair{ ESM::FormId{ .mIndex = 0x10a212, .mContentFile = 0 }, std::string_view{ "VCG00" } },
++        std::pair{ ESM::FormId{ .mIndex = 0x10a213, .mContentFile = 0 }, std::string_view{ "VCG01" } },
++        std::pair{ ESM::FormId{ .mIndex = 0x10a215, .mContentFile = 0 }, std::string_view{ "VCG03" } },
++    };
++    for (const auto& [id, editorId] : unchangedQuests)
++        store.overrideRecord(makeQuest(id, editorId));
++
++    MWWorld::ESM4QuestRuntime runtime;
++    runtime.initialize(store);
++
++    const MWWorld::ESM4QuestState* before = runtime.search("vcg02");
++    ASSERT_NE(before, nullptr);
++    EXPECT_EQ(before->mFlags, 0);
++    EXPECT_EQ(before->mCurrentStage, 0);
++    ASSERT_TRUE(before->mStageDone.contains(5));
++    EXPECT_FALSE(before->mStageDone.at(5));
++
++    ASSERT_TRUE(runtime.setStage("VCG02", 5));
++
++    const MWWorld::ESM4QuestState* after = runtime.search(vcg02Id);
++    ASSERT_NE(after, nullptr);
++    EXPECT_EQ(after->mFlags, 0x21);
++    EXPECT_EQ(after->mCurrentStage, 5);
++    EXPECT_TRUE(after->mStageDone.at(5));
++    EXPECT_EQ(after->mObjectiveStatus.at(3), MWWorld::ESM4QuestState::Objective_Displayed);
++    EXPECT_EQ(runtime.getActiveQuest(), vcg02Id);
++    EXPECT_TRUE(runtime.getUnsupportedStageCommands().empty());
++
++    for (const auto& [id, editorId] : unchangedQuests)
++    {
++        const MWWorld::ESM4QuestState* state = runtime.search(id);
++        ASSERT_NE(state, nullptr) << editorId;
++        EXPECT_EQ(state->mFlags, 0) << editorId;
++        EXPECT_EQ(state->mCurrentStage, 0) << editorId;
++        EXPECT_TRUE(state->mStageDone.empty()) << editorId;
++    }
++}
++
++TEST(ESM4QuestRuntimeTest, ImportsFalloutGlobalsAndCalendarAliases)
++{
++    MWWorld::ESMStore store;
++    store.overrideRecord(makeGlobal({ .mIndex = 1, .mContentFile = 0 }, "TimeScale", 30.f));
++    store.overrideRecord(makeGlobal({ .mIndex = 2, .mContentFile = 0 }, "GameHour", 12.f));
++    store.overrideRecord(makeGlobal({ .mIndex = 3, .mContentFile = 0 }, "GameDaysPassed", 5.f));
++
++    MWWorld::Globals globals;
++    globals.fill(store);
++
++    EXPECT_FLOAT_EQ(globals[MWWorld::Globals::sTimeScale].getFloat(), 30.f);
++    EXPECT_FLOAT_EQ(globals[MWWorld::Globals::sGameHour].getFloat(), 12.f);
++    EXPECT_FLOAT_EQ(globals[MWWorld::Globals::sDaysPassed].getFloat(), 5.f);
++}
++
++TEST(ESM4QuestRuntimeTest, EvaluatesRetailQuestAndGlobalConditionGroups)
++{
++    MWWorld::ESMStore store;
++    const ESM::FormId vcg00Id{ .mIndex = 0x10a212, .mContentFile = 0 };
++    const ESM::FormId vcg02Id{ .mIndex = 0x10a214, .mContentFile = 0 };
++    const ESM::FormId doneQuestId{ .mIndex = 0x120000, .mContentFile = 0 };
++    const ESM::FormId targetQuestId{ .mIndex = 0x120001, .mContentFile = 0 };
++    const ESM::FormId timeScaleId{ .mIndex = 0x38, .mContentFile = 0 };
++    const ESM::FormId stageThresholdId{ .mIndex = 0x120002, .mContentFile = 0 };
++
++    store.overrideRecord(makeQuest(vcg00Id, "VCG00"));
++
++    ESM4::Quest vcg02 = makeQuest(vcg02Id, "VCG02");
++    vcg02.mStages.push_back(ESM4::QuestStage{ .mIndex = 5, .mEntries = { ESM4::QuestStageEntry{} } });
++    store.overrideRecord(vcg02);
++
++    ESM4::Quest doneQuest = makeQuest(doneQuestId, "DoneQuest");
++    ESM4::QuestStageEntry completeEntry;
++    completeEntry.mFlags = ESM4::QuestStageEntry::Flag_CompleteQuest;
++    doneQuest.mStages.push_back(ESM4::QuestStage{ .mIndex = 1, .mEntries = { completeEntry } });
++    store.overrideRecord(doneQuest);
++
++    ESM4::Quest targetQuest = makeQuest(targetQuestId, "ConditionTarget");
++    targetQuest.mObjectives.push_back(ESM4::QuestObjective{ .mIndex = 7, .mDescription = "Condition passed" });
++    ESM4::QuestStageEntry conditionedEntry;
++    conditionedEntry.mConditions = {
++        makeCondition(ESM4::FUN_GetQuestRunning, vcg00Id, 1.f, ESM4::CTF_EqualTo | ESM4::CTF_Combine),
++        makeCondition(ESM4::FUN_GetQuestRunning, vcg02Id, 1.f),
++        makeCondition(ESM4::FUN_GetStage, vcg02Id, std::bit_cast<float>(stageThresholdId.toUint32()),
++            ESM4::CTF_GrThOrEqTo | ESM4::CTF_UseGlobal),
++        makeCondition(ESM4::FUN_GetStageDone, vcg02Id, 1.f, ESM4::CTF_EqualTo, 5),
++        makeCondition(ESM4::FUN_GetGlobalValue, timeScaleId, 12.f),
++        makeCondition(ESM4::FUN_GetQuestCompleted, doneQuestId, 1.f),
++    };
++    conditionedEntry.mScript.scriptSource = "SetObjectiveDisplayed ConditionTarget 7 1";
++    targetQuest.mStages.push_back(ESM4::QuestStage{ .mIndex = 1, .mEntries = { conditionedEntry } });
++
++    ESM4::QuestStageEntry unsupportedEntry;
++    unsupportedEntry.mConditions = { makeCondition(9999, vcg02Id, 1.f) };
++    unsupportedEntry.mScript.scriptSource = "SetObjectiveDisplayed ConditionTarget 7 0";
++    targetQuest.mStages.push_back(ESM4::QuestStage{ .mIndex = 2, .mEntries = { unsupportedEntry } });
++    store.overrideRecord(targetQuest);
++
++    store.overrideRecord(makeGlobal(timeScaleId, "TimeScale", 12.f));
++    store.overrideRecord(makeGlobal(stageThresholdId, "StageThreshold", 5.f));
++    MWWorld::Globals globals;
++    globals.fill(store);
++
++    MWWorld::ESM4QuestRuntime runtime;
++    runtime.initialize(store, &globals);
++    ASSERT_TRUE(runtime.setStage("VCG02", 5));
++    ASSERT_TRUE(runtime.setStage("DoneQuest", 1));
++    ASSERT_TRUE(runtime.setStage("ConditionTarget", 1));
++
++    const MWWorld::ESM4QuestState* state = runtime.search(targetQuestId);
++    ASSERT_NE(state, nullptr);
++    EXPECT_EQ(state->mFlags, 0x21);
++    EXPECT_EQ(state->mObjectiveStatus.at(7), MWWorld::ESM4QuestState::Objective_Displayed);
++    EXPECT_TRUE(runtime.getUnsupportedConditionFunctions().empty());
++
++    ASSERT_TRUE(runtime.setStage("ConditionTarget", 2));
++    EXPECT_EQ(state->mObjectiveStatus.at(7), MWWorld::ESM4QuestState::Objective_Displayed);
++    EXPECT_EQ(runtime.getUnsupportedConditionFunctions(), std::vector<std::uint32_t>{ 9999 });
++}
++
++TEST(ESM4QuestRuntimeTest, RoundTripsQuestStateAcrossChangedLoadOrder)
++{
++    const ESM::FormId originalId{ .mIndex = 0x10a214, .mContentFile = 2 };
++    ESM4::Quest originalQuest = makeQuest(originalId, "VCG02");
++    originalQuest.mObjectives.push_back(ESM4::QuestObjective{ .mIndex = 3, .mDescription = "Choose your skills" });
++    ESM4::QuestStageEntry entry;
++    entry.mScript.scriptSource = "SetObjectiveDisplayed VCG02 3 1;\nForceActiveQuest VCG02";
++    originalQuest.mStages.push_back(ESM4::QuestStage{ .mIndex = 5, .mEntries = { entry } });
++
++    MWWorld::ESMStore originalStore;
++    originalStore.overrideRecord(originalQuest);
++    originalStore.overrideRecord(makeQuest({ .mIndex = 0x10a212, .mContentFile = 2 }, "VCG00"));
++    MWWorld::ESM4QuestRuntime originalRuntime;
++    originalRuntime.initialize(originalStore);
++    ASSERT_TRUE(originalRuntime.setStage("VCG02", 5));
++    ASSERT_EQ(originalRuntime.countSavedGameRecords(), 1);
++
++    auto stream = std::make_unique<std::stringstream>();
++    {
++        ESM::ESMWriter writer;
++        writer.setFormatVersion(ESM::CurrentSaveGameFormatVersion);
++        writer.save(*stream);
++        originalRuntime.write(writer);
++    }
++
++    ESM::ESMReader reader;
++    reader.open(std::move(stream), "fallout-quest-save");
++    const std::map<int, int> contentMapping{ { 2, 7 } };
++    reader.setContentFileMapping(&contentMapping);
++    ASSERT_TRUE(reader.hasMoreRecs());
++    ASSERT_EQ(reader.getRecName().toInt(), ESM::REC_FQST);
++    reader.getRecHeader();
++
++    const ESM::FormId remappedId{ .mIndex = originalId.mIndex, .mContentFile = 7 };
++    ESM4::Quest remappedQuest = originalQuest;
++    remappedQuest.mId = remappedId;
++    MWWorld::ESMStore remappedStore;
++    remappedStore.overrideRecord(remappedQuest);
++    remappedStore.overrideRecord(makeQuest({ .mIndex = 0x10a212, .mContentFile = 7 }, "VCG00"));
++    MWWorld::ESM4QuestRuntime restoredRuntime;
++    restoredRuntime.initialize(remappedStore);
++    restoredRuntime.readRecord(reader);
++
++    const MWWorld::ESM4QuestState* restored = restoredRuntime.search(remappedId);
++    ASSERT_NE(restored, nullptr);
++    EXPECT_EQ(restored->mFlags, 0x21);
++    EXPECT_EQ(restored->mCurrentStage, 5);
++    EXPECT_TRUE(restored->mStageDone.at(5));
++    EXPECT_EQ(restored->mObjectiveStatus.at(3), MWWorld::ESM4QuestState::Objective_Displayed);
++    EXPECT_EQ(restoredRuntime.getActiveQuest(), remappedId);
++
++    const MWWorld::ESM4QuestState* unchanged = restoredRuntime.search("VCG00");
++    ASSERT_NE(unchanged, nullptr);
++    EXPECT_EQ(unchanged->mFlags, 0);
++    EXPECT_EQ(unchanged->mCurrentStage, 0);
++}
+diff --git a/components/compiler/extensions0.cpp b/components/compiler/extensions0.cpp
+index 103fb41641..d95ee7f0af 100644
+--- a/components/compiler/extensions0.cpp
++++ b/components/compiler/extensions0.cpp
+@@ -177,6 +177,12 @@ namespace Compiler
+             extensions.registerInstruction("setfactionreaction", "ccl", opcodeSetFactionReaction);
+             extensions.registerFunction("getfactionreaction", 'l', "ccX", opcodeGetFactionReaction);
+             extensions.registerInstruction("clearinfoactor", "", opcodeClearInfoActor, opcodeClearInfoActorExplicit);
++            extensions.registerInstruction("setstage", "cl", opcodeSetStage);
++            extensions.registerFunction("getstage", 'l', "c", opcodeGetStage);
++            extensions.registerInstruction("startquest", "c", opcodeStartQuest);
++            extensions.registerInstruction("setobjectivedisplayed", "cll", opcodeSetObjectiveDisplayed);
++            extensions.registerInstruction("setobjectivecompleted", "cll", opcodeSetObjectiveCompleted);
++            extensions.registerInstruction("forceactivequest", "c", opcodeForceActiveQuest);
+         }
+     }
+ 
+diff --git a/components/compiler/opcodes.hpp b/components/compiler/opcodes.hpp
+index c0aab2f08c..5d25cc4cee 100644
+--- a/components/compiler/opcodes.hpp
++++ b/components/compiler/opcodes.hpp
+@@ -182,6 +182,12 @@ namespace Compiler
+         const int opcodeGetFactionReaction = 0x2000243;
+         const int opcodeClearInfoActor = 0x2000245;
+         const int opcodeClearInfoActorExplicit = 0x2000246;
++        const int opcodeSetStage = 0x2000400;
++        const int opcodeGetStage = 0x2000401;
++        const int opcodeStartQuest = 0x2000402;
++        const int opcodeSetObjectiveDisplayed = 0x2000403;
++        const int opcodeSetObjectiveCompleted = 0x2000404;
++        const int opcodeForceActiveQuest = 0x2000405;
+     }
+ 
+     namespace Gui
+diff --git a/components/esm/defs.hpp b/components/esm/defs.hpp
+index 26fcd1de1a..3d8539eadb 100644
+--- a/components/esm/defs.hpp
++++ b/components/esm/defs.hpp
+@@ -131,6 +131,7 @@ namespace ESM
+         REC_CAM_ = esm3Recname("CAM_"),
+         REC_STLN = esm3Recname("STLN"),
+         REC_INPU = esm3Recname("INPU"),
++        REC_FQST = esm3Recname("FQST"), // Fallout TES4-family quest runtime state
+ 
+         // format 1
+         REC_FILT = esm3Recname("FILT"),
+diff --git a/components/esm/records.hpp b/components/esm/records.hpp
+index 3b9f8ccd15..ae89f6af54 100644
+--- a/components/esm/records.hpp
++++ b/components/esm/records.hpp
+@@ -50,16 +50,25 @@
+ #include <components/esm4/loadarma.hpp>
+ #include <components/esm4/loadarmo.hpp>
+ #include <components/esm4/loadbook.hpp>
++#include <components/esm4/loadbptd.hpp>
+ #include <components/esm4/loadcell.hpp>
++#include <components/esm4/loadclas.hpp>
+ #include <components/esm4/loadclot.hpp>
+ #include <components/esm4/loadcont.hpp>
+ #include <components/esm4/loadcrea.hpp>
++#include <components/esm4/loaddial.hpp>
+ #include <components/esm4/loaddoor.hpp>
++#include <components/esm4/loadeyes.hpp>
+ #include <components/esm4/loadflor.hpp>
++#include <components/esm4/loadflst.hpp>
+ #include <components/esm4/loadfurn.hpp>
++#include <components/esm4/loadglob.hpp>
+ #include <components/esm4/loadhair.hpp>
+ #include <components/esm4/loadhdpt.hpp>
++#include <components/esm4/loadidle.hpp>
++#include <components/esm4/loadidlm.hpp>
+ #include <components/esm4/loadimod.hpp>
++#include <components/esm4/loadinfo.hpp>
+ #include <components/esm4/loadingr.hpp>
+ #include <components/esm4/loadland.hpp>
+ #include <components/esm4/loadligh.hpp>
+@@ -71,9 +80,12 @@
+ #include <components/esm4/loadmstt.hpp>
+ #include <components/esm4/loadnpc.hpp>
+ #include <components/esm4/loadotft.hpp>
++#include <components/esm4/loadpack.hpp>
++#include <components/esm4/loadqust.hpp>
+ #include <components/esm4/loadrace.hpp>
+ #include <components/esm4/loadrefr.hpp>
+ #include <components/esm4/loadscol.hpp>
++#include <components/esm4/loadscpt.hpp>
+ #include <components/esm4/loadsndr.hpp>
+ #include <components/esm4/loadsoun.hpp>
+ #include <components/esm4/loadstat.hpp>
+diff --git a/components/esm4/loadclas.hpp b/components/esm4/loadclas.hpp
+index 567e0d4c7f..629a077947 100644
+--- a/components/esm4/loadclas.hpp
++++ b/components/esm4/loadclas.hpp
+@@ -42,17 +42,17 @@ namespace ESM4
+     {
+         struct Data
+         {
+-            std::uint32_t attr;
++            std::uint32_t attr = 0;
+         };
+ 
+-        ESM::FormId mId; // from the header
+-        std::uint32_t mFlags; // from the header, see enum type RecordFlag for details
++        ESM::FormId mId{}; // from the header
++        std::uint32_t mFlags = 0; // from the header, see enum type RecordFlag for details
+ 
+         std::string mEditorId;
+         std::string mFullName;
+         std::string mDesc;
+         std::string mIcon;
+-        Data mData;
++        Data mData{};
+ 
+         void load(ESM4::Reader& reader);
+         // void save(ESM4::Writer& reader) const;
+diff --git a/components/esm4/loaddial.cpp b/components/esm4/loaddial.cpp
+index b783f580ad..776c46324b 100644
+--- a/components/esm4/loaddial.cpp
++++ b/components/esm4/loaddial.cpp
+@@ -30,13 +30,15 @@
+ #include <stdexcept>
+ 
+ #include "reader.hpp"
+-//#include "writer.hpp"
++// #include "writer.hpp"
+ 
+ void ESM4::Dialogue::load(ESM4::Reader& reader)
+ {
+     mId = reader.getFormIdFromHeader();
+     mFlags = reader.hdr().record.flags;
+ 
++    ESM::FormId currentQuest{};
++
+     while (reader.getSubRecordHeader())
+     {
+         const ESM4::SubRecordHeader& subHdr = reader.subRecordHeader();
+@@ -49,7 +51,8 @@ void ESM4::Dialogue::load(ESM4::Reader& reader)
+                 reader.getLocalizedString(mTopicName);
+                 break;
+             case ESM::fourCC("QSTI"):
+-                reader.getFormId(mQuests.emplace_back());
++                reader.getFormId(currentQuest);
++                mQuests.push_back(currentQuest);
+                 break;
+             case ESM::fourCC("QSTR"): // Seems never used in TES4
+                 reader.getFormId(mQuestsRemoved.emplace_back());
+@@ -81,8 +84,31 @@ void ESM4::Dialogue::load(ESM4::Reader& reader)
+                 reader.getZString(mTextDumb);
+                 break; // FONV
+             case ESM::fourCC("SCRI"):
+-            case ESM::fourCC("INFC"): // FONV info connection
+-            case ESM::fourCC("INFX"): // FONV info index
++                reader.getFormId(mScript);
++                break;
++            case ESM::fourCC("INFC"):
++                if (subHdr.dataSize == sizeof(ESM::FormId32))
++                {
++                    DialogueSharedInfo& sharedInfo = mSharedInfos.emplace_back();
++                    sharedInfo.mQuest = currentQuest;
++                    reader.getFormId(sharedInfo.mInfo);
++                }
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("INFX"):
++                if (subHdr.dataSize == sizeof(std::int32_t))
++                {
++                    if (mSharedInfos.empty() || mSharedInfos.back().mIndex != -1)
++                    {
++                        DialogueSharedInfo& sharedInfo = mSharedInfos.emplace_back();
++                        sharedInfo.mQuest = currentQuest;
++                    }
++                    reader.get(mSharedInfos.back().mIndex);
++                }
++                else
++                    reader.skipSubRecordData();
++                break;
+             case ESM::fourCC("QNAM"): // TES5
+             case ESM::fourCC("BNAM"): // TES5
+             case ESM::fourCC("SNAM"): // TES5
+diff --git a/components/esm4/loaddial.hpp b/components/esm4/loaddial.hpp
+index b382e36b1f..458e8b4793 100644
+--- a/components/esm4/loaddial.hpp
++++ b/components/esm4/loaddial.hpp
+@@ -39,23 +39,33 @@ namespace ESM4
+     class Reader;
+     class Writer;
+ 
++    struct DialogueSharedInfo
++    {
++        ESM::FormId mQuest{};
++        ESM::FormId mInfo{};
++        std::int32_t mIndex = -1;
++    };
++
+     struct Dialogue
+     {
+-        ESM::FormId mId; // from the header
+-        std::uint32_t mFlags; // from the header, see enum type RecordFlag for details
++        ESM::FormId mId{}; // from the header
++        std::uint32_t mFlags = 0; // from the header, see enum type RecordFlag for details
+ 
+         std::string mEditorId;
+         std::vector<ESM::FormId> mQuests;
+         std::vector<ESM::FormId> mQuestsRemoved; // FONV only?
++        std::vector<DialogueSharedInfo> mSharedInfos;
+         std::string mTopicName;
+ 
+         std::string mTextDumb; // FIXME: temp name
+ 
+-        bool mDoAllBeforeRepeat; // TES5 only
+-        std::uint8_t mDialType; // DialType
+-        std::uint8_t mDialFlags; // FO3/FONV: 0x1 rumours, 0x2 top-level
++        ESM::FormId mScript{};
++
++        bool mDoAllBeforeRepeat = false; // TES5 only
++        std::uint8_t mDialType = 0; // DialType
++        std::uint8_t mDialFlags = 0; // FO3/FONV: 0x1 rumours, 0x2 top-level
+ 
+-        float mPriority;
++        float mPriority = 0.f;
+ 
+         void load(ESM4::Reader& reader);
+         // void save(ESM4::Writer& writer) const;
+diff --git a/components/esm4/loadflst.hpp b/components/esm4/loadflst.hpp
+index fb90b0dd38..bd9a2cabd0 100644
+--- a/components/esm4/loadflst.hpp
++++ b/components/esm4/loadflst.hpp
+@@ -41,8 +41,8 @@ namespace ESM4
+ 
+     struct FormIdList
+     {
+-        ESM::FormId mId; // from the header
+-        std::uint32_t mFlags; // from the header, see enum type RecordFlag for details
++        ESM::FormId mId{}; // from the header
++        std::uint32_t mFlags = 0; // from the header, see enum type RecordFlag for details
+ 
+         std::string mEditorId;
+         std::string mFullName;
+diff --git a/components/esm4/loadglob.hpp b/components/esm4/loadglob.hpp
+index 89959bcab1..dfa0a7d0ba 100644
+--- a/components/esm4/loadglob.hpp
++++ b/components/esm4/loadglob.hpp
+@@ -40,14 +40,14 @@ namespace ESM4
+ 
+     struct GlobalVariable
+     {
+-        ESM::FormId mId; // from the header
+-        std::uint32_t mFlags; // from the header, see enum type RecordFlag for details
+-        std::uint64_t mExtraFlags2;
++        ESM::FormId mId{}; // from the header
++        std::uint32_t mFlags = 0; // from the header, see enum type RecordFlag for details
++        std::uint64_t mExtraFlags2 = 0;
+ 
+         std::string mEditorId;
+ 
+-        std::uint8_t mType;
+-        float mValue;
++        std::uint8_t mType = 0;
++        float mValue = 0.f;
+ 
+         void load(ESM4::Reader& reader);
+         // void save(ESM4::Writer& writer) const;
+diff --git a/components/esm4/loadinfo.cpp b/components/esm4/loadinfo.cpp
+index c9f477f0e7..d234e28217 100644
+--- a/components/esm4/loadinfo.cpp
++++ b/components/esm4/loadinfo.cpp
+@@ -32,7 +32,7 @@
+ #include <components/esm/refid.hpp>
+ 
+ #include "reader.hpp"
+-//#include "writer.hpp"
++// #include "writer.hpp"
+ 
+ void ESM4::DialogInfo::load(ESM4::Reader& reader)
+ {
+@@ -41,7 +41,8 @@ void ESM4::DialogInfo::load(ESM4::Reader& reader)
+ 
+     mEditorId = ESM::RefId(mId).serializeText(); // FIXME: quick workaround to use existing code
+ 
+-    bool ignore = false;
++    bool readingEndScript = false;
++    DialogResponse* currentResponse = nullptr;
+ 
+     while (reader.getSubRecordHeader())
+     {
+@@ -51,115 +52,98 @@ void ESM4::DialogInfo::load(ESM4::Reader& reader)
+             case ESM::fourCC("QSTI"):
+                 reader.getFormId(mQuest);
+                 break; // FormId quest id
++            case ESM::fourCC("TPIC"):
++                reader.getFormId(mTopic);
++                break;
++            case ESM::fourCC("PNAM"):
++                reader.getFormId(mPreviousInfo);
++                break;
+             case ESM::fourCC("SNDD"):
+                 reader.getFormId(mSound);
+                 break; // FO3 (not used in FONV?)
+             case ESM::fourCC("TRDT"):
+             {
++                currentResponse = &mResponses.emplace_back();
+                 if (subHdr.dataSize == 16) // TES4
+-                    reader.get(&mResponseData, 16);
++                    reader.get(&currentResponse->mData, 16);
+                 else if (subHdr.dataSize == 20) // FO3
+-                    reader.get(&mResponseData, 20);
+-                else // FO3/FONV
++                    reader.get(&currentResponse->mData, 20);
++                else if (subHdr.dataSize == sizeof(TargetResponseData)) // FO3/FONV
+                 {
+-                    reader.get(mResponseData);
+-                    if (mResponseData.sound)
+-                        reader.adjustFormId(mResponseData.sound);
++                    reader.get(currentResponse->mData);
++                    if (currentResponse->mData.sound)
++                        reader.adjustFormId(currentResponse->mData.sound);
+                 }
++                else
++                    reader.skipSubRecordData();
++
++                mResponseData = currentResponse->mData;
+ 
+                 break;
+             }
+             case ESM::fourCC("NAM1"):
+-                reader.getLocalizedString(mResponse);
++                if (currentResponse != nullptr)
++                {
++                    reader.getLocalizedString(currentResponse->mResponse);
++                    mResponse = currentResponse->mResponse;
++                }
++                else
++                    reader.getLocalizedString(mResponse);
+                 break; // response text
+             case ESM::fourCC("NAM2"):
+-                reader.getZString(mNotes);
++                if (currentResponse != nullptr)
++                {
++                    reader.getZString(currentResponse->mNotes);
++                    mNotes = currentResponse->mNotes;
++                }
++                else
++                    reader.getZString(mNotes);
+                 break; // actor notes
+             case ESM::fourCC("NAM3"):
+-                reader.getZString(mEdits);
+-                break; // not in TES4
+-            case ESM::fourCC("CTDA"): // FIXME: how to detect if 1st/2nd param is a formid?
+-            {
+-                if (subHdr.dataSize == 24) // TES4
+-                    reader.get(&mTargetCondition, 24);
+-                else if (subHdr.dataSize == 20) // FO3
+-                    reader.get(&mTargetCondition, 20);
+-                else if (subHdr.dataSize == 28)
++                if (currentResponse != nullptr)
+                 {
+-                    reader.get(mTargetCondition); // FO3/FONV
+-                    if (mTargetCondition.reference)
+-                        reader.adjustFormId(mTargetCondition.reference);
++                    reader.getZString(currentResponse->mEdits);
++                    mEdits = currentResponse->mEdits;
+                 }
+-                else // TES5
++                else
++                    reader.getZString(mEdits);
++                break; // not in TES4
++            case ESM::fourCC("SNAM"):
++                if (currentResponse != nullptr)
++                    reader.getFormId(currentResponse->mSpeakerAnimation);
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("LNAM"):
++                if (currentResponse != nullptr)
++                    reader.getFormId(currentResponse->mListenerAnimation);
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("CTDA"):
++            case ESM::fourCC("CTDT"):
++            {
++                TargetCondition condition;
++                if (loadTargetCondition(reader, condition, &mParam3))
+                 {
+-                    reader.get(&mTargetCondition, 20);
+-                    if (subHdr.dataSize == 36)
+-                        reader.getFormId(mParam3);
+-                    reader.get(mTargetCondition.runOn);
+-                    reader.get(mTargetCondition.reference);
+-                    if (mTargetCondition.reference)
+-                        reader.adjustFormId(mTargetCondition.reference);
+-                    reader.skipSubRecordData(4); // unknown
++                    mTargetCondition = condition;
++                    mTargetConditions.push_back(condition);
+                 }
+ 
+                 break;
+             }
+             case ESM::fourCC("SCHR"):
+-            {
+-                if (!ignore)
+-                    reader.get(mScript.scriptHeader);
+-                else
+-                    reader.skipSubRecordData(); // TODO: does the second one ever used?
+-
+-                break;
+-            }
+             case ESM::fourCC("SCDA"):
+-                reader.skipSubRecordData();
+-                break; // compiled script data
+             case ESM::fourCC("SCTX"):
+-                reader.getString(mScript.scriptSource);
+-                break;
+             case ESM::fourCC("SCRO"):
+-                reader.getFormId(mScript.globReference);
+-                break;
+             case ESM::fourCC("SLSD"):
+-            {
+-                ScriptLocalVariableData localVar;
+-                reader.get(localVar.index);
+-                reader.get(localVar.unknown1);
+-                reader.get(localVar.unknown2);
+-                reader.get(localVar.unknown3);
+-                reader.get(localVar.type);
+-                reader.get(localVar.unknown4);
+-                mScript.localVarData.push_back(std::move(localVar));
+-                // WARN: assumes SCVR will follow immediately
+-
+-                break;
+-            }
+             case ESM::fourCC("SCVR"): // assumed always pair with SLSD
+-            {
+-                if (!mScript.localVarData.empty())
+-                    reader.getZString(mScript.localVarData.back().variableName);
+-                else
+-                    reader.skipSubRecordData();
+-
+-                break;
+-            }
+             case ESM::fourCC("SCRV"):
+-            {
+-                std::uint32_t index;
+-                reader.get(index);
+-
+-                mScript.localRefVarIndex.push_back(index);
+-
++                loadScriptSubRecord(reader, readingEndScript ? mEndScript : mScript);
+                 break;
+-            }
+             case ESM::fourCC("NEXT"): // FO3/FONV marker for next script header
+-            {
+-                ignore = true;
+-
++                readingEndScript = true;
+                 break;
+-            }
+             case ESM::fourCC("DATA"): // always 3 for TES4 ?
+             {
+                 if (subHdr.dataSize == 4) // FO3/FONV
+@@ -172,18 +156,34 @@ void ESM4::DialogInfo::load(ESM4::Reader& reader)
+                     reader.skipSubRecordData(); // FIXME
+                 break;
+             }
+-            case ESM::fourCC("NAME"): // FormId add topic (not always present)
+-            case ESM::fourCC("CTDT"): // older version of CTDA? 20 bytes
++            case ESM::fourCC("NAME"):
++                reader.getFormId(mAddTopics.emplace_back());
++                break;
++            case ESM::fourCC("TCLT"):
++                reader.getFormId(mChoices.emplace_back());
++                break;
++            case ESM::fourCC("TCLF"):
++                reader.getFormId(mLinkFrom.emplace_back());
++                break;
++            case ESM::fourCC("TCFU"):
++                reader.getFormId(mFollowUps.emplace_back());
++                break;
++            case ESM::fourCC("RNAM"):
++                reader.getLocalizedString(mPrompt);
++                break;
++            case ESM::fourCC("ANAM"):
++                reader.getFormId(mSpeaker);
++                break;
++            case ESM::fourCC("KNAM"):
++                reader.getFormId(mActorValueOrPerk);
++                break;
++            case ESM::fourCC("DNAM"):
++                if (subHdr.dataSize == sizeof(mSpeechChallenge))
++                    reader.get(mSpeechChallenge);
++                else
++                    reader.skipSubRecordData();
++                break;
+             case ESM::fourCC("SCHD"): // 28 bytes
+-            case ESM::fourCC("TCLT"): // FormId choice
+-            case ESM::fourCC("TCLF"): // FormId
+-            case ESM::fourCC("PNAM"): // TES4 DLC
+-            case ESM::fourCC("TPIC"): // TES4 DLC
+-            case ESM::fourCC("ANAM"): // FO3 speaker formid
+-            case ESM::fourCC("DNAM"): // FO3 speech challenge
+-            case ESM::fourCC("KNAM"): // FO3 formid
+-            case ESM::fourCC("LNAM"): // FONV
+-            case ESM::fourCC("TCFU"): // FONV
+             case ESM::fourCC("TIFC"): // TES5
+             case ESM::fourCC("TWAT"): // TES5
+             case ESM::fourCC("CIS1"): // TES5
+@@ -193,10 +193,8 @@ void ESM4::DialogInfo::load(ESM4::Reader& reader)
+             case ESM::fourCC("EDID"): // TES5
+             case ESM::fourCC("VMAD"): // TES5
+             case ESM::fourCC("BNAM"): // TES5
+-            case ESM::fourCC("SNAM"): // TES5
+             case ESM::fourCC("ONAM"): // TES5
+             case ESM::fourCC("QNAM"): // TES5 for mScript
+-            case ESM::fourCC("RNAM"): // TES5
+             case ESM::fourCC("ALFA"): // FO4
+             case ESM::fourCC("GNAM"): // FO4
+             case ESM::fourCC("GREE"): // FO4
+diff --git a/components/esm4/loadinfo.hpp b/components/esm4/loadinfo.hpp
+index 3f4beca476..0b26d3826a 100644
+--- a/components/esm4/loadinfo.hpp
++++ b/components/esm4/loadinfo.hpp
+@@ -29,6 +29,7 @@
+ 
+ #include <cstdint>
+ #include <string>
++#include <vector>
+ 
+ #include "script.hpp" // TargetCondition
+ #include <components/esm/defs.hpp>
+@@ -53,29 +54,56 @@ namespace ESM4
+         INFO_AlwaysDarken = 0x0200
+     };
+ 
++    struct DialogResponse
++    {
++        TargetResponseData mData{};
++        std::string mResponse;
++        std::string mNotes;
++        std::string mEdits;
++        ESM::FormId mSpeakerAnimation{};
++        ESM::FormId mListenerAnimation{};
++    };
++
+     struct DialogInfo
+     {
+-        ESM::FormId mId; // from the header
+-        std::uint32_t mFlags; // from the header, see enum type RecordFlag for details
++        ESM::FormId mId{}; // from the header
++        std::uint32_t mFlags = 0; // from the header, see enum type RecordFlag for details
+ 
+         std::string mEditorId; // FIXME: no such record for INFO, but keep here to avoid extra work for now
+ 
+-        ESM::FormId mQuest;
+-        ESM::FormId mSound; // unused?
++        ESM::FormId mQuest{};
++        ESM::FormId mTopic{};
++        ESM::FormId mPreviousInfo{};
++        ESM::FormId mSound{}; // unused?
++
++        std::vector<ESM::FormId> mAddTopics;
++        std::vector<ESM::FormId> mChoices;
++        std::vector<ESM::FormId> mLinkFrom;
++        std::vector<ESM::FormId> mFollowUps;
+ 
+-        TargetResponseData mResponseData;
++        std::vector<DialogResponse> mResponses;
++
++        // Kept as a view of the most recently parsed response for source compatibility.
++        TargetResponseData mResponseData{};
+         std::string mResponse;
+         std::string mNotes;
+         std::string mEdits;
+ 
+-        std::uint8_t mDialType; // DialType
+-        std::uint8_t mNextSpeaker;
+-        std::uint16_t mInfoFlags; // see above enum
++        std::uint8_t mDialType = 0; // DialType
++        std::uint8_t mNextSpeaker = 0;
++        std::uint16_t mInfoFlags = 0; // see above enum
++
++        std::vector<TargetCondition> mTargetConditions;
++        TargetCondition mTargetCondition{}; // most recently parsed condition
++        ESM::FormId mParam3{}; // TES5 only
+ 
+-        TargetCondition mTargetCondition;
+-        ESM::FormId mParam3; // TES5 only
++        std::string mPrompt;
++        ESM::FormId mSpeaker{};
++        ESM::FormId mActorValueOrPerk{};
++        std::uint32_t mSpeechChallenge = 0;
+ 
+-        ScriptDefinition mScript; // FIXME: ignoring the second one after the NEXT sub-record
++        ScriptDefinition mScript; // begin result script
++        ScriptDefinition mEndScript;
+ 
+         void load(ESM4::Reader& reader);
+         // void save(ESM4::Writer& writer) const;
+diff --git a/components/esm4/loadqust.cpp b/components/esm4/loadqust.cpp
+index 4833e155f8..f1075a6a84 100644
+--- a/components/esm4/loadqust.cpp
++++ b/components/esm4/loadqust.cpp
+@@ -30,13 +30,18 @@
+ #include <stdexcept>
+ 
+ #include "reader.hpp"
+-//#include "writer.hpp"
++// #include "writer.hpp"
+ 
+ void ESM4::Quest::load(ESM4::Reader& reader)
+ {
+     mId = reader.getFormIdFromHeader();
+     mFlags = reader.hdr().record.flags;
+ 
++    QuestStage* currentStage = nullptr;
++    QuestStageEntry* currentStageEntry = nullptr;
++    QuestObjective* currentObjective = nullptr;
++    QuestObjectiveTarget* currentObjectiveTarget = nullptr;
++
+     while (reader.getSubRecordHeader())
+     {
+         const ESM4::SubRecordHeader& subHdr = reader.subRecordHeader();
+@@ -46,7 +51,7 @@ void ESM4::Quest::load(ESM4::Reader& reader)
+                 reader.getZString(mEditorId);
+                 break;
+             case ESM::fourCC("FULL"):
+-                reader.getZString(mQuestName);
++                reader.getLocalizedString(mQuestName);
+                 break;
+             case ESM::fourCC("ICON"):
+                 reader.getZString(mFileName);
+@@ -71,52 +76,95 @@ void ESM4::Quest::load(ESM4::Reader& reader)
+                 break;
+             case ESM::fourCC("CTDA"): // FIXME: how to detect if 1st/2nd param is a formid?
+             {
+-                if (subHdr.dataSize == 24) // TES4
++                TargetCondition condition;
++                if (!loadTargetCondition(reader, condition))
++                    break;
++
++                if (currentObjectiveTarget != nullptr)
++                    currentObjectiveTarget->mConditions.push_back(condition);
++                else if (currentStageEntry != nullptr)
++                    currentStageEntry->mConditions.push_back(condition);
++                else
++                    mTargetConditions.push_back(condition);
++
++                break;
++            }
++            case ESM::fourCC("INDX"):
++                if (subHdr.dataSize == sizeof(std::int16_t))
+                 {
+-                    TargetCondition cond;
+-                    reader.get(&cond, 24);
+-                    cond.reference = 0; // unused in TES4 but keep it clean
+-                    mTargetConditions.push_back(cond);
++                    currentStage = &mStages.emplace_back();
++                    reader.get(currentStage->mIndex);
++                    currentStageEntry = nullptr;
++                    currentObjective = nullptr;
++                    currentObjectiveTarget = nullptr;
+                 }
+-                else if (subHdr.dataSize == 28)
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("QSDT"):
++                if (subHdr.dataSize == sizeof(std::uint8_t) && currentStage != nullptr)
++                {
++                    currentStageEntry = &currentStage->mEntries.emplace_back();
++                    reader.get(currentStageEntry->mFlags);
++                    currentObjective = nullptr;
++                    currentObjectiveTarget = nullptr;
++                }
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("CNAM"):
++                if (currentStageEntry != nullptr)
++                    reader.getLocalizedString(currentStageEntry->mLogEntry);
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("NAM0"):
++                if (currentStageEntry != nullptr)
++                    reader.getFormId(currentStageEntry->mNextQuest);
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("QOBJ"):
++                if (subHdr.dataSize == sizeof(std::int32_t))
+                 {
+-                    TargetCondition cond;
+-                    reader.get(cond); // FO3/FONV
+-                    if (cond.reference)
+-                        reader.adjustFormId(cond.reference);
+-                    mTargetConditions.push_back(cond);
++                    currentObjective = &mObjectives.emplace_back();
++                    reader.get(currentObjective->mIndex);
++                    currentObjectiveTarget = nullptr;
++                    currentStage = nullptr;
++                    currentStageEntry = nullptr;
+                 }
+                 else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("NNAM"):
++                if (currentObjective != nullptr)
++                    reader.getLocalizedString(currentObjective->mDescription);
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("QSTA"):
++                if (subHdr.dataSize == 8 && currentObjective != nullptr)
+                 {
+-                    // one record with size 20: EDID GenericSupMutBehemoth
+-                    reader.skipSubRecordData(); // FIXME
++                    currentObjectiveTarget = &currentObjective->mTargets.emplace_back();
++                    reader.getFormId(currentObjectiveTarget->mTarget);
++                    reader.get(currentObjectiveTarget->mFlags);
++                    reader.skipSubRecordData(3);
+                 }
+-                // FIXME: support TES5
+-
++                else
++                    reader.skipSubRecordData();
+                 break;
+-            }
+             case ESM::fourCC("SCHR"):
+-                reader.get(mScript.scriptHeader);
+-                break;
+             case ESM::fourCC("SCDA"):
+-                reader.skipSubRecordData();
+-                break; // compiled script data
+             case ESM::fourCC("SCTX"):
+-                reader.getString(mScript.scriptSource);
+-                break;
+             case ESM::fourCC("SCRO"):
+-                reader.getFormId(mScript.globReference);
++            case ESM::fourCC("SLSD"):
++            case ESM::fourCC("SCVR"):
++            case ESM::fourCC("SCRV"):
++                if (currentStageEntry != nullptr)
++                    loadScriptSubRecord(reader, currentStageEntry->mScript);
++                else if (!loadScriptSubRecord(reader, mScript))
++                    reader.skipSubRecordData();
+                 break;
+-            case ESM::fourCC("INDX"):
+-            case ESM::fourCC("QSDT"):
+-            case ESM::fourCC("CNAM"):
+-            case ESM::fourCC("QSTA"):
+-            case ESM::fourCC("NNAM"): // FO3
+-            case ESM::fourCC("QOBJ"): // FO3
+-            case ESM::fourCC("NAM0"): // FO3
+-            case ESM::fourCC("SLSD"): // FO3
+-            case ESM::fourCC("SCVR"): // FO3
+-            case ESM::fourCC("SCRV"): // FO3
+             case ESM::fourCC("ANAM"): // TES5
+             case ESM::fourCC("DNAM"): // TES5
+             case ESM::fourCC("ENAM"): // TES5
+diff --git a/components/esm4/loadqust.hpp b/components/esm4/loadqust.hpp
+index fa2f3e8f32..57e006d292 100644
+--- a/components/esm4/loadqust.hpp
++++ b/components/esm4/loadqust.hpp
+@@ -50,6 +50,46 @@ namespace ESM4
+     };
+ #pragma pack(pop)
+ 
++    struct QuestStageEntry
++    {
++        enum Flag : std::uint8_t
++        {
++            Flag_CompleteQuest = 0x01,
++            Flag_FailQuest = 0x02,
++        };
++
++        std::uint8_t mFlags = 0;
++        std::vector<TargetCondition> mConditions;
++        std::string mLogEntry;
++        ScriptDefinition mScript;
++        ESM::FormId mNextQuest{};
++    };
++
++    struct QuestStage
++    {
++        std::int16_t mIndex = 0;
++        std::vector<QuestStageEntry> mEntries;
++    };
++
++    struct QuestObjectiveTarget
++    {
++        enum Flag : std::uint8_t
++        {
++            Flag_CompassMarkerIgnoresLocks = 0x01,
++        };
++
++        ESM::FormId mTarget{};
++        std::uint8_t mFlags = 0;
++        std::vector<TargetCondition> mConditions;
++    };
++
++    struct QuestObjective
++    {
++        std::int32_t mIndex = 0;
++        std::string mDescription;
++        std::vector<QuestObjectiveTarget> mTargets;
++    };
++
+     struct Quest
+     {
+         // NOTE: these values are for TES4
+@@ -60,18 +100,23 @@ namespace ESM4
+             Flag_AllowRepeatStages = 0x08
+         };
+ 
+-        ESM::FormId mId; // from the header
+-        std::uint32_t mFlags; // from the header, see enum type RecordFlag for details
++        ESM::FormId mId{}; // from the header
++        std::uint32_t mFlags = 0; // from the header, see enum type RecordFlag for details
+ 
+         std::string mEditorId;
+         std::string mQuestName;
+         std::string mFileName; // texture file
+-        ESM::FormId mQuestScript;
++        ESM::FormId mQuestScript{};
+ 
+-        QuestData mData;
++        QuestData mData{};
+ 
+         std::vector<TargetCondition> mTargetConditions;
+ 
++        std::vector<QuestStage> mStages;
++        std::vector<QuestObjective> mObjectives;
++
++        // Retained for source compatibility. QUST embedded scripts belong to individual
++        // stage log entries and are preserved in mStages[*].mEntries[*].mScript.
+         ScriptDefinition mScript;
+ 
+         void load(ESM4::Reader& reader);
+diff --git a/components/esm4/loadscpt.cpp b/components/esm4/loadscpt.cpp
+index 5889ff057a..2cc84002a0 100644
+--- a/components/esm4/loadscpt.cpp
++++ b/components/esm4/loadscpt.cpp
+@@ -29,7 +29,7 @@
+ #include <stdexcept>
+ 
+ #include "reader.hpp"
+-//#include "writer.hpp"
++// #include "writer.hpp"
+ 
+ void ESM4::Script::load(ESM4::Reader& reader)
+ {
+@@ -42,105 +42,17 @@ void ESM4::Script::load(ESM4::Reader& reader)
+         switch (subHdr.typeId)
+         {
+             case ESM::fourCC("EDID"):
+-            {
+                 reader.getZString(mEditorId);
+                 break;
+-            }
+             case ESM::fourCC("SCHR"):
+-            {
+-                // For debugging only
+-#if 0
+-                unsigned char mDataBuf[256/*bufSize*/];
+-                reader.get(mDataBuf, subHdr.dataSize);
+-
+-                std::ostringstream ss;
+-                for (unsigned int i = 0; i < subHdr.dataSize; ++i)
+-                {
+-                    //if (mDataBuf[i] > 64 && mDataBuf[i] < 91)
+-                        //ss << (char)(mDataBuf[i]) << " ";
+-                    //else
+-                        ss << std::setfill('0') << std::setw(2) << std::hex << (int)(mDataBuf[i]);
+-                    if ((i & 0x000f) == 0xf)
+-                        ss << "\n";
+-                    else if (i < 256/*bufSize*/-1)
+-                        ss << " ";
+-                }
+-                std::cout << ss.str() << std::endl;
+-#else
+-                reader.get(mScript.scriptHeader);
+-#endif
+-                break;
+-            }
+-            case ESM::fourCC("SCTX"):
+-                reader.getString(mScript.scriptSource);
+-                // if (mEditorId == "CTrapLogs01SCRIPT")
+-                // std::cout << mScript.scriptSource << std::endl;
+-                break;
+             case ESM::fourCC("SCDA"): // compiled script data
+-            {
+-                // For debugging only
+-#if 0
+-                if (subHdr.dataSize >= 4096)
+-                {
+-                    std::cout << "Skipping " << mEditorId << std::endl;
+-                    reader.skipSubRecordData();
+-                    break;
+-                }
+-
+-                std::cout << mEditorId << std::endl;
+-
+-                unsigned char mDataBuf[4096/*bufSize*/];
+-                reader.get(mDataBuf, subHdr.dataSize);
+-
+-                std::ostringstream ss;
+-                for (unsigned int i = 0; i < subHdr.dataSize; ++i)
+-                {
+-                    //if (mDataBuf[i] > 64 && mDataBuf[i] < 91)
+-                        //ss << (char)(mDataBuf[i]) << " ";
+-                    //else
+-                        ss << std::setfill('0') << std::setw(2) << std::hex << (int)(mDataBuf[i]);
+-                    if ((i & 0x000f) == 0xf)
+-                        ss << "\n";
+-                    else if (i < 4096/*bufSize*/-1)
+-                        ss << " ";
+-                }
+-                std::cout << ss.str() << std::endl;
+-#else
+-                reader.skipSubRecordData();
+-#endif
+-                break;
+-            }
++            case ESM::fourCC("SCTX"):
+             case ESM::fourCC("SCRO"):
+-                reader.getFormId(mScript.globReference);
+-                break;
+             case ESM::fourCC("SLSD"):
+-            {
+-                ScriptLocalVariableData localVar;
+-                reader.get(localVar.index);
+-                reader.get(localVar.unknown1);
+-                reader.get(localVar.unknown2);
+-                reader.get(localVar.unknown3);
+-                reader.get(localVar.type);
+-                reader.get(localVar.unknown4);
+-                mScript.localVarData.push_back(std::move(localVar));
+-                // WARN: assumes SCVR will follow immediately
+-
+-                break;
+-            }
+             case ESM::fourCC("SCVR"): // assumed always pair with SLSD
+-                if (!mScript.localVarData.empty())
+-                    reader.getZString(mScript.localVarData.back().variableName);
+-                else
+-                    reader.skipSubRecordData();
+-
+-                break;
+             case ESM::fourCC("SCRV"):
+-            {
+-                std::uint32_t index;
+-                reader.get(index);
+-                mScript.localRefVarIndex.push_back(index);
++                loadScriptSubRecord(reader, mScript);
+                 break;
+-            }
+             default:
+                 if (reader.skipUnknownStarfieldSubRecordData("loadscpt"))
+                     break;
+diff --git a/components/esm4/loadscpt.hpp b/components/esm4/loadscpt.hpp
+index 20c895d241..5486455149 100644
+--- a/components/esm4/loadscpt.hpp
++++ b/components/esm4/loadscpt.hpp
+@@ -41,8 +41,8 @@ namespace ESM4
+ 
+     struct Script
+     {
+-        ESM::FormId mId; // from the header
+-        std::uint32_t mFlags; // from the header, see enum type RecordFlag for details
++        ESM::FormId mId{}; // from the header
++        std::uint32_t mFlags = 0; // from the header, see enum type RecordFlag for details
+ 
+         std::string mEditorId;
+ 
+diff --git a/components/esm4/script.cpp b/components/esm4/script.cpp
+new file mode 100644
+index 0000000000..668c0f07a9
+--- /dev/null
++++ b/components/esm4/script.cpp
+@@ -0,0 +1,144 @@
++#include "script.hpp"
++
++#include "reader.hpp"
++
++#include <bit>
++
++#include <components/esm/defs.hpp>
++
++namespace ESM4
++{
++    bool loadScriptSubRecord(Reader& reader, ScriptDefinition& script)
++    {
++        const SubRecordHeader& subRecord = reader.subRecordHeader();
++        switch (subRecord.typeId)
++        {
++            case ESM::fourCC("SCHR"):
++                if (subRecord.dataSize == sizeof(script.scriptHeader))
++                    reader.get(script.scriptHeader);
++                else
++                    reader.skipSubRecordData();
++                return true;
++            case ESM::fourCC("SCDA"):
++                script.compiledData.resize(subRecord.dataSize);
++                if (!script.compiledData.empty())
++                    reader.get(script.compiledData.data(), script.compiledData.size());
++                return true;
++            case ESM::fourCC("SCTX"):
++                reader.getString(script.scriptSource);
++                return true;
++            case ESM::fourCC("SLSD"):
++            {
++                if (subRecord.dataSize != 24)
++                {
++                    reader.skipSubRecordData();
++                    return true;
++                }
++
++                ScriptLocalVariableData localVariable{};
++                reader.get(localVariable.index);
++                reader.get(localVariable.unknown1);
++                reader.get(localVariable.unknown2);
++                reader.get(localVariable.unknown3);
++                reader.get(localVariable.type);
++                reader.get(localVariable.unknown4);
++                script.localVarData.push_back(std::move(localVariable));
++                return true;
++            }
++            case ESM::fourCC("SCVR"):
++                if (!script.localVarData.empty())
++                    reader.getZString(script.localVarData.back().variableName);
++                else
++                    reader.skipSubRecordData();
++                return true;
++            case ESM::fourCC("SCRV"):
++            {
++                if (subRecord.dataSize != sizeof(std::uint32_t))
++                {
++                    reader.skipSubRecordData();
++                    return true;
++                }
++
++                std::uint32_t index = 0;
++                reader.get(index);
++                script.localRefVarIndex.push_back(index);
++                return true;
++            }
++            case ESM::fourCC("SCRO"):
++            {
++                ESM::FormId reference;
++                reader.getFormId(reference);
++                script.globReference = reference;
++                script.references.push_back(reference);
++                return true;
++            }
++            default:
++                return false;
++        }
++    }
++
++    bool loadTargetCondition(Reader& reader, TargetCondition& condition, ESM::FormId* parameter3)
++    {
++        const SubRecordHeader& subRecord = reader.subRecordHeader();
++        condition = {};
++        if (parameter3 != nullptr)
++            *parameter3 = {};
++
++        bool loaded = false;
++        switch (subRecord.dataSize)
++        {
++            case 20:
++                reader.get(&condition, 20);
++                loaded = true;
++                break;
++            case 24:
++                reader.get(&condition, 24);
++                loaded = true;
++                break;
++            case 28:
++                reader.get(condition);
++                if (condition.reference != 0)
++                    reader.adjustFormId(condition.reference);
++                loaded = true;
++                break;
++            case 36:
++            {
++                reader.get(&condition, 20);
++                ESM::FormId ignoredParameter3;
++                reader.getFormId(parameter3 != nullptr ? *parameter3 : ignoredParameter3);
++                reader.get(condition.runOn);
++                reader.get(condition.reference);
++                if (condition.reference != 0)
++                    reader.adjustFormId(condition.reference);
++                reader.skipSubRecordData(4);
++                loaded = true;
++                break;
++            }
++            default:
++                reader.skipSubRecordData();
++                return false;
++        }
++
++        if ((condition.condition & CTF_UseGlobal) != 0)
++        {
++            ESM::FormId32 comparisonGlobal = std::bit_cast<ESM::FormId32>(condition.comparison);
++            reader.adjustFormId(comparisonGlobal);
++            condition.comparison = std::bit_cast<float>(comparisonGlobal);
++        }
++
++        switch (condition.functionIndex)
++        {
++            case FUN_GetQuestRunning:
++            case FUN_GetStage:
++            case FUN_GetStageDone:
++            case FUN_GetGlobalValue:
++            case FUN_GetQuestCompleted:
++                reader.adjustFormId(condition.param1);
++                break;
++            default:
++                break;
++        }
++
++        return loaded;
++    }
++}
+diff --git a/components/esm4/script.hpp b/components/esm4/script.hpp
+index 3715ea55d4..e7d8322c5f 100644
+--- a/components/esm4/script.hpp
++++ b/components/esm4/script.hpp
+@@ -38,6 +38,8 @@
+ 
+ namespace ESM4
+ {
++    class Reader;
++
+     enum EmotionType
+     {
+         EMO_Neutral = 0,
+@@ -333,14 +335,14 @@ namespace ESM4
+ 
+     struct TargetCondition
+     {
+-        std::uint32_t condition; // ConditionTypeAndFlag + padding
+-        float comparison; // WARN: can be GLOB FormId if flag set
+-        std::uint32_t functionIndex;
+-        std::uint32_t param1; // FIXME: if formid needs modindex adjustment or not?
+-        std::uint32_t param2;
+-        std::uint32_t runOn; // 0 subject, 1 target, 2 reference, 3 combat target, 4 linked reference
++        std::uint32_t condition = 0; // ConditionTypeAndFlag + padding
++        float comparison = 0.f; // WARN: can be GLOB FormId if flag set
++        std::uint32_t functionIndex = 0;
++        std::uint32_t param1 = 0; // FIXME: if formid needs modindex adjustment or not?
++        std::uint32_t param2 = 0;
++        std::uint32_t runOn = 0; // 0 subject, 1 target, 2 reference, 3 combat target, 4 linked reference
+         // below FO3/FONV/TES5
+-        ESM::FormId32 reference;
++        ESM::FormId32 reference = 0;
+     };
+ 
+     struct ScriptHeader
+@@ -369,13 +371,26 @@ namespace ESM4
+ 
+     struct ScriptDefinition
+     {
+-        ScriptHeader scriptHeader;
++        ScriptHeader scriptHeader{};
+         // SDCA compiled source
++        std::vector<std::uint8_t> compiledData;
+         std::string scriptSource;
+         std::vector<ScriptLocalVariableData> localVarData;
+         std::vector<std::uint32_t> localRefVarIndex;
+-        ESM::FormId globReference;
++        std::vector<ESM::FormId> references;
++
++        // Kept for source compatibility with the original loader. Retail scripts contain one
++        // SCRO per reference, so use references for execution and diagnostics.
++        ESM::FormId globReference{};
+     };
++
++    // Load the current SCHR/SCDA/SCTX/SLSD/SCVR/SCRV/SCRO subrecord. Returns false
++    // when the current subrecord does not belong to an embedded or standalone script.
++    bool loadScriptSubRecord(Reader& reader, ScriptDefinition& script);
++
++    // Load the current TES4-family CTDA representation (20, 24, 28, or 36 bytes).
++    // The optional third parameter is present only in the 36-byte TES5 form.
++    bool loadTargetCondition(Reader& reader, TargetCondition& condition, ESM::FormId* parameter3 = nullptr);
+ }
+ 
+ #endif // ESM4_SCRIPT_H
