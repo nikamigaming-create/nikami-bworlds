@@ -1,0 +1,2 @@
+"FormId:0x1104c80"->AiWander 0 0 0
+"FormId:0x1104c80"->SetAngle z 85.9437

@@ -303,6 +303,51 @@ keeps its animated fingers on the rifle. The FO3 actor likewise keeps head,
 hat, beard, hands, rifle, torso, and legs attached. Only flat `openmw.exe` was
 launched; no XR executable or headset runtime was started.
 
+## Patch 0007: FaceGen color and dialogue vertical slice
+
+Downstream commit `5d4bfa221a` and patch 0007 connect an FNV NPC activation to
+the real OpenMW dialogue window and preserve the retail records needed by that
+path. INFO records inherit their DIAL from the surrounding topic-child GRUP,
+CTDA FormID parameters are load-order adjusted, and ESM4 NPC activation now
+produces `ActionTalk`. The first selector supports the actor, race, sex,
+talked-to, dead, level, quest-stage, objective, and global conditions required
+by the Easy Pete slice. Unsupported conditions remain false; this is not yet a
+whole-game dialogue claim.
+
+Retail `FalloutNV.esm` establishes the exact gate:
+
+- Easy Pete base `0x00104c7f`, authored exterior ref `0x00104c80`;
+- GREETING DIAL `0x000000c8`;
+- selected INFO `0x00104c60`, response `Howdy. What can Easy Pete do for you?`;
+- the visible top-level topics ask about Easy Pete's name, the attackers, and
+  Victor; and
+- HCLR is exactly `(192,192,192)`, with FaceGen texture
+  `00104c7f_0.dds` and body modulation `00104c7fmodbodymale.dds`.
+
+The renderer treats the exported `_0.dds` as the neutral-at-0.5 FaceGen detail
+map over the race diffuse, preserves the authored head material, and stops
+applying HCLR repeatedly through the hair vertex arrays. The retail beard and
+scalp use their authored diffuse/normal/highlight texture triplets rather than
+substituting a highlight map as diffuse.
+
+The exact staged flat executable SHA-256 is
+`8EF11E84FF5F12E21ABF3630CCF9C794210BDCAE733A659CDFB57539E1009A10`.
+The final dialogue run captured two native screenshots, exited 0, and produced
+no crash report:
+
+- manifest: `run/dialogue-proof/easy-pete-native-v7/fallout_new_vegas-20260710-144048/manifest.json`;
+- native GUI frame: `run/dialogue-proof/easy-pete-native-v7/fallout_new_vegas-20260710-144048/screenshots/fallout_new_vegas.t012.n01.png`; and
+- log selection: `GREETING FormId:0x10000c8 -> INFO FormId:0x1104c60`.
+
+The closest clean color run is
+`run/facegen-audit/easy-pete-color-v6/fallout_new_vegas-20260710-143352/manifest.json`.
+It captured four native angles, exited 0, and produced no crash report. The
+beard changed from the rejected teal/charcoal rendering to gray/white while
+retaining the record-authored skin, eye, hair, beard, and body assets. The
+camera remains an in-world moving-pose proof, so a controlled retail/OpenMW
+pixel-differential and a broader NPC matrix are still required before claiming
+every-pixel color parity.
+
 ## Remaining compatibility work
 
 The first behavior slice is green, but the whole-game claim remains open. The

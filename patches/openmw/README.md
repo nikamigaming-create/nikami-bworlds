@@ -29,6 +29,10 @@ the retail camera-distance ladder, and is exported from downstream commit
 `0bdacbfcdd`. Patch 0006 applies the fully disassembled retail scale/camera/fade
 equation and defers a LOD change while OpenMW's equivalent temporary scripted
 sequence is active; it is exported from downstream commit `980555702e`.
+Patch 0007 loads INFO topic inheritance and condition FormIDs, gives ESM4 NPCs
+the real activation-to-dialogue path, renders the first FNV DIAL/INFO topic
+slice, applies FaceGen modulation maps, and corrects FO3/FNV hair tint/material
+handling. It is exported from downstream commit `5d4bfa221a`.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 
@@ -84,7 +88,10 @@ See `docs/fallout-flat-overlay-validation-20260710.md` for the exact retail
 oracle evidence, unit/sanitizer gates, record-load manifests, quest/save
 differentials, and native FO3/FNV walking proofs used to promote patches 0002
 through 0006. The reproducible xNVSE oracle overlay lives separately under
-`patches/xnvse/`; it is never part of the OpenMW apply queue.
+`patches/xnvse/`; it is never part of the OpenMW apply queue. Patch 0007's
+current proof boundary is the Easy Pete greeting/topic and FaceGen slice; voice,
+result-script execution, broader CTDA coverage, service menus, and FO3 dialogue
+remain explicit follow-on gates rather than implied compatibility claims.
 
 If one downstream patch matures into something upstream-worthy, split it into a
 clean branch in the external OpenMW checkout and submit a normal upstream PR.

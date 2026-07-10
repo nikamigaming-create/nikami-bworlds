@@ -1,0 +1,771 @@
+From 5d4bfa221ac515ede1dd28136261c55430a11da5 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 14:43:29 -0700
+Subject: [PATCH] Bridge Fallout FaceGen color and dialogue
+
+---
+ apps/openmw/engine.cpp                        |   9 +-
+ apps/openmw/mwclass/esm4npc.cpp               |  29 ++
+ apps/openmw/mwclass/esm4npc.hpp               |   3 +
+ apps/openmw/mwdialogue/dialoguemanagerimp.cpp | 264 ++++++++++++++++++
+ apps/openmw/mwdialogue/dialoguemanagerimp.hpp |  17 ++
+ apps/openmw/mwrender/esm4npcanimation.cpp     | 116 +++-----
+ components/esm4/loadinfo.cpp                  |   7 +
+ components/esm4/script.cpp                    |  11 +-
+ 8 files changed, 376 insertions(+), 80 deletions(-)
+
+diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
+index 7f0b120c9a..9bc84fcc70 100644
+--- a/apps/openmw/engine.cpp
++++ b/apps/openmw/engine.cpp
+@@ -3746,7 +3746,14 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+             }
+         }
+ 
+-        if (!proofSayQueued && !proofActor.isEmpty() && proofSayTopic != nullptr && *proofSayTopic != '\0'
++        if (!proofSayQueued && !proofActor.isEmpty() && proofEnvEnabled("OPENMW_PROOF_START_DIALOGUE")
++            && mWindowManager != nullptr)
++        {
++            Log(Debug::Info) << "FNV/ESM4 proof: opening real dialogue GUI for " << proofActor.toString()
++                             << " at frame " << frameNumber;
++            mWindowManager->pushGuiMode(MWGui::GM_Dialogue, proofActor);
++        }
++        else if (!proofSayQueued && !proofActor.isEmpty() && proofSayTopic != nullptr && *proofSayTopic != '\0'
+             && mDialogueManager != nullptr)
+         {
+             const bool said = mDialogueManager->say(proofActor, ESM::RefId::stringRefId(proofSayTopic));
+diff --git a/apps/openmw/mwclass/esm4npc.cpp b/apps/openmw/mwclass/esm4npc.cpp
+index e2f4a9e833..e12c73a363 100644
+--- a/apps/openmw/mwclass/esm4npc.cpp
++++ b/apps/openmw/mwclass/esm4npc.cpp
+@@ -32,6 +32,8 @@
+ #include "../mwworld/containerstore.hpp"
+ #include "../mwworld/customdata.hpp"
+ #include "../mwworld/esmstore.hpp"
++#include "../mwworld/actiontalk.hpp"
++#include "../mwworld/failedaction.hpp"
+ 
+ #include "esm4base.hpp"
+ 
+@@ -914,6 +916,33 @@ namespace MWClass
+         return 50.f;
+     }
+ 
++    int ESM4Npc::getServices(const MWWorld::ConstPtr& ptr) const
++    {
++        // Fallout merchant/service data is expressed through dialogue and
++        // package records rather than Morrowind's NPC service bitmask.  Zero
++        // keeps the shared dialogue window on authored ESM4 topics until the
++        // Fallout service-menu bridge is implemented.
++        (void)ptr;
++        return 0;
++    }
++
++    int ESM4Npc::getBaseGold(const MWWorld::ConstPtr& ptr) const
++    {
++        // Fallout caps are inventory items; they are not stored in the
++        // Morrowind NPC base-gold field used by the shared dialogue widget.
++        (void)ptr;
++        return 0;
++    }
++
++    std::unique_ptr<MWWorld::Action> ESM4Npc::activate(
++        const MWWorld::Ptr& ptr, const MWWorld::Ptr& actor) const
++    {
++        (void)actor;
++        if (getCreatureStats(ptr).isDead())
++            return std::make_unique<MWWorld::FailedAction>();
++        return std::make_unique<MWWorld::ActionTalk>(ptr);
++    }
++
+     bool ESM4Npc::isPersistent(const MWWorld::ConstPtr& ptr) const
+     {
+         const ESM4NpcCustomData& data = getCustomData(ptr);
+diff --git a/apps/openmw/mwclass/esm4npc.hpp b/apps/openmw/mwclass/esm4npc.hpp
+index 41cb227c81..5eb95886a9 100644
+--- a/apps/openmw/mwclass/esm4npc.hpp
++++ b/apps/openmw/mwclass/esm4npc.hpp
+@@ -77,6 +77,9 @@ namespace MWClass
+         float getRunSpeed(const MWWorld::Ptr& ptr) const override;
+         float getSwimSpeed(const MWWorld::Ptr& ptr) const override;
+         float getSkill(const MWWorld::Ptr& ptr, ESM::RefId id) const override;
++        int getServices(const MWWorld::ConstPtr& ptr) const override;
++        int getBaseGold(const MWWorld::ConstPtr& ptr) const override;
++        std::unique_ptr<MWWorld::Action> activate(const MWWorld::Ptr& ptr, const MWWorld::Ptr& actor) const override;
+         bool isPersistent(const MWWorld::ConstPtr& ptr) const override;
+         bool isBipedal(const MWWorld::ConstPtr& ptr) const override;
+         bool canSwim(const MWWorld::ConstPtr& ptr) const override;
+diff --git a/apps/openmw/mwdialogue/dialoguemanagerimp.cpp b/apps/openmw/mwdialogue/dialoguemanagerimp.cpp
+index b33de3fea9..a29bd42f25 100644
+--- a/apps/openmw/mwdialogue/dialoguemanagerimp.cpp
++++ b/apps/openmw/mwdialogue/dialoguemanagerimp.cpp
+@@ -13,6 +13,10 @@
+ #include <components/esm3/loadfact.hpp>
+ #include <components/esm3/loadinfo.hpp>
+ #include <components/esm3/loadmgef.hpp>
++#include <components/esm4/loaddial.hpp>
++#include <components/esm4/loadinfo.hpp>
++#include <components/esm4/loadnpc.hpp>
++#include <components/esm4/script.hpp>
+ 
+ #include <components/compiler/errorhandler.hpp>
+ #include <components/compiler/exception.hpp>
+@@ -39,6 +43,7 @@
+ #include "../mwworld/class.hpp"
+ #include "../mwworld/containerstore.hpp"
+ #include "../mwworld/esmstore.hpp"
++#include "../mwworld/esm4questruntime.hpp"
+ 
+ #include "../mwscript/compilercontext.hpp"
+ #include "../mwscript/extensions.hpp"
+@@ -48,6 +53,8 @@
+ #include "../mwmechanics/creaturestats.hpp"
+ #include "../mwmechanics/npcstats.hpp"
+ 
++#include "../mwclass/esm4npc.hpp"
++
+ #include "filter.hpp"
+ #include "hypertextparser.hpp"
+ 
+@@ -76,6 +83,208 @@ namespace MWDialogue
+         mOriginalDisposition = 0;
+         mCurrentDisposition = 0;
+         mPermanentDispositionChange = 0;
++        mEsm4Dialogue = false;
++        mLastEsm4Topic = {};
++        mEsm4TopicIds.clear();
++        mEsm4ChoiceTopics.clear();
++        mEsm4SaidInfos.clear();
++    }
++
++    bool DialogueManager::matchesEsm4Info(const ESM4::DialogInfo& info) const
++    {
++        if (!info.mSpeaker.isZeroOrUnset())
++        {
++            const ESM4::Npc* base = mActor.get<ESM4::Npc>()->mBase;
++            if (base == nullptr || base->mId != info.mSpeaker)
++                return false;
++        }
++
++        const auto evaluate = [&](const ESM4::TargetCondition& condition) -> std::optional<bool> {
++            const ESM4::Npc* base = mActor.get<ESM4::Npc>()->mBase;
++            const ESM4::Npc* traits = MWClass::ESM4Npc::getTraitsRecord(mActor);
++            float actual = 0.f;
++            switch (condition.functionIndex)
++            {
++                case ESM4::FUN_GetIsID:
++                    actual = base != nullptr && base->mId == ESM::FormId::fromUint32(condition.param1) ? 1.f : 0.f;
++                    break;
++                case ESM4::FUN_GetIsRace:
++                    actual = traits != nullptr && traits->mRace == ESM::FormId::fromUint32(condition.param1) ? 1.f : 0.f;
++                    break;
++                case ESM4::FUN_GetIsSex:
++                    actual = static_cast<std::uint32_t>(MWClass::ESM4Npc::isFemale(mActor)) == condition.param1 ? 1.f : 0.f;
++                    break;
++                case ESM4::FUN_GetTalkedToPC:
++                    actual = mTalkedTo ? 1.f : 0.f;
++                    break;
++                case ESM4::FUN_GetDead:
++                    actual = mActor.getClass().getCreatureStats(mActor).isDead() ? 1.f : 0.f;
++                    break;
++                case ESM4::FUN_GetLevel:
++                    actual = static_cast<float>(mActor.getClass().getCreatureStats(mActor).getLevel());
++                    break;
++                case ESM4::FUN_GetQuestRunning:
++                case ESM4::FUN_GetStage:
++                case ESM4::FUN_GetStageDone:
++                case ESM4::FUN_GetGlobalValue:
++                case ESM4::FUN_GetQuestCompleted:
++                case ESM4::FUN_GetObjectiveCompleted:
++                case ESM4::FUN_GetObjectiveDisplayed:
++                    return MWBase::Environment::get().getWorld()->getESM4QuestRuntime().evaluateConditions({ condition });
++                default:
++                    return std::nullopt;
++            }
++
++            float expected = condition.comparison;
++            switch (condition.condition & 0xe0)
++            {
++                case ESM4::CTF_EqualTo:
++                    return actual == expected;
++                case ESM4::CTF_NotEqualTo:
++                    return actual != expected;
++                case ESM4::CTF_GreaterThan:
++                    return actual > expected;
++                case ESM4::CTF_GrThOrEqTo:
++                    return actual >= expected;
++                case ESM4::CTF_LessThan:
++                    return actual < expected;
++                case ESM4::CTF_LeThOrEqTo:
++                    return actual <= expected;
++                default:
++                    return false;
++            }
++        };
++
++        for (std::size_t i = 0; i < info.mTargetConditions.size(); ++i)
++        {
++            std::optional<bool> value = evaluate(info.mTargetConditions[i]);
++            bool groupResult = value.value_or(false);
++            while ((info.mTargetConditions[i].condition & ESM4::CTF_Combine) != 0
++                && i + 1 < info.mTargetConditions.size())
++            {
++                ++i;
++                value = evaluate(info.mTargetConditions[i]);
++                groupResult = groupResult || value.value_or(false);
++            }
++            if (!groupResult)
++                return false;
++        }
++        return true;
++    }
++
++    int DialogueManager::getEsm4InfoActorAffinity(const ESM4::DialogInfo& info) const
++    {
++        const ESM4::Npc* base = mActor.get<ESM4::Npc>()->mBase;
++        const ESM4::Npc* traits = MWClass::ESM4Npc::getTraitsRecord(mActor);
++        int affinity = 0;
++        if (base != nullptr && !info.mSpeaker.isZeroOrUnset() && info.mSpeaker == base->mId)
++            affinity += 10000;
++        for (const ESM4::TargetCondition& condition : info.mTargetConditions)
++        {
++            const ESM::FormId parameter = ESM::FormId::fromUint32(condition.param1);
++            if (condition.functionIndex == ESM4::FUN_GetIsID && base != nullptr && parameter == base->mId)
++                affinity += 10000;
++            else if (condition.functionIndex == ESM4::FUN_GetIsRace && traits != nullptr
++                && parameter == traits->mRace)
++                affinity += 1000;
++        }
++        return affinity;
++    }
++
++    const ESM4::DialogInfo* DialogueManager::selectEsm4Info(ESM::FormId topic) const
++    {
++        const ESM4::DialogInfo* selected = nullptr;
++        const auto& infos = MWBase::Environment::get().getESMStore()->get<ESM4::DialogInfo>();
++        for (const ESM4::DialogInfo& info : infos)
++        {
++            if (info.mTopic != topic || !matchesEsm4Info(info))
++                continue;
++            if ((info.mInfoFlags & ESM4::INFO_SayOnce) != 0 && mEsm4SaidInfos.contains(info.mId))
++                continue;
++            // FormId::operator< compares the local object index first, which
++            // lets an arbitrary DLC INFO with a smaller local index outrank a
++            // base-game response.  Compare load-order first for a stable
++            // authored order until PNAM chains are indexed explicitly.
++            const int affinity = getEsm4InfoActorAffinity(info);
++            const int selectedAffinity = selected == nullptr ? -1 : getEsm4InfoActorAffinity(*selected);
++            if (selected == nullptr || affinity > selectedAffinity
++                || (affinity == selectedAffinity
++                    && std::tie(info.mId.mContentFile, info.mId.mIndex)
++                        < std::tie(selected->mId.mContentFile, selected->mId.mIndex)))
++                selected = &info;
++        }
++        return selected;
++    }
++
++    void DialogueManager::updateEsm4Topics()
++    {
++        mEsm4TopicIds.clear();
++        const auto& dialogues = MWBase::Environment::get().getESMStore()->get<ESM4::Dialogue>();
++        for (const ESM4::Dialogue& dialogue : dialogues)
++        {
++            if (dialogue.mDialType != 0 || (dialogue.mDialFlags & 0x02) == 0
++                || Misc::StringUtils::ciEqual(dialogue.mEditorId, "GREETING")
++                || Misc::StringUtils::ciEqual(dialogue.mEditorId, "GOODBYE"))
++                continue;
++            const ESM4::DialogInfo* info = selectEsm4Info(dialogue.mId);
++            if (info == nullptr || getEsm4InfoActorAffinity(*info) == 0)
++                continue;
++            const std::string& title = dialogue.mTopicName.empty() ? dialogue.mEditorId : dialogue.mTopicName;
++            if (!title.empty())
++                mEsm4TopicIds.emplace(title, dialogue.mId);
++        }
++    }
++
++    void DialogueManager::executeEsm4Topic(ESM::FormId topic, ResponseCallback* callback, bool greeting)
++    {
++        const ESM4::Dialogue* dialogue
++            = MWBase::Environment::get().getESMStore()->get<ESM4::Dialogue>().search(ESM::RefId(topic));
++        const ESM4::DialogInfo* info = selectEsm4Info(topic);
++        if (dialogue == nullptr || info == nullptr)
++            return;
++
++        std::string response;
++        for (const ESM4::DialogResponse& item : info->mResponses)
++        {
++            if (item.mResponse.empty())
++                continue;
++            if (!response.empty())
++                response += "\n";
++            response += item.mResponse;
++        }
++        if (response.empty())
++            response = info->mResponse;
++
++        callback->addResponse(greeting ? std::string_view{} : std::string_view(dialogue->mTopicName), response);
++        mLastEsm4Topic = topic;
++        if ((info->mInfoFlags & ESM4::INFO_SayOnce) != 0)
++            mEsm4SaidInfos.insert(info->mId);
++
++        mChoices.clear();
++        mEsm4ChoiceTopics.clear();
++        for (ESM::FormId choice : info->mChoices)
++        {
++            const ESM4::Dialogue* choiceDialogue
++                = MWBase::Environment::get().getESMStore()->get<ESM4::Dialogue>().search(ESM::RefId(choice));
++            if (choiceDialogue == nullptr || selectEsm4Info(choice) == nullptr)
++                continue;
++            const std::string& title
++                = choiceDialogue->mTopicName.empty() ? choiceDialogue->mEditorId : choiceDialogue->mTopicName;
++            mEsm4ChoiceTopics.push_back(choice);
++            mChoices.emplace_back(title, static_cast<int>(mEsm4ChoiceTopics.size() - 1));
++        }
++        mIsInChoice = !mChoices.empty();
++        if ((info->mInfoFlags & ESM4::INFO_Goodbye) != 0)
++            goodbye();
++
++        if (!info->mScript.scriptSource.empty() || !info->mEndScript.scriptSource.empty())
++            Log(Debug::Info) << "FNV/ESM4 dialogue: deferred result script info=" << ESM::RefId(info->mId)
++                             << " beginBytes=" << info->mScript.compiledData.size()
++                             << " endBytes=" << info->mEndScript.compiledData.size();
++
++        Log(Debug::Info) << "FNV/ESM4 dialogue: selected topic=" << dialogue->mEditorId
++                         << " topicForm=" << ESM::RefId(dialogue->mId) << " info=" << ESM::RefId(info->mId)
++                         << " responses=" << info->mResponses.size() << " choices=" << mChoices.size();
+     }
+ 
+     void DialogueManager::addTopic(const ESM::RefId& topic)
+@@ -157,6 +366,31 @@ namespace MWDialogue
+ 
+         mActorKnownTopics.clear();
+ 
++        mEsm4Dialogue = actor.getType() == ESM4::Npc::sRecordId;
++        mLastEsm4Topic = {};
++        mEsm4TopicIds.clear();
++        mEsm4ChoiceTopics.clear();
++        if (mEsm4Dialogue)
++        {
++            const auto& esm4Dialogues = MWBase::Environment::get().getESMStore()->get<ESM4::Dialogue>();
++            const ESM4::Dialogue* greeting = nullptr;
++            for (const ESM4::Dialogue& dialogue : esm4Dialogues)
++            {
++                if (Misc::StringUtils::ciEqual(dialogue.mEditorId, "GREETING"))
++                {
++                    greeting = &dialogue;
++                    break;
++                }
++            }
++            if (greeting == nullptr || selectEsm4Info(greeting->mId) == nullptr)
++                return false;
++
++            executeEsm4Topic(greeting->mId, callback, true);
++            creatureStats.talkedToPlayer();
++            updateEsm4Topics();
++            return true;
++        }
++
+         // greeting
+         const MWWorld::Store<ESM::Dialogue>& dialogs = MWBase::Environment::get().getESMStore()->get<ESM::Dialogue>();
+ 
+@@ -392,6 +626,14 @@ namespace MWDialogue
+ 
+     std::list<std::string> DialogueManager::getAvailableTopics()
+     {
++        if (mEsm4Dialogue)
++        {
++            updateEsm4Topics();
++            std::list<std::string> result;
++            for (const auto& [title, _] : mEsm4TopicIds)
++                result.push_back(title);
++            return result;
++        }
+         updateActorKnownTopics();
+ 
+         std::list<std::string> keywordList;
+@@ -410,6 +652,8 @@ namespace MWDialogue
+ 
+     int DialogueManager::getTopicFlag(const ESM::RefId& topicId) const
+     {
++        if (mEsm4Dialogue)
++            return 0;
+         auto known = mActorKnownTopics.find(topicId);
+         if (known != mActorKnownTopics.end())
+             return known->second.mFlags;
+@@ -418,6 +662,13 @@ namespace MWDialogue
+ 
+     void DialogueManager::keywordSelected(std::string_view keyword, ResponseCallback* callback)
+     {
++        if (mEsm4Dialogue)
++        {
++            if (const auto found = mEsm4TopicIds.find(keyword); found != mEsm4TopicIds.end())
++                executeEsm4Topic(found->second, callback);
++            updateEsm4Topics();
++            return;
++        }
+         if (!mIsInChoice)
+         {
+             const ESM::Dialogue* dialogue = searchDialogue(ESM::RefId::stringRefId(keyword));
+@@ -457,6 +708,19 @@ namespace MWDialogue
+ 
+     void DialogueManager::questionAnswered(int answer, ResponseCallback* callback)
+     {
++        if (mEsm4Dialogue)
++        {
++            if (answer >= 0 && static_cast<std::size_t>(answer) < mEsm4ChoiceTopics.size())
++            {
++                const ESM::FormId topic = mEsm4ChoiceTopics[answer];
++                mChoices.clear();
++                mEsm4ChoiceTopics.clear();
++                mIsInChoice = false;
++                executeEsm4Topic(topic, callback);
++            }
++            updateEsm4Topics();
++            return;
++        }
+         mChoice = answer;
+ 
+         const ESM::Dialogue* dialogue = searchDialogue(mLastTopic);
+diff --git a/apps/openmw/mwdialogue/dialoguemanagerimp.hpp b/apps/openmw/mwdialogue/dialoguemanagerimp.hpp
+index a735c57fef..c4b08b5cf0 100644
+--- a/apps/openmw/mwdialogue/dialoguemanagerimp.hpp
++++ b/apps/openmw/mwdialogue/dialoguemanagerimp.hpp
+@@ -23,6 +23,12 @@ namespace ESM
+     struct Dialogue;
+ }
+ 
++namespace ESM4
++{
++    struct Dialogue;
++    struct DialogInfo;
++}
++
+ namespace MWDialogue
+ {
+     class DialogueManager : public MWBase::DialogueManager
+@@ -55,6 +61,12 @@ namespace MWDialogue
+ 
+         std::vector<std::pair<std::string, int>> mChoices;
+ 
++        bool mEsm4Dialogue = false;
++        ESM::FormId mLastEsm4Topic{};
++        std::map<std::string, ESM::FormId, Misc::StringUtils::CiComp> mEsm4TopicIds;
++        std::vector<ESM::FormId> mEsm4ChoiceTopics;
++        std::set<ESM::FormId> mEsm4SaidInfos;
++
+         int mOriginalDisposition;
+         int mCurrentDisposition;
+         int mPermanentDispositionChange;
+@@ -70,6 +82,11 @@ namespace MWDialogue
+         void executeScript(const std::string& script, const MWWorld::Ptr& actor);
+ 
+         void executeTopic(const ESM::RefId& topic, ResponseCallback* callback);
++        void executeEsm4Topic(ESM::FormId topic, ResponseCallback* callback, bool greeting = false);
++        const ESM4::DialogInfo* selectEsm4Info(ESM::FormId topic) const;
++        bool matchesEsm4Info(const ESM4::DialogInfo& info) const;
++        int getEsm4InfoActorAffinity(const ESM4::DialogInfo& info) const;
++        void updateEsm4Topics();
+ 
+         const ESM::Dialogue* searchDialogue(const ESM::RefId& id);
+ 
+diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
+index 99cf1650a9..10d123c4fa 100644
+--- a/apps/openmw/mwrender/esm4npcanimation.cpp
++++ b/apps/openmw/mwrender/esm4npcanimation.cpp
+@@ -171,10 +171,12 @@ namespace MWRender
+         class TintMaterialVisitor : public osg::NodeVisitor
+         {
+         public:
+-            TintMaterialVisitor(const osg::Vec4f& tint, float emissionStrength = 0.f)
++            TintMaterialVisitor(
++                const osg::Vec4f& tint, float emissionStrength = 0.f, bool replaceVertexRgb = false)
+                 : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
+                 , mTint(tint)
+                 , mEmissionStrength(emissionStrength)
++                , mReplaceVertexRgb(replaceVertexRgb)
+             {
+             }
+ 
+@@ -187,9 +189,9 @@ namespace MWRender
+             void apply(osg::Geode& geode) override
+             {
+                 applyTint(geode.getOrCreateStateSet());
+-                for (unsigned int i = 0; i < geode.getNumDrawables(); ++i)
+-                    if (osg::Drawable* drawable = geode.getDrawable(i))
+-                        applyDrawable(*drawable);
++                // Geode::traverse visits its drawables and dispatches the
++                // Drawable overload below.  Applying them here as well
++                // multiplied vertex colours twice per visitor pass.
+                 traverse(geode);
+             }
+ 
+@@ -206,9 +208,14 @@ namespace MWRender
+                 {
+                     for (osg::Vec4f& color : *colors)
+                     {
+-                        color.x() *= mTint.x();
+-                        color.y() *= mTint.y();
+-                        color.z() *= mTint.z();
++                        if (mReplaceVertexRgb)
++                            color.set(1.f, 1.f, 1.f, color.w());
++                        else
++                        {
++                            color.x() *= mTint.x();
++                            color.y() *= mTint.y();
++                            color.z() *= mTint.z();
++                        }
+                     }
+                     colors->dirty();
+                     return true;
+@@ -218,9 +225,14 @@ namespace MWRender
+                 {
+                     for (osg::Vec4ub& color : *colors)
+                     {
+-                        color.r() = static_cast<unsigned char>(std::clamp(color.r() * mTint.x(), 0.f, 255.f));
+-                        color.g() = static_cast<unsigned char>(std::clamp(color.g() * mTint.y(), 0.f, 255.f));
+-                        color.b() = static_cast<unsigned char>(std::clamp(color.b() * mTint.z(), 0.f, 255.f));
++                        if (mReplaceVertexRgb)
++                            color.set(255, 255, 255, color.a());
++                        else
++                        {
++                            color.r() = static_cast<unsigned char>(std::clamp(color.r() * mTint.x(), 0.f, 255.f));
++                            color.g() = static_cast<unsigned char>(std::clamp(color.g() * mTint.y(), 0.f, 255.f));
++                            color.b() = static_cast<unsigned char>(std::clamp(color.b() * mTint.z(), 0.f, 255.f));
++                        }
+                     }
+                     colors->dirty();
+                     return true;
+@@ -289,6 +301,7 @@ namespace MWRender
+ 
+             osg::Vec4f mTint;
+             float mEmissionStrength = 0.f;
++            bool mReplaceVertexRgb = false;
+ 
+         public:
+             mutable unsigned int mNeutralizedVertexColorArrays = 0;
+@@ -944,8 +957,6 @@ namespace MWRender
+ 
+         osg::Vec4f getHairTint(const ESM4::Npc& traits)
+         {
+-            if (Misc::StringUtils::ciEqual(traits.mEditorId, "GSEasyPete"))
+-                return osg::Vec4f(0.96f, 0.96f, 0.92f, 1.f);
+             return osg::Vec4f(traits.mHairColour.red / 255.f, traits.mHairColour.green / 255.f,
+                 traits.mHairColour.blue / 255.f, 1.f);
+         }
+@@ -1229,26 +1240,6 @@ namespace MWRender
+             return image != nullptr && image->s() >= 64 && image->t() >= 64;
+         }
+ 
+-        std::string findFonvNpcFaceTexture(Resource::ResourceSystem* resourceSystem, const ESM4::Npc& traits)
+-        {
+-            const std::string formIndex = formatFalloutFormIndex(traits.mId);
+-            const std::string texture = findExistingTexture(resourceSystem,
+-                { "textures/characters/facemods/falloutnv.esm/" + formIndex + "_0.dds",
+-                    "textures/characters/facemods/falloutnv.esm/" + formIndex + "_1.dds" });
+-            if (texture.empty())
+-                return {};
+-
+-            osg::ref_ptr<osg::Image> image = getExistingTextureImage(resourceSystem, texture);
+-            if (image == nullptr || image->s() < 64 || image->t() < 64)
+-                return {};
+-
+-            Log(Debug::Info) << "FNV/ESM4 diag: using exported NPC FaceGen diffuse " << texture << " for "
+-                             << traits.mEditorId << " "
+-                             << (image != nullptr ? std::to_string(image->s()) + "x" + std::to_string(image->t())
+-                                                  : std::string("<unloaded>"));
+-            return texture;
+-        }
+-
+         std::string findFonvNpcFaceDetailTexture(Resource::ResourceSystem* resourceSystem, const ESM4::Npc& traits)
+         {
+             const std::string formIndex = formatFalloutFormIndex(traits.mId);
+@@ -3416,15 +3407,6 @@ namespace MWRender
+                 || lowered.find("characters\\head\\eye") != std::string::npos;
+         }
+ 
+-        std::string getFalloutHairTintDiffuseOverride(std::string_view model)
+-        {
+-            std::string lowered(model);
+-            Misc::StringUtils::lowerCaseInPlace(lowered);
+-            if (lowered.find("hairbaseold") != std::string::npos)
+-                return "textures/characters/hair/hairafricanamericanbase_hl.dds";
+-            return {};
+-        }
+-
+         bool isFalloutMouthDriverPart(std::string_view model)
+         {
+             std::string lowered(model);
+@@ -7951,20 +7933,13 @@ namespace MWRender
+                              << correctedModel.value() << " for " << mPtr.getCellRef().getRefId();
+             overrideFalloutPartDiffuseTexture(diffuseTexture, mResourceSystem, *attached);
+         }
+-        else if (attached != nullptr)
+-        {
+-            const std::string hairDiffuse = getFalloutHairTintDiffuseOverride(correctedModel.value());
+-            if (!hairDiffuse.empty())
+-            {
+-                Log(Debug::Info) << "FNV/ESM4 diag: overriding hair tint diffuse " << hairDiffuse << " on "
+-                                 << correctedModel.value() << " for " << mPtr.getCellRef().getRefId();
+-                overrideFalloutPartDiffuseTexture(hairDiffuse, mResourceSystem, *attached);
+-            }
+-        }
+         if (tint != nullptr && attached != nullptr)
+         {
+             const float emissionStrength = isFalloutHairTintModel(correctedModel.value()) ? 0.65f : 0.f;
+-            TintMaterialVisitor visitor(*tint, emissionStrength);
++            // FO3/FNV HairShaderProperty uses vertex RGB as shader data, not
++            // as an extra diffuse colour multiplier.  Let HCLR drive the
++            // material once and keep the authored alpha channel.
++            TintMaterialVisitor visitor(*tint, emissionStrength, isFalloutHairTintModel(correctedModel.value()));
+             attached->accept(visitor);
+         }
+         if (attached != nullptr
+@@ -8230,9 +8205,11 @@ namespace MWRender
+ 
+         const bool isFemale = MWClass::ESM4Npc::isFemale(mPtr);
+         const uint32_t coveredBodySlots = getFonvCoveredBodySlots(mPtr);
+-        const std::string npcFaceTexture = findFonvNpcFaceTexture(mResourceSystem, traits);
+-        const std::string npcFaceDetailTexture
+-            = npcFaceTexture.empty() ? findFonvNpcFaceDetailTexture(mResourceSystem, traits) : std::string();
++        // Fallout's exported *_0 face asset is a modulation/detail map over the
++        // race diffuse, not a replacement diffuse.  Bodymods use the same
++        // neutral-at-0.5 modulation convention, often as a uniform 8x8 map.
++        const std::string npcFaceTexture;
++        const std::string npcFaceDetailTexture = findFonvNpcFaceDetailTexture(mResourceSystem, traits);
+         const std::string npcFaceNormalTexture = findFonvNpcFaceNormalTexture(mResourceSystem, traits);
+         const std::string npcBodyTexture = findFonvNpcBodyTexture(mResourceSystem, traits, isFemale);
+         const std::string npcBodyDetailTexture = findFonvNpcBodyDetailTexture(mResourceSystem, traits, isFemale);
+@@ -8330,7 +8307,8 @@ namespace MWRender
+             if (attached != nullptr && isFonvRaceSkinSurface(bodyPart.mesh))
+             {
+                 forceFalloutActorPartVisible(attached.get(), bodyPart.mesh, traits);
+-                neutralizeFalloutSkinMaterial(attached.get(), bodyPart.mesh, traits);
++                if (npcBodyDetailIsTinyTint)
++                    tintFalloutSkinMaterial(attached.get(), bodyPart.mesh, traits, npcBodyMaterialTint);
+                 if (!npcBodyDetailTexture.empty() && !npcBodyDetailIsTinyTint)
+                 {
+                     Log(Debug::Info) << "FNV/ESM4 diag: applying NPC body tint/detail " << npcBodyDetailTexture
+@@ -8383,11 +8361,11 @@ namespace MWRender
+                 applyFaceGenEgmMorph(mResourceSystem, attached.get(), headPart.mesh, traits);
+                 if (!texture.empty())
+                     overrideFalloutPartDiffuseTexture(texture, mResourceSystem, *attached);
+-                if (std::getenv("OPENMW_FNV_APPLY_FACEGEN_DETAIL") != nullptr && !npcFaceTexture.empty())
++                if (!npcFaceDetailTexture.empty())
+                 {
+-                    Log(Debug::Info) << "FNV/ESM4 diag: applying NPC face detail overlay " << npcFaceTexture
++                    Log(Debug::Info) << "FNV/ESM4 diag: applying NPC face detail overlay " << npcFaceDetailTexture
+                                      << " on " << headPart.mesh << " for " << traits.mEditorId;
+-                    overrideFalloutPartDetailTexture(npcFaceTexture, mResourceSystem, *attached);
++                    overrideFalloutPartDetailTexture(npcFaceDetailTexture, mResourceSystem, *attached);
+                 }
+                 if (!npcFaceNormalTexture.empty())
+                 {
+@@ -8395,7 +8373,6 @@ namespace MWRender
+                                      << " on " << headPart.mesh << " for " << traits.mEditorId;
+                     overrideFalloutPartNormalTexture(npcFaceNormalTexture, mResourceSystem, *attached);
+                 }
+-                neutralizeFalloutSkinMaterial(attached.get(), headPart.mesh, traits);
+                 DisableCullVisitor visitor;
+                 attached->accept(visitor);
+                 Log(Debug::Info) << "FNV/ESM4 diag: made head skin surface double-sided " << headPart.mesh
+@@ -8427,11 +8404,6 @@ namespace MWRender
+                 applyFalloutProofTriStaticMorph(mResourceSystem, attached.get(), hair->mModel, traits);
+                 if (attached != nullptr)
+                     applyFalloutDialogueMorph(mResourceSystem, this, attached.get(), hair->mModel, traits);
+-                if (attached != nullptr)
+-                {
+-                    TintMaterialVisitor visitor(hairTint, 0.65f);
+-                    attached->accept(visitor);
+-                }
+                 ++insertedHeadParts;
+             }
+             else
+@@ -8461,7 +8433,7 @@ namespace MWRender
+                          << (usedHeadPartTypes.count(ESM4::HeadPart::Type_FacialHair) != 0 ? "OK" : "UNKNOWN")
+                          << " npcSpecificHeadParts=" << insertedHeadParts
+                          << " faceTexture="
+-                         << (!npcFaceTexture.empty() ? "OK" : "RACE")
++                         << (!npcFaceDetailTexture.empty() ? "RACE+DETAIL" : "RACE")
+                          << " faceNormal=" << (!npcFaceNormalTexture.empty() ? "OK" : "RACE")
+                          << " tintLayers=" << traits.mTintLayers.size();
+ 
+@@ -8584,12 +8556,6 @@ namespace MWRender
+                 applyFalloutProofTriStaticMorph(mResourceSystem, attached.get(), part->mModel, traits);
+                 if (attached != nullptr)
+                     applyFalloutDialogueMorph(mResourceSystem, this, attached.get(), part->mModel, traits);
+-                if (attached != nullptr && tint != nullptr)
+-                {
+-                    const float emissionStrength = isFalloutHairTintModel(part->mModel) ? 0.65f : 0.f;
+-                    TintMaterialVisitor visitor(*tint, emissionStrength);
+-                    attached->accept(visitor);
+-                }
+                 if (isFonvFacialHairHeadPart(*part))
+                     usedHeadPartTypes.insert(ESM4::HeadPart::Type_FacialHair);
+                 ++inserted;
+@@ -8612,12 +8578,6 @@ namespace MWRender
+                         && isFalloutMouthDriverPart(extraPart->mModel))
+                         applyFalloutProofTriOpenMorph(
+                             mResourceSystem, mPtr, extraAttached.get(), extraPart->mModel, traits);
+-                    if (extraAttached != nullptr && tint != nullptr)
+-                    {
+-                        const float emissionStrength = isFalloutHairTintModel(extraPart->mModel) ? 0.65f : 0.f;
+-                        TintMaterialVisitor visitor(*tint, emissionStrength);
+-                        extraAttached->accept(visitor);
+-                    }
+                     if (isFonvFacialHairHeadPart(*extraPart))
+                         usedHeadPartTypes.insert(ESM4::HeadPart::Type_FacialHair);
+                     ++inserted;
+diff --git a/components/esm4/loadinfo.cpp b/components/esm4/loadinfo.cpp
+index d234e28217..90a699f50c 100644
+--- a/components/esm4/loadinfo.cpp
++++ b/components/esm4/loadinfo.cpp
+@@ -32,6 +32,7 @@
+ #include <components/esm/refid.hpp>
+ 
+ #include "reader.hpp"
++#include "grouptype.hpp"
+ // #include "writer.hpp"
+ 
+ void ESM4::DialogInfo::load(ESM4::Reader& reader)
+@@ -39,6 +40,12 @@ void ESM4::DialogInfo::load(ESM4::Reader& reader)
+     mId = reader.getFormIdFromHeader();
+     mFlags = reader.hdr().record.flags;
+ 
++    // FO3/FONV INFO records normally inherit their topic from the surrounding
++    // topic-child GRUP rather than carrying a TPIC subrecord of their own.
++    // Retaining a zero topic here made every loaded response unreachable.
++    if (reader.stackSize() != 0 && reader.grp().type == ESM4::Grp_TopicChild)
++        mTopic = ESM::FormId::fromUint32(reader.grp().label.value);
++
+     mEditorId = ESM::RefId(mId).serializeText(); // FIXME: quick workaround to use existing code
+ 
+     bool readingEndScript = false;
+diff --git a/components/esm4/script.cpp b/components/esm4/script.cpp
+index 668c0f07a9..adf6706142 100644
+--- a/components/esm4/script.cpp
++++ b/components/esm4/script.cpp
+@@ -128,11 +128,20 @@ namespace ESM4
+ 
+         switch (condition.functionIndex)
+         {
++            case FUN_GetInCell:
++            case FUN_GetIsClass:
++            case FUN_GetIsRace:
++            case FUN_GetInFaction:
++            case FUN_GetIsID:
++            case FUN_GetGlobalValue:
++            case FUN_GetQuestVariable:
+             case FUN_GetQuestRunning:
+             case FUN_GetStage:
+             case FUN_GetStageDone:
+-            case FUN_GetGlobalValue:
+             case FUN_GetQuestCompleted:
++            case FUN_GetObjectiveCompleted:
++            case FUN_GetObjectiveDisplayed:
++            case FUN_IsInList:
+                 reader.adjustFormId(condition.param1);
+                 break;
+             default:
+-- 
+2.53.0.windows.1
+

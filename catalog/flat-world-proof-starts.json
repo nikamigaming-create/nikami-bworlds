@@ -1215,6 +1215,175 @@
             "Wide geometry proof angle. Do not use as actor promotion evidence."
           ]
         },
+        "goodsprings-easy-pete-face-close-burst": {
+          "label": "Goodsprings Easy Pete retail FaceGen close burst",
+          "scriptRun": "config/proofs/fnv-easy-pete-idle.txt",
+          "environment": {
+            "OPENMW_PROOF_DELAY_STARTUP_SCRIPT": "1",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_FNV_DISABLE_PACKAGE_PREPLACEMENT": "1",
+            "OPENMW_FNV_DISABLE_PACKAGE_PROCEDURE": "1",
+            "OPENMW_FNV_DISABLE_AI_PACKAGES": "1",
+            "OPENMW_FNV_PROOF_TARGET_NPC": "GSEasyPete",
+            "OPENMW_FNV_HIDE_PLAYER_PROOF_PARTS": "1"
+          },
+          "anchor": {
+            "source": "FalloutNV.esm EasyPeteRef FormId:0x104c80 at its authored Goodsprings exterior placement",
+            "position": {
+              "x": -67730,
+              "y": 3342,
+              "z": 8392
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -67730,
+                "y": 3342,
+                "z": 8496
+              },
+              "target": {
+                "x": -67844.867,
+                "y": 3333.970,
+                "z": 8477
+              },
+              "sequence": [
+                {
+                  "frame": 160,
+                  "position": {
+                    "x": -67730,
+                    "y": 3342,
+                    "z": 8496
+                  },
+                  "target": {
+                    "x": -67844.867,
+                    "y": 3333.970,
+                    "z": 8477
+                  }
+                },
+                {
+                  "frame": 200,
+                  "position": {
+                    "x": -67955,
+                    "y": 3326,
+                    "z": 8492
+                  },
+                  "target": {
+                    "x": -67844.867,
+                    "y": 3333.970,
+                    "z": 8472
+                  }
+                },
+                {
+                  "frame": 240,
+                  "position": {
+                    "x": -67844.867,
+                    "y": 3445,
+                    "z": 8492
+                  },
+                  "target": {
+                    "x": -67844.867,
+                    "y": 3333.970,
+                    "z": 8472
+                  }
+                },
+                {
+                  "frame": 280,
+                  "position": {
+                    "x": -67844.867,
+                    "y": 3223,
+                    "z": 8492
+                  },
+                  "target": {
+                    "x": -67844.867,
+                    "y": 3333.970,
+                    "z": 8472
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 16,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "160,200,240,280",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Uses Easy Pete's authored exterior reference and native FaceGen/bodymod assets; no staged replacement actor.",
+            "Flat close-up colour and head-part gate; package relocation is disabled so the authored exterior ref stays in frame."
+          ]
+        },
+        "goodsprings-easy-pete-dialogue": {
+          "label": "Goodsprings Easy Pete retail dialogue GUI proof",
+          "scriptRun": "config/proofs/fnv-easy-pete-idle.txt",
+          "environment": {
+            "OPENMW_PROOF_DELAY_STARTUP_SCRIPT": "1",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_FNV_DISABLE_PACKAGE_PREPLACEMENT": "1",
+            "OPENMW_FNV_DISABLE_PACKAGE_PROCEDURE": "1",
+            "OPENMW_FNV_DISABLE_AI_PACKAGES": "1",
+            "OPENMW_FNV_PROOF_TARGET_NPC": "GSEasyPete",
+            "OPENMW_FNV_HIDE_PLAYER_PROOF_PARTS": "1",
+            "OPENMW_PROOF_SAY_FRAME": "140",
+            "OPENMW_PROOF_SAY_ACTOR": "GSEasyPete",
+            "OPENMW_PROOF_START_DIALOGUE": "1"
+          },
+          "presentation": {
+            "hideGui": false,
+            "forceClearLoadingGui": true
+          },
+          "anchor": {
+            "source": "FalloutNV.esm EasyPeteRef FormId:0x104c80 plus retail GREETING DIAL FormId:0xc8 and INFO FormId:0x104c60",
+            "position": {
+              "x": -67730,
+              "y": 3342,
+              "z": 8392
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -67730,
+                "y": 3342,
+                "z": 8496
+              },
+              "target": {
+                "x": -67844.867,
+                "y": 3333.970,
+                "z": 8477
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 16,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "190,240",
+            "expectedScreenshotCount": 2,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Opens the real GM_Dialogue window through DialogueWindow::setPtr and DialogueManager::startDialogue; it does not inject fake UI text.",
+            "The OpenMW log must identify the selected retail DIAL/INFO FormIDs and the native screenshots must contain Easy Pete's retail greeting and topic list."
+          ]
+        },
         "goodsprings-settler-actor-close-burst": {
           "label": "Goodsprings settler actor close burst",
           "anchor": {
