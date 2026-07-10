@@ -5,7 +5,32 @@
   "defaults": {
     "runSeconds": 90,
     "screenshotFrames": "75,120,180,300,600,1200",
+    "capture": {
+      "runSeconds": 90,
+      "captureSeconds": [
+        12,
+        24
+      ],
+      "engineScreenshotEnabled": true,
+      "engineScreenshotFrames": "75,120,180,300,600,1200",
+      "crashReportSettleSeconds": 2
+    },
     "esm4GridRadius": 0,
+    "presentation": {
+      "hideGuiForSupportTiers": [
+        "walking-sim",
+        "asset-research"
+      ],
+      "forceClearLoadingGuiWhenGuiHidden": true
+    },
+    "environmentPolicy": {
+      "allowedPrefixes": [
+        "OPENMW_WORLD_VIEWER_",
+        "OPENMW_PROOF_",
+        "OPENMW_ESM4_",
+        "OPENMW_FNV_"
+      ]
+    },
     "extraArgs": [
       "--no-sound"
     ]
@@ -13,12 +38,142 @@
   "worlds": {
     "morrowind": {
       "startCell": "Seyda Neen",
-      "label": "Seyda Neen starting village"
+      "label": "Seyda Neen starting village",
+      "slices": {
+        "seyda-neen-geometry-smoke": {
+          "label": "Seyda Neen exterior geometry/material smoke",
+          "environment": {
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
+          },
+          "capture": {
+            "runSeconds": 14,
+            "captureSeconds": [
+              10
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "crashReportSettleSeconds": 2
+          },
+          "notes": [
+            "Use this as the config-backed Morrowind baseline geometry/material slice.",
+            "This is not actor promotion evidence unless actor runtime telemetry and visual review are added for Morrowind actors."
+          ]
+        },
+        "seyda-neen-geometry-orbit-burst": {
+          "label": "Seyda Neen exterior geometry orbital burst",
+          "environment": {
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
+          },
+          "presentation": {
+            "hideGui": true,
+            "forceClearLoadingGui": true
+          },
+          "anchor": {
+            "source": "Morrowind.esm Seyda Neen exterior grid -2,-9, one-launch four-angle village/water geometry survey",
+            "position": {
+              "x": -12288,
+              "y": -69632,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 3.4
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -12150,
+                "y": -72150,
+                "z": 650
+              },
+              "target": {
+                "x": -11100,
+                "y": -71250,
+                "z": 220
+              },
+              "sequence": [
+                {
+                  "frame": 90,
+                  "position": {
+                    "x": -12150,
+                    "y": -72150,
+                    "z": 650
+                  },
+                  "target": {
+                    "x": -11100,
+                    "y": -71250,
+                    "z": 220
+                  }
+                },
+                {
+                  "frame": 210,
+                  "position": {
+                    "x": -13250,
+                    "y": -71300,
+                    "z": 850
+                  },
+                  "target": {
+                    "x": -11100,
+                    "y": -71250,
+                    "z": 220
+                  }
+                },
+                {
+                  "frame": 330,
+                  "position": {
+                    "x": -11100,
+                    "y": -73550,
+                    "z": 900
+                  },
+                  "target": {
+                    "x": -11100,
+                    "y": -71250,
+                    "z": 220
+                  }
+                },
+                {
+                  "frame": 450,
+                  "position": {
+                    "x": -12300,
+                    "y": -70700,
+                    "z": 950
+                  },
+                  "target": {
+                    "x": -11100,
+                    "y": -71250,
+                    "z": 220
+                  }
+                }
+              ]
+            }
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,300,420,540",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 2
+          },
+          "notes": [
+            "One executable launch should produce four native screenshots around the Seyda Neen village, shore, and water geometry.",
+            "Wide geometry proof angle. Do not use as actor promotion evidence."
+          ]
+        }
+      }
     },
     "oblivion": {
       "startCell": "ICPalace03",
       "label": "Imperial City Palace exterior",
       "esm4GridRadius": 1,
+      "environment": {
+        "OPENMW_FNV_BOOTSTRAP_HOUR": "12",
+        "OPENMW_FNV_PROOF_WEATHER_ID": "0",
+        "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
+      },
       "anchor": {
         "source": "Oblivion.esm CELL ICPalace03, static survey camera pulled outside/up from palace shell",
         "position": {
@@ -45,12 +200,400 @@
           }
         },
         "dry": true
+      },
+      "slices": {
+        "imperial-city-palace-geometry-actor-smoke": {
+          "label": "Imperial City Palace exterior geometry and actor smoke",
+          "capture": {
+            "runSeconds": 30,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "expectedScreenshotCount": 1,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Use this as the config-backed Oblivion baseline slice before actor-specific promotion.",
+            "Screenshot evidence may pass while actor runtime rows still isolate idle animation or controller failures."
+          ]
+        },
+        "imperial-city-palace-actor-close-orbit-burst": {
+          "label": "Imperial City Palace guard actor front-door burst",
+          "anchor": {
+            "source": "Oblivion.esm CELL ICPalace03, front-of-door Palace Guard actor proof survey from observed guard placements",
+            "position": {
+              "x": 28672,
+              "y": 63424,
+              "z": 3600
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5707964
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": 26320,
+                "y": 63430,
+                "z": 4190
+              },
+              "target": {
+                "x": 26594,
+                "y": 63430,
+                "z": 4160
+              },
+              "sequence": [
+                {
+                  "frame": 180,
+                  "position": {
+                    "x": 26320,
+                    "y": 63430,
+                    "z": 4190
+                  },
+                  "target": {
+                    "x": 26594,
+                    "y": 63430,
+                    "z": 4160
+                  }
+                },
+                {
+                  "frame": 240,
+                  "position": {
+                    "x": 26345,
+                    "y": 63220,
+                    "z": 4195
+                  },
+                  "target": {
+                    "x": 26594,
+                    "y": 63430,
+                    "z": 4160
+                  }
+                },
+                {
+                  "frame": 300,
+                  "position": {
+                    "x": 26345,
+                    "y": 63640,
+                    "z": 4195
+                  },
+                  "target": {
+                    "x": 26594,
+                    "y": 63430,
+                    "z": 4160
+                  }
+                },
+                {
+                  "frame": 360,
+                  "position": {
+                    "x": 26410,
+                    "y": 63430,
+                    "z": 4210
+                  },
+                  "target": {
+                    "x": 26594,
+                    "y": 63430,
+                    "z": 4160
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,240,300,360",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Focused actor proof slice: run with -UseActorAnimationPolicyEnvironment before considering actor promotion.",
+            "One executable launch should produce four native zoomed front-of-door screenshots around the two Palace Guards."
+          ]
+        },
+        "imperial-city-palace-geometry-orbit-burst": {
+          "label": "Imperial City Palace exterior geometry orbital burst",
+          "anchor": {
+            "source": "Oblivion.esm CELL ICPalace03, one-launch four-angle world geometry survey",
+            "position": {
+              "x": 28672,
+              "y": 63424,
+              "z": 3600
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5707964
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": 26600,
+                "y": 65900,
+                "z": 5050
+              },
+              "target": {
+                "x": 26594,
+                "y": 63430,
+                "z": 3860
+              },
+              "sequence": [
+                {
+                  "frame": 180,
+                  "position": {
+                    "x": 26600,
+                    "y": 65900,
+                    "z": 5050
+                  },
+                  "target": {
+                    "x": 26594,
+                    "y": 63430,
+                    "z": 3860
+                  }
+                },
+                {
+                  "frame": 240,
+                  "position": {
+                    "x": 30750,
+                    "y": 60050,
+                    "z": 6200
+                  },
+                  "target": {
+                    "x": 26594,
+                    "y": 63430,
+                    "z": 4200
+                  }
+                },
+                {
+                  "frame": 300,
+                  "position": {
+                    "x": 30750,
+                    "y": 66800,
+                    "z": 6200
+                  },
+                  "target": {
+                    "x": 26594,
+                    "y": 63430,
+                    "z": 4200
+                  }
+                },
+                {
+                  "frame": 360,
+                  "position": {
+                    "x": 24100,
+                    "y": 63430,
+                    "z": 5350
+                  },
+                  "target": {
+                    "x": 26594,
+                    "y": 63430,
+                    "z": 4200
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,240,300,360",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "One executable launch should produce four native screenshots from south, northeast, southeast, and west survey cameras.",
+            "Wide geometry proof angle. Do not use as actor promotion evidence."
+          ]
+        },
+        "imperial-city-palace-geometry-orbit-north": {
+          "label": "Imperial City Palace exterior geometry orbit north",
+          "anchor": {
+            "source": "Oblivion.esm CELL ICPalace03, wide north orbital survey camera",
+            "position": {
+              "x": 28672,
+              "y": 63424,
+              "z": 3600
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5707964
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": 26600,
+                "y": 60950,
+                "z": 5050
+              },
+              "target": {
+                "x": 26594,
+                "y": 63430,
+                "z": 3860
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Wide geometry proof angle. Do not use as actor promotion evidence."
+          ]
+        },
+        "imperial-city-palace-geometry-orbit-east": {
+          "label": "Imperial City Palace exterior geometry orbit east",
+          "anchor": {
+            "source": "Oblivion.esm CELL ICPalace03, wide east orbital survey camera",
+            "position": {
+              "x": 28672,
+              "y": 63424,
+              "z": 3600
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5707964
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": 29100,
+                "y": 63430,
+                "z": 5050
+              },
+              "target": {
+                "x": 26594,
+                "y": 63430,
+                "z": 3860
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Wide geometry proof angle. Do not use as actor promotion evidence."
+          ]
+        },
+        "imperial-city-palace-geometry-orbit-south": {
+          "label": "Imperial City Palace exterior geometry orbit south",
+          "anchor": {
+            "source": "Oblivion.esm CELL ICPalace03, wide south orbital survey camera",
+            "position": {
+              "x": 28672,
+              "y": 63424,
+              "z": 3600
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5707964
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": 26600,
+                "y": 65900,
+                "z": 5050
+              },
+              "target": {
+                "x": 26594,
+                "y": 63430,
+                "z": 3860
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Wide geometry proof angle. Do not use as actor promotion evidence."
+          ]
+        },
+        "imperial-city-palace-geometry-orbit-west": {
+          "label": "Imperial City Palace exterior geometry orbit west",
+          "anchor": {
+            "source": "Oblivion.esm CELL ICPalace03, wide west orbital survey camera",
+            "position": {
+              "x": 28672,
+              "y": 63424,
+              "z": 3600
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5707964
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": 24100,
+                "y": 63430,
+                "z": 5050
+              },
+              "target": {
+                "x": 26594,
+                "y": 63430,
+                "z": 3860
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Wide geometry proof angle. Do not use as actor promotion evidence."
+          ]
+        }
       }
     },
     "fallout3": {
       "startCell": "MegatonEntrance",
       "label": "Megaton entrance exterior",
       "esm4GridRadius": 1,
+      "environment": {
+        "OPENMW_FNV_BOOTSTRAP_HOUR": "12",
+        "OPENMW_FNV_PROOF_WEATHER_ID": "0",
+        "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
+      },
       "anchor": {
         "source": "Fallout3.esm CELL MegatonEntrance, mined gate/static cluster",
         "position": {
@@ -77,12 +620,400 @@
           }
         },
         "dry": true
+      },
+      "slices": {
+        "megaton-entrance-geometry-actor-smoke": {
+          "label": "Megaton entrance exterior geometry and actor smoke",
+          "capture": {
+            "runSeconds": 30,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "expectedScreenshotCount": 1,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Use this as the config-backed Fallout 3 baseline slice before actor-specific promotion.",
+            "Screenshot evidence may pass while actor runtime rows still isolate controller or actor binding failures."
+          ]
+        },
+        "megaton-entrance-lucas-actor-close-burst": {
+          "label": "Megaton entrance Lucas/Stockholm actor close burst",
+          "anchor": {
+            "source": "Fallout3.esm MegatonEntrance, focused exterior actor proof around Lucas Simms and Stockholm placements",
+            "position": {
+              "x": -2907,
+              "y": -23485,
+              "z": 12643
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 0.2
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -3015,
+                "y": -22445,
+                "z": 13010
+              },
+              "target": {
+                "x": -3015,
+                "y": -22564,
+                "z": 12974
+              },
+              "sequence": [
+                {
+                  "frame": 180,
+                  "position": {
+                    "x": -3015,
+                    "y": -22465,
+                    "z": 13015
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22564,
+                    "z": 12995
+                  }
+                },
+                {
+                  "frame": 240,
+                  "position": {
+                    "x": -3015,
+                    "y": -22500,
+                    "z": 13040
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22564,
+                    "z": 13035
+                  }
+                },
+                {
+                  "frame": 300,
+                  "position": {
+                    "x": -3100,
+                    "y": -22520,
+                    "z": 13025
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22564,
+                    "z": 13010
+                  }
+                },
+                {
+                  "frame": 360,
+                  "position": {
+                    "x": -2930,
+                    "y": -22520,
+                    "z": 13025
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22564,
+                    "z": 13010
+                  }
+                },
+                {
+                  "frame": 420,
+                  "position": {
+                    "x": -3015,
+                    "y": -22530,
+                    "z": 13125
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22564,
+                    "z": 13000
+                  }
+                },
+                {
+                  "frame": 480,
+                  "position": {
+                    "x": -3015,
+                    "y": -22380,
+                    "z": 13030
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22564,
+                    "z": 12995
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,240,300,360,420,480",
+            "expectedScreenshotCount": 6,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Focused exterior actor proof slice. Mister Burke is package-moved cross-cell into Moriarty's Saloon and must be covered by a separate interior slice.",
+            "One executable launch should produce six native front, face-close, side, top, and doorway-context screenshots around Lucas Simms and the Megaton entrance actor line."
+          ]
+        },
+        "megaton-entrance-lucas-actor-walkaround": {
+          "label": "Megaton entrance Lucas actor player-camera walkaround",
+          "anchor": {
+            "source": "Fallout3.esm MegatonEntrance, player-camera movement proof near Lucas Simms and Stockholm placements",
+            "position": {
+              "x": -3015,
+              "y": -22465,
+              "z": 12891
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": -3.1415927
+            },
+            "camera": {
+              "mode": "firstperson",
+              "distance": 0,
+              "pitch": -0.08,
+              "yaw": 3.1415927
+            },
+            "dry": true
+          },
+          "inputEvents": [
+            "wait:0.8",
+            "scanhold:0x11:1.6",
+            "scanhold:0x20:0.8",
+            "scanhold:0x1E:0.8"
+          ],
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,240,300,360",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Player-camera proof slice: no static camera, so screenshots should show the game camera after real held movement input.",
+            "Run with -UseActorAnimationPolicyEnvironment and keeper audit env before treating this as actor walkaround evidence."
+          ]
+        },
+        "moriartys-saloon-mister-burke-actor-close-burst": {
+          "startCell": "MegatonMoriartysSaloon",
+          "label": "Moriarty's Saloon Mister Burke actor close burst",
+          "esm4GridRadius": 0,
+          "anchor": {
+            "source": "Fallout3.esm MegatonMoriartysSaloon package-resolved Mister Burke chair marker position",
+            "position": {
+              "x": 1243.32,
+              "y": -425.944,
+              "z": -129.422
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 2.435
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": 1243,
+                "y": -700,
+                "z": 20
+              },
+              "target": {
+                "x": 1243,
+                "y": -426,
+                "z": -35
+              },
+              "sequence": [
+                {
+                  "frame": 180,
+                  "position": {
+                    "x": 1243,
+                    "y": -700,
+                    "z": 20
+                  },
+                  "target": {
+                    "x": 1243,
+                    "y": -426,
+                    "z": -35
+                  }
+                },
+                {
+                  "frame": 240,
+                  "position": {
+                    "x": 1020,
+                    "y": -525,
+                    "z": 25
+                  },
+                  "target": {
+                    "x": 1243,
+                    "y": -426,
+                    "z": -35
+                  }
+                },
+                {
+                  "frame": 300,
+                  "position": {
+                    "x": 1465,
+                    "y": -525,
+                    "z": 25
+                  },
+                  "target": {
+                    "x": 1243,
+                    "y": -426,
+                    "z": -35
+                  }
+                },
+                {
+                  "frame": 360,
+                  "position": {
+                    "x": 1243,
+                    "y": -245,
+                    "z": 20
+                  },
+                  "target": {
+                    "x": 1243,
+                    "y": -426,
+                    "z": -35
+                  }
+                }
+              ]
+            }
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,240,300,360",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Focused interior actor proof slice for Mister Burke after the Megaton exterior package redirects him to Moriarty's Saloon.",
+            "First-pass camera coordinates come from the package-resolved chair marker telemetry; adjust after native screenshots if the saloon shell occludes the actor."
+          ]
+        },
+        "megaton-entrance-geometry-orbit-burst": {
+          "label": "Megaton entrance exterior geometry fan/orbit burst",
+          "anchor": {
+            "source": "Fallout3.esm CELL MegatonEntrance, one-launch shell-safe fan/orbit geometry survey through the gate/static cluster",
+            "position": {
+              "x": -2907,
+              "y": -23485,
+              "z": 12643
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 0.2
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -3015,
+                "y": -23950,
+                "z": 13400
+              },
+              "target": {
+                "x": -3015,
+                "y": -22564,
+                "z": 12980
+              },
+              "sequence": [
+                {
+                  "frame": 180,
+                  "position": {
+                    "x": -3015,
+                    "y": -23950,
+                    "z": 13400
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22564,
+                    "z": 12980
+                  }
+                },
+                {
+                  "frame": 240,
+                  "position": {
+                    "x": -2600,
+                    "y": -23750,
+                    "z": 13350
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22450,
+                    "z": 13000
+                  }
+                },
+                {
+                  "frame": 300,
+                  "position": {
+                    "x": -3450,
+                    "y": -23750,
+                    "z": 13350
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22450,
+                    "z": 13000
+                  }
+                },
+                {
+                  "frame": 360,
+                  "position": {
+                    "x": -3015,
+                    "y": -21200,
+                    "z": 13400
+                  },
+                  "target": {
+                    "x": -3015,
+                    "y": -22564,
+                    "z": 13020
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,240,300,360",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "One executable launch should produce four native screenshots through the open Megaton shell; full side orbit cameras clip into the scrap-wall shell.",
+            "Wide geometry proof angle. Do not use as actor promotion evidence."
+          ]
+        }
       }
     },
     "fallout_new_vegas": {
       "startCell": "Goodsprings",
       "label": "Goodsprings exterior",
       "esm4GridRadius": 1,
+      "environment": {
+        "OPENMW_FNV_BOOTSTRAP_HOUR": "12",
+        "OPENMW_FNV_PROOF_WEATHER_ID": "0",
+        "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
+      },
       "anchor": {
         "source": "Local FNV proof bootstrap Goodsprings position",
         "position": {
@@ -109,12 +1040,301 @@
           }
         },
         "dry": true
+      },
+      "slices": {
+        "goodsprings-geometry-actor-smoke": {
+          "label": "Goodsprings exterior geometry and actor smoke",
+          "capture": {
+            "runSeconds": 30,
+            "captureSeconds": [
+              12,
+              24
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Use this as the config-backed Fallout: New Vegas baseline slice before actor-specific promotion.",
+            "Screenshot evidence may pass while actor runtime rows still isolate missing controller or idle binding failures."
+          ]
+        },
+        "goodsprings-geometry-orbit-burst": {
+          "label": "Goodsprings exterior geometry orbital burst",
+          "anchor": {
+            "source": "Local FNV proof bootstrap Goodsprings house/street cluster, one-launch four-angle geometry survey",
+            "position": {
+              "x": -67735,
+              "y": 3204,
+              "z": 8425
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": -0.6981317
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -71100,
+                "y": 3420,
+                "z": 8520
+              },
+              "target": {
+                "x": -71492,
+                "y": 4001,
+                "z": 8420
+              },
+              "sequence": [
+                {
+                  "frame": 180,
+                  "position": {
+                    "x": -71100,
+                    "y": 3420,
+                    "z": 8520
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8420
+                  }
+                },
+                {
+                  "frame": 240,
+                  "position": {
+                    "x": -70400,
+                    "y": 4450,
+                    "z": 8900
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8440
+                  }
+                },
+                {
+                  "frame": 300,
+                  "position": {
+                    "x": -71850,
+                    "y": 5350,
+                    "z": 8950
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8440
+                  }
+                },
+                {
+                  "frame": 360,
+                  "position": {
+                    "x": -72650,
+                    "y": 3500,
+                    "z": 8950
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8440
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,240,300,360",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "One executable launch should produce four native screenshots around the Goodsprings house/street geometry.",
+            "Wide geometry proof angle. Do not use as actor promotion evidence."
+          ]
+        },
+        "goodsprings-settler-actor-close-burst": {
+          "label": "Goodsprings settler actor close burst",
+          "anchor": {
+            "source": "FalloutNV.esm Goodsprings exterior FormId:0x846ea, focused actor proof around mined GSSettlerAM placement",
+            "position": {
+              "x": -67735,
+              "y": 3204,
+              "z": 8425
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": -0.6981317
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -71355,
+                "y": 4001,
+                "z": 8470
+              },
+              "target": {
+                "x": -71492,
+                "y": 4001,
+                "z": 8438
+              },
+              "sequence": [
+                {
+                  "frame": 180,
+                  "position": {
+                    "x": -71380,
+                    "y": 4001,
+                    "z": 8495
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8455
+                  }
+                },
+                {
+                  "frame": 240,
+                  "position": {
+                    "x": -71420,
+                    "y": 4001,
+                    "z": 8500
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8470
+                  }
+                },
+                {
+                  "frame": 300,
+                  "position": {
+                    "x": -71492,
+                    "y": 3920,
+                    "z": 8500
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8465
+                  }
+                },
+                {
+                  "frame": 360,
+                  "position": {
+                    "x": -71570,
+                    "y": 4001,
+                    "z": 8500
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8465
+                  }
+                },
+                {
+                  "frame": 420,
+                  "position": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8585
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8470
+                  }
+                },
+                {
+                  "frame": 480,
+                  "position": {
+                    "x": -71335,
+                    "y": 3880,
+                    "z": 8495
+                  },
+                  "target": {
+                    "x": -71492,
+                    "y": 4001,
+                    "z": 8455
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,240,300,360,420,480",
+            "expectedScreenshotCount": 6,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Focused exterior actor proof slice using engine-authored Goodsprings settler placement; do not stage actors from mined coordinates.",
+            "One executable launch should produce six native full-body, face-close, side, top, and street-context screenshots around GSSettlerAM for visual pose/material review."
+          ]
+        },
+        "goodsprings-settler-actor-walkaround": {
+          "label": "Goodsprings settler actor player-camera walkaround",
+          "anchor": {
+            "source": "FalloutNV.esm Goodsprings exterior FormId:0x846ea, player-camera movement proof near mined GSSettlerAM placement",
+            "position": {
+              "x": -71355,
+              "y": 4001,
+              "z": 8425
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": -1.5707964
+            },
+            "camera": {
+              "mode": "firstperson",
+              "distance": 0,
+              "pitch": 0.15,
+              "yaw": 1.5707964
+            },
+            "dry": true
+          },
+          "inputEvents": [
+            "wait:0.8",
+            "scanhold:0x11:1.6",
+            "scanhold:0x20:0.8",
+            "scanhold:0x1E:0.8"
+          ],
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180,240,300,360",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Player-camera proof slice: no static camera, so screenshots should show the game camera after real held movement input.",
+            "Run with -UseActorAnimationPolicyEnvironment and keeper audit env before treating this as actor walkaround evidence."
+          ]
+        }
       }
     },
     "skyrim_vr": {
       "startCell": "Riverwood",
       "label": "Riverwood guard road-sign actor cluster",
       "esm4GridRadius": 1,
+      "environment": {
+        "OPENMW_FNV_BOOTSTRAP_HOUR": "12",
+        "OPENMW_FNV_PROOF_WEATHER_ID": "0",
+        "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
+      },
       "anchor": {
         "source": "SkyrimVR starts mine: Riverwood exterior road-sign guard ACHR cluster",
         "position": {
@@ -156,9 +1376,40 @@
           "orbitGroundRayDistance": 4096
         },
         "dry": true
+      },
+      "slices": {
+        "exterior-riverwood-actor-cluster": {
+          "label": "Riverwood exterior actor cluster crash-repro slice",
+          "capture": {
+            "runSeconds": 16,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotFrames": "180",
+            "crashReportSettleSeconds": 3
+          }
+        },
+        "interior-sleeping-giant-inn-geometry": {
+          "startCell": "RiverwoodSleepingGiantInn",
+          "label": "Sleeping Giant Inn interior geometry/material smoke",
+          "esm4GridRadius": 1,
+          "anchor": null,
+          "capture": {
+            "runSeconds": 16,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotFrames": "240",
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Use this slice for stable SkyrimVR geometry/material screenshot evidence while Riverwood exterior cell-load crash is isolated.",
+            "This is not an actor promotion slice; actor runtime ledger still reports animation binding failures for inn actors."
+          ]
+        }
       }
     },
-    "fallout4_vr": {
+    "fallout4": {
       "startCell": "SanctuaryExt02",
       "label": "Sanctuary Hills Codsworth exterior",
       "esm4GridRadius": 1,
@@ -203,6 +1454,277 @@
           "orbitGroundRayDistance": 4096
         },
         "dry": true
+      },
+      "slices": {
+        "exterior-sanctuary-geometry-orbit-burst": {
+          "label": "Sanctuary exterior geometry orbital burst",
+          "esm4GridRadius": 1,
+          "environment": {
+            "OPENMW_FNV_BOOTSTRAP_HOUR": "12",
+            "OPENMW_FNV_PROOF_WEATHER_ID": "0",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_WORLD_VIEWER_DISABLE_ESM4_ACTORS": "1"
+          },
+          "presentation": {
+            "hideGui": true,
+            "forceClearLoadingGui": true
+          },
+          "anchor": {
+            "source": "Fallout4.esm SanctuaryExt02, one-launch four-angle geometry survey with ESM4 actors disabled for geometry-only evidence",
+            "position": {
+              "x": -80269.641,
+              "y": 90568.555,
+              "z": 7821.387
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 2.3561945
+            },
+            "exteriorLocation": {
+              "worldspace": "FormId:0x100003c",
+              "grid": {
+                "x": -20,
+                "y": 22
+              }
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -80270,
+                "y": 88400,
+                "z": 9000
+              },
+              "target": {
+                "x": -80269.641,
+                "y": 90568.555,
+                "z": 7920
+              },
+              "sequence": [
+                {
+                  "frame": 660,
+                  "position": {
+                    "x": -80270,
+                    "y": 88400,
+                    "z": 9000
+                  },
+                  "target": {
+                    "x": -80269.641,
+                    "y": 90568.555,
+                    "z": 7920
+                  }
+                },
+                {
+                  "frame": 780,
+                  "position": {
+                    "x": -78050,
+                    "y": 90570,
+                    "z": 9000
+                  },
+                  "target": {
+                    "x": -80269.641,
+                    "y": 90568.555,
+                    "z": 7920
+                  }
+                },
+                {
+                  "frame": 900,
+                  "position": {
+                    "x": -80270,
+                    "y": 92750,
+                    "z": 9050
+                  },
+                  "target": {
+                    "x": -80269.641,
+                    "y": 90568.555,
+                    "z": 7920
+                  }
+                },
+                {
+                  "frame": 1020,
+                  "position": {
+                    "x": -82500,
+                    "y": 90570,
+                    "z": 9000
+                  },
+                  "target": {
+                    "x": -80269.641,
+                    "y": 90568.555,
+                    "z": 7920
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 34,
+            "captureSeconds": [
+              24
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "720,840,960,1080",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "One executable launch should produce four native screenshots around the Sanctuary exterior geometry after the slow Fallout 4 world load.",
+            "Geometry-only slice: ESM4 actors are disabled here to keep actor rigging failures from hiding world geometry evidence."
+          ]
+        },
+        "exterior-sanctuary-codsworth-actor-close-burst": {
+          "label": "Sanctuary Codsworth actor close burst",
+          "esm4GridRadius": 1,
+          "environment": {
+            "OPENMW_FNV_BOOTSTRAP_HOUR": "12",
+            "OPENMW_FNV_PROOF_WEATHER_ID": "0",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_ESM4_ENABLE_RIG_HEURISTIC": "1",
+            "OPENMW_ESM4_PIN_ACTOR_BIND_ROTATION": "0",
+            "OPENMW_ESM4_SKINNING_MODE": "source"
+          },
+          "presentation": {
+            "hideGui": true,
+            "forceClearLoadingGui": true
+          },
+          "anchor": {
+            "source": "Fallout4.esm actor cast mine: Codsworth persistent Commonwealth placement near SanctuaryExt02; actor-enabled close proof for the non-VR fallout4 profile",
+            "position": {
+              "x": -80269.641,
+              "y": 90568.555,
+              "z": 7821.387
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 2.3561945
+            },
+            "exteriorLocation": {
+              "worldspace": "FormId:0x100003c",
+              "grid": {
+                "x": -20,
+                "y": 22
+              }
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -79940,
+                "y": 90270,
+                "z": 8005
+              },
+              "target": {
+                "x": -80269.641,
+                "y": 90568.555,
+                "z": 7915
+              },
+              "sequence": [
+                {
+                  "frame": 660,
+                  "position": {
+                    "x": -79940,
+                    "y": 90270,
+                    "z": 8005
+                  },
+                  "target": {
+                    "x": -80269.641,
+                    "y": 90568.555,
+                    "z": 7915
+                  }
+                },
+                {
+                  "frame": 780,
+                  "position": {
+                    "x": -79860,
+                    "y": 90568.555,
+                    "z": 8000
+                  },
+                  "target": {
+                    "x": -80269.641,
+                    "y": 90568.555,
+                    "z": 7915
+                  }
+                },
+                {
+                  "frame": 900,
+                  "position": {
+                    "x": -80269.641,
+                    "y": 90180,
+                    "z": 8010
+                  },
+                  "target": {
+                    "x": -80269.641,
+                    "y": 90568.555,
+                    "z": 7915
+                  }
+                },
+                {
+                  "frame": 1020,
+                  "position": {
+                    "x": -80680,
+                    "y": 90568.555,
+                    "z": 8005
+                  },
+                  "target": {
+                    "x": -80269.641,
+                    "y": 90568.555,
+                    "z": 7915
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 34,
+            "captureSeconds": [
+              24
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "720,840,960,1080",
+            "expectedScreenshotCount": 4,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "One executable launch should produce four native close screenshots around Codsworth with ESM4 actors enabled.",
+            "This is the non-VR fallout4/Fallout4.esm actor diagnostic; do not use fallout4_vr runtime evidence for promotion."
+          ]
+        },
+        "exterior-sanctuary-scheduled-screenshot": {
+          "label": "Sanctuary exterior scheduled screenshot diagnostic",
+          "capture": {
+            "runSeconds": 30,
+            "captureSeconds": [
+              12,
+              24
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Use this as the non-VR Fallout 4 Sanctuary diagnostic. The local data root may come from an install folder that also contains VR files, but this slice targets Fallout4.esm only."
+          ]
+        },
+        "exterior-sanctuary-native-action-diagnostic": {
+          "label": "Sanctuary exterior native screenshot action diagnostic",
+          "presentation": {
+            "hideGui": false,
+            "forceClearLoadingGui": false
+          },
+          "capture": {
+            "runSeconds": 40,
+            "captureSeconds": [
+              16,
+              30
+            ],
+            "engineScreenshotEnabled": false,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Use this to verify whether native F12 screenshot capture works when the GUI is visible for the non-VR Fallout 4 world id."
+          ]
+        }
       }
     },
     "starfield": {
@@ -243,6 +1765,25 @@
           }
         },
         "dry": true
+      },
+      "slices": {
+        "new-atlantis-material-fallback-diagnostic": {
+          "label": "New Atlantis material fallback asset-research diagnostic",
+          "capture": {
+            "runSeconds": 30,
+            "captureSeconds": [
+              12,
+              24
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "180",
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "Asset-research only. Native screenshot currently proves severe Starfield material fallback, not runtime promotion readiness.",
+            "Current evidence reaches Starfield mesh/material telemetry but the screenshot is dominated by magenta fallback and actor runtime idle-animation failures."
+          ]
+        }
       }
     }
   }

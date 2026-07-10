@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds Harness <nikami-worlds@example.invalid>
+Date: Tue, 7 Jul 2026 20:55:00 -0700
+Subject: [EXPERIMENT] ESM4 actor runtime part-space telemetry
+
+Status: experiment, not listed in patches/openmw/series.
+
+Evidence target:
+- run/proof-harness-sweeps/20260707-203118
+- run/proof-harness-sweeps/20260707-205427
+
+Observed result on 20260707-205427:
+- Build succeeded.
+- FO3/FNV current and auto still failed actor proof.
+- Part telemetry moved from `construction-attachment-telemetry-only` to
+  `part-space-without-frame-telemetry`, as intended.
+- Visual review still failed: actor pose and attachments remain invalid.
+
+Purpose:
+- Add a measurement-only gate beside existing ESM4/Fallout attachment bounds
+  logging so the non-VR proof harness can distinguish "no runtime part-space
+  samples" from deeper frame-level surface/matrix gaps.
+- This patch must not be promoted as an actor fix by itself. The local harness
+  marks part-space-only telemetry as questionable until frame-level telemetry is
+  also present.
+
+diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
+index 0000000000..0000000000 100644
+--- a/apps/openmw/mwrender/esm4npcanimation.cpp
++++ b/apps/openmw/mwrender/esm4npcanimation.cpp
+@@ -4179,7 +4179,55 @@ namespace MWRender
+             if (suspicious)
+                 Log(Debug::Warning) << message.str();
+             else
+                 Log(Debug::Info) << message.str();
++
++            const osg::Matrix attachWorld
++                = attachNode != nullptr ? getNodeWorldMatrix(attachNode) : osg::Matrix::identity();
++            const osg::Quat attachRotation = attachWorld.getRotate();
++            const osg::Quat headRotation = headWorld.getRotate();
++            const osg::Vec3f attachAxisRight = attachRotation * osg::Vec3f(1.f, 0.f, 0.f);
++            const osg::Vec3f attachAxisFront = attachRotation * osg::Vec3f(0.f, 1.f, 0.f);
++            const osg::Vec3f attachAxisTop = attachRotation * osg::Vec3f(0.f, 0.f, 1.f);
++            const osg::Vec3f headAxisRight = headRotation * osg::Vec3f(1.f, 0.f, 0.f);
++            const osg::Vec3f headAxisFront = headRotation * osg::Vec3f(0.f, 1.f, 0.f);
++            const osg::Vec3f headAxisTop = headRotation * osg::Vec3f(0.f, 0.f, 1.f);
++
++            std::ostringstream runtimeMessage;
++            runtimeMessage << "FNV/ESM4 telemetry: part 3d space " << model << " for "
++                           << ptr.getCellRef().getRefId()
++                           << " parent=" << (attachNode != nullptr ? attachNode->getName() : std::string("<none>"))
++                           << " center=(" << center.x() << "," << center.y() << "," << center.z() << ")"
++                           << " extent=(" << extent.x() << "," << extent.y() << "," << extent.z() << ")"
++                           << " worldCenter=(" << worldCenter.x() << "," << worldCenter.y() << ","
++                           << worldCenter.z() << ")"
++                           << " attachLocal=(" << center.x() << "," << center.y() << "," << center.z() << ")"
++                           << " headRel=(" << headDelta.x() << "," << headDelta.y() << "," << headDelta.z()
++                           << ") headLocal=(" << headLocalCenter.x() << "," << headLocalCenter.y() << ","
++                           << headLocalCenter.z() << ")"
++                           << " headFrame=(" << headFrameCenter.x() << "," << headFrameCenter.y() << ","
++                           << headFrameCenter.z() << ")"
++                           << " centerDistance=" << centerDistance << " diagonal=" << diagonal
++                           << " headRelative=" << headRelative << " faceTight=" << faceTight
++                           << " attachWorldOrigin=(" << attachWorld.getTrans().x() << ","
++                           << attachWorld.getTrans().y() << "," << attachWorld.getTrans().z() << ")"
++                           << " attachWorldAxisRight=(" << attachAxisRight.x() << "," << attachAxisRight.y()
++                           << "," << attachAxisRight.z() << ")"
++                           << " attachWorldAxisFront=(" << attachAxisFront.x() << "," << attachAxisFront.y()
++                           << "," << attachAxisFront.z() << ")"
++                           << " attachWorldAxisTop=(" << attachAxisTop.x() << "," << attachAxisTop.y()
++                           << "," << attachAxisTop.z() << ")"
++                           << " headWorldAxisRight=(" << headAxisRight.x() << "," << headAxisRight.y()
++                           << "," << headAxisRight.z() << ")"
++                           << " headWorldAxisFront=(" << headAxisFront.x() << "," << headAxisFront.y()
++                           << "," << headAxisFront.z() << ")"
++                           << " headWorldAxisTop=(" << headAxisTop.x() << "," << headAxisTop.y() << ","
++                           << headAxisTop.z() << ")"
++                           << " faceAxisChecked=" << checksFaceAxes << " faceAxisReason="
++                           << (headAxisDetached ? headAxisReason : "OK")
++                           << " legacyHeuristicFinding=" << suspicious
++                           << " verdict=MEASURED-UNTRUSTED runtime=measurement-only"
++                           << " gate=runtime-fnv-part-3d-space";
++            Log(Debug::Info) << runtimeMessage.str();
+         }
+ 
+         osg::ref_ptr<osg::MatrixTransform> makeFalloutAttachmentHelper(

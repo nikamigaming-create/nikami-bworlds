@@ -1,0 +1,14 @@
+diff --git a/components/sceneutil/riggeometry.cpp b/components/sceneutil/riggeometry.cpp
+index 0000000000..0000000000 100644
+--- a/components/sceneutil/riggeometry.cpp
++++ b/components/sceneutil/riggeometry.cpp
+@@ -643,6 +643,9 @@ namespace SceneUtil
+         }
+ 
+         mSkeleton->updateBoneMatrices(traversalNumber);
++        if (falloutRig)
++            updateSkinToSkelMatrix(nv->getNodePath());
++
+ 
+ //## VR_PATCH BEGIN
+         // Tracking in VR updates bone matrices out of order, and forces bounds to be recalculated during cull.

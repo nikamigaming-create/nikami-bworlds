@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Config-driven expectations for actor skeleton and animation assets used by focused actor runtime passes.",
+  "worlds": {
+    "oblivion": {
+      "engineEnvironment": {
+        "OPENMW_WORLD_VIEWER_NPC_ANIMATION_SOURCES": "meshes/characters/_male/idle.kf",
+        "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+        "OPENMW_ESM4_ENABLE_RIG_HEURISTIC": "1",
+        "OPENMW_ESM4_SKINNING_MODE": "invBindThenSkeleton"
+      },
+      "rules": [
+        {
+          "id": "tes4-default-male-npc-idle",
+          "description": "Oblivion humanoid NPCs use the TES4 male skeleton and shared idle/locomotion KFs unless a narrower actor rule overrides them.",
+          "match": {
+            "actorType": "NPC",
+            "modelRecordPattern": ".+"
+          },
+          "skeleton": "meshes/characters/_male/skeleton.nif",
+          "requiredSources": [
+            {
+              "role": "idle",
+              "path": "meshes/characters/_male/idle.kf",
+              "failureClass": "animation-bind-failed"
+            }
+          ],
+          "optionalSources": [
+            {
+              "role": "walk-forward",
+              "path": "meshes/characters/_male/walkforward.kf",
+              "warningClass": "animation-asset-optional-missing"
+            }
+          ]
+        }
+      ]
+    },
+    "fallout3": {
+      "engineEnvironment": {
+        "OPENMW_WORLD_VIEWER_NPC_ANIMATION_SOURCES": "meshes/characters/_male/locomotion/mtidle.kf",
+        "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
+      },
+      "rules": [
+        {
+          "id": "fo3-default-male-npc-locomotion",
+          "description": "Fallout 3 humanoid NPCs observed in Megaton bind the shared male skeleton and fallback locomotion KFs.",
+          "match": {
+            "actorType": "NPC",
+            "modelRecordPattern": ".+"
+          },
+          "skeleton": "meshes/characters/_male/skeleton.nif",
+          "requiredSources": [
+            {
+              "role": "idle",
+              "path": "meshes/characters/_male/locomotion/mtidle.kf",
+              "failureClass": "animation-bind-failed"
+            }
+          ],
+          "optionalSources": [
+            {
+              "role": "walk-forward",
+              "path": "meshes/characters/_male/locomotion/male/mtforward.kf",
+              "warningClass": "animation-asset-optional-missing"
+            },
+            {
+              "role": "walk-backward",
+              "path": "meshes/characters/_male/locomotion/male/mtbackward.kf",
+              "warningClass": "animation-asset-optional-missing"
+            },
+            {
+              "role": "turn-left",
+              "path": "meshes/characters/_male/locomotion/mtturnleft.kf",
+              "warningClass": "animation-asset-optional-missing"
+            },
+            {
+              "role": "turn-right",
+              "path": "meshes/characters/_male/locomotion/mtturnright.kf",
+              "warningClass": "animation-asset-optional-missing"
+            }
+          ]
+        }
+      ]
+    },
+    "fallout_new_vegas": {
+      "engineEnvironment": {
+        "OPENMW_WORLD_VIEWER_NPC_ANIMATION_SOURCES": "meshes/characters/_male/locomotion/mtidle.kf",
+        "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
+      },
+      "rules": [
+        {
+          "id": "fnv-default-male-npc-locomotion",
+          "description": "Fallout: New Vegas humanoid NPCs observed in Goodsprings bind the shared male skeleton, fallback locomotion KFs, and may add authored idle KFs.",
+          "match": {
+            "actorType": "NPC",
+            "modelRecordPattern": ".+"
+          },
+          "skeleton": "meshes/characters/_male/skeleton.nif",
+          "requiredSources": [
+            {
+              "role": "idle",
+              "path": "meshes/characters/_male/locomotion/mtidle.kf",
+              "failureClass": "animation-bind-failed"
+            }
+          ],
+          "optionalSources": [
+            {
+              "role": "authored-cowering-idle",
+              "path": "meshes/characters/_male/idleanims/3rdp_cowering.kf",
+              "warningClass": "animation-asset-optional-missing"
+            },
+            {
+              "role": "walk-forward",
+              "path": "meshes/characters/_male/locomotion/male/mtforward.kf",
+              "warningClass": "animation-asset-optional-missing"
+            },
+            {
+              "role": "walk-backward",
+              "path": "meshes/characters/_male/locomotion/male/mtbackward.kf",
+              "warningClass": "animation-asset-optional-missing"
+            },
+            {
+              "role": "turn-left",
+              "path": "meshes/characters/_male/locomotion/mtturnleft.kf",
+              "warningClass": "animation-asset-optional-missing"
+            },
+            {
+              "role": "turn-right",
+              "path": "meshes/characters/_male/locomotion/mtturnright.kf",
+              "warningClass": "animation-asset-optional-missing"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

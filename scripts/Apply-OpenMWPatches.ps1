@@ -2,7 +2,8 @@ param(
     [string]$OpenMWSource = "",
     [string]$SeriesPath = "patches/openmw/series",
     [switch]$Check,
-    [switch]$Reverse
+    [switch]$Reverse,
+    [switch]$AllowDirty
 )
 
 Set-StrictMode -Version Latest
@@ -28,6 +29,17 @@ if (-not (Test-Path -LiteralPath $SeriesPath)) {
     throw "Missing patch series: $SeriesPath"
 }
 
+$sourceStatus = @(& git -C $OpenMWSource status --porcelain --untracked-files=normal)
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to inspect OpenMW checkout state: $OpenMWSource"
+}
+if ($sourceStatus.Count -gt 0 -and -not $AllowDirty) {
+    throw "OpenMW checkout is not clean. Commit/stash downstream work or use a disposable worktree before applying the overlay. Pass -AllowDirty only for an intentional research checkout."
+}
+if ($Check -and $AllowDirty) {
+    throw "-Check cannot validate uncommitted downstream changes cumulatively. Use a clean commit/worktree."
+}
+
 $seriesRoot = Split-Path -Parent (Resolve-Path -LiteralPath $SeriesPath).Path
 $patches = Get-Content -LiteralPath $SeriesPath |
     ForEach-Object { $_.Trim() } |
@@ -38,30 +50,58 @@ if (@($patches).Count -eq 0) {
     exit 0
 }
 
-foreach ($patch in $patches) {
-    $patchPath = if ([System.IO.Path]::IsPathRooted($patch)) { $patch } else { Join-Path $seriesRoot $patch }
-    if (-not (Test-Path -LiteralPath $patchPath)) {
-        throw "Missing patch listed in series: $patchPath"
-    }
+$patches = @($patches)
+if ($Reverse) {
+    [array]::Reverse($patches)
+}
 
-    $argsList = @("apply", "--whitespace=nowarn")
-    if ($Check) {
-        $argsList += "--check"
-    }
-    if ($Reverse) {
-        $argsList += "--reverse"
-    }
-    $argsList += $patchPath
+function Invoke-PatchQueue([string]$TargetSource) {
+    foreach ($patch in $patches) {
+        $patchPath = if ([System.IO.Path]::IsPathRooted($patch)) { $patch } else { Join-Path $seriesRoot $patch }
+        if (-not (Test-Path -LiteralPath $patchPath)) {
+            throw "Missing patch listed in series: $patchPath"
+        }
 
-    Write-Host "git -C $OpenMWSource $($argsList -join ' ')"
-    & git -C $OpenMWSource @argsList
-    if ($LASTEXITCODE -ne 0) {
-        throw "git apply failed for $patchPath"
+        $argsList = @("apply", "--whitespace=nowarn")
+        if ($Reverse) {
+            $argsList += "--reverse"
+        }
+        $argsList += $patchPath
+
+        Write-Host "git -C $TargetSource $($argsList -join ' ')"
+        & git -C $TargetSource @argsList
+        if ($LASTEXITCODE -ne 0) {
+            throw "git apply failed for $patchPath"
+        }
     }
 }
 
 if ($Check) {
-    Write-Host "Patch check passed."
-} else {
+    # Each patch is allowed to depend on earlier patches in the ordered series.
+    # Validate by actually applying the queue in a disposable worktree; checking
+    # every file independently against the original base produces false failures.
+    $tempBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    $checkRoot = [System.IO.Path]::GetFullPath((Join-Path $tempBase ("nikami-openmw-overlay-check-" + [guid]::NewGuid().ToString("N"))))
+    if (-not $checkRoot.StartsWith($tempBase, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing unsafe temporary worktree path: $checkRoot"
+    }
+
+    try {
+        & git -C $OpenMWSource worktree add --detach $checkRoot HEAD
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unable to create cumulative patch-check worktree: $checkRoot"
+        }
+        Invoke-PatchQueue -TargetSource $checkRoot
+        Write-Host "Cumulative patch check passed."
+    }
+    finally {
+        & git -C $OpenMWSource worktree remove --force $checkRoot 2>$null
+        if (Test-Path -LiteralPath $checkRoot) {
+            Remove-Item -LiteralPath $checkRoot -Recurse -Force
+        }
+    }
+}
+else {
+    Invoke-PatchQueue -TargetSource $OpenMWSource
     Write-Host "Patch queue applied."
 }

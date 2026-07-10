@@ -20,21 +20,28 @@ foreach ($path in @($WorldCatalogPath, $ContractPath)) {
 
 $worldCatalog = Get-Content -LiteralPath $WorldCatalogPath -Raw | ConvertFrom-Json
 $contract = Get-Content -LiteralPath $ContractPath -Raw | ConvertFrom-Json
+$excludedWorldIds = @()
+if ($null -ne $contract.PSObject.Properties["excludedWorldIds"]) {
+    $excludedWorldIds = @($contract.excludedWorldIds | ForEach-Object { [string]$_ })
+}
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OutputPath) | Out-Null
 New-Item -ItemType Directory -Force -Path $CellsRoot | Out-Null
 
 $worldRows = @()
 foreach ($world in $worldCatalog.worlds) {
-    $profileReady = $world.openmwTarget -eq $true -and $world.installStatus -eq "ready" -and $world.profileStatus -eq "generated"
+    $worldId = [string]$world.id
+    $excludedByContract = $excludedWorldIds -contains $worldId
+    $profileReady = -not $excludedByContract -and $world.openmwTarget -eq $true -and $world.installStatus -eq "ready" -and $world.profileStatus -eq "generated"
     $cellCatalogPath = Join-Path $CellsRoot "$($world.id).cells.json"
 
     $worldRows += [pscustomobject][ordered]@{
-        id = $world.id
+        id = $worldId
         displayName = $world.displayName
         supportTier = $world.supportTier
         installStatus = $world.installStatus
         profileStatus = $world.profileStatus
+        excludedByContract = $excludedByContract
         readyForWorldWalker = $profileReady
         profileDirectory = $world.profileDirectory
         profileConfig = $world.generatedProfileConfig
@@ -57,6 +64,7 @@ $seed = [pscustomobject][ordered]@{
     cellSchemaPath = "catalog/cell-catalog.schema.json"
     worldCatalogPath = Convert-ToForwardSlash $WorldCatalogPath
     contractActions = @($contract.actions | ForEach-Object { $_.id })
+    excludedWorldIds = @($excludedWorldIds)
     summary = [pscustomobject][ordered]@{
         worlds = @($worldRows).Count
         readyWorlds = @($readyWorlds).Count

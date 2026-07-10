@@ -203,6 +203,9 @@
         "Fallout4 - Misc.ba2",
         "Fallout4 - Startup.ba2"
       ],
+      "archiveExcludePatterns": [
+        "^Fallout4_VR - "
+      ],
       "notes": "OpenMW can read FO4/next-gen/FO76 BA2s and has basic FO4 material support, but collision is not generated for FO4/76 in upstream notes."
     },
     {

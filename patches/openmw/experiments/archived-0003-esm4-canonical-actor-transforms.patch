@@ -1,0 +1,84 @@
+Subject: [PATCH] Use canonical local transforms for FO3/FNV actors
+
+FO3/FNV keyframe rotations are already authored in the target skeleton's
+local space. Do not multiply them by another bind rotation or synthetic
+half-turn. Keep actor skins on OpenMW's inverse-bind/current-bone path,
+preserve the skin-to-skeleton transform, and keep rigged heads and hands live
+by default. Staticization remains available only as an explicit diagnostic.
+
+This patch is intentionally downstream of:
+
+  0001-local-world-viewer.patch
+  0002-esm4-actor-runtime-policy-aliases.patch
+
+Evidence contract: actor render proofs must contain live current-pose geometry;
+attachment-wrapper bounds alone are not sufficient.
+---
+diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
+index d60c8ab571..e0553430a6 100644
+--- a/apps/openmw/mwrender/esm4npcanimation.cpp
++++ b/apps/openmw/mwrender/esm4npcanimation.cpp
+@@ -5752,10 +5752,17 @@ namespace MWRender
+         osg::ref_ptr<const osg::Node> attachTemplateNode = templateNode;
+         bool staticizedHeadPartRig = false;
+         bool staticizedBareHandPartRig = false;
++        // Keep rigged heads and hands on the actor's live skeleton. Staticizing them
++        // prevents finger/face animation and makes attachment-wrapper bounds look
++        // valid even when no skinned surface was evaluated. It remains opt-in as a
++        // diagnostic fallback, never a game default.
+         const bool wantsStaticizedHeadPartRig = headAttachedStaticPart && rigProbe.mRigGeometryCount > 0
++            && (worldViewerEnvEnabled("OPENMW_ESM4_STATICIZE_RIGGED_HEAD_PARTS")
++                || worldViewerEnvEnabled("OPENMW_FNV_STATICIZE_RIGGED_HEAD_PARTS"))
+             && std::getenv("OPENMW_FNV_KEEP_RIGGED_HEAD_PARTS") == nullptr;
+         const bool wantsStaticizedBareHandPartRig = bareHandSurfacePart && rigProbe.mRigGeometryCount > 0
+-            && std::getenv("OPENMW_FNV_STATICIZE_RIGGED_HAND_PARTS") != nullptr
++            && (worldViewerEnvEnabled("OPENMW_ESM4_STATICIZE_RIGGED_HAND_PARTS")
++                || worldViewerEnvEnabled("OPENMW_FNV_STATICIZE_RIGGED_HAND_PARTS"))
+             && std::getenv("OPENMW_FNV_KEEP_RIGGED_HAND_PARTS") == nullptr;
+         if (wantsStaticizedHeadPartRig)
+         {
+diff --git a/components/nifosg/controller.cpp b/components/nifosg/controller.cpp
+index 78ce537d7f..23c850e76c 100644
+--- a/components/nifosg/controller.cpp
++++ b/components/nifosg/controller.cpp
+@@ -279,8 +279,12 @@ namespace NifOsg
+     void KeyframeController::setFalloutActorTransformBasis(
+         const std::string& lowerBone, const osg::Vec3f& bindTranslation, const osg::Quat& bindRotation, float bindScale)
+     {
+-        mUseFalloutActorRotationBasis = isFalloutActorBasisBone(lowerBone);
+-        mPinFalloutActorBindRotation = esm4ActorBindPinningEnabled() && shouldPinFalloutActorBindRotation(lowerBone);
++        // FO3/FNV transform tracks are authored in the target skeleton's local space.
++        // Applying a second bind rotation or a synthetic half turn here double-converts
++        // the pose and collapses the skinned mesh once it leaves bind pose. Keep the
++        // captured bind values for diagnostics, but apply sampled local TRS unchanged.
++        mUseFalloutActorRotationBasis = false;
++        mPinFalloutActorBindRotation = false;
+         mFalloutLowerBone = lowerBone;
+         mFalloutBindTranslation = bindTranslation;
+         mFalloutBindRotation = bindRotation;
+diff --git a/components/sceneutil/riggeometry.cpp b/components/sceneutil/riggeometry.cpp
+index 70ce61bedb..0c9c52460c 100644
+--- a/components/sceneutil/riggeometry.cpp
++++ b/components/sceneutil/riggeometry.cpp
+@@ -69,7 +69,9 @@ namespace SceneUtil
+         {
+             if (const char* env = getEsm4RuntimeEnv("OPENMW_ESM4_SKINNING_MODE", "OPENMW_FNV_SKINNING_MODE"))
+                 return env;
+-            return "source";
++            // Use OpenMW's normal inverse-bind/current-bone path. Source geometry is
++            // an explicit debug fallback; as a default it freezes parts in bind pose.
++            return "current";
+         }
+ 
+         bool isFalloutHandRig(std::string_view name, std::string_view rootBone)
+@@ -108,7 +110,9 @@ namespace SceneUtil
+         {
+             if (const char* env = getEsm4RuntimeEnv("OPENMW_ESM4_USE_SKIN_TO_SKEL", "OPENMW_FNV_USE_SKIN_TO_SKEL"))
+                 return std::string_view(env) != "0";
+-            return false;
++            // Preserve the authored transform from an attached skin to the master
++            // skeleton. Omitting it mixes spaces for armor, heads, and hands.
++            return true;
+         }
+ 
+         osg::Matrixf composeFalloutBoneMatrix(

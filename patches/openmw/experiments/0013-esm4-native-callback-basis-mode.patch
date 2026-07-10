@@ -1,0 +1,117 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds <nikami-worlds@example.invalid>
+Date: Tue, 7 Jul 2026 23:15:00 -0700
+Subject: [experiment] ESM4 native callback actor basis modes
+
+Status: failed experiment, not queued in patches/openmw/series.
+Depends-on: 0011-esm4-actor-controller-basis-audit.patch,
+0012-esm4-native-callback-basis-audit.patch.
+Proof baseline: run/proof-harness-sweeps/20260707-225321.
+Proof result: raw mode
+run/real-world-screenshots/fallout3-20260707-230543 and
+run/real-world-screenshots/fallout_new_vegas-20260707-230612; no-half-turn mode
+run/real-world-screenshots/fallout3-20260707-230742 and
+run/real-world-screenshots/fallout_new_vegas-20260707-230813; bind mode
+run/real-world-screenshots/fallout3-20260707-230948 and
+run/real-world-screenshots/fallout_new_vegas-20260707-231022.
+
+The 0012 proof shows the visible FO3/FNV native callback path gets large
+applied-versus-raw actor-basis rotation deltas, including 180-degree head/neck
+deltas, while face attachment and part telemetry pass. This patch adds a narrow
+runtime gate for that exact path without changing default behavior:
+
+OPENMW_ESM4_NATIVE_CALLBACK_ACTOR_BASIS_MODE=current       default
+OPENMW_ESM4_NATIVE_CALLBACK_ACTOR_BASIS_MODE=raw           sample raw KF
+OPENMW_ESM4_NATIVE_CALLBACK_ACTOR_BASIS_MODE=no-half-turn  raw KF * bind only
+OPENMW_ESM4_NATIVE_CALLBACK_ACTOR_BASIS_MODE=bind          bind pose only
+
+The FNV-prefixed legacy env name is also accepted. This is intentionally an
+experiment so the proof harness can test modes one at a time and quarantine any
+mode that keeps actors inverted or breaks another game.
+
+Result: failed. Raw and no-half-turn kept both FO3 and FNV actors inverted and
+FNV crashed after capture. Bind mode exited cleanly and made limbs/weapons a bit
+more coherent, but both games still rendered upside-down actors. The next slice
+should target actor root/world transform or part attachment basis instead of
+native callback keyframe basis modes.
+
+diff --git a/components/nifosg/controller.cpp b/components/nifosg/controller.cpp
+--- a/components/nifosg/controller.cpp
++++ b/components/nifosg/controller.cpp
+@@ -129,6 +129,14 @@ namespace NifOsg
+             return std::getenv("OPENMW_FNV_ACTOR_BASIS_AUDIT") != nullptr
+                 || std::getenv("OPENMW_ESM4_ACTOR_BASIS_AUDIT") != nullptr;
+         }
++
++        std::string_view getNativeCallbackActorBasisMode()
++        {
++            if (const char* env = getEsm4RuntimeEnv(
++                    "OPENMW_ESM4_NATIVE_CALLBACK_ACTOR_BASIS_MODE",
++                    "OPENMW_FNV_NATIVE_CALLBACK_ACTOR_BASIS_MODE"))
++                return env;
++            return "current";
++        }
+     }
+ 
+     ControllerFunction::ControllerFunction(const Nif::NiTimeController* ctrl)
+@@ -530,11 +538,36 @@ namespace NifOsg
+ 
+     void KeyframeController::operator()(NifOsg::MatrixTransform* node, osg::NodeVisitor* nv)
+     {
+-        auto [translation, rotation, scale] = getCurrentTransformation(nv);
++        KfTransform appliedKeyframe = getCurrentTransformation(nv);
++        KfTransform selectedKeyframe = appliedKeyframe;
++        const std::string_view nativeBasisMode = getNativeCallbackActorBasisMode();
++        if (mUseFalloutActorRotationBasis && nativeBasisMode != "current" && nativeBasisMode != "1")
++        {
++            if (nativeBasisMode == "raw")
++                selectedKeyframe = getCurrentTransformationWithoutFalloutActorBasis(nv);
++            else if (nativeBasisMode == "no-half-turn")
++            {
++                selectedKeyframe = getCurrentTransformationWithoutFalloutActorBasis(nv);
++                if (selectedKeyframe.mRotation)
++                    selectedKeyframe.mRotation = *selectedKeyframe.mRotation * mFalloutBindRotation;
++                sanitizeTransform(selectedKeyframe);
++            }
++            else if (nativeBasisMode == "bind")
++            {
++                selectedKeyframe.mTranslation = mFalloutBindTranslation;
++                selectedKeyframe.mRotation = mFalloutBindRotation;
++                selectedKeyframe.mScale = mFalloutBindScale;
++                sanitizeTransform(selectedKeyframe);
++            }
++        }
++
++        const std::optional<osg::Vec3f>& translation = selectedKeyframe.mTranslation;
++        const std::optional<osg::Quat>& rotation = selectedKeyframe.mRotation;
++        const std::optional<float>& scale = selectedKeyframe.mScale;
+ 
+         if (shouldAuditFalloutActorBasis() && mUseFalloutActorRotationBasis)
+         {
+             static unsigned int sFalloutActorBasisAuditLines = 0;
+@@ -544,17 +577,19 @@ namespace NifOsg
+                 const KfTransform rawKeyframe = getCurrentTransformationWithoutFalloutActorBasis(nv);
+                 float rotationDeltaDegrees = 0.f;
+-                if (rotation && rawKeyframe.mRotation)
+-                    rotationDeltaDegrees = quatAngleDeltaDegrees(*rotation, *rawKeyframe.mRotation);
++                if (appliedKeyframe.mRotation && rawKeyframe.mRotation)
++                    rotationDeltaDegrees = quatAngleDeltaDegrees(*appliedKeyframe.mRotation, *rawKeyframe.mRotation);
+                 float translationDelta = 0.f;
+-                if (translation && rawKeyframe.mTranslation)
+-                    translationDelta = (*translation - *rawKeyframe.mTranslation).length();
++                if (appliedKeyframe.mTranslation && rawKeyframe.mTranslation)
++                    translationDelta = (*appliedKeyframe.mTranslation - *rawKeyframe.mTranslation).length();
+ 
+                 Log(Debug::Info) << "FNV/ESM4 ACTOR BASIS CALLBACK AUDIT bone=" << mFalloutLowerBone
+-                                 << " appliedHasRotation=" << static_cast<bool>(rotation)
++                                 << " mode=" << nativeBasisMode
++                                 << " appliedHasRotation=" << static_cast<bool>(appliedKeyframe.mRotation)
++                                 << " selectedHasRotation=" << static_cast<bool>(rotation)
+                                  << " rawHasRotation=" << static_cast<bool>(rawKeyframe.mRotation)
+                                  << " rotationDeltaDegrees=" << rotationDeltaDegrees
+-                                 << " appliedHasTranslation=" << static_cast<bool>(translation)
++                                 << " appliedHasTranslation=" << static_cast<bool>(appliedKeyframe.mTranslation)
++                                 << " selectedHasTranslation=" << static_cast<bool>(translation)
+                                  << " rawHasTranslation=" << static_cast<bool>(rawKeyframe.mTranslation)
+                                  << " translationDelta=" << translationDelta
+                                  << " pinnedBindRotation=" << mPinFalloutActorBindRotation;

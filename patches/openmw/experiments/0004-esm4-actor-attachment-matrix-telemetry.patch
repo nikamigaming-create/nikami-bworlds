@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds Harness <nikami-worlds@example.invalid>
+Date: Tue, 7 Jul 2026 21:05:00 -0700
+Subject: [EXPERIMENT] ESM4 actor attachment matrix telemetry
+
+Status: experiment, not listed in patches/openmw/series.
+
+Evidence basis:
+- run/proof-harness-sweeps/20260707-205427 showed part-space samples but no
+  frame-level attachment/surface matrix samples.
+- run/proof-harness-sweeps/20260707-210134 confirmed frame-level part telemetry
+  for FO3/FNV current and auto modes, but proof still failed because runtime,
+  rig pose, and visual review remained red.
+
+Purpose:
+- Add measurement-only final attachment matrix telemetry for head-relative ESM4
+  actor parts.
+- This is a diagnostic patch only. It must not be promoted as a visual actor fix.
+
+diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
+index 0000000000..0000000000 100644
+--- a/apps/openmw/mwrender/esm4npcanimation.cpp
++++ b/apps/openmw/mwrender/esm4npcanimation.cpp
+@@ -6043,13 +6043,51 @@ namespace MWRender
+         if (attached != nullptr)
+         {
+             MarkFalloutRigGeometryVisitor markFalloutRigs;
+             attached->accept(markFalloutRigs);
+             if (markFalloutRigs.mMarked > 0)
+                 Log(Debug::Info) << "FNV/ESM4 diag: marked " << markFalloutRigs.mMarked
+                                  << " Fallout rigged drawable(s) on " << correctedModel.value() << " for "
+                                  << mPtr.getCellRef().getRefId();
+             attached->setName("FNV Part " + correctedModel.value());
+         }
++        if (attached != nullptr && isFalloutHeadRelativeModel(correctedModel.value()))
++        {
++            FindNamedNodeVisitor boneOffset("BoneOffset");
++            attached->accept(boneOffset);
++            osg::Matrix boneOffsetLocal = osg::Matrix::identity();
++            osg::Matrix boneOffsetWorld = osg::Matrix::identity();
++            bool boneOffsetPresent = false;
++            if (osg::MatrixTransform* boneOffsetTransform = dynamic_cast<osg::MatrixTransform*>(boneOffset.mFound))
++            {
++                boneOffsetPresent = true;
++                boneOffsetLocal = boneOffsetTransform->getMatrix();
++                boneOffsetWorld = getNodeWorldMatrix(boneOffsetTransform);
++            }
++            const osg::Matrix attachWorld
++                = attachNode != nullptr ? getNodeWorldMatrix(attachNode) : osg::Matrix::identity();
++            const osg::Matrix partWorld = getNodeWorldMatrix(attached.get());
++            const osg::Vec3f boneOffsetLocalOrigin = boneOffsetLocal.getTrans();
++            const osg::Vec3f boneOffsetWorldOrigin = boneOffsetWorld.getTrans();
++            const osg::Vec3f attachWorldOrigin = attachWorld.getTrans();
++            const osg::Vec3f partWorldOrigin = partWorld.getTrans();
++            Log(Debug::Info) << "FNV/ESM4 telemetry: part attachment matrix model=" << correctedModel.value()
++                             << " ref=" << mPtr.getCellRef().getRefId()
++                             << " parent=" << (attachNode != nullptr ? attachNode->getName() : std::string("<none>"))
++                             << " scalpHair=" << isFalloutScalpHairModel(correctedModel.value())
++                             << " faceHair=" << isFalloutFaceHairModel(correctedModel.value())
++                             << " brow=" << isFalloutBrowModel(correctedModel.value())
++                             << " headgear=" << headgearStaticPart
++                             << " boneOffsetPresent=" << boneOffsetPresent
++                             << " boneOffsetLocalOrigin=(" << boneOffsetLocalOrigin.x() << ","
++                             << boneOffsetLocalOrigin.y() << "," << boneOffsetLocalOrigin.z() << ")"
++                             << " boneOffsetWorldOrigin=(" << boneOffsetWorldOrigin.x() << ","
++                             << boneOffsetWorldOrigin.y() << "," << boneOffsetWorldOrigin.z() << ")"
++                             << " attachWorldOrigin=(" << attachWorldOrigin.x() << "," << attachWorldOrigin.y()
++                             << "," << attachWorldOrigin.z() << ")"
++                             << " partWorldOrigin=(" << partWorldOrigin.x() << "," << partWorldOrigin.y() << ","
++                             << partWorldOrigin.z() << ")"
++                             << " runtime=measurement-only gate=runtime-fnv-part-attachment-matrix";
++        }
+         forceWorldViewerActorPartMask(attached.get(), correctedModel.value(), mPtr);
+         logFalloutPartShapeSummary(attached.get(), correctedModel.value(), mPtr);
+         logFalloutAttachmentBounds(

@@ -1,0 +1,106 @@
+diff --git a/components/nifosg/controller.cpp b/components/nifosg/controller.cpp
+index 4e6c4a9f00..0000000000 100644
+--- a/components/nifosg/controller.cpp
++++ b/components/nifosg/controller.cpp
+@@ -2,7 +2,9 @@
+ 
+ #include <algorithm>
+ #include <cctype>
+ #include <cmath>
++#include <cstdlib>
++#include <string_view>
+ 
+ #include <osg/Material>
+ #include <osg/MatrixTransform>
+@@ -61,6 +63,14 @@ namespace NifOsg
+             return value;
+         }
+ 
++        const char* getEsm4RuntimeEnv(const char* name, const char* legacyName)
++        {
++            if (const char* env = std::getenv(name))
++                return env;
++
++            return std::getenv(legacyName);
++        }
++
+         bool isFalloutActorBasisBone(const std::string& bone)
+         {
+             const std::string lowerBone = asciiLower(bone);
+@@ -86,6 +96,14 @@ namespace NifOsg
+                 || lowerBone.find("finger") != std::string::npos || lowerBone.find("thumb") != std::string::npos;
+         }
+ 
++        bool esm4ActorBindPinningEnabled()
++        {
++            if (const char* env = getEsm4RuntimeEnv(
++                    "OPENMW_ESM4_PIN_ACTOR_BIND_ROTATION", "OPENMW_FNV_PIN_ACTOR_BIND_ROTATION"))
++                return std::string_view(env) != "0";
++            return true;
++        }
++
+         void sanitizeTransform(SceneUtil::KeyframeController::KfTransform& transform)
+         {
+             if (transform.mTranslation && !isReasonableVec3(*transform.mTranslation, 1000000.f))
+@@ -260,10 +278,10 @@ namespace NifOsg
+     }
+ 
+     void KeyframeController::setFalloutActorTransformBasis(
+         const std::string& lowerBone, const osg::Vec3f& bindTranslation, const osg::Quat& bindRotation, float bindScale)
+     {
+         mUseFalloutActorRotationBasis = isFalloutActorBasisBone(lowerBone);
+-        mPinFalloutActorBindRotation = shouldPinFalloutActorBindRotation(lowerBone);
++        mPinFalloutActorBindRotation = esm4ActorBindPinningEnabled() && shouldPinFalloutActorBindRotation(lowerBone);
+         mFalloutLowerBone = lowerBone;
+         mFalloutBindTranslation = bindTranslation;
+         mFalloutBindRotation = bindRotation;
+diff --git a/components/sceneutil/riggeometry.cpp b/components/sceneutil/riggeometry.cpp
+index a491380140..0000000000 100644
+--- a/components/sceneutil/riggeometry.cpp
++++ b/components/sceneutil/riggeometry.cpp
+@@ -57,9 +57,17 @@ namespace SceneUtil
+             return result;
+         }
+ 
++        const char* getEsm4RuntimeEnv(const char* name, const char* legacyName)
++        {
++            if (const char* env = std::getenv(name))
++                return env;
++
++            return std::getenv(legacyName);
++        }
++
+         std::string_view getFalloutSkinningMode()
+         {
+-            if (const char* env = std::getenv("OPENMW_FNV_SKINNING_MODE"))
++            if (const char* env = getEsm4RuntimeEnv("OPENMW_ESM4_SKINNING_MODE", "OPENMW_FNV_SKINNING_MODE"))
+                 return env;
+             return "source";
+         }
+@@ -89,7 +97,7 @@ namespace SceneUtil
+ 
+             if (isFalloutHandRig(name, rootBone))
+             {
+-                if (const char* env = std::getenv("OPENMW_FNV_VR_HAND_SKINNING_MODE"))
++                if (const char* env = getEsm4RuntimeEnv("OPENMW_ESM4_HAND_SKINNING_MODE", "OPENMW_FNV_VR_HAND_SKINNING_MODE"))
+                     return env;
+             }
+ 
+@@ -98,7 +107,7 @@ namespace SceneUtil
+ 
+         bool useFalloutSkinToSkelMatrix()
+         {
+-            if (const char* env = std::getenv("OPENMW_FNV_USE_SKIN_TO_SKEL"))
++            if (const char* env = getEsm4RuntimeEnv("OPENMW_ESM4_USE_SKIN_TO_SKEL", "OPENMW_FNV_USE_SKIN_TO_SKEL"))
+                 return std::string_view(env) != "0";
+             return false;
+         }
+@@ -183,7 +192,7 @@ namespace SceneUtil
+         if (mData == nullptr)
+             return false;
+ 
+-        if (!mFalloutFlagSkinning && std::getenv("OPENMW_FNV_ENABLE_RIG_HEURISTIC") == nullptr)
++        if (!mFalloutFlagSkinning && getEsm4RuntimeEnv("OPENMW_ESM4_ENABLE_RIG_HEURISTIC", "OPENMW_FNV_ENABLE_RIG_HEURISTIC") == nullptr)
+         {
+             mFalloutCharacterRig = false;
+             mFalloutCharacterRigComputed = true;

@@ -1,0 +1,167 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds <nikami@example.invalid>
+Date: Tue, 7 Jul 2026 22:20:00 -0700
+Subject: [PATCH] esm4: gate native actor basis half-turn
+
+Status: failed experiment, not queued in patches/openmw/series.
+Depends-On: 0006-esm4-live-rig-bounds-telemetry.patch, 0007-esm4-part-matrix-runtime-audit-gate.patch
+
+Recover a narrow piece of the local HIGGS-lite FNV truth-rig branch without
+promoting the old branch wholesale. When OPENMW_ESM4_DISABLE_NATIVE_ACTOR_BASIS
+or OPENMW_FNV_DISABLE_NATIVE_ACTOR_BASIS is set, native NIF controller sampling
+does not apply the Fallout actor half-turn/bind rotation basis. Manual actor
+animation sampling uses the same no-native-basis path for NifOsg keyframe
+controllers.
+
+Result: failed in run/proof-harness-sweeps/20260707-222230. FO3 still rendered
+an inverted/disassembled actor and FNV produced no native screenshots with a
+crash dump. The patch was reversed and the active catalog env gate was removed.
+---
+ apps/openmw/mwrender/animation.cpp     | 27 +++++++++++++++++++++++----
+ components/nifosg/controller.cpp       | 27 ++++++++++++++++++++++-----
+ components/nifosg/controller.hpp       |  2 ++
+ 3 files changed, 47 insertions(+), 9 deletions(-)
+
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+index 0000000000..0000000000 100644
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -3464,15 +3464,32 @@ namespace MWRender
+     bool isFalloutMatrixAuditBone(const std::string& lowerBone)
+     {
+         if (std::getenv("OPENMW_FNV_FULL_MATRIX_AUDIT") != nullptr)
+             return true;
+ 
+         return lowerBone == "bip01" || lowerBone == "bip01 pelvis" || lowerBone == "bip01 spine"
+             || lowerBone == "bip01 spine1" || lowerBone == "bip01 spine2" || lowerBone == "bip01 neck"
+             || lowerBone == "bip01 head" || lowerBone == "bip01 l upperarm" || lowerBone == "bip01 r upperarm"
+             || lowerBone == "bip01 l forearm" || lowerBone == "bip01 r forearm" || lowerBone == "bip01 l hand"
+             || lowerBone == "bip01 r hand" || lowerBone == "bip01 l thigh" || lowerBone == "bip01 r thigh"
+             || lowerBone == "bip01 l calf" || lowerBone == "bip01 r calf" || lowerBone == "bip01 l foot"
+             || lowerBone == "bip01 r foot" || lowerBone == "bip01 l toe0" || lowerBone == "bip01 r toe0";
+     }
++
++    bool disableEsm4NativeActorBasis()
++    {
++        if (const char* env = std::getenv("OPENMW_ESM4_DISABLE_NATIVE_ACTOR_BASIS"))
++            return std::string_view(env) != "0";
++        if (const char* env = std::getenv("OPENMW_FNV_DISABLE_NATIVE_ACTOR_BASIS"))
++            return std::string_view(env) != "0";
++        return false;
++    }
++
++    SceneUtil::KeyframeController::KfTransform sampleEsm4ActorControllerTransform(
++        const osg::ref_ptr<SceneUtil::KeyframeController>& controller)
++    {
++        if (disableEsm4NativeActorBasis())
++            if (auto* nifController = dynamic_cast<NifOsg::KeyframeController*>(controller.get()))
++                return nifController->getCurrentTransformationWithoutFalloutActorBasis(nullptr);
++        return controller->getCurrentTransformation(nullptr);
++    }
+ 
+     float basisHandedness(const osg::Matrixf& matrix)
+@@ -5090,7 +5107,7 @@ namespace MWRender
+ 
+                     const std::string lowerAppliedBone = Misc::StringUtils::lowerCase(it->first);
+                     const osg::Matrixf before = transform->getMatrix();
+-                    SceneUtil::KeyframeController::KfTransform keyframe = it->second->getCurrentTransformation(nullptr);
++                    SceneUtil::KeyframeController::KfTransform keyframe = sampleEsm4ActorControllerTransform(it->second);
+                     if (std::getenv("OPENMW_FNV_ENABLE_CHAIR_LOWER_LEG_DONOR") != nullptr
+                         && falloutProcedureIdle && blendMask == BoneGroup_LowerBody && animsrc
+                         && isFalloutCalfFootBone(lowerAppliedBone)
+@@ -5113,7 +5130,7 @@ namespace MWRender
+                             if (donor == donorControllers.end())
+                                 continue;
+ 
+-                            keyframe = donor->second->getCurrentTransformation(nullptr);
++                            keyframe = sampleEsm4ActorControllerTransform(donor->second);
+                             if (matrixAudit && matrixAuditLines < matrixAuditLineLimit)
+                             {
+                                 Log(Debug::Info) << "FNV/ESM4 MATRIX AUDIT " << mPtr.getCellRef().getRefId()
+diff --git a/components/nifosg/controller.cpp b/components/nifosg/controller.cpp
+index 0000000000..0000000000 100644
+--- a/components/nifosg/controller.cpp
++++ b/components/nifosg/controller.cpp
+@@ -101,6 +101,15 @@ namespace NifOsg
+             return true;
+         }
+ 
++        bool disableEsm4NativeActorBasis()
++        {
++            if (const char* env = getEsm4RuntimeEnv(
++                    "OPENMW_ESM4_DISABLE_NATIVE_ACTOR_BASIS", "OPENMW_FNV_DISABLE_NATIVE_ACTOR_BASIS"))
++                return std::string_view(env) != "0";
++
++            return false;
++        }
++
+         void sanitizeTransform(SceneUtil::KeyframeController::KfTransform& transform)
+         {
+             if (transform.mTranslation && !isReasonableVec3(*transform.mTranslation, 1000000.f))
+@@ -279,7 +288,7 @@ namespace NifOsg
+     void KeyframeController::setFalloutActorTransformBasis(
+         const std::string& lowerBone, const osg::Vec3f& bindTranslation, const osg::Quat& bindRotation, float bindScale)
+     {
+-        mUseFalloutActorRotationBasis = isFalloutActorBasisBone(lowerBone);
++        mUseFalloutActorRotationBasis = !disableEsm4NativeActorBasis() && isFalloutActorBasisBone(lowerBone);
+         mPinFalloutActorBindRotation = esm4ActorBindPinningEnabled() && shouldPinFalloutActorBindRotation(lowerBone);
+         mFalloutLowerBone = lowerBone;
+         mFalloutBindTranslation = bindTranslation;
+@@ -529,7 +538,18 @@ namespace NifOsg
+         traverse(node, nv);
+     }
+ 
+     KeyframeController::KfTransform KeyframeController::getCurrentTransformation(osg::NodeVisitor* nv)
++    {
++        return getCurrentTransformation(nv, true);
++    }
++
++    KeyframeController::KfTransform KeyframeController::getCurrentTransformationWithoutFalloutActorBasis(
++        osg::NodeVisitor* nv)
++    {
++        return getCurrentTransformation(nv, false);
++    }
++
++    KeyframeController::KfTransform KeyframeController::getCurrentTransformation(
++        osg::NodeVisitor* nv, bool applyFalloutActorBasis)
+     {
+         KfTransform out;
+ 
+@@ -575,7 +595,7 @@ namespace NifOsg
+                         data.mDefaultValue.mScale, data.mScaleOffset, data.mScaleHalfRange);
+                 }
+ 
+-                if (mUseFalloutActorRotationBasis)
++                if (applyFalloutActorBasis && mUseFalloutActorRotationBasis)
+                 {
+                     if (mPinFalloutActorBindRotation)
+                     {
+@@ -602,7 +622,7 @@ namespace NifOsg
+             if (!mScales.empty())
+                 out.mScale = mScales.interpKey(time);
+ 
+-            if (mUseFalloutActorRotationBasis)
++            if (applyFalloutActorBasis && mUseFalloutActorRotationBasis)
+             {
+                 if (mPinFalloutActorBindRotation)
+                 {
+diff --git a/components/nifosg/controller.hpp b/components/nifosg/controller.hpp
+index 0000000000..0000000000 100644
+--- a/components/nifosg/controller.hpp
++++ b/components/nifosg/controller.hpp
+@@ -254,6 +254,7 @@ namespace NifOsg
+         osg::Callback* getAsCallback() override { return this; }
+ 
+         KfTransform getCurrentTransformation(osg::NodeVisitor* nv) override;
++        KfTransform getCurrentTransformationWithoutFalloutActorBasis(osg::NodeVisitor* nv);
+ 
+         void operator()(NifOsg::MatrixTransform*, osg::NodeVisitor*);
+         void setFalloutActorTransformBasis(
+@@ -263,6 +264,7 @@ namespace NifOsg
+     private:
+         void initFromDefaultTransform(const Nif::NiQuatTransform& transform);
+         bool initFromInterpolator(const Nif::NiInterpolator* interp);
++        KfTransform getCurrentTransformation(osg::NodeVisitor* nv, bool applyFalloutActorBasis);
+ 
+         QuaternionInterpolator mRotations;
+ 

@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds <nikami-worlds@example.invalid>
+Date: Wed, 8 Jul 2026 04:30:00 -0700
+Subject: [experiment] ESM4 raw actor keyframe composition
+
+Status: experiment, not queued in patches/openmw/series.
+Depends-on: 0011-esm4-actor-controller-basis-audit.patch,
+0012-esm4-native-callback-basis-audit.patch,
+0014-esm4-actor-root-attachment-audit.patch.
+Source clue: D:\code\vulkanOpenMW\nikami-openmw-lab-publish commit
+4d7450c412 "Fix FNV actor pose basis and sleeve skinning".
+
+The FO3/FNV close-burst screenshots still show upside-down actors after root
+wrapper probes and idle-freeze probes. Root attachment telemetry shows static
+actor assembly starts coherent, then lower-body targets move above the pelvis
+when animation is applied. Prior local history points at double application of
+the Fallout actor basis: native keyframe callbacks already emit actor-local
+samples, while the manual composer applies bind-relative rotation.
+
+This patch removes the extra basis application from native callback sampling and
+makes the manual Fallout composer request raw NifOsg key samples explicitly. It
+keeps the basis audit active for Fallout actor-basis bones so proof ledgers can
+confirm whether applied-vs-raw deltas collapse to zero.
+
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -5169,9 +5169,13 @@ namespace MWRender
+ 
+                     const std::string lowerAppliedBone = Misc::StringUtils::lowerCase(it->first);
+                     const osg::Matrixf before = transform->getMatrix();
+-                    SceneUtil::KeyframeController::KfTransform keyframe = it->second->getCurrentTransformation(nullptr);
++                    SceneUtil::KeyframeController::KfTransform keyframe;
++                    if (auto* nifController = dynamic_cast<NifOsg::KeyframeController*>(it->second.get()))
++                        keyframe = nifController->getCurrentTransformationWithoutFalloutActorBasis(nullptr);
++                    else
++                        keyframe = it->second->getCurrentTransformation(nullptr);
+                     if (actorBasisAudit && matrixAuditLines < matrixAuditLineLimit
+                         && isFalloutMatrixAuditBone(lowerAppliedBone))
+                     {
+                         if (auto* nifController = dynamic_cast<NifOsg::KeyframeController*>(it->second.get()))
+                         {
+@@ -5219,7 +5224,10 @@ namespace MWRender
+                             if (donor == donorControllers.end())
+                                 continue;
+ 
+-                            keyframe = donor->second->getCurrentTransformation(nullptr);
++                            if (auto* nifController = dynamic_cast<NifOsg::KeyframeController*>(donor->second.get()))
++                                keyframe = nifController->getCurrentTransformationWithoutFalloutActorBasis(nullptr);
++                            else
++                                keyframe = donor->second->getCurrentTransformation(nullptr);
+                             if (matrixAudit && matrixAuditLines < matrixAuditLineLimit)
+                             {
+                                 Log(Debug::Info) << "FNV/ESM4 MATRIX AUDIT " << mPtr.getCellRef().getRefId()
+diff --git a/components/nifosg/controller.cpp b/components/nifosg/controller.cpp
+--- a/components/nifosg/controller.cpp
++++ b/components/nifosg/controller.cpp
+@@ -301,7 +301,10 @@ namespace NifOsg
+     void KeyframeController::setFalloutActorTransformBasis(
+         const std::string& lowerBone, const osg::Vec3f& bindTranslation, const osg::Quat& bindRotation, float bindScale)
+     {
+-        mUseFalloutActorRotationBasis = isFalloutActorBasisBone(lowerBone);
++        // Fallout actor KFs already sample into actor-local skeleton space. Applying the
++        // extra callback half-turn here makes the manual composer consume a pre-rotated
++        // value and folds FO3/FNV actors over when runtime animation starts.
++        mUseFalloutActorRotationBasis = false;
+         mPinFalloutActorBindRotation = esm4ActorBindPinningEnabled() && shouldPinFalloutActorBindRotation(lowerBone);
+         mFalloutLowerBone = lowerBone;
+         mFalloutBindTranslation = bindTranslation;
+@@ -531,7 +534,7 @@ namespace NifOsg
+     {
+         auto [translation, rotation, scale] = getCurrentTransformation(nv);
+ 
+-        if (shouldAuditFalloutActorBasis() && mUseFalloutActorRotationBasis)
++        if (shouldAuditFalloutActorBasis() && isFalloutActorBasisBone(mFalloutLowerBone))
+         {
+             static unsigned int sFalloutActorBasisAuditLines = 0;
+             if (sFalloutActorBasisAuditLines < 256)
+@@ -576,7 +579,7 @@ namespace NifOsg
+ 
+     KeyframeController::KfTransform KeyframeController::getCurrentTransformation(osg::NodeVisitor* nv)
+     {
+-        return getCurrentTransformation(nv, true);
++        return getCurrentTransformation(nv, false);
+     }
+ 
+     KeyframeController::KfTransform KeyframeController::getCurrentTransformationWithoutFalloutActorBasis(

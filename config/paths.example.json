@@ -2,9 +2,10 @@
   "schemaVersion": 1,
   "openmwSource": "X:/path/to/external/openmw-source",
   "openmwBuild": "X:/path/to/external/openmw-source/MSVC2022_64",
-  "openmwBinaryRoot": "X:/path/to/external/openmw-source/MSVC2022_64/Release",
-  "openmwResources": "X:/path/to/external/openmw-source/MSVC2022_64/Release/resources",
+  "openmwBinaryRoot": "local/openmw-fo4guard",
+  "openmwResources": "local/openmw-fo4guard/resources",
   "fnvRoot": "X:/path/to/fnv-modlist-or-launcher-root",
+  "fallout4Root": "X:/SteamLibrary/steamapps/common/Fallout 4",
   "steamAppsRoots": [
     "X:/SteamLibrary/steamapps"
   ]

@@ -1,0 +1,134 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds <nikami-worlds@example.invalid>
+Date: Wed, 8 Jul 2026 00:05:00 -0700
+Subject: [experiment] ESM4 actor root attachment audit
+
+Status: experiment, not queued in patches/openmw/series.
+Depends-on: 0010-esm4-face-rig-render-buffer-audit.patch,
+0011-esm4-actor-controller-basis-audit.patch,
+0012-esm4-native-callback-basis-audit.patch.
+Proof baseline: run/proof-harness-sweeps/20260707-225321.
+
+0013 showed that native callback actor-basis modes change limb scatter but do
+not make FO3/FNV actors upright. Plain root-up wrapper probes also changed the
+failure mode without producing a valid pose. The next diagnostic slice needs a
+compact root/world transform row that can be compared against part-matrix and
+visual evidence.
+
+This patch preserves behavior. When OPENMW_FNV_ROOT_ATTACHMENT_AUDIT=1 or
+OPENMW_ESM4_ROOT_ATTACHMENT_AUDIT=1 is set, it logs the actor root world basis,
+major Bip01 target positions, and head/foot/root deltas for the visible runtime
+path.
+
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -1918,5 +1918,84 @@ namespace MWRender
+-    float auditFalloutRuntimeParts(osg::Group* objectRoot,
++    bool shouldAuditFalloutRootAttachment()
++    {
++        return std::getenv("OPENMW_FNV_ROOT_ATTACHMENT_AUDIT") != nullptr
++            || std::getenv("OPENMW_ESM4_ROOT_ATTACHMENT_AUDIT") != nullptr;
++    }
++
++    osg::Vec3f falloutMatrixBasisRow(const osg::Matrix& matrix, int row)
++    {
++        return osg::Vec3f(matrix(row, 0), matrix(row, 1), matrix(row, 2));
++    }
++
++    void auditFalloutRootAttachmentFrame(osg::Group* objectRoot,
++        const std::unordered_map<std::string, std::vector<osg::MatrixTransform*>>& targets, const MWWorld::Ptr& ptr)
++    {
++        if (!shouldAuditFalloutRootAttachment() || objectRoot == nullptr)
++            return;
++
++        static std::unordered_map<std::string, unsigned int> sRootAttachmentSamples;
++        const std::string refId = ptr.getCellRef().getRefId().serializeText();
++        unsigned int& samples = sRootAttachmentSamples[refId];
++        if (samples >= 6)
++            return;
++        ++samples;
++
++        osg::Node* bip01Node = findFalloutTarget(targets, "bip01");
++        osg::Node* pelvisNode = findFalloutTarget(targets, "bip01 pelvis");
++        osg::Node* spine2Node = findFalloutTarget(targets, "bip01 spine2");
++        osg::Node* headNode = findFalloutTarget(targets, "bip01 head");
++        osg::Node* leftFootNode = findFalloutTarget(targets, "bip01 l foot");
++        osg::Node* rightFootNode = findFalloutTarget(targets, "bip01 r foot");
++        osg::Node* leftHandNode = findFalloutTarget(targets, "bip01 l hand");
++        osg::Node* rightHandNode = findFalloutTarget(targets, "bip01 r hand");
++        osg::Node* weaponNode = findFalloutTarget(targets, "weapon");
++
++        const osg::Matrix rootWorld = getFalloutNodeWorldMatrix(objectRoot);
++        const osg::Matrix bip01World = getFalloutNodeWorldMatrix(bip01Node);
++        const osg::Vec3f root = transformFalloutPoint(osg::Vec3f(), rootWorld);
++        const osg::Vec3f bip01 = transformFalloutPoint(osg::Vec3f(), bip01World);
++        const osg::Vec3f pelvis = getFalloutTargetWorldOrigin(targets, "bip01 pelvis");
++        const osg::Vec3f spine2 = getFalloutTargetWorldOrigin(targets, "bip01 spine2");
++        const osg::Vec3f head = getFalloutTargetWorldOrigin(targets, "bip01 head");
++        const osg::Vec3f leftFoot = getFalloutTargetWorldOrigin(targets, "bip01 l foot");
++        const osg::Vec3f rightFoot = getFalloutTargetWorldOrigin(targets, "bip01 r foot");
++        const osg::Vec3f leftHand = getFalloutTargetWorldOrigin(targets, "bip01 l hand");
++        const osg::Vec3f rightHand = getFalloutTargetWorldOrigin(targets, "bip01 r hand");
++        const osg::Vec3f weapon = getFalloutTargetWorldOrigin(targets, "weapon");
++        const osg::Vec3f footMid = (leftFoot + rightFoot) * 0.5f;
++
++        Log(Debug::Info) << "FNV/ESM4 ACTOR ROOT ATTACHMENT AUDIT " << ptr.getCellRef().getRefId()
++                         << " sample=" << samples
++                         << " objectRoot='" << objectRoot->getName() << "'"
++                         << " targetCount=" << targets.size()
++                         << " hasBip01=" << (bip01Node != nullptr)
++                         << " hasPelvis=" << (pelvisNode != nullptr)
++                         << " hasSpine2=" << (spine2Node != nullptr)
++                         << " hasHead=" << (headNode != nullptr)
++                         << " hasLeftFoot=" << (leftFootNode != nullptr)
++                         << " hasRightFoot=" << (rightFootNode != nullptr)
++                         << " hasWeapon=" << (weaponNode != nullptr)
++                         << " root=" << formatFalloutAuditVec3(root)
++                         << " rootBasisX=" << formatFalloutAuditVec3(falloutMatrixBasisRow(rootWorld, 0))
++                         << " rootBasisY=" << formatFalloutAuditVec3(falloutMatrixBasisRow(rootWorld, 1))
++                         << " rootBasisZ=" << formatFalloutAuditVec3(falloutMatrixBasisRow(rootWorld, 2))
++                         << " rootHandedness=" << falloutMatrixBasisHandedness(rootWorld)
++                         << " bip01=" << formatFalloutAuditVec3(bip01)
++                         << " bip01BasisZ=" << formatFalloutAuditVec3(falloutMatrixBasisRow(bip01World, 2))
++                         << " pelvis=" << formatFalloutAuditVec3(pelvis)
++                         << " spine2=" << formatFalloutAuditVec3(spine2)
++                         << " head=" << formatFalloutAuditVec3(head)
++                         << " leftFoot=" << formatFalloutAuditVec3(leftFoot)
++                         << " rightFoot=" << formatFalloutAuditVec3(rightFoot)
++                         << " leftHand=" << formatFalloutAuditVec3(leftHand)
++                         << " rightHand=" << formatFalloutAuditVec3(rightHand)
++                         << " weapon=" << formatFalloutAuditVec3(weapon)
++                         << " headMinusPelvis=" << formatFalloutAuditVec3(head - pelvis)
++                         << " footMidMinusPelvis=" << formatFalloutAuditVec3(footMid - pelvis)
++                         << " rootMinusPelvis=" << formatFalloutAuditVec3(root - pelvis);
++    }
++
++    float auditFalloutRuntimeParts(osg::Group* objectRoot,
+         const std::unordered_map<std::string, std::vector<osg::MatrixTransform*>>& targets, const MWWorld::Ptr& ptr)
+     {
+         if (objectRoot == nullptr)
+             return 0.f;
+@@ -5621,7 +5700,22 @@ namespace MWRender
+                 auditFalloutRuntimeParts(mObjectRoot.get(), duplicateTransformTargets, mPtr);
+             }
+         }
+ 
++        if (falloutNpc && shouldAuditFalloutRootAttachment() && mObjectRoot != nullptr)
++        {
++            static std::unordered_map<std::string, unsigned int> sFalloutRootAttachmentRuntimeAuditSamples;
++            const std::string refId = mPtr.getCellRef().getRefId().serializeText();
++            unsigned int& samples = sFalloutRootAttachmentRuntimeAuditSamples[refId];
++            if (samples < 6)
++            {
++                ++samples;
++                std::unordered_map<std::string, std::vector<osg::MatrixTransform*>> runtimeTargets;
++                FalloutTransformTargetVisitor targetVisitor(runtimeTargets);
++                mObjectRoot->accept(targetVisitor);
++                auditFalloutRootAttachmentFrame(mObjectRoot.get(), runtimeTargets, mPtr);
++            }
++        }
++
+         if (falloutNpc && std::getenv("OPENMW_FNV_PART_MATRIX_AUDIT") != nullptr && mObjectRoot != nullptr)
+         {
+             static std::unordered_map<std::string, unsigned int> sFalloutPartMatrixRuntimeAuditSamples;

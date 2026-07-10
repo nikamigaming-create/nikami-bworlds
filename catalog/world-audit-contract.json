@@ -1,0 +1,265 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-07",
+  "purpose": "Methodical pass contract for auditing Bethesda worlds in slices before promoting renderer or game-specific changes.",
+  "tracks": {
+    "runtime": "Full OpenMW runtime baseline. Morrowind must stay green before any broader promotion.",
+    "walking-sim": "OpenMW prototype world browsing target. Cell, asset, material, and actor evidence is required before broader claims.",
+    "asset-research": "Archive, record, and asset analysis only. No connected world-viewer promotion without an explicit contract change."
+  },
+  "targetWorlds": [
+    {
+      "id": "morrowind",
+      "track": "runtime",
+      "order": 10,
+      "runtimePromotionAllowed": true
+    },
+    {
+      "id": "oblivion",
+      "track": "walking-sim",
+      "order": 20,
+      "runtimePromotionAllowed": true
+    },
+    {
+      "id": "fallout3",
+      "track": "walking-sim",
+      "order": 30,
+      "runtimePromotionAllowed": true
+    },
+    {
+      "id": "fallout_new_vegas",
+      "track": "walking-sim",
+      "order": 40,
+      "runtimePromotionAllowed": true
+    },
+    {
+      "id": "skyrim_2011",
+      "track": "walking-sim",
+      "order": 50,
+      "runtimePromotionAllowed": false,
+      "notes": "Blocked until a non-VR Skyrim 2011 install and generated profile are available. Do not use skyrim_vr as a runtime substitute."
+    },
+    {
+      "id": "skyrim_vr",
+      "track": "asset-research",
+      "order": 60,
+      "runtimePromotionAllowed": false,
+      "notes": "Do not use Skyrim VR as the active runtime promotion lane. Prefer the Skyrim 2011 world id when assets are available."
+    },
+    {
+      "id": "fallout4",
+      "track": "walking-sim",
+      "order": 70,
+      "runtimePromotionAllowed": true
+    },
+    {
+      "id": "fallout4_vr",
+      "track": "asset-research",
+      "order": 80,
+      "runtimePromotionAllowed": false,
+      "notes": "Do not use Fallout 4 VR as the active runtime promotion lane. Prefer the fallout4 world id with Fallout4.esm data assets."
+    },
+    {
+      "id": "fallout76",
+      "track": "asset-research",
+      "order": 90,
+      "runtimePromotionAllowed": false
+    },
+    {
+      "id": "starfield",
+      "track": "asset-research",
+      "order": 100,
+      "runtimePromotionAllowed": false
+    }
+  ],
+  "passes": [
+    {
+      "id": "profile-isolation",
+      "order": 10,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim"
+      ],
+      "evidence": [
+        "catalog/worlds.local.json",
+        "profiles/<world>/openmw.cfg",
+        "profiles/<world>/settings.cfg"
+      ],
+      "gate": "Generated profile uses --replace config, profile-local user-data/data-local, and no unrelated game content."
+    },
+    {
+      "id": "archive-inventory",
+      "order": 20,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim",
+        "asset-research"
+      ],
+      "evidence": [
+        "run/audit/<world>/archives.jsonl"
+      ],
+      "gate": "Every configured archive is present, listable, and classified by path family."
+    },
+    {
+      "id": "plugin-record-inventory",
+      "order": 30,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim",
+        "asset-research"
+      ],
+      "evidence": [
+        "run/audit/<world>/records.jsonl",
+        "run/audit/<world>/record-summary.json"
+      ],
+      "gate": "Every content file has record counts and parse failures are explicit ledger rows."
+    },
+    {
+      "id": "cell-catalog",
+      "order": 40,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim"
+      ],
+      "evidence": [
+        "catalog/cells/<world>.cells.json"
+      ],
+      "gate": "Every known interior and exterior cell/grid has a stable id and reference counts."
+    },
+    {
+      "id": "cell-load-smoke",
+      "order": 50,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim"
+      ],
+      "evidence": [
+        "run/real-world-screenshots/<world>-<stamp>/manifest.json"
+      ],
+      "gate": "Real OpenMW native screenshots and logs prove representative cells load without profile contamination."
+    },
+    {
+      "id": "asset-decode",
+      "order": 60,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim",
+        "asset-research"
+      ],
+      "evidence": [
+        "run/audit/<world>/assets.jsonl",
+        "run/audit/actor-animation-assets.jsonl",
+        "run/audit/<world>/asset-summary.json"
+      ],
+      "gate": "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+    },
+    {
+      "id": "actor-catalog",
+      "order": 70,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim"
+      ],
+      "evidence": [
+        "run/audit/<world>/actors.jsonl",
+        "run/audit/<world>/actor-summary.json"
+      ],
+      "gate": "Every placed actor maps to base actor, skeleton, model parts, face/head data, equipment, animation roots, and voice/material expectations."
+    },
+    {
+      "id": "actor-render-proof",
+      "order": 80,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim"
+      ],
+      "evidence": [
+        "run/audit/<world>/actor-render-ledger.jsonl",
+        "run/audit/actor-visual-review.jsonl",
+        "run/audit/actor-runtime-warnings.jsonl",
+        "run/audit/rig-pose-sanity.jsonl",
+        "run/audit/actor-animation-assets.jsonl",
+        "run/real-world-screenshots/<world>-<stamp>/manifest.json"
+      ],
+      "gate": "Curated actor classes render from real cells with no zero-geometry, one-color, or magenta fallback evidence."
+    },
+    {
+      "id": "zone-traversal",
+      "order": 90,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim"
+      ],
+      "evidence": [
+        "run/audit/<world>/zones.jsonl",
+        "run/audit/<world>/zone-summary.json"
+      ],
+      "gate": "Exterior grids and door-linked interiors are covered by slices with crash/missing/visual failures logged."
+    },
+    {
+      "id": "regression-promotion",
+      "order": 100,
+      "appliesToTracks": [
+        "runtime",
+        "walking-sim"
+      ],
+      "evidence": [
+        "run/audit/<world>/promotion.json"
+      ],
+      "gate": "The current pass stays green after the proposed fix and before VR or next-world promotion."
+    }
+  ],
+  "failureClasses": [
+    "profile-contamination",
+    "missing-archive",
+    "missing-content",
+    "record-parse-failed",
+    "cell-load-failed",
+    "missing-mesh",
+    "zero-geometry",
+    "missing-texture",
+    "texture-decode-failed",
+    "material-fallback",
+    "bad-screenshot",
+    "void-background",
+    "one-color-screenshot",
+    "magenta-fallback",
+    "actor-root-missing",
+    "actor-part-missing",
+    "actor-head-render-gap",
+    "actor-pose-invalid",
+    "actor-render-live-split",
+    "actor-runtime-gap",
+    "animation-bind-failed",
+    "crash"
+  ],
+  "warningClasses": [
+    "ui-resource-gap",
+    "water-resource-gap",
+    "terrain-default-resource-gap",
+    "engine-placeholder-resource-gap",
+    "normal-map-resource-gap",
+    "actor-texture-gap",
+    "missing-video",
+    "record-runtime-gap",
+    "animation-bind-gap",
+    "actor-runtime-gap",
+    "actor-non-target-runtime-gap",
+    "actor-non-target-limb-anatomy-gap",
+    "actor-render-gap",
+    "actor-render-live-transition",
+    "actor-basis-audit-gap",
+    "actor-basis-large-delta",
+    "actor-root-attachment-audit-gap",
+    "actor-root-orientation-gap",
+    "actor-runtime-suppressed",
+    "actor-visual-review-gap",
+    "animation-asset-optional-missing"
+  ],
+  "guardrails": [
+    "Real native OpenMW screenshots are baseline evidence; synthetic screenshots are diagnostic only.",
+    "Starfield and Fallout 76 stay asset-research until this contract is deliberately updated.",
+    "No Starfield-specific change is promoted unless Morrowind and the current ESM4 baseline still pass.",
+    "A screenshot without a manifest, log, and failure classification is not accepted as proof."
+  ]
+}

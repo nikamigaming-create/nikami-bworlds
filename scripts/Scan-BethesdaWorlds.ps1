@@ -6,6 +6,7 @@ param(
     [string]$ProfilesRoot = "profiles",
     [string]$OpenMWResources = "",
     [string[]]$ExtraFalloutNewVegasInstallPaths = @(),
+    [string[]]$ExtraFallout4InstallPaths = @(),
     [string[]]$ExtraSteamAppsRoots = @()
 )
 
@@ -138,6 +139,42 @@ function Get-FileNamesByExtension {
         Where-Object { $_.Name -match $pattern } |
         Sort-Object Name |
         ForEach-Object { $_.Name }
+}
+
+function Get-PropertyValue($Object, [string]$Name) {
+    if ($null -eq $Object) {
+        return $null
+    }
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+
+    return $property.Value
+}
+
+function Test-TextMatchesAnyPattern {
+    param(
+        [string]$Text,
+        [object]$Patterns
+    )
+
+    if ($null -eq $Patterns) {
+        return $false
+    }
+
+    foreach ($pattern in @($Patterns)) {
+        $patternText = [string]$pattern
+        if ([string]::IsNullOrWhiteSpace($patternText)) {
+            continue
+        }
+        if ($Text -match $patternText) {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 function New-WorldDefinition {
@@ -345,11 +382,7 @@ if (Test-Path -LiteralPath $SettingsPresetPath) {
     $settingsCatalog = Get-Content -LiteralPath $SettingsPresetPath -Raw | ConvertFrom-Json
 }
 
-$OpenMWResources = Resolve-NikamiPath `
-    -ParameterValue $OpenMWResources `
-    -EnvName "NIKAMI_OPENMW_RESOURCES" `
-    -ConfigName "openmwResources" `
-    -Description "OpenMW resources directory"
+$OpenMWResources = Resolve-NikamiProofResourcesRoot -ParameterValue $OpenMWResources
 
 $configuredSteamRoots = @(Resolve-NikamiPathList `
     -ParameterValue $ExtraSteamAppsRoots `
@@ -361,6 +394,11 @@ $configuredFnvRoots = @(Resolve-NikamiPathList `
     -EnvName "NIKAMI_FNV_ROOT" `
     -ConfigName "fnvRoot")
 
+$configuredFallout4Roots = @(Resolve-NikamiPathList `
+    -ParameterValue $ExtraFallout4InstallPaths `
+    -EnvName "NIKAMI_FALLOUT4_ROOT" `
+    -ConfigName "fallout4Root")
+
 $definitions = @()
 $definitions += (New-WorldDefinition -Id "morrowind" -DataSubpath "Data Files" -SteamAppIds @("22320") -CommonInstallDirs @("Morrowind"))
 $definitions += (New-WorldDefinition -Id "oblivion" -DataSubpath "Data" -SteamAppIds @("22330") -CommonInstallDirs @("Oblivion"))
@@ -368,7 +406,7 @@ $definitions += (New-WorldDefinition -Id "fallout3" -DataSubpath "Data" -SteamAp
 $definitions += (New-WorldDefinition -Id "fallout_new_vegas" -DataSubpath "Data" -SteamAppIds @("22380") -CommonInstallDirs @("Fallout New Vegas") -ExtraInstallPaths $configuredFnvRoots)
 $definitions += (New-WorldDefinition -Id "skyrim_2011" -DataSubpath "Data" -SteamAppIds @("72850") -CommonInstallDirs @("Skyrim"))
 $definitions += (New-WorldDefinition -Id "skyrim_vr" -DataSubpath "Data" -SteamAppIds @("611670") -CommonInstallDirs @("SkyrimVR"))
-$definitions += (New-WorldDefinition -Id "fallout4" -DataSubpath "Data" -SteamAppIds @("377160") -CommonInstallDirs @("Fallout 4"))
+$definitions += (New-WorldDefinition -Id "fallout4" -DataSubpath "Data" -SteamAppIds @("377160") -CommonInstallDirs @("Fallout 4") -ExtraInstallPaths $configuredFallout4Roots)
 $definitions += (New-WorldDefinition -Id "fallout4_vr" -DataSubpath "Data" -SteamAppIds @("611660") -CommonInstallDirs @("Fallout 4 VR"))
 $definitions += (New-WorldDefinition -Id "fallout76" -DataSubpath "Data" -SteamAppIds @("1151340") -CommonInstallDirs @("Fallout76"))
 $definitions += (New-WorldDefinition -Id "starfield" -DataSubpath "Data" -SteamAppIds @("1716740") -CommonInstallDirs @("Starfield"))
@@ -435,7 +473,15 @@ foreach ($definition in $definitions) {
         }
     }
     if ($includeDetectedArchives) {
+        $archiveIncludePatterns = Get-PropertyValue $cap "archiveIncludePatterns"
+        $archiveExcludePatterns = Get-PropertyValue $cap "archiveExcludePatterns"
         foreach ($archive in $archiveFiles) {
+            if ($null -ne $archiveIncludePatterns -and -not (Test-TextMatchesAnyPattern -Text $archive -Patterns $archiveIncludePatterns)) {
+                continue
+            }
+            if (Test-TextMatchesAnyPattern -Text $archive -Patterns $archiveExcludePatterns) {
+                continue
+            }
             if ($viewerArchiveFiles -notcontains $archive) {
                 $viewerArchiveFiles += $archive
             }

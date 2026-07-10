@@ -1,6 +1,7 @@
 # Local/generated world detection output
 /catalog/worlds.local.json
 /catalog/world-walker.seed.json
+/catalog/world-audit.seed.json
 /catalog/cells/*.esm3-mined.json
 /catalog/cells/*.esm4-mined.json
 
@@ -12,6 +13,7 @@
 /run/
 /tmp/
 /out/
+/external/
 __pycache__/
 *.pyc
 

@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds <nikami-worlds@example.invalid>
+Date: Tue, 7 Jul 2026 22:45:00 -0700
+Subject: [experiment] ESM4 refresh rig render pose
+
+Status: failed experiment, not queued in patches/openmw/series.
+Depends-on: 0006-esm4-live-rig-bounds-telemetry.patch,
+ 0007-esm4-part-matrix-runtime-audit-gate.patch.
+Proof baseline: run/proof-harness-sweeps/20260707-215634.
+
+The 0006+0007 proof showed runtime live hand bounds near the target bones while
+the screenshots stayed inverted/disassembled. Add an explicit, env-gated
+Fallout rig render refresh after animation updates so the rendered double
+buffer can be forced to the current pose for proof.
+
+This patch is guarded by OPENMW_FNV_REFRESH_RIG_RENDER_POSE=1.
+Result: failed in run/proof-harness-sweeps/20260707-220315 because both FO3
+and FNV produced no native screenshots. Do not promote.
+
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -462,6 +462,43 @@ namespace
+         std::vector<osg::Node*> mParts;
+     };
+ 
++    class FalloutRefreshRigGeometryVisitor : public osg::NodeVisitor
++    {
++    public:
++        FalloutRefreshRigGeometryVisitor()
++            : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
++        {
++        }
++
++        void apply(osg::Geode& geode) override
++        {
++            for (unsigned int i = 0; i < geode.getNumDrawables(); ++i)
++            {
++                if (osg::Drawable* drawable = geode.getDrawable(i))
++                    applyDrawable(*drawable);
++            }
++            traverse(geode);
++        }
++
++        void apply(osg::Drawable& drawable) override { applyDrawable(drawable); }
++
++        unsigned int mRigGeometry = 0;
++        unsigned int mRefreshedRigGeometry = 0;
++
++    private:
++        void applyDrawable(osg::Drawable& drawable)
++        {
++            SceneUtil::RigGeometry* rig = dynamic_cast<SceneUtil::RigGeometry*>(&drawable);
++            if (rig == nullptr || !rig->isFalloutCharacterRig())
++                return;
++
++            rig->forceNextUpdate();
++            ++mRigGeometry;
++            if (rig->refreshFalloutSkinningForCurrentPose())
++                ++mRefreshedRigGeometry;
++        }
++    };
++
+     struct FalloutRigBoundsSample
+     {
+         std::string mName;
+@@ -5607,6 +5643,25 @@ namespace MWRender
+             }
+         }
+ 
++        if (falloutNpc && std::getenv("OPENMW_FNV_REFRESH_RIG_RENDER_POSE") != nullptr && mObjectRoot != nullptr)
++        {
++            FalloutRefreshRigGeometryVisitor visitor;
++            mObjectRoot->accept(visitor);
++
++            static std::unordered_map<std::string, unsigned int> sFalloutRigRenderRefreshLogs;
++            const std::string refId = mPtr.getCellRef().getRefId().serializeText();
++            unsigned int& logs = sFalloutRigRenderRefreshLogs[refId];
++            if (logs < 3 && visitor.mRigGeometry > 0)
++            {
++                ++logs;
++                Log(Debug::Info) << "FNV/ESM4 diag: refreshed Fallout rig render pose for "
++                                 << mPtr.getCellRef().getRefId()
++                                 << " rigs=" << visitor.mRigGeometry
++                                 << " refreshed=" << visitor.mRefreshedRigGeometry
++                                 << " gate=runtime-fnv-refresh-rig-render-pose";
++            }
++        }
++
+         updateEffects();
+ 
+         const float epsilon = 0.001f;

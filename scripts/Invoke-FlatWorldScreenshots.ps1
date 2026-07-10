@@ -42,6 +42,7 @@ param(
     [double]$CameraTargetY = [double]::NaN,
     [double]$CameraTargetZ = [double]::NaN,
     [switch]$AllowBadScreenshots,
+    [switch]$AllowLegacySyntheticProof,
     [switch]$ShowGui,
     [switch]$DryRun,
     [string[]]$SetEnv = @(),
@@ -53,6 +54,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+
+if (-not $AllowLegacySyntheticProof) {
+    throw "Invoke-FlatWorldScreenshots.ps1 is a legacy synthetic screenshot harness. Use scripts/Start-WorldProfileExisting.ps1 for real OpenMW profile launches, or pass -AllowLegacySyntheticProof only for isolated diagnostics."
+}
 
 function Convert-ToForwardSlash([string]$Path) {
     return ($Path -replace "\\", "/")
@@ -1887,21 +1892,9 @@ foreach ($path in @($SeedPath, $StartsPath)) {
     }
 }
 
-$BinaryRoot = Resolve-NikamiPath `
-    -ParameterValue $BinaryRoot `
-    -EnvName "NIKAMI_OPENMW_BINARY_ROOT" `
-    -ConfigName "openmwBinaryRoot" `
-    -Required `
-    -Description "OpenMW binary root"
-if (-not (Test-Path -LiteralPath $BinaryRoot)) {
-    throw "Missing OpenMW binary root: $BinaryRoot"
-}
-$BinaryRoot = (Resolve-Path -LiteralPath $BinaryRoot).Path
+$BinaryRoot = Resolve-NikamiProofBinaryRoot -ParameterValue $BinaryRoot
 
 $binary = Join-Path $BinaryRoot "openmw.exe"
-if (-not (Test-Path -LiteralPath $binary)) {
-    throw "Missing existing flat OpenMW binary: $binary"
-}
 
 $seed = Get-Content -LiteralPath $SeedPath -Raw | ConvertFrom-Json
 $starts = Get-Content -LiteralPath $StartsPath -Raw | ConvertFrom-Json
@@ -1990,13 +1983,21 @@ $viewerProofEnvNames = @(
     "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS",
     "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_PARTS",
+    "OPENMW_WORLD_VIEWER_POSITION_SCALE_STATIC_ACTOR_PARTS",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HEAD_PARTS",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_FACE_HAIR_PARTS",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_BROW_PARTS",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_EYE_PARTS",
+    "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_MOUTH_PARTS",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS",
+    "OPENMW_WORLD_VIEWER_FORCE_ACTOR_PART_MASK",
+    "OPENMW_WORLD_VIEWER_ROTATE_TES5_HAIR_PART_AXES",
+    "OPENMW_WORLD_VIEWER_TES5_HAIR_PART_ROTATION_Z",
+    "OPENMW_WORLD_VIEWER_ROTATE_TES5_FACE_PART_AXES",
+    "OPENMW_WORLD_VIEWER_TES5_FACE_PART_ROTATION_Z",
     "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS",
+    "OPENMW_WORLD_VIEWER_SKIP_ESM4_SKIN_WHEN_CLOTHED",
     "OPENMW_WORLD_VIEWER_DISABLE_TES5_STATIC_FACE_SURFACE_ANCHOR",
     "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS",
     "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS",
@@ -2069,15 +2070,10 @@ try {
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "1", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "1", "Process")
-        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "1", "Process")
-        if ($PreserveNativeMaterials) {
-            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", $null, "Process")
-            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", $null, "Process")
-        }
-        else {
-            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "1", "Process")
-            [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "1", "Process")
-        }
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", $null, "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", $null, "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", $null, "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FORCE_FLAT_WORLD_MATERIALS", $null, "Process")
         if ($FullbrightNativeMaterials -or $FullbrightActorMaterialsOnly) {
             [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", "1", "Process")
         }
@@ -2139,7 +2135,7 @@ try {
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_RAY_DISTANCE", "200000", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_ACTOR_RAY_LIMIT", "8", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "1", "Process")
-        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "1", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", $null, "Process")
         if ($RenderDisabledActors) {
             [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_RENDER_DISABLED_ACTORS", "1", "Process")
         }
@@ -2148,7 +2144,7 @@ try {
         }
     }
     else {
-        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "OPENMW_WORLD_VIEWER_ALLOW_MISSING_SKIN_BONES", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HEAD_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_FACE_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_BROW_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_EYE_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_MOUTH_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS", "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "OPENMW_WORLD_VIEWER_RENDER_DISABLED_ACTORS", "OPENMW_WORLD_VIEWER_FOCUS_ACTOR", "OPENMW_PROOF_HIDE_FIRST_PERSON", "OPENMW_PROOF_HIDE_PLAYER_VISUAL", "OPENMW_PROOF_HIDE_WORLD_VISUAL")) {
+        foreach ($name in @("OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE", "OPENMW_WORLD_VIEWER_REF_TELEMETRY", "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY", "OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY", "OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY", "OPENMW_WORLD_VIEWER_ALLOW_MISSING_SKIN_BONES", "OPENMW_WORLD_VIEWER_ENABLE_SKIN_PARTITION_FALLBACK", "OPENMW_WORLD_VIEWER_GENERATE_MISSING_BS_NORMALS", "OPENMW_WORLD_VIEWER_ATTACH_STATIC_SKELETON_PARTS", "OPENMW_WORLD_VIEWER_IGNORE_BS_PARTITION_VERTEX_COLORS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FORCE_FLAT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_ACTOR_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_NIF_MATERIALS", "OPENMW_WORLD_VIEWER_FULLBRIGHT_WORLD_MATERIALS", "OPENMW_WORLD_VIEWER_STARFIELD_ACTOR_PNG_TEXTURES", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HEAD_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_FACE_HAIR_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_BROW_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_EYE_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_MOUTH_PARTS", "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAND_PARTS", "OPENMW_WORLD_VIEWER_FORCE_ACTOR_PART_MASK", "OPENMW_WORLD_VIEWER_ROTATE_TES5_HAIR_PART_AXES", "OPENMW_WORLD_VIEWER_TES5_HAIR_PART_ROTATION_Z", "OPENMW_WORLD_VIEWER_ROTATE_TES5_FACE_PART_AXES", "OPENMW_WORLD_VIEWER_TES5_FACE_PART_ROTATION_Z", "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS", "OPENMW_WORLD_VIEWER_SKIP_ESM4_SKIN_WHEN_CLOTHED", "OPENMW_WORLD_VIEWER_SKIP_MISSING_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_SKIP_UNMAPPED_RIGGED_ACTOR_PARTS", "OPENMW_WORLD_VIEWER_FREEZE_ESM4_ACTOR_MECHANICS", "OPENMW_WORLD_VIEWER_SKIP_OSG_UPDATE_TRAVERSAL", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_AUDIT_OSG_UPDATE_CALLBACKS_EVERY_FRAME", "OPENMW_WORLD_VIEWER_OSG_UPDATE_CALLBACK_AUDIT_LIMIT", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_NODE_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_STATESET_UPDATE_CALLBACKS", "OPENMW_WORLD_VIEWER_STRIP_OSG_UPDATE_CALLBACK_CLASS_FILTER", "OPENMW_WORLD_VIEWER_KEEP_OSG_UPDATE_CALLBACK_PATH_FILTER", "OPENMW_WORLD_VIEWER_RAY_TELEMETRY", "OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS", "OPENMW_WORLD_VIEWER_NEUTRAL_MISSING_TEXTURES", "OPENMW_WORLD_VIEWER_RENDER_DISABLED_ACTORS", "OPENMW_WORLD_VIEWER_FOCUS_ACTOR", "OPENMW_PROOF_HIDE_FIRST_PERSON", "OPENMW_PROOF_HIDE_PLAYER_VISUAL", "OPENMW_PROOF_HIDE_WORLD_VISUAL")) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
     }
@@ -2376,6 +2372,30 @@ try {
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_MIN_GROUND_HEIGHT" (Get-PropertyValue $camera "orbitMinGroundHeight")
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_GROUND_RAY_DISTANCE" (Get-PropertyValue $camera "orbitGroundRayDistance")
             $notes.Add("used explicit local start anchor")
+        }
+
+        $usedStartOverride = $false
+        $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_POS_X" $StartPosX) -or $usedStartOverride
+        $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_POS_Y" $StartPosY) -or $usedStartOverride
+        $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_POS_Z" $StartPosZ) -or $usedStartOverride
+        $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_ROT_X" $StartRotX) -or $usedStartOverride
+        $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_ROT_Y" $StartRotY) -or $usedStartOverride
+        $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_ROT_Z" $StartRotZ) -or $usedStartOverride
+        $usedStartOverride = (Set-ProcessEnvIntOverride "OPENMW_WORLD_VIEWER_START_GRID_X" $StartGridX) -or $usedStartOverride
+        $usedStartOverride = (Set-ProcessEnvIntOverride "OPENMW_WORLD_VIEWER_START_GRID_Y" $StartGridY) -or $usedStartOverride
+        if ($usedStartOverride) {
+            Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_DRY" "1"
+            $notes.Add("used command-line start override")
+        }
+        $usedCameraOverride = $false
+        $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_POS_X" $CameraPosX) -or $usedCameraOverride
+        $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Y" $CameraPosY) -or $usedCameraOverride
+        $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z" $CameraPosZ) -or $usedCameraOverride
+        $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X" $CameraTargetX) -or $usedCameraOverride
+        $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y" $CameraTargetY) -or $usedCameraOverride
+        $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z" $CameraTargetZ) -or $usedCameraOverride
+        if ($usedCameraOverride) {
+            $notes.Add("used command-line camera override")
         }
 
         if ($processEnvOverrides.Count -gt 0) {
@@ -2756,7 +2776,8 @@ if (-not [string]::IsNullOrWhiteSpace($RunLedgerPath)) {
         esm4GridRadius = $Esm4GridRadius
         setEnv = $manifest.setEnv
         flags = [ordered]@{
-            preserveNativeMaterials = [bool]$PreserveNativeMaterials
+            preserveNativeMaterials = (-not $FullbrightNativeMaterials -and -not $FullbrightActorMaterialsOnly)
+            legacyPreserveNativeMaterialsFlag = [bool]$PreserveNativeMaterials
             fullbrightNativeMaterials = [bool]$FullbrightNativeMaterials
             fullbrightActorMaterialsOnly = [bool]$FullbrightActorMaterialsOnly
             allowBadScreenshots = [bool]$AllowBadScreenshots

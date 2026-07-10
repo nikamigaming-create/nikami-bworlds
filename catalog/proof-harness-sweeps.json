@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-07",
+  "purpose": "Config-driven proof sweeps for the native proof harness and command-line runner.",
+  "defaults": {
+    "mode": "flat",
+    "actorSkinningModes": [
+      "source",
+      "current",
+      "auto",
+      "invBindThenSkeleton",
+      "skeletonThenInvBind"
+    ],
+    "useActorAnimationPolicyEnvironment": true,
+    "measureAfterRun": true,
+    "payloadPolicy": "generated manifests, logs, screenshots, and ledgers only; no retail payload bytes are written to the repository"
+  },
+  "worlds": {
+    "oblivion": {
+      "enabled": true,
+      "actorSkinning": {
+        "enabled": true,
+        "startSlice": "imperial-city-palace-actor-close-orbit-burst",
+        "modes": [
+          "source",
+          "current",
+          "auto"
+        ]
+      }
+    },
+    "fallout3": {
+      "enabled": true,
+      "actorSkinning": {
+        "enabled": true,
+        "startSlice": "megaton-entrance-lucas-actor-close-burst",
+        "modes": [
+          "source",
+          "current",
+          "auto",
+          "invBindThenSkeleton",
+          "skeletonThenInvBind"
+        ]
+      }
+    },
+    "fallout_new_vegas": {
+      "enabled": true,
+      "actorSkinning": {
+        "enabled": true,
+        "startSlice": "goodsprings-settler-actor-close-burst",
+        "modes": [
+          "source",
+          "current",
+          "auto",
+          "invBindThenSkeleton",
+          "skeletonThenInvBind"
+        ]
+      }
+    },
+    "fallout4": {
+      "enabled": true,
+      "actorSkinning": {
+        "enabled": true,
+        "startSlice": "exterior-sanctuary-codsworth-actor-close-burst",
+        "modes": [
+          "source",
+          "current",
+          "auto"
+        ]
+      }
+    }
+  },
+  "excludedWorldIds": [
+    "skyrim_vr",
+    "fallout4_vr",
+    "starfield"
+  ],
+  "promotionRule": "A mode is only promotable after native screenshots, actor runtime ledger, rig pose sanity, and visual review agree for that world. FO3 and FNV may share code only after both pass their separate rows."
+}

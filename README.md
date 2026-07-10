@@ -12,8 +12,9 @@ The goal is to make one shared catalog that both flat OpenMW and OpenMW VR can u
    enter coordinates, and teleport there.
 
 This repo intentionally does not vendor OpenMW or OpenMW VR source. Treat those
-trees as downstream dependencies: point this repo at an external checkout/build,
-apply `patches/openmw/series`, and keep the dependency replaceable.
+trees as downstream dependencies for patch development only. Runtime launches use
+the repo-local OpenMW bundle under `local/openmw-fo4guard` so profile tests do
+not silently bind to some other build.
 
 If a downstream patch becomes generally useful, split it into a clean branch in
 the external OpenMW checkout and submit a normal upstream PR. Once accepted, drop
@@ -37,8 +38,8 @@ Then edit `local/paths.json`, or set the equivalent environment variables:
 
 - `NIKAMI_OPENMW_SOURCE`
 - `NIKAMI_OPENMW_BUILD`
-- `NIKAMI_OPENMW_BINARY_ROOT`
-- `NIKAMI_OPENMW_RESOURCES`
+- `NIKAMI_OPENMW_BINARY_ROOT` (legacy only; real launches are locked to `local/openmw-fo4guard`)
+- `NIKAMI_OPENMW_RESOURCES` (legacy only; generated profiles are locked to `local/openmw-fo4guard/resources`)
 - `NIKAMI_FNV_ROOT`
 - `NIKAMI_STEAM_APPS_ROOTS`
 
@@ -90,6 +91,10 @@ See [world-walker-map.md](docs/world-walker-map.md) for the first map/search
 teleport contract.
 See [in-flight-testing.md](docs/in-flight-testing.md) for the flat-first, VR-next
 test loop.
+See [world-audit-method.md](docs/world-audit-method.md) for the slow,
+ledger-driven audit path across games, zones, assets, and actors.
+See [upstream-overlay-strategy.md](docs/upstream-overlay-strategy.md) for how to
+keep local proof work separate from upstreamable OpenMW patch slices.
 See [world-profile-isolation.md](docs/world-profile-isolation.md) for the
 content/settings/user-data isolation rules that keep Morrowind and ESM4 worlds
 from contaminating each other.
@@ -100,6 +105,70 @@ Generate the world-walker seed manifest:
 .\scripts\New-WorldWalkerSeed.ps1
 .\scripts\Test-WorldWalkerContract.ps1
 ```
+
+Generate the local world-audit seed:
+
+```powershell
+.\scripts\New-WorldAuditSeed.ps1
+.\scripts\Test-WorldAuditContract.ps1
+.\scripts\Test-ProofHarnessUiContract.ps1
+.\scripts\Test-ProofHarnessSweepContract.ps1
+```
+
+Capture real in-engine screenshot evidence and refresh the ledger:
+
+```powershell
+.\scripts\Invoke-RealWorldScreenshots.ps1 -WorldId morrowind -Mode flat -RunSeconds 20 -CaptureSeconds 10
+.\scripts\Measure-ScreenshotEvidence.ps1 -IncludeManifests
+.\scripts\Measure-ActorRuntimeWarnings.ps1 -IncludeManifests
+.\scripts\Measure-ActorAnimationAssets.ps1
+.\scripts\Measure-ActorProofStatus.ps1
+```
+
+Run a focused actor-animation experiment only when the actor policy should alter
+engine environment:
+
+```powershell
+.\scripts\Invoke-RealWorldScreenshots.ps1 -WorldId oblivion -Mode flat -RunSeconds 20 -CaptureSeconds 10 -UseActorAnimationPolicyEnvironment
+.\scripts\Invoke-RealWorldScreenshots.ps1 -WorldId fallout_new_vegas -Mode flat -StartSlice goodsprings-settler-actor-close-burst -UseActorAnimationPolicyEnvironment -SetEnv OPENMW_ESM4_SKINNING_MODE=current
+.\scripts\Add-ActorVisualReview.ps1 -ManifestPath run\real-world-screenshots\<run>\manifest.json -Status fail -FailureClass actor-pose-invalid -Notes "Telemetry/assets passed, but actor pose is visibly broken."
+$rigLedgers = (Get-ChildItem run\proof-harness-sweeps\<run>\rig-pose-sanity*.jsonl).FullName
+.\scripts\Measure-ActorProofStatus.ps1 -ActorRuntimePath run\proof-harness-sweeps\<run>\actor-runtime-warnings.jsonl -RigPoseSanityPath $rigLedgers -OutputPath run\proof-harness-sweeps\<run>\actor-proof-status.jsonl
+```
+
+Flat starts and presentation policy are in `catalog/flat-world-proof-starts.json`.
+Screenshot, runtime log, and actor-runtime warning/failure classification are in
+`catalog/screenshot-evidence-policy.json`; keep harness decisions there instead
+of adding world-specific branches to scripts.
+Actor skeleton/KF asset expectations are in
+`catalog/actor-animation-policy.json`. The flat-start catalog also owns the
+allowed proof environment prefixes; scripts should not carry separate hardcoded
+environment allow-lists.
+The native in-game proof panel must follow
+`catalog/proof-harness-ui-contract.json`; command-line `-SetEnv` overrides are
+the replay format for the same controls until that panel exists.
+Batch sweeps use `catalog/proof-harness-sweeps.json` through:
+
+```powershell
+.\scripts\Invoke-ProofHarnessSweep.ps1 -WorldId fallout3,fallout_new_vegas -Mode source,current,auto
+.\scripts\Update-ProofHarnessSweepSummary.ps1 -RunDir run\proof-harness-sweeps\<run>
+.\scripts\Show-ProofHarnessSweepStatus.ps1 -RunDir run\proof-harness-sweeps\<run>
+.\scripts\Show-ActorProofArmory.ps1 -NoNetwork
+```
+
+The sweep runner writes `actor-proof-status.jsonl` when measurements are enabled.
+That ledger joins runtime telemetry, rig-pose sanity, and exact-manifest visual
+review rows, and it records the effective skinning mode after command-line
+overrides. A native screenshot without a non-missing visual review is not actor
+promotion evidence.
+If visual review is added after the sweep finishes, rerun
+`Update-ProofHarnessSweepSummary.ps1` for that sweep directory.
+Use `Show-ActorProofArmory.ps1` before risky source work; it summarizes the
+latest sweep, quarantined experiments, local OpenMW-derived candidate repos, and
+optional upstream branch signal without launching the game.
+If live Git branch scanning is unavailable, it falls back to
+`catalog/local-openmw-candidates.json`, which records public-safe commit metadata
+for the local lab branches that previously had stronger FNV actor evidence.
 
 ## FNV Actor Artifacts
 

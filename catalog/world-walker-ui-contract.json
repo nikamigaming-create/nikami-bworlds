@@ -2,6 +2,10 @@
   "schemaVersion": 1,
   "asOf": "2026-07-05",
   "purpose": "First-cut contract for the native OpenMW/OpenMW VR world walker menu.",
+  "excludedWorldIds": [
+    "skyrim_vr",
+    "fallout4_vr"
+  ],
   "views": [
     {
       "id": "world-select",

@@ -1,0 +1,353 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-07",
+  "purpose": "Contract for a native in-game OpenMW proof harness panel that drives world, actor, camera, screenshot, and telemetry proof without relying on brittle launch-only scripts.",
+  "promotionModes": [
+    "flat"
+  ],
+  "nonGoals": [
+    "VR promotion gating",
+    "one-actor hardcoded fixes",
+    "screenshot-only pass/fail decisions",
+    "runtime edits that cannot be replayed from catalog or manifest data"
+  ],
+  "dataSources": [
+    {
+      "id": "worldSeed",
+      "path": "catalog/world-walker.seed.json",
+      "requiredFor": [
+        "world identity",
+        "profile path",
+        "supported profile launch args"
+      ]
+    },
+    {
+      "id": "startCatalog",
+      "path": "catalog/flat-world-proof-starts.json",
+      "requiredFor": [
+        "slice selection",
+        "camera sequence",
+        "capture burst",
+        "environment allow-list"
+      ]
+    },
+    {
+      "id": "actorAnimationPolicy",
+      "path": "catalog/actor-animation-policy.json",
+      "requiredFor": [
+        "per-game actor policy",
+        "per-game skinning and animation defaults",
+        "shared FO3/FNV mode sweeps without collapsing policies"
+      ]
+    },
+    {
+      "id": "screenshotEvidencePolicy",
+      "path": "catalog/screenshot-evidence-policy.json",
+      "requiredFor": [
+        "screenshot quality verdicts",
+        "runtime log warning and failure classification",
+        "actor runtime ledger classification"
+      ]
+    },
+    {
+      "id": "runtimeStore",
+      "source": "OpenMW ESMStore, WorldModel, MWRender actor roots, and proof telemetry loggers",
+      "requiredFor": [
+        "current cell",
+        "resolved actor",
+        "runtime skeleton and node map",
+        "visible drawable and post-skin bounds",
+        "native screenshot frame ids"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "proof-dashboard",
+      "lifetime": "in-loaded-profile",
+      "description": "One screen showing current world, slice, selected actor/object, camera profile, skinning mode, telemetry state, latest screenshots, and current verdict."
+    },
+    {
+      "id": "target-picker",
+      "lifetime": "in-loaded-profile",
+      "description": "Search and select loaded actors, nearby actors, known curated actor targets, doors, statics, containers, weapons, or explicit FormId/editor-id targets."
+    },
+    {
+      "id": "camera-orbit",
+      "lifetime": "in-loaded-profile",
+      "description": "Preview and run front, left, right, top, close, and orbital camera bursts without restarting the process."
+    },
+    {
+      "id": "telemetry-ledger",
+      "lifetime": "in-loaded-profile",
+      "description": "Show current-frame matrix, skeleton, controller, post-skin bounds, asset, runtime warning, and screenshot rows tied to the current proof run id."
+    }
+  ],
+  "requiredControls": [
+    {
+      "id": "worldId",
+      "type": "readonly-current-profile",
+      "valuesFrom": "worldSeed.worlds.id"
+    },
+    {
+      "id": "startSlice",
+      "type": "select",
+      "valuesFrom": "startCatalog.worlds.{worldId}.slices"
+    },
+    {
+      "id": "targetKind",
+      "type": "segmented-control",
+      "values": [
+        "actor",
+        "creature",
+        "weapon",
+        "door",
+        "container",
+        "static",
+        "cell"
+      ]
+    },
+    {
+      "id": "targetId",
+      "type": "search-or-formid-entry",
+      "required": true
+    },
+    {
+      "id": "skinningMode",
+      "type": "select",
+      "values": [
+        "policy",
+        "source",
+        "current",
+        "auto",
+        "invBindThenSkeleton",
+        "skeletonThenInvBind",
+        "bindThenSkeleton",
+        "skeletonThenBind",
+        "identity"
+      ],
+      "notes": "FO3 and FNV expose the same control values but remain separate policy rows and evidence rows."
+    },
+    {
+      "id": "pinActorBindRotation",
+      "type": "toggle",
+      "values": [
+        "policy",
+        "0",
+        "1"
+      ]
+    },
+    {
+      "id": "animationSource",
+      "type": "search-or-path-entry",
+      "valuesFrom": "actorAnimationPolicy.worlds.{worldId}.rules.requiredSources and optionalSources"
+    },
+    {
+      "id": "cameraProfile",
+      "type": "select",
+      "values": [
+        "full-body",
+        "face-close",
+        "hands-close",
+        "weapon-close",
+        "door-front",
+        "geometry-orbit",
+        "top-down",
+        "custom-sequence"
+      ]
+    },
+    {
+      "id": "captureBurst",
+      "type": "select",
+      "values": [
+        "single",
+        "front-left-top",
+        "front-left-right-top",
+        "orbital-8",
+        "orbital-16"
+      ]
+    },
+    {
+      "id": "telemetryLevel",
+      "type": "select",
+      "values": [
+        "off",
+        "runtime",
+        "actor",
+        "actor-matrix",
+        "skin-weight",
+        "full"
+      ]
+    },
+    {
+      "id": "runVerdict",
+      "type": "readonly",
+      "values": [
+        "not-run",
+        "running",
+        "pass",
+        "fail",
+        "questionable"
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "proof.openPanel",
+      "scope": "in-process",
+      "outputs": [
+        "currentWorldId",
+        "currentCell",
+        "availableSlices",
+        "lastProofRun"
+      ]
+    },
+    {
+      "id": "proof.selectSlice",
+      "scope": "in-process",
+      "inputs": [
+        "startSlice"
+      ],
+      "outputs": [
+        "resolvedStart",
+        "resolvedCameraSequence",
+        "resolvedCaptureFrames"
+      ]
+    },
+    {
+      "id": "proof.selectTarget",
+      "scope": "in-process",
+      "inputs": [
+        "targetKind",
+        "targetId"
+      ],
+      "outputs": [
+        "resolvedRef",
+        "baseRecord",
+        "modelRecord",
+        "raceOrCreature",
+        "skeleton"
+      ]
+    },
+    {
+      "id": "proof.applyRuntimeOverrides",
+      "scope": "in-process",
+      "inputs": [
+        "skinningMode",
+        "pinActorBindRotation",
+        "animationSource",
+        "telemetryLevel"
+      ],
+      "outputs": [
+        "effectiveEnvironment",
+        "overrideReason",
+        "replayRecipe"
+      ],
+      "notes": "Overrides must be serializable as the same NAME=VALUE list accepted by Invoke-RealWorldScreenshots.ps1 -SetEnv."
+    },
+    {
+      "id": "proof.captureBurst",
+      "scope": "in-process",
+      "inputs": [
+        "cameraProfile",
+        "captureBurst"
+      ],
+      "outputs": [
+        "nativeScreenshotPaths",
+        "cameraMatrices",
+        "frameNumbers",
+        "screenshotHashes"
+      ]
+    },
+    {
+      "id": "proof.emitTelemetry",
+      "scope": "in-process",
+      "inputs": [
+        "targetId",
+        "telemetryLevel"
+      ],
+      "outputs": [
+        "actorRuntimeRows",
+        "poseSanityRows",
+        "assetRows",
+        "visibleDrawableRows",
+        "postSkinBoundsRows"
+      ]
+    },
+    {
+      "id": "proof.writeManifest",
+      "scope": "in-process",
+      "outputs": [
+        "manifest.json",
+        "openmw.log snapshot",
+        "proof-run-ledger row"
+      ]
+    },
+    {
+      "id": "proof.markVisualReview",
+      "scope": "in-process",
+      "inputs": [
+        "status",
+        "failureClass",
+        "notes"
+      ],
+      "outputs": [
+        "actor-visual-review.jsonl row"
+      ]
+    }
+  ],
+  "requiredManifestFields": [
+    "worldId",
+    "startSlice",
+    "targetKind",
+    "targetId",
+    "resolvedTarget",
+    "cameraProfile",
+    "captureBurst",
+    "environmentOverrides",
+    "processEnvironment",
+    "screenshots",
+    "telemetryArtifacts",
+    "visualReview",
+    "status"
+  ],
+  "firstCutReadyWhen": [
+    "The proof panel opens in a loaded flat OpenMW profile.",
+    "The panel can select a target actor in FO3 and FNV without restarting the process.",
+    "The panel can run source/current/auto skinning captures as replayable overrides while keeping FO3 and FNV policies separate.",
+    "A front-left-top burst writes multiple native screenshots and matching camera matrices in one run.",
+    "The panel writes a manifest and run-local log snapshot compatible with the existing measurement scripts.",
+    "Questionable visual state can be marked from the panel and appears in actor-visual-review.jsonl."
+  ],
+  "engineAnchors": [
+    {
+      "path": "apps/openmw/mwgui/windowmanagerimp.cpp",
+      "symbols": [
+        "WindowManager"
+      ]
+    },
+    {
+      "path": "apps/openmw/mwrender/renderingmanager.cpp",
+      "symbols": [
+        "screenshot",
+        "camera"
+      ]
+    },
+    {
+      "path": "apps/openmw/mwrender/esm4npcanimation.cpp",
+      "symbols": [
+        "ESM4NpcAnimation",
+        "actor telemetry",
+        "actor part attachment"
+      ]
+    },
+    {
+      "path": "components/sceneutil/riggeometry.cpp",
+      "symbols": [
+        "RigGeometry",
+        "skinning mode",
+        "post-skin bounds"
+      ]
+    }
+  ]
+}

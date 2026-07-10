@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import json
-import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -112,15 +111,6 @@ GENERIC_FULL_NAMES = {
 
 NO_CHILD_WORLDS = {"morrowind", "oblivion"}
 NO_ROBOT_WORLDS = {"morrowind", "oblivion", "skyrim_2011", "skyrim_vr"}
-STABLE_ACTOR_PROOF_WORLDS = {
-    "oblivion",
-    "fallout3",
-    "fallout_new_vegas",
-    "skyrim_2011",
-    "skyrim_vr",
-    "fallout4",
-    "fallout4_vr",
-}
 
 VISIT_BIAS = {
     "morrowind": [
@@ -325,96 +315,23 @@ def compact_actor(candidate):
         },
         "position": candidate.get("pos"),
         "rotation": candidate.get("rot"),
-        "camera": actor_proof_camera_for(candidate),
     }
 
 
-def actor_proof_camera_for(candidate):
-    pos = candidate.get("pos") or []
-    if len(pos) < 3:
-        return candidate.get("camera")
-
-    labels = set(candidate.get("labels", []))
-    race = (candidate.get("raceEditorId") or "").lower()
-    base = (candidate.get("baseEditorId") or "").lower()
-    rot = candidate.get("rot") or []
-    yaw = rot[2] if len(rot) >= 3 else 0.7853981633974483
-
-    distance = 80.0
-    camera_z = 106.0
-    target_z = 85.0
-    if labels.intersection({"animal", "creature", "monster"}):
-        distance = 180.0
-        camera_z = 130.0
-        target_z = 85.0
-    if "dragon" in race or "dragon" in base:
-        distance = 420.0
-        camera_z = 260.0
-        target_z = 160.0
-
-    return {
-        "position": {
-            "x": round(pos[0] + math.sin(yaw) * distance, 3),
-            "y": round(pos[1] + math.cos(yaw) * distance, 3),
-            "z": round(pos[2] + camera_z, 3),
-        },
-        "target": {
-            "x": round(pos[0], 3),
-            "y": round(pos[1], 3),
-            "z": round(pos[2] + target_z, 3),
-        },
-    }
-
-
-def proof_args_for(world_id, candidate):
-    args = ["-WorldId", world_id, "-RunSeconds", "12"]
-    if world_id in STABLE_ACTOR_PROOF_WORLDS:
-        args += [
-            "-ScreenshotFrames",
-            "170",
-            "-DisableSky",
-            "-AllowOsgUpdateTraversal",
-            "-StripOsgUpdateCallbackClass",
-            "NifOsg::",
-            "-StripOsgUpdateCallbackClass",
-            "InitWorldSpaceParticlesCallback",
-            "-KeepOsgUpdateCallbackPath",
-            "SceneUtil::Skeleton/NPC",
-            "-OsgUpdateCallbackAuditLimit",
-            "10",
-        ]
+def runtime_validation_for(world_id, candidate):
     cell = candidate.get("cell", {})
     cell_name = cell.get("editorId") or cell.get("fullName")
-    if cell_name and not cell.get("isExterior"):
-        args += ["-StartCellOverride", cell_name]
-    pos = candidate.get("pos") or []
-    rot = candidate.get("rot") or []
-    if len(pos) >= 3:
-        args += ["-StartPosX", round(pos[0], 3), "-StartPosY", round(pos[1], 3), "-StartPosZ", round(pos[2], 3)]
-    if len(rot) >= 3:
-        args += ["-StartRotX", round(rot[0], 6), "-StartRotY", round(rot[1], 6), "-StartRotZ", round(rot[2], 6)]
-    grid = (cell.get("grid") or {})
-    if cell.get("isExterior") and grid.get("x") is not None and grid.get("y") is not None:
-        args += ["-Esm4GridRadius", "1", "-StartGridX", grid["x"], "-StartGridY", grid["y"]]
-    camera = actor_proof_camera_for(candidate) or {}
-    cam_pos = camera.get("position") or {}
-    cam_target = camera.get("target") or {}
-    if {"x", "y", "z"}.issubset(cam_pos) and {"x", "y", "z"}.issubset(cam_target):
-        args += [
-            "-CameraPosX",
-            cam_pos["x"],
-            "-CameraPosY",
-            cam_pos["y"],
-            "-CameraPosZ",
-            cam_pos["z"],
-            "-CameraTargetX",
-            cam_target["x"],
-            "-CameraTargetY",
-            cam_target["y"],
-            "-CameraTargetZ",
-            cam_target["z"],
-        ]
-    return args
+    validation = {
+        "launcher": "scripts/Start-WorldProfileExisting.ps1",
+        "worldId": world_id,
+        "actorPlacement": "engine-authored",
+        "rule": "Launch the real profile and verify the actor the engine places from game data; do not stage actors or drive placement from mined coordinates.",
+    }
+    if cell_name:
+        validation["startCell"] = cell_name
+    if candidate.get("baseEditorId"):
+        validation["expectedBaseEditorId"] = candidate.get("baseEditorId")
+    return validation
 
 
 def collect_bucket_candidates(world_id, actor_catalog, bucket_spec):
@@ -484,7 +401,7 @@ def build_representative_targets(world_id, actor_catalog, max_targets):
         targets = []
         for candidate in candidates[:max_targets]:
             actor = compact_actor(candidate)
-            actor["proofHarnessArgs"] = proof_args_for(world_id, candidate)
+            actor["runtimeValidation"] = runtime_validation_for(world_id, candidate)
             targets.append(actor)
         category = {
             "id": bucket_spec["id"],
@@ -519,12 +436,166 @@ def compact_stop(stop):
         "concreteActorCount": stop.get("concreteActorCount", 0),
         "leveledActorCount": stop.get("leveledActorCount", 0),
         "center": stop.get("center"),
-        "camera": stop.get("camera"),
         "castPreview": [compact_actor(candidate) for candidate in stop.get("cast", [])[:5]],
     }
 
 
-def build_adventure_stops(actor_catalog, starts_entry, max_stops):
+def stop_identity(stop):
+    cell = stop.get("cell", {})
+    return (
+        (cell.get("editorId") or "").lower(),
+        (cell.get("openmwId") or "").lower(),
+        clean_cell_label(cell).lower(),
+    )
+
+
+def stop_matches_retention_spec(stop, spec):
+    cell = stop.get("cell", {})
+    editor_id = (cell.get("editorId") or "").lower()
+    openmw_id = (cell.get("openmwId") or "").lower()
+    label = clean_cell_label(cell).lower()
+    spec_editor_id = (spec.get("cellEditorId") or "").lower()
+    spec_openmw_id = (spec.get("cellOpenmwId") or "").lower()
+    spec_label = (spec.get("label") or "").lower()
+    if spec_editor_id and editor_id != spec_editor_id:
+        return False
+    if spec_openmw_id and openmw_id != spec_openmw_id:
+        return False
+    if not spec_editor_id and not spec_openmw_id and spec_label and label != spec_label:
+        return False
+    return bool(spec_editor_id or spec_openmw_id or spec_label)
+
+
+def iter_representative_candidates(actor_catalog):
+    seen = set()
+    buckets = actor_catalog.get("representativeBuckets", {})
+    for bucket_candidates in buckets.values():
+        for candidate in bucket_candidates:
+            identity = (
+                candidate.get("ref")
+                or candidate.get("openmwRef")
+                or candidate.get("baseEditorId")
+                or json.dumps(candidate.get("cell", {}), sort_keys=True)
+            )
+            if identity in seen:
+                continue
+            seen.add(identity)
+            yield candidate
+    for candidate in actor_catalog.get("topCastCandidates", []):
+        identity = (
+            candidate.get("ref")
+            or candidate.get("openmwRef")
+            or candidate.get("baseEditorId")
+            or json.dumps(candidate.get("cell", {}), sort_keys=True)
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        yield candidate
+
+
+def compact_candidate_cell_key(candidate):
+    cell = candidate.get("cell", {})
+    return (
+        (cell.get("editorId") or "").lower(),
+        (cell.get("openmwId") or "").lower(),
+        clean_cell_label(cell).lower(),
+    )
+
+
+def candidate_matches_retention_spec(candidate, spec):
+    return stop_matches_retention_spec({"cell": candidate.get("cell", {})}, spec)
+
+
+def build_synthetic_stop_from_candidates(candidates):
+    first = candidates[0]
+    labels = set()
+    positions = []
+    concrete_count = 0
+    leveled_count = 0
+    for candidate in candidates:
+        labels.update(candidate.get("labels", []))
+        pos = candidate.get("pos") or []
+        if len(pos) >= 3:
+            positions.append(pos)
+        if candidate.get("baseType") in ("LVLN", "LVLC"):
+            leveled_count += 1
+        else:
+            concrete_count += 1
+    center = None
+    if positions:
+        center = [
+            round(sum(pos[index] for pos in positions) / len(positions), 3)
+            for index in range(3)
+        ]
+    return {
+        "cell": first.get("cell", {}),
+        "labels": sorted(labels),
+        "actorCount": len(candidates),
+        "concreteActorCount": concrete_count,
+        "leveledActorCount": leveled_count,
+        "center": center,
+        "cast": candidates,
+    }
+
+
+def retained_candidate_stop_matches(actor_catalog, retention_specs):
+    candidates_by_cell = {}
+    for candidate in iter_representative_candidates(actor_catalog):
+        key = compact_candidate_cell_key(candidate)
+        candidates_by_cell.setdefault(key, []).append(candidate)
+
+    matches = []
+    seen = set()
+    for spec in retention_specs or []:
+        for key, candidates in candidates_by_cell.items():
+            if key in seen:
+                continue
+            if not any(candidate_matches_retention_spec(candidate, spec) for candidate in candidates):
+                continue
+            seen.add(key)
+            matches.append(build_synthetic_stop_from_candidates(candidates))
+            break
+    return matches
+
+
+def retained_fallback_stop_matches(retention_specs):
+    matches = []
+    for spec in retention_specs or []:
+        fallback = spec.get("fallbackStop")
+        if not fallback:
+            continue
+        if stop_matches_retention_spec(fallback, spec):
+            matches.append(fallback)
+    return matches
+
+
+def retained_stop_matches(actor_catalog, stops, retention_specs):
+    matches = []
+    seen = set()
+    for spec in retention_specs or []:
+        for stop in stops:
+            if not stop_matches_retention_spec(stop, spec):
+                continue
+            key = stop_identity(stop)
+            if key not in seen:
+                seen.add(key)
+                matches.append(stop)
+            break
+    for stop in retained_candidate_stop_matches(actor_catalog, retention_specs):
+        key = stop_identity(stop)
+        if key not in seen:
+            seen.add(key)
+            matches.append(stop)
+    for stop in retained_fallback_stop_matches(retention_specs):
+        key = stop_identity(stop)
+        if key not in seen:
+            seen.add(key)
+            matches.append(stop)
+    return matches
+
+
+def build_adventure_stops(actor_catalog, starts_entry, max_stops, retention_specs=None):
     stops = actor_catalog.get("topActorCells", [])
     named = [stop for stop in stops if clean_cell_label(stop.get("cell", {})) != "worldspace actor cluster"]
     startish = [stop for stop in named if "start_area" in stop.get("labels", [])]
@@ -532,15 +603,35 @@ def build_adventure_stops(actor_catalog, starts_entry, max_stops):
     seen = set()
     for pool in (startish, named, stops):
         for stop in sorted(pool, key=lambda item: (len(item.get("labels", [])), item.get("actorCount", 0)), reverse=True):
-            label = clean_cell_label(stop.get("cell", {})).lower()
-            if label in seen:
+            key = clean_cell_label(stop.get("cell", {})).lower()
+            if key in seen:
                 continue
-            seen.add(label)
+            seen.add(key)
             selected.append(stop)
             if len(selected) >= max_stops:
                 break
         if len(selected) >= max_stops:
             break
+
+    retained = retained_stop_matches(actor_catalog, stops, retention_specs)
+    retained_keys = {stop_identity(stop) for stop in retained}
+    selected_keys = {stop_identity(stop) for stop in selected}
+    for stop in retained:
+        key = stop_identity(stop)
+        if key in selected_keys:
+            continue
+        selected.append(stop)
+        selected_keys.add(key)
+
+    while len(selected) > max_stops:
+        removable_index = None
+        for index in range(len(selected) - 1, -1, -1):
+            if stop_identity(selected[index]) not in retained_keys:
+                removable_index = index
+                break
+        if removable_index is None:
+            break
+        del selected[removable_index]
 
     output = [compact_stop(stop) for stop in selected]
     if starts_entry:
@@ -559,11 +650,10 @@ def build_adventure_stops(actor_catalog, starts_entry, max_stops):
                 "concreteActorCount": None,
                 "leveledActorCount": None,
                 "center": (starts_entry.get("anchor") or {}).get("position"),
-                "camera": (starts_entry.get("anchor") or {}).get("camera"),
                 "castPreview": [],
             },
         )
-    return output[: max_stops + 1]
+    return output
 
 
 def world_status(world, actor_catalog_path):
@@ -629,7 +719,7 @@ def find_actor_catalog(cells_dir, world_id):
     return None
 
 
-def build_world_entry(world, actor_catalog, actor_catalog_path, starts_entry, max_targets, max_stops):
+def build_world_entry(world, actor_catalog, actor_catalog_path, starts_entry, max_targets, max_stops, retention_specs=None):
     world_id = world.get("id")
     entry = {
         "worldId": world_id,
@@ -668,16 +758,15 @@ def build_world_entry(world, actor_catalog, actor_catalog_path, starts_entry, ma
                 "animationState": "not-proofed-in-this-pass",
             },
             "worldContinuityPlan": {
-                "cellMetadataIsMiningUnit": True,
-                "viewerTarget": "Start in an authored cell, render the active exterior grid plus neighboring grids, keep streaming connected cells while walking, and use interiors only when the authored target is indoors.",
-                "exteriorProofGridRadius": 1,
-                "notTheGoal": "Do not treat representative cells as isolated dioramas or detached replacement scenes.",
+                "cellMetadataIsMiningIndex": True,
+                "viewerTarget": "Launch the authored profile through OpenMW and let the engine stream connected exterior/interior cells and populate actors from game data.",
+                "validationRule": "Mined cells and actor positions are audit/index metadata only; do not build detached proof cells, stage actors, or drive placement from coordinates.",
             },
             "configuredStart": {
                 "label": starts_entry.get("label", "") if starts_entry else "",
                 "startCell": starts_entry.get("startCell", "") if starts_entry else "",
             },
-            "adventureStops": build_adventure_stops(actor_catalog, starts_entry, max_stops),
+            "adventureStops": build_adventure_stops(actor_catalog, starts_entry, max_stops, retention_specs),
             "representativeActorKinds": categories,
             "coverageGaps": gaps
             + [
@@ -698,13 +787,16 @@ def main():
     parser.add_argument("--starts", default="catalog/flat-world-proof-starts.json")
     parser.add_argument("--cells-dir", default="catalog/cells")
     parser.add_argument("--out", default="catalog/adventure-actor-catalog.json")
+    parser.add_argument("--retained-stops", default="catalog/adventure-actor-retained-stops.json")
     parser.add_argument("--max-targets", type=int, default=3)
-    parser.add_argument("--max-stops", type=int, default=8)
+    parser.add_argument("--max-stops", type=int, default=10)
     args = parser.parse_args()
 
     worlds_local = load_json(Path(args.worlds_local))
     starts_path = Path(args.starts)
     starts = load_json(starts_path).get("worlds", {}) if starts_path.exists() else {}
+    retained_stops_path = Path(args.retained_stops)
+    retained_stops = load_json(retained_stops_path).get("worlds", {}) if retained_stops_path.exists() else {}
     cells_dir = Path(args.cells_dir)
     worlds_by_id = {world.get("id"): world for world in worlds_local.get("worlds", [])}
 
@@ -723,6 +815,7 @@ def main():
                 starts.get(world_id),
                 args.max_targets,
                 args.max_stops,
+                retained_stops.get(world_id, []),
             )
         )
 
@@ -731,7 +824,7 @@ def main():
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "scope": "Local Bethesda 3D worlds tracked by catalog/worlds.local.json. Classic 2D Fallout titles are intentionally out of scope for this OpenMW world-viewer pass.",
         "assetPolicy": "Public-safe metadata only; no retail assets, screenshots, logs, crash dumps, or local install paths.",
-        "proofGoal": "For each local world, know where authored actors are, pick representative people/creatures/robots/monsters to visit, and drive byte-to-pixel screenshot telemetry from those coordinates.",
+        "proofGoal": "For each local world, know where authored actors are, pick representative people/creatures/robots/monsters to validate, and prove them only through a real OpenMW profile load where the engine streams cells and places actors from game data.",
         "worlds": entries,
     }
     out_path = Path(args.out)

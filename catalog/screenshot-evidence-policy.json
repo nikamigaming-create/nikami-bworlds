@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Config-driven classification for OpenMW screenshot evidence. Unknown missing images still fail by default.",
+  "defaultMissingImageFailureClass": "missing-texture",
+  "defaultNoScreenshotFailureClass": "bad-screenshot",
+  "defaultNonZeroExitFailureClass": "crash",
+  "defaultNonZeroExitIgnoreWhenHarnessTerminated": true,
+  "imageQualityRules": {
+    "minimumProofWidth": 320,
+    "minimumProofHeight": 240,
+    "hardFailureClasses": [
+      "bad-screenshot",
+      "magenta-fallback",
+      "one-color-screenshot",
+      "void-background"
+    ]
+  },
+  "ignoredManifestStatuses": [
+    "dry-run"
+  ],
+  "manifestStatusRules": [
+    {
+      "id": "no-native-screenshot",
+      "severity": "failure",
+      "status": "fail",
+      "match": {
+        "statuses": [
+          "no-native-screenshot"
+        ],
+        "screenshotCountEquals": 0
+      },
+      "failureClasses": [
+        "bad-screenshot"
+      ],
+      "reasons": [
+        "manifest status is no-native-screenshot",
+        "manifest has no captured screenshots"
+      ]
+    },
+    {
+      "id": "nonzero-exit",
+      "severity": "failure",
+      "status": "fail",
+      "match": {
+        "exitCodeNotEquals": 0,
+        "ignoreWhenHarnessTerminated": true
+      },
+      "failureClasses": [
+        "crash"
+      ],
+      "reasons": [
+        "OpenMW process exited with a non-zero code"
+      ]
+    }
+  ],
+  "missingImageResourceRules": [
+    {
+      "id": "ui-resource-gap",
+      "severity": "warning",
+      "patterns": [
+        "^textures/(menu_|tx_|target\\.dds|door_icon\\.dds|compass\\.dds|cursor_|scroll\\.dds|player_hit_01\\.dds)",
+        "^icons/"
+      ]
+    },
+    {
+      "id": "water-resource-gap",
+      "severity": "warning",
+      "evidenceKinds": [
+        "real-screenshot",
+        "real-native-screenshot",
+        "real-window-screenshot-fallback"
+      ],
+      "patterns": [
+        "^textures/water/"
+      ]
+    },
+    {
+      "id": "terrain-default-resource-gap",
+      "severity": "warning",
+      "evidenceKinds": [
+        "real-screenshot",
+        "real-native-screenshot",
+        "real-window-screenshot-fallback"
+      ],
+      "patterns": [
+        "^textures/_land_default\\.dds$"
+      ]
+    },
+    {
+      "id": "engine-placeholder-resource-gap",
+      "severity": "warning",
+      "evidenceKinds": [
+        "real-screenshot",
+        "real-native-screenshot",
+        "real-window-screenshot-fallback"
+      ],
+      "patterns": [
+        "^textures/(gray|default_n)\\.dds$"
+      ]
+    },
+    {
+      "id": "normal-map-resource-gap",
+      "severity": "warning",
+      "evidenceKinds": [
+        "real-screenshot",
+        "real-native-screenshot",
+        "real-window-screenshot-fallback"
+      ],
+      "patterns": [
+        "^textures/.+_n\\.dds$"
+      ]
+    },
+    {
+      "id": "actor-texture-gap",
+      "severity": "warning",
+      "evidenceKinds": [
+        "real-screenshot",
+        "real-native-screenshot",
+        "real-window-screenshot-fallback"
+      ],
+      "patterns": [
+        "^textures/facegen/"
+      ]
+    }
+  ],
+  "runtimeLogRules": [
+    {
+      "id": "missing-video",
+      "severity": "warning",
+      "patterns": [
+        "Failed to open video"
+      ]
+    },
+    {
+      "id": "record-runtime-gap",
+      "severity": "warning",
+      "patterns": [
+        "script record not found",
+        "Failed to add global script"
+      ]
+    },
+    {
+      "id": "animation-bind-gap",
+      "severity": "warning",
+      "patterns": [
+        "Unhandled controller"
+      ]
+    },
+    {
+      "id": "actor-runtime-gap",
+      "severity": "warning",
+      "patterns": [
+        "skipped missing default actor skeleton",
+        "actor.*missing",
+        "skeleton.*missing",
+        "idle animation missing"
+      ]
+    }
+  ],
+  "actorRuntimeLedger": {
+    "initializedActorPattern": "initialized actor shell for (?<actorType>\\w+) \"(?<actorName>[^\"]+)\" \\((?<formId>[^)]+)\\) level=(?<level>\\S+) health=(?<health>\\S+) race=(?<race>\\S+) traits=(?<traits>\\S+) modelRecord=(?<modelRecord>\\S+) modelKfCount=(?<modelKfCount>\\d+) aiPackageRecord=(?<aiPackageRecord>\\S+) packageCount=(?<packageCount>\\d+) weapon=(?<weapon>\\S+)",
+    "idleAnimationMissingPattern": "idle animation missing for (?<formId>\\S+) group '(?<group>[^']+)'",
+    "registeredCharacterControllerPattern": "registered CharacterController for (?<formId>\"[^\"]+\"|\\S+)",
+    "rules": [
+      {
+        "id": "idle-animation-missing",
+        "severity": "failure",
+        "failureClass": "animation-bind-failed",
+        "source": "idleAnimationMissingCount",
+        "operator": "greaterThan",
+        "value": 0
+      },
+      {
+        "id": "zero-model-kf",
+        "severity": "failure",
+        "failureClass": "animation-bind-failed",
+        "source": "modelKfCount",
+        "operator": "equals",
+        "value": 0,
+        "unless": [
+          {
+            "source": "animationSourceBoundCount",
+            "operator": "greaterThan",
+            "value": 0
+          },
+          {
+            "source": "crossCellPrePlacement",
+            "operator": "equals",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "missing-character-controller",
+        "severity": "failure",
+        "failureClass": "actor-root-missing",
+        "source": "registeredCharacterController",
+        "operator": "equals",
+        "value": false,
+        "unless": [
+          {
+            "source": "crossCellPrePlacement",
+            "operator": "equals",
+            "value": true
+          }
+        ]
+      }
+    ]
+  },
+  "actorRenderLiveLedger": {
+    "maxGoodDistance": 32.0,
+    "minimumGoodLiveRows": 2,
+    "renderInvalidWarningRatio": 0.25,
+    "renderInvalidFailureRatio": 0.75,
+    "failureClass": "actor-render-live-split",
+    "purpose": "Classify cases where current-pose/live actor geometry is sane but render-graph geometry is invalid or stale."
+  }
+}

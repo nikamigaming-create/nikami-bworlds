@@ -56,6 +56,19 @@ if ($failures.Count -eq 0) {
         $failures.Add("Seed has no ready world-walker profiles")
     }
 
+    $excludedWorldIds = @()
+    if ($null -ne $contract.PSObject.Properties["excludedWorldIds"]) {
+        $excludedWorldIds = @($contract.excludedWorldIds | ForEach-Object { [string]$_ })
+    }
+    foreach ($worldId in $excludedWorldIds) {
+        $excludedRows = @($seed.worlds | Where-Object { [string]$_.id -eq $worldId })
+        foreach ($world in $excludedRows) {
+            if ($world.readyForWorldWalker -eq $true) {
+                $failures.Add("$worldId is excluded by contract but readyForWorldWalker is true")
+            }
+        }
+    }
+
     foreach ($world in $readyWorlds) {
         $args = @($world.launchArgs)
         foreach ($requiredArg in @("--replace", "config", "--config")) {

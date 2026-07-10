@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds <nikami-worlds@example.invalid>
+Date: Tue, 7 Jul 2026 23:40:00 -0700
+Subject: [experiment] ESM4 native callback actor basis audit
+
+Status: experiment, not queued in patches/openmw/series.
+Depends-on: 0011-esm4-actor-controller-basis-audit.patch.
+Proof baseline: run/real-world-screenshots/fallout3-20260707-224708 and
+run/real-world-screenshots/fallout_new_vegas-20260707-224736.
+Proof result: run/proof-harness-sweeps/20260707-225321.
+
+0011 added actor-basis telemetry to the old manual Fallout controller path, but
+the current runtime hardwires shouldUseNativeFalloutAnimationCallbacks() to true.
+That means FO3/FNV actors sample their keyframes through the scene graph callback
+path and 0011 emits no live rows.
+
+This patch preserves current behavior. It logs the same applied-versus-raw actor
+rotation-basis delta from NifOsg::KeyframeController::operator() when
+OPENMW_FNV_ACTOR_BASIS_AUDIT=1 is set, so the proof harness can inspect the path
+that actually drives the visible actors.
+
+The 20260707-225321 proof emitted 256 callback rows for both FO3 and FNV current
+mode. Both rows stayed visually failed, but actor-basis telemetry became
+questionable with 238 large rotation-delta samples and 180-degree head/neck
+deltas. That makes the next behavior experiment a narrow native-callback basis
+gate, not another face attachment or asset-load pass.
+
+diff --git a/components/nifosg/controller.cpp b/components/nifosg/controller.cpp
+--- a/components/nifosg/controller.cpp
++++ b/components/nifosg/controller.cpp
+@@ -3,6 +3,7 @@
+ #include <algorithm>
+ #include <cctype>
+ #include <cmath>
+ #include <cstdlib>
+ #include <string_view>
+ 
++#include <components/debug/debuglog.hpp>
+ #include <osg/Material>
+ #include <osg/MatrixTransform>
+ #include <osg/TexMat>
+ #include <osg/Texture2D>
+@@ -107,6 +108,27 @@ namespace NifOsg
+             if (transform.mScale && !isReasonableScale(*transform.mScale))
+                 transform.mScale.reset();
+         }
++
++        float quatAngleDeltaDegrees(osg::Quat left, osg::Quat right)
++        {
++            const double leftLength = std::sqrt(left.x() * left.x() + left.y() * left.y() + left.z() * left.z()
++                + left.w() * left.w());
++            const double rightLength = std::sqrt(right.x() * right.x() + right.y() * right.y() + right.z() * right.z()
++                + right.w() * right.w());
++            if (leftLength <= 0.000001 || rightLength <= 0.000001)
++                return 0.f;
++
++            double dot = (left.x() * right.x() + left.y() * right.y() + left.z() * right.z() + left.w() * right.w())
++                / (leftLength * rightLength);
++            dot = std::clamp(std::abs(dot), 0.0, 1.0);
++            return static_cast<float>(2.0 * std::acos(dot) * 180.0 / osg::PI);
++        }
++
++        bool shouldAuditFalloutActorBasis()
++        {
++            return std::getenv("OPENMW_FNV_ACTOR_BASIS_AUDIT") != nullptr
++                || std::getenv("OPENMW_ESM4_ACTOR_BASIS_AUDIT") != nullptr;
++        }
+     }
+ 
+     ControllerFunction::ControllerFunction(const Nif::NiTimeController* ctrl)
+         : mFrequency(ctrl->mFrequency)
+@@ -510,6 +532,32 @@ namespace NifOsg
+     void KeyframeController::operator()(NifOsg::MatrixTransform* node, osg::NodeVisitor* nv)
+     {
+         auto [translation, rotation, scale] = getCurrentTransformation(nv);
+ 
++        if (shouldAuditFalloutActorBasis() && mUseFalloutActorRotationBasis)
++        {
++            static unsigned int sFalloutActorBasisAuditLines = 0;
++            if (sFalloutActorBasisAuditLines < 256)
++            {
++                const KfTransform rawKeyframe = getCurrentTransformationWithoutFalloutActorBasis(nv);
++                float rotationDeltaDegrees = 0.f;
++                if (rotation && rawKeyframe.mRotation)
++                    rotationDeltaDegrees = quatAngleDeltaDegrees(*rotation, *rawKeyframe.mRotation);
++                float translationDelta = 0.f;
++                if (translation && rawKeyframe.mTranslation)
++                    translationDelta = (*translation - *rawKeyframe.mTranslation).length();
++
++                Log(Debug::Info) << "FNV/ESM4 ACTOR BASIS CALLBACK AUDIT bone=" << mFalloutLowerBone
++                                 << " appliedHasRotation=" << static_cast<bool>(rotation)
++                                 << " rawHasRotation=" << static_cast<bool>(rawKeyframe.mRotation)
++                                 << " rotationDeltaDegrees=" << rotationDeltaDegrees
++                                 << " appliedHasTranslation=" << static_cast<bool>(translation)
++                                 << " rawHasTranslation=" << static_cast<bool>(rawKeyframe.mTranslation)
++                                 << " translationDelta=" << translationDelta
++                                 << " pinnedBindRotation=" << mPinFalloutActorBindRotation;
++                ++sFalloutActorBasisAuditLines;
++            }
++        }
++
+         if (rotation)
+         {
+             node->setRotation(*rotation);
+         }

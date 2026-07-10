@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "description": "Public-safe adventure actor cells that must remain in generated coverage when present in mined metadata. These are retention guards, not staged actor placement instructions.",
+  "worlds": {
+    "oblivion": [
+      {
+        "label": "Dark Brotherhood Sanctuary",
+        "cellEditorId": "CheydinhalSanctuary",
+        "reason": "Actor-dense TES4 interior retained from earlier proof coverage."
+      },
+      {
+        "label": "FormId:0x23776",
+        "cellOpenmwId": "FormId:0x23776",
+        "reason": "Actor exterior retained from earlier Oblivion proof coverage."
+      }
+    ],
+    "skyrim_vr": [
+      {
+        "label": "HelgenExterior06",
+        "cellEditorId": "HelgenExterior06",
+        "reason": "Known Skyrim actor cluster retained from earlier proof coverage."
+      },
+      {
+        "label": "HelgenExterior07",
+        "cellEditorId": "HelgenExterior07",
+        "reason": "Known Skyrim actor cluster retained from earlier proof coverage."
+      },
+      {
+        "label": "WhiterunWindDistrict03",
+        "cellEditorId": "WhiterunWindDistrict03",
+        "reason": "Whiterun guard/civilian exterior retained from earlier proof coverage.",
+        "fallbackStop": {
+          "cell": {
+            "editorId": "WhiterunWindDistrict03",
+            "openmwId": "FormId:0x1a275",
+            "isExterior": true,
+            "grid": {
+              "x": 6,
+              "y": -1
+            }
+          },
+          "labels": [
+            "adult_male",
+            "guard_or_soldier",
+            "start_area"
+          ],
+          "actorCount": 15,
+          "concreteActorCount": 15,
+          "leveledActorCount": 0,
+          "center": [
+            28342.344,
+            -274.18,
+            -1422.859
+          ],
+          "cast": []
+        }
+      }
+    ]
+  }
+}

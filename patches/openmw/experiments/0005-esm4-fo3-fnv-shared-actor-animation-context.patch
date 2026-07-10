@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds Harness <nikami-worlds@example.invalid>
+Date: Tue, 7 Jul 2026 21:12:00 -0700
+Subject: [EXPERIMENT] Treat FO3 NPCs as Fallout actor animation context
+
+Status: experiment, not listed in patches/openmw/series.
+
+Evidence basis:
+- FO3 and FNV share the Fallout ESM4 NPC skeleton/KF path, but the current
+  animation context gate only enables the Fallout actor animation path for FNV.
+- FO3 proof rows continue to fail actor runtime/rig proof.
+- run/proof-harness-sweeps/20260707-210852 tested this on top of the 0003 and
+  0004 telemetry experiments. FO3/FNV current and auto all still failed. Auto
+  mode improved visible body/face coherence in some frames, but actor root/bind,
+  rig pose, and detached visual parts still failed.
+
+Purpose:
+- Include FO3 NPC records in the same actor animation context as FNV NPCs.
+- This patch is intentionally small and must be proven separately for FO3 and FNV.
+
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+index 0000000000..0000000000 100644
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -222,7 +222,7 @@ namespace
+             return false;
+ 
+         const MWWorld::LiveCellRef<ESM4::Npc>* ref = ptr.get<ESM4::Npc>();
+-        return ref != nullptr && ref->mBase != nullptr && ref->mBase->mIsFONV;
++        return ref != nullptr && ref->mBase != nullptr && (ref->mBase->mIsFO3 || ref->mBase->mIsFONV);
+     }
+ 
+     float matrixDifference(const osg::Matrixf& left, const osg::Matrixf& right)

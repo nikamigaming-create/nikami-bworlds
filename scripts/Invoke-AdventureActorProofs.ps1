@@ -4,6 +4,7 @@ param(
     [string[]]$WorldId = @(),
     [string[]]$CategoryId = @("usual_suspects"),
     [int]$MaxTargetsPerCategory = 1,
+    [string]$BinaryRoot = "",
     [string]$ProofRoot = "proof/adventure-actor-proofs",
     [switch]$DryRun,
     [switch]$ShowGui,
@@ -14,6 +15,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 
 function Get-PropertyValue($Object, [string]$Name) {
     if ($null -eq $Object) { return $null }
@@ -247,11 +250,10 @@ if (-not (Test-Path -LiteralPath $driver)) {
 }
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$fo4GuardBinaryRoot = Join-Path $repoRoot "local\openmw-fo4guard"
+$proofBinaryRoot = Resolve-NikamiProofBinaryRoot -ParameterValue $BinaryRoot
 $starfieldProofEnv = @(
     "OPENMW_WORLD_VIEWER_INSERT_ALL_ESM4_ARMOR_ADDONS=1",
     "OPENMW_WORLD_VIEWER_DISABLE_TES5_STATIC_FACE_SURFACE_ANCHOR=1",
-    "OPENMW_WORLD_VIEWER_FORCE_FLAT_WORLD_MATERIALS=1",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_PARTS=70",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HEAD_PARTS=70",
     "OPENMW_WORLD_VIEWER_SCALE_STATIC_ACTOR_HAIR_PARTS=70",
@@ -328,22 +330,32 @@ foreach ($item in $targets) {
     $targetProofRoot = Join-Path $ProofRoot $targetSlug
 
     $harnessArgs = New-Object System.Collections.Generic.List[object]
-    foreach ($value in @($target.proofHarnessArgs)) {
+    $targetProofHarnessArgs = Get-PropertyValue $target "proofHarnessArgs"
+    foreach ($value in @($targetProofHarnessArgs)) {
         if ($null -ne $value) {
             $harnessArgs.Add((Format-ArgValue $value)) | Out-Null
         }
     }
     if ($harnessArgs.Count -eq 0) {
-        $harnessArgs.Add("-WorldId") | Out-Null
-        $harnessArgs.Add($worldId) | Out-Null
+        Write-Host ""
+        Write-Host "[$worldId/$categoryId] $targetLabel"
+        Write-Host "Skipped: this target is real-profile validation only; no synthetic actor proof harness args are present."
+        $results.Add([pscustomobject][ordered]@{
+            worldId = [string]$worldId
+            categoryId = [string]$categoryId
+            target = [string]$targetLabel
+            proofRoot = [string]$targetProofRoot
+            status = "skipped-real-profile-validation"
+            startedAt = $null
+            completedAt = Get-Date
+        }) | Out-Null
+        continue
     }
     $harnessArgs.Add("-ProofRoot") | Out-Null
     $harnessArgs.Add($targetProofRoot) | Out-Null
+    Set-HarnessArgumentValue -HarnessArgs $harnessArgs -Name "BinaryRoot" -Value $proofBinaryRoot
     $existingSetEnvNames = Get-ExistingHarnessSetEnvNames -HarnessArgs $harnessArgs
     if ($worldId -eq "fallout4" -or $worldId -eq "fallout4_vr") {
-        if (Test-Path -LiteralPath (Join-Path $fo4GuardBinaryRoot "openmw.exe")) {
-            Set-HarnessArgumentValue -HarnessArgs $harnessArgs -Name "BinaryRoot" -Value $fo4GuardBinaryRoot
-        }
         Ensure-HarnessIntMinimum -HarnessArgs $harnessArgs -Name "RunSeconds" -Minimum 45
         Set-HarnessArgumentValue -HarnessArgs $harnessArgs -Name "ScreenshotFrames" -Value "240,420,600"
     }

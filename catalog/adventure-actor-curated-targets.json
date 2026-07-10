@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Public-safe actor proof targets that are known to produce useful pixels before the mined catalog can rank them automatically.",
+  "description": "Public-safe actor validation targets. These are audit/index records only; validation must launch the real profile and let OpenMW stream cells and place actors from game data.",
   "targets": [
     {
       "worldId": "starfield",
@@ -13,51 +13,18 @@
       "baseEditorId": "E3_Story02a_ShipServices",
       "cellEditorId": "NewAtlantisSpaceport",
       "notes": [
-        "Known-good New Atlantis Ship Services actor proof target.",
-        "This target is disabled in normal data and needs RenderDisabledActors while the viewer lacks Starfield quest/state evaluation."
+        "Known New Atlantis Ship Services actor record from local mined metadata.",
+        "Starfield remains renderer research, not a connected-world baseline. Do not force render-disabled actors, materials, or camera placement to count this as a real-world proof."
       ],
-      "proofHarnessArgs": [
-        "-WorldId",
-        "starfield",
-        "-BinaryRoot",
-        "local/openmw-fo4guard",
-        "-RunSeconds",
-        "45",
-        "-ScreenshotFrames",
-        "240,420,600",
-        "-TelemetryInterval",
-        "1",
-        "-RefTelemetryLimit",
-        "8000",
-        "-FocusActor",
-        "0x123337c",
-        "-StartCellOverride",
-        "NewAtlantisSpaceport",
-        "-StartPosX",
-        "-127.387",
-        "-StartPosY",
-        "-81.1344",
-        "-StartPosZ",
-        "73.45",
-        "-CameraPosX",
-        "82",
-        "-CameraPosY",
-        "65",
-        "-CameraPosZ",
-        "128",
-        "-CameraTargetX",
-        "-127.387",
-        "-CameraTargetY",
-        "-81.1344",
-        "-CameraTargetZ",
-        "88",
-        "-PreserveNativeMaterials",
-        "-FullbrightActorMaterialsOnly",
-        "-RenderDisabledActors",
-        "-Esm4GridRadius",
-        "0",
-        "-AllowBadScreenshots"
-      ]
+      "runtimeValidation": {
+        "launcher": "scripts/Start-WorldProfileExisting.ps1",
+        "worldId": "starfield",
+        "startCell": "NewAtlantisSpaceport",
+        "expectedRefId": "0x123337c",
+        "expectedBaseEditorId": "E3_Story02a_ShipServices",
+        "actorPlacement": "engine-authored",
+        "rule": "Launch the real profile and verify the actor only if the engine streams and enables it from game data; do not stage actors or drive placement from mined coordinates."
+      }
     }
   ]
 }

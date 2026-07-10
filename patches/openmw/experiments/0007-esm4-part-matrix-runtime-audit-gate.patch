@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds <nikami-worlds@example.invalid>
+Date: Tue, 7 Jul 2026 22:30:00 -0700
+Subject: [experiment] ESM4 part matrix runtime audit gate
+
+Status: experiment, not queued in patches/openmw/series.
+Depends-on: 0006-esm4-live-rig-bounds-telemetry.patch.
+Proof baseline: run/proof-harness-sweeps/20260707-215128.
+
+The live rig bounds fields from 0006 did not appear in the proof logs because
+the existing runtime part audit only ran inside the manual-controller log
+block. Call the same audit directly when the explicit part-matrix audit env is
+set so screenshot proof runs can capture render/source/live bounds.
+
+This patch is measurement-only and does not change rendering or actor pose.
+
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -5591,6 +5591,21 @@ namespace MWRender
+             }
+         }
+ 
++        if (falloutNpc && std::getenv("OPENMW_FNV_PART_MATRIX_AUDIT") != nullptr && mObjectRoot != nullptr)
++        {
++            static std::unordered_map<std::string, unsigned int> sFalloutPartMatrixRuntimeAuditSamples;
++            const std::string refId = mPtr.getCellRef().getRefId().serializeText();
++            unsigned int& samples = sFalloutPartMatrixRuntimeAuditSamples[refId];
++            if (samples < 6)
++            {
++                ++samples;
++                std::unordered_map<std::string, std::vector<osg::MatrixTransform*>> runtimeTargets;
++                FalloutTransformTargetVisitor targetVisitor(runtimeTargets);
++                mObjectRoot->accept(targetVisitor);
++                auditFalloutRuntimeParts(mObjectRoot.get(), runtimeTargets, mPtr);
++            }
++        }
++
+         updateEffects();
+ 
+         const float epsilon = 0.001f;

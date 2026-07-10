@@ -120,3 +120,113 @@ function Resolve-NikamiPathList {
 
     return @($values.ToArray() | Select-Object -Unique)
 }
+
+function Resolve-NikamiRepoRelativePath {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Path
+    )
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $script:NikamiRepoRoot $Path))
+}
+
+function Get-NikamiOpenMWRuntimeRoot {
+    return (Join-Path $script:NikamiRepoRoot "local\openmw-fo4guard")
+}
+
+function Get-NikamiOpenMWResourcesRoot {
+    return (Join-Path (Get-NikamiOpenMWRuntimeRoot) "resources")
+}
+
+function Resolve-NikamiOpenMWRuntimeRoot {
+    param(
+        [string]$ParameterValue = ""
+    )
+
+    $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWRuntimeRoot)
+    $candidateRoot = $defaultRoot
+    if (-not [string]::IsNullOrWhiteSpace($ParameterValue)) {
+        $candidateRoot = Resolve-NikamiRepoRelativePath -Path $ParameterValue
+    }
+
+    $allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $script:NikamiRepoRoot "local"))
+    $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $candidateRoot.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "External OpenMW runtime roots are not allowed. Runtime must be under $allowedRoot. Requested: $candidateRoot."
+    }
+
+    if (-not (Test-Path -LiteralPath $candidateRoot)) {
+        throw "Missing repo-local OpenMW runtime root: $candidateRoot"
+    }
+
+    $candidateRoot = (Resolve-Path -LiteralPath $candidateRoot).Path
+    $binary = Join-Path $candidateRoot "openmw.exe"
+    if (-not (Test-Path -LiteralPath $binary)) {
+        throw "Missing repo-local OpenMW binary: $binary"
+    }
+
+    return $candidateRoot
+}
+
+function Resolve-NikamiOpenMWResourcesRoot {
+    param(
+        [string]$ParameterValue = ""
+    )
+
+    $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWResourcesRoot)
+    $candidateRoot = $defaultRoot
+    if (-not [string]::IsNullOrWhiteSpace($ParameterValue)) {
+        $candidateRoot = Resolve-NikamiRepoRelativePath -Path $ParameterValue
+    }
+
+    $allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $script:NikamiRepoRoot "local"))
+    $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $candidateRoot.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "External OpenMW resources roots are not allowed. Resources must be under $allowedRoot. Requested: $candidateRoot."
+    }
+
+    if (-not (Test-Path -LiteralPath $candidateRoot)) {
+        throw "Missing repo-local OpenMW resources root: $candidateRoot"
+    }
+
+    return (Resolve-Path -LiteralPath $candidateRoot).Path
+}
+
+function Get-NikamiProofBinaryRoot {
+    return Get-NikamiOpenMWRuntimeRoot
+}
+
+function Get-NikamiProofResourcesRoot {
+    return Get-NikamiOpenMWResourcesRoot
+}
+
+function Resolve-NikamiProofBinaryRoot {
+    param(
+        [string]$ParameterValue = ""
+    )
+
+    return Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $ParameterValue
+}
+
+function Resolve-NikamiProofResourcesRoot {
+    param(
+        [string]$ParameterValue = ""
+    )
+
+    return Resolve-NikamiOpenMWResourcesRoot -ParameterValue $ParameterValue
+}
+
+function Clear-NikamiWorldViewerRuntimeEnvironment {
+    $keys = @([Environment]::GetEnvironmentVariables("Process").Keys)
+    foreach ($key in $keys) {
+        $name = [string]$key
+        if ($name.StartsWith("OPENMW_WORLD_VIEWER_", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.StartsWith("OPENMW_PROOF_", [StringComparison]::OrdinalIgnoreCase)) {
+            [Environment]::SetEnvironmentVariable($name, $null, "Process")
+        }
+    }
+}

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-07-07",
+  "purpose": "Public-safe metadata for local OpenMW-derived candidate branches that may contain recoverable actor proof work. No source snapshots, binaries, screenshots, or retail assets are stored here.",
+  "policy": {
+    "flatOnlyPromotion": true,
+    "vrPromotionAllowed": false,
+    "use": "Mine small source slices and reprove them through Nikami Worlds sweeps; do not promote whole lab branches."
+  },
+  "repos": [
+    {
+      "repo": "nikami-openmw-lab-higgs-lite",
+      "path": "D:/code/vulkanOpenMW/nikami-openmw-lab-higgs-lite",
+      "branch": "nikami/fnv-vr-higgs-lite-wrist-interaction",
+      "head": "45fcfbaf38 docs: add VR interaction proof contracts",
+      "candidateCommits": [
+        "6d23344d2c Promote FNV actor truth rig basis",
+        "4d7450c412 Fix FNV actor pose basis and sleeve skinning",
+        "b6617ab5c6 Fix FNV actor skinning and hand proof gates",
+        "53de5b79bf Record merged FNV live animation gate",
+        "cea9933a67 Advance FNV live animation authoring baseline",
+        "9f9b9116dc Lock FNV T-pose origin hand proof"
+      ],
+      "notes": "Best local source for prior better FNV actor pose/skinning work. Extract only minimal non-VR actor-root/bind/skinning slices."
+    },
+    {
+      "repo": "nikami-openmw-lab-publish",
+      "path": "D:/code/vulkanOpenMW/nikami-openmw-lab-publish",
+      "branch": "nikami/fnv-placement-vr-world-proof",
+      "head": "7cf9e6806a Document Easy Pete Asset Studio baseline",
+      "candidateCommits": [
+        "7cf9e6806a Document Easy Pete Asset Studio baseline",
+        "42fb54c2a7 Stabilize Asset Studio Goodsprings baseline refs",
+        "04c3d88aab Add FNV native asset studio controls",
+        "6d23344d2c Promote FNV actor truth rig basis"
+      ],
+      "notes": "Useful for FaceGen and Goodsprings visual reference recovery, not a promotion branch."
+    },
+    {
+      "repo": "upstream-openmw",
+      "path": "https://gitlab.com/OpenMW/openmw.git",
+      "branch": "master/openmw-50/openmw-51",
+      "head": "official OpenMW release/master branches",
+      "candidateCommits": [],
+      "notes": "Public branch enumeration on 2026-07-07 showed no obvious Fallout/FNV actor side branch; use upstream for baseline and PR targets."
+    }
+  ]
+}

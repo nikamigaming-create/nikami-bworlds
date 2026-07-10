@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nikami Worlds <nikami-worlds@example.invalid>
+Date: Tue, 7 Jul 2026 22:45:00 -0700
+Subject: [experiment] ESM4 face rig render-buffer audit
+
+Status: experiment, not queued in patches/openmw/series.
+Depends-on: 0006-esm4-live-rig-bounds-telemetry.patch.
+Depends-on: 0007-esm4-part-matrix-runtime-audit-gate.patch.
+Proof baseline: run/proof-harness-sweeps/20260707-215634.
+Proof result: run/proof-harness-sweeps/20260707-223752.
+
+The face drawable audit reported rigged Fallout head meshes as source-valid but
+render-invalid because the logger only inspected osg::Geometry drawables. For
+SceneUtil::RigGeometry drawables, inspect the last-frame render geometry buffer
+and emit a renderSource field so the proof ledger can distinguish a true empty
+head from an uninspectable rig buffer.
+
+The 20260707-223752 proof result made `faceAttachmentStatus=pass` for FO3 and
+FNV current-mode actor slices. Visual proof still failed because actors remained
+inverted/disassembled, so the next source slice must target actor
+root/bind/controller basis instead of head render-buffer presence.
+
+This patch is measurement-only and does not change rendering, skinning, actor
+placement, or animation binding.
+
+diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
+--- a/apps/openmw/mwrender/esm4npcanimation.cpp
++++ b/apps/openmw/mwrender/esm4npcanimation.cpp
+@@ -4445,6 +4445,22 @@ namespace MWRender
+ 
+             return geometry->getVertexArray()->getNumElements();
+         }
+ 
++        osg::BoundingBox computeFalloutGeometryBounds(const osg::Geometry* geometry)
++        {
++            osg::BoundingBox box;
++            if (geometry == nullptr)
++                return box;
++
++            box = geometry->getBoundingBox();
++            if (box.valid())
++                return box;
++
++            const osg::Vec3Array* vertices = dynamic_cast<const osg::Vec3Array*>(geometry->getVertexArray());
++            if (vertices == nullptr)
++                return box;
++            for (const osg::Vec3f& vertex : *vertices)
++                box.expandBy(vertex);
++            return box;
++        }
++
+         class FalloutFaceDrawableAuditVisitor : public osg::NodeVisitor
+         {
+         public:
+@@ -4482,13 +4498,22 @@ namespace MWRender
+             void auditDrawable(osg::Drawable& drawable, osg::Geode* geode)
+             {
+                 osg::Geometry* geometry = dynamic_cast<osg::Geometry*>(&drawable);
+                 SceneUtil::RigGeometry* rig = dynamic_cast<SceneUtil::RigGeometry*>(&drawable);
+                 osg::Geometry* sourceGeometry = rig == nullptr ? nullptr : rig->getSourceGeometry();
+-                osg::Geometry* renderGeometry = rig == nullptr ? geometry : nullptr;
++                osg::Geometry* renderGeometry = geometry;
++                const char* renderSource = "drawable";
++                if (rig != nullptr)
++                {
++                    renderGeometry = rig->getLastFrameGeometry();
++                    renderSource = renderGeometry == nullptr ? "missing-last-frame" : "last-frame";
++                    if (renderGeometry == nullptr)
++                    {
++                        renderGeometry = rig->getRenderGeometry(0);
++                        renderSource = renderGeometry == nullptr ? "missing-render-buffer-0" : "render-buffer-0";
++                    }
++                }
+ 
+-                const osg::BoundingBox renderBox = renderGeometry == nullptr ? osg::BoundingBox()
+-                                                                             : renderGeometry->getBoundingBox();
+-                const osg::BoundingBox sourceBox = sourceGeometry == nullptr ? osg::BoundingBox()
+-                                                                             : sourceGeometry->getBoundingBox();
++                const osg::BoundingBox renderBox = computeFalloutGeometryBounds(renderGeometry);
++                const osg::BoundingBox sourceBox = computeFalloutGeometryBounds(sourceGeometry);
+                 const osg::Vec3f renderExtent = boundingBoxExtent(renderBox);
+                 const osg::Vec3f sourceExtent = boundingBoxExtent(sourceBox);
+ 
+@@ -4508,6 +4533,7 @@ namespace MWRender
+                                  << (sourceGeometry == nullptr ? 0u : sourceGeometry->getNodeMask()) << std::dec
++                                 << " renderSource=" << renderSource
+                                  << " renderName='"
+                                  << (renderGeometry == nullptr ? std::string() : renderGeometry->getName()) << "'"
+                                  << " renderVertices=" << getFalloutGeometryVertexCount(renderGeometry)

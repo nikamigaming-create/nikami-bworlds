@@ -41,12 +41,8 @@ if ($world.readyForWorldWalker -ne $true) {
     throw "World '$WorldId' is not ready for the world walker. installStatus=$($world.installStatus) profileStatus=$($world.profileStatus)"
 }
 
-$BinaryRoot = Resolve-NikamiPath `
-    -ParameterValue $BinaryRoot `
-    -EnvName "NIKAMI_OPENMW_BINARY_ROOT" `
-    -ConfigName "openmwBinaryRoot" `
-    -Required `
-    -Description "OpenMW binary root"
+$BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
+$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot
 
 if (-not $world.profileDirectory -or -not (Test-Path -LiteralPath $world.profileDirectory)) {
     throw "Missing profile directory for '$WorldId': $($world.profileDirectory)"
@@ -63,6 +59,8 @@ $argsList.Add("--replace")
 $argsList.Add("config")
 $argsList.Add("--config")
 $argsList.Add($world.profileDirectory)
+$argsList.Add("--resources")
+$argsList.Add($ResourcesRoot)
 
 if ($SkipMenu) {
     $argsList.Add("--skip-menu")
@@ -87,8 +85,10 @@ $commandLine = "$(Quote-CommandArg $binary) $argumentLine"
 Write-Host "World:   $($world.displayName) [$WorldId]"
 Write-Host "Mode:    $Mode"
 Write-Host "Exe:     $binary"
+Write-Host "Resources: $ResourcesRoot"
 Write-Host "Profile: $($world.profileDirectory)"
 Write-Host "Command: $commandLine"
+Write-Host "Runtime: real OpenMW profile launch; proof/viewer environment is cleared before start."
 
 if ($Mode -eq "vr" -and $WorldId -eq "fallout_new_vegas") {
     Write-Host "Note: calibrated FNV VR hands/Pip-Boy testing still uses scripts/Start-FNVVRExisting.ps1."
@@ -104,6 +104,7 @@ if (-not $AllowDuplicate -and (Get-Process -Name $processName -ErrorAction Silen
     throw "$processName is already running. Close it first or pass -AllowDuplicate."
 }
 
+Clear-NikamiWorldViewerRuntimeEnvironment
 $process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory $workingDirectory -PassThru
 Write-Host "Started PID $($process.Id)."
 
