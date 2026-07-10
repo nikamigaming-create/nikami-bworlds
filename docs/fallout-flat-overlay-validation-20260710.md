@@ -120,8 +120,9 @@ Patch SHA-256:
 - 0001: `F7B166679D8224685CCBAE49DA4A31A32F397E0204F0AE9F206F3247F3FFF3E2`
 - 0002: `36FCD799B930946AB1C6CE2DDAABCFEEB8E6FCC727A8EFF78C576D6299515DA0`
 - 0003: `359B8D5A1E43E167B4A4B86B09783A797856F933553CD66879255434F4CA20C5`
+- 0004: `B22982BA2D4458D55F009B2FC0B4B2A3430669FBBE6A47FB8F0F5B02A4AD07E8`
 
-The ordered 0001 through 0003 queue was cumulatively apply-checked from clean
+The ordered 0001 through 0004 queue was cumulatively apply-checked from clean
 OpenMW base `c30c830d8e` with `scripts/Apply-OpenMWPatches.ps1 -Check`.
 
 ### Retail xNVSE oracle
@@ -129,7 +130,7 @@ OpenMW base `c30c830d8e` with `scripts/Apply-OpenMWPatches.ps1 -Check`.
 The isolated oracle is an overlay against xNVSE commit `175bb28`:
 
 - patch: `patches/xnvse/0001-add-nikami-retail-oracle.patch`
-- patch SHA-256: `EE2A6A87539B82A91FA4CCCFA159DD1346EC1D79616D3C5D2473FA4FB91E2271`
+- patch SHA-256: `320EE72E5896578E949675D4E48527DB86F2766A43E886EE8D95758139121743`
 - runner: `scripts/Invoke-FNVRetailOracle.ps1`
 - exact capture: `run/retail-oracle/fnv-goodsprings-direct-vcg02-stage5-timescale12.jsonl`
 
@@ -165,7 +166,7 @@ FormID remapping, weapon selector parsing, the retail VCG02 transition, global
 import, OR-grouped quest/global conditions, and save round-trip across a changed
 content slot.
 
-The final flat `openmw.exe` SHA-256 was
+The patch-0003 behavior-gate flat `openmw.exe` SHA-256 was
 `52030E9FEA8CA2C569993F2243E4EE5B56258C8BBAFC4EA59F71DA42B0B51983`.
 No `openmw_vr.exe` or headset runtime was launched.
 
@@ -198,6 +199,44 @@ Reload preserved VCG02 stage 5, flags 33, the completed stage set, objective 3,
 and active-quest state. The harness normalizes only the load-order byte when
 comparing OpenMW's internal `FormId:0x110a214` with retail `0x0010a214`.
 
+## Patch 0004: retail animation-priority validation
+
+Downstream commit `8d59cdf54a` and patch 0004 add a bounded transform oracle,
+explicit-time KF dumps, and the first retail-derived weapon-pose layer rule.
+The xNVSE oracle reads the live FNV 1.4.0.525 `NiControllerSequence`,
+`NiMultiTargetTransformController`, and per-target `NiBlendInterpolator`
+arrays without changing retail state.
+
+The corrected live priority map for the equipped 2hr walk is:
+
+- lower body: locomotion 30 beats aim 25;
+- torso, neck, and head: locomotion 31 beats aim 30;
+- both clavicle/arm/hand branches: aim 35 beats locomotion 31; and
+- `Weapon`: aim 45.
+
+OpenMW therefore layers `2hraim.kf` over the two arm masks only. Applying it to
+the full upper body was the direct cause of the frozen torso and head/neck
+offset. A rejected terrain-FABRIK experiment was removed after a single live
+retail walk toggled `bhkRagdollController::fikStatus` without a transform
+discontinuity.
+
+Flat proof `run/transform-oracle/retail-priority-proof/fallout_new_vegas-20260710-073222/manifest.json`
+captured 31 consecutive native front frames with the head, both hands, and
+rifle attached. Its patch-0004 flat `openmw.exe` SHA-256 is
+`25BB164C8086A5C8DA6939928D379076A59A2A05AE64BCC1CFC6FB8D66730580`.
+The corresponding clip is
+`run/transform-oracle/retail-priority-proof/fallout_new_vegas-20260710-073222/fallout_new_vegas-front-walk.mp4`.
+The major-bone pose-curve comparison reports exact `Weapon`, head maximum
+rotation residual 0.065 degrees, arm maximum 0.055 degrees, and root-translation
+shape within 0.049 units after removing sequence-start/callback phase offset.
+
+The expanded 61-node comparison also isolates the next engine task. Retail
+creates manager-controlled blend targets (blend flags 5) for finger, twist, and
+toe chains; normal limbs use flags 1. OpenMW's five coarse body masks currently
+select one source for all descendants and cannot reproduce those per-target
+manager-controlled transitions. This is recorded as an open parity gap, not
+papered over with a joint-name correction.
+
 ## Remaining compatibility work
 
 The first behavior slice is green, but the whole-game claim remains open. The
@@ -205,6 +244,9 @@ next matrices are dialogue/topic selection and result execution, broad CTDA
 function coverage, compiled Fallout script bytecode execution, package
 scheduling/navigation, combat and inventory semantics, and representative
 quest/save differentials across both base games and every configured DLC.
+Animation work must additionally implement Gamebryo-compatible per-target
+manager-controlled blend state for finger, twist, and toe targets, then rerun
+the 61-node oracle comparison before claiming complete pose parity.
 
 Visual parity also remains a permanent release gate: head, face, hair, beard or
 headgear, hands, body, feet, weapon sockets, muzzle and magazine helpers, and

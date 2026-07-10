@@ -22,7 +22,9 @@ base `c30c830d8e`. Patch 0002 is the focused FO3/FNV actor animation,
 attachment, FormID-script, and weapon-selector correction exported from commit
 `d6c36c6b7e`. Patch 0003 is the bounded behavior-record, quest-condition,
 global, VM-command, and save-state foundation exported from downstream commit
-`af8eaca764`. Together they reproduce the currently proven flat runtime without
+`af8eaca764`. Patch 0004 is the retail-priority weapon-pose correction and
+transform-oracle instrumentation exported from downstream commit `8d59cdf54a`.
+Together they reproduce the currently proven flat runtime without
 vendoring game data or the OpenMW source tree.
 
 For routine downstream updates, rebase the dedicated overlay branch onto the

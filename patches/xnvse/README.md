@@ -20,4 +20,8 @@ Build the Win32 Release plugin:
 ```
 
 Use `scripts/Invoke-FNVRetailOracle.ps1` to install the DLL only for the bounded
-capture and restore the retail Data directory afterward.
+capture and restore the retail Data directory afterward. The current oracle
+also records final local/world bone transforms, sequence controlled blocks,
+per-target blend arrays and priorities, cached interpolator channels, and the
+retail Foot IK status. Its runtime-only struct views are confined to the oracle
+plugin and do not modify xNVSE itself.

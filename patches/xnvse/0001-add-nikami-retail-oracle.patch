@@ -1,3 +1,28 @@
+From 315a0fcc46aebe46fad7d09cafb19bdf42252137 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 08:11:54 -0700
+Subject: [PATCH] Add bounded FNV retail oracle
+
+---
+ nvse_retail_oracle/.gitignore                 |    1 +
+ nvse_retail_oracle/dllmain.c                  |    6 +
+ nvse_retail_oracle/exports.def                |    4 +
+ nvse_retail_oracle/main.cpp                   | 1309 +++++++++++++++++
+ nvse_retail_oracle/nvse_retail_oracle.vcxproj |   51 +
+ 5 files changed, 1371 insertions(+)
+ create mode 100644 nvse_retail_oracle/.gitignore
+ create mode 100644 nvse_retail_oracle/dllmain.c
+ create mode 100644 nvse_retail_oracle/exports.def
+ create mode 100644 nvse_retail_oracle/main.cpp
+ create mode 100644 nvse_retail_oracle/nvse_retail_oracle.vcxproj
+
+diff --git a/nvse_retail_oracle/.gitignore b/nvse_retail_oracle/.gitignore
+new file mode 100644
+index 0000000..84c048a
+--- /dev/null
++++ b/nvse_retail_oracle/.gitignore
+@@ -0,0 +1 @@
++/build/
 diff --git a/nvse_retail_oracle/dllmain.c b/nvse_retail_oracle/dllmain.c
 new file mode 100644
 index 0000000..49e595b
@@ -22,10 +47,10 @@ index 0000000..7d8acdc
 +NVSEPlugin_Load
 diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
 new file mode 100644
-index 0000000..aa6de83
+index 0000000..db4a34a
 --- /dev/null
 +++ b/nvse_retail_oracle/main.cpp
-@@ -0,0 +1,763 @@
+@@ -0,0 +1,1309 @@
 +#include "nvse/PluginAPI.h"
 +#include "nvse/GameObjects.h"
 +#include "nvse/NiObjects.h"
@@ -33,6 +58,8 @@ index 0000000..aa6de83
 +#include <Windows.h>
 +
 +#include <algorithm>
++#include <cstdint>
++#include <cstring>
 +#include <cstdlib>
 +#include <fstream>
 +#include <iomanip>
@@ -59,17 +86,26 @@ index 0000000..aa6de83
 +    bool gLoadRequested = false;
 +    bool gWorldReady = false;
 +    bool gPrepareRequested = false;
++    bool gEquipRequested = false;
 +    bool gDriveRequested = false;
 +    bool gFinishRequested = false;
 +    bool gExitWhenDone = false;
 +    std::string gSaveName;
 +    std::string gPlayGroup;
++    std::string gDriveCommand;
 +    std::vector<UInt32> gQuestForms;
 +    std::vector<UInt32> gGlobalForms;
 +    std::vector<std::string> gBehaviorCommands;
++    std::vector<std::string> gActorCommands;
 +    unsigned int gBehaviorBeforeFrame = 60;
 +    unsigned int gBehaviorCommandFrame = 90;
 +    unsigned int gBehaviorAfterFrame = 150;
++    unsigned int gPrepareActorFrame = 60;
++    unsigned int gEquipActorFrame = 60;
++    unsigned int gDriveActorFrame = 180;
++    unsigned int gFootIkToggleFrame = 0;
++    bool gFootIkToggleEnabled = false;
++    bool gFootIkToggleRequested = false;
 +    UInt32 gSetStageQuestForm = 0;
 +    unsigned int gSetStageIndex = 0xffff;
 +    bool gBehaviorBeforeCaptured = false;
@@ -77,7 +113,125 @@ index 0000000..aa6de83
 +    bool gBehaviorAfterCaptured = false;
 +    Actor* gDrivenActor = nullptr;
 +
-+    constexpr const char* sSchema = "nikami-retail-oracle/v2";
++    constexpr const char* sSchema = "nikami-retail-oracle/v3";
++    constexpr const char* sSchemaJson = "\"nikami-retail-oracle/v3\"";
++    constexpr std::size_t sNiAVObjectLocalTransformOffset = 0x34;
++    constexpr std::size_t sNiAVObjectWorldTransformOffset = 0x68;
++
++    static_assert(sizeof(NiTransform) == 0x34);
++
++    // xNVSE's public NiControllerSequence declaration predates the fully reversed
++    // Gamebryo runtime layout.  Keep the retail-oracle-only views here so the
++    // telemetry can describe the blend graph without changing xNVSE itself.
++    struct OracleQuatTransform
++    {
++        // FalloutNV.exe stores the interpolator's cached transform channels in
++        // translation/rotation/scale order.  Treating this as the later
++        // rotation/translation declaration produces impossible "quaternions"
++        // containing bone offsets such as (5.88, 11.74, ...).
++        NiVector3 translation;
++        NiQuaternion rotation;
++        float scale;
++    };
++
++    struct OracleTransformInterpolator
++    {
++        void** vtable;
++        UInt32 refCount;
++        float lastUpdateTime;
++        OracleQuatTransform value;
++    };
++
++    struct OracleBlendItem
++    {
++        NiObject* interpolator;
++        float weight;
++        float normalizedWeight;
++        UInt8 priority;
++        UInt8 pad0D[3];
++        float easeSpinner;
++        float updateTime;
++    };
++
++    struct OracleBlendInterpolator
++    {
++        void** vtable;
++        UInt32 refCount;
++        float lastUpdateTime;
++        UInt8 flags;
++        UInt8 arraySize;
++        UInt8 interpolatorCount;
++        UInt8 singleIndex;
++        UInt8 highPriority;
++        UInt8 nextHighPriority;
++        UInt8 pad12[2];
++        OracleBlendItem* items;
++        NiObject* singleInterpolator;
++        float weightThreshold;
++        float singleTime;
++        float highWeightSum;
++        float nextHighWeightSum;
++        float highEaseSpinner;
++    };
++
++    struct OracleControlledBlock
++    {
++        NiObject* interpolator;
++        NiObject* multiTargetController;
++        OracleBlendInterpolator* blendInterpolator;
++        UInt8 blendIndex;
++        UInt8 priority;
++        UInt8 pad0E[2];
++    };
++
++    struct OracleControlledBlockId
++    {
++        const char* objectName;
++        const char* propertyType;
++        const char* controllerType;
++        const char* controllerId;
++        const char* interpolatorId;
++    };
++
++    struct OracleMultiTargetTransformController
++    {
++        UInt8 controller[0x34];
++        OracleBlendInterpolator* blendInterpolator;
++        NiAVObject** targets;
++        UInt16 targetCount;
++        UInt8 pad3E[2];
++    };
++
++    static_assert(sizeof(OracleQuatTransform) == 0x20);
++    static_assert(sizeof(OracleTransformInterpolator) == 0x2c);
++    static_assert(sizeof(OracleBlendItem) == 0x18);
++    static_assert(sizeof(OracleBlendInterpolator) == 0x30);
++    static_assert(sizeof(OracleControlledBlock) == 0x10);
++    static_assert(sizeof(OracleMultiTargetTransformController) == 0x40);
++
++    template <class T>
++    bool safeRead(const void* address, T& value)
++    {
++        if (address == nullptr)
++            return false;
++        SIZE_T bytesRead = 0;
++        return ReadProcessMemory(GetCurrentProcess(), address, &value, sizeof(T), &bytesRead) != FALSE
++            && bytesRead == sizeof(T);
++    }
++
++    std::string safeRuntimeString(const char* address, std::size_t maximumLength = 512)
++    {
++        std::string value;
++        value.reserve(std::min<std::size_t>(maximumLength, 64));
++        for (std::size_t i = 0; i < maximumLength; ++i)
++        {
++            char character = '\0';
++            if (!safeRead(address + i, character) || character == '\0')
++                break;
++            value.push_back(character);
++        }
++        return value;
++    }
 +
 +    std::string jsonString(const char* value)
 +    {
@@ -214,7 +368,8 @@ index 0000000..aa6de83
 +        if (gOutput)
 +        {
 +            gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"start\","
-+                       "\"runtime\":\"FalloutNV-1.4.0.525\"}\n";
++                       "\"runtime\":\"FalloutNV-1.4.0.525\","
++                       "\"niAvObjectTransformLayout\":\"local@0x34/world@0x68/NiTransform@0x34\"}\n";
 +            gOutput.flush();
 +        }
 +    }
@@ -236,17 +391,279 @@ index 0000000..aa6de83
 +        out << '[' << value.x << ',' << value.y << ',' << value.z << ']';
 +    }
 +
++    const char* runtimeTypeName(NiObject* object)
++    {
++        if (object == nullptr)
++            return nullptr;
++        __try
++        {
++            NiRTTI* type = object->GetType();
++            return type != nullptr ? type->name : nullptr;
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            return nullptr;
++        }
++    }
++
++    void writeInterpolator(std::ostream& out, NiObject* interpolator)
++    {
++        const std::string type = safeRuntimeString(runtimeTypeName(interpolator));
++        out << "{\"type\":" << jsonString(type.empty() ? nullptr : type.c_str());
++        OracleTransformInterpolator transform = {};
++        if (type == "NiTransformInterpolator" && safeRead(interpolator, transform))
++        {
++            out << ",\"lastUpdate\":" << transform.lastUpdateTime << ",\"value\":{"
++                // Fallout's runtime quaternion storage is W,X,Y,Z while the public xNVSE NiQuaternion
++                // fields are named X,Y,Z,W. Emit a conventional X,Y,Z,W JSON tuple.
++                << "\"rotation\":[" << transform.value.rotation.y << ',' << transform.value.rotation.z << ','
++                << transform.value.rotation.w << ',' << transform.value.rotation.x << "],\"translation\":";
++            writeVector(out, transform.value.translation);
++            out << ",\"scale\":" << transform.value.scale << '}';
++        }
++        out << '}';
++    }
++
++    bool isOracleBlendTarget(const std::string& name)
++    {
++        static const char* targets[] = { "Bip01", "Bip01 NonAccum", "Bip01 Looking", "Bip01 Translate",
++            "Bip01 Rotate", "Bip01 Pelvis", "Bip01 Spine", "Bip01 Spine1", "Bip01 Spine2", "Bip01 Neck",
++            "Bip01 Neck1", "Bip01 Head", "Bip01 L Clavicle", "Bip01 L UpperArm", "Bip01 L Forearm",
++            "Bip01 L Hand", "Bip01 R Clavicle", "Bip01 R UpperArm", "Bip01 R Forearm", "Bip01 R Hand",
++            "Bip01 L Thigh", "Bip01 L Calf", "Bip01 L Foot", "Bip01 L Toe0", "Bip01 R Thigh",
++            "Bip01 R Calf", "Bip01 R Foot", "Bip01 R Toe0", "Weapon" };
++        for (const char* target : targets)
++        {
++            if (_stricmp(name.c_str(), target) == 0)
++                return true;
++        }
++        return false;
++    }
++
++    bool isPlausibleOracleName(const std::string& value)
++    {
++        if (value.empty() || value.size() > 160)
++            return false;
++        for (const unsigned char character : value)
++        {
++            if (character < 0x20 || character == 0x7f)
++                return false;
++        }
++        return true;
++    }
++
++    bool readControlledBlockId(
++        const BSAnimGroupSequence* sequence, unsigned int blockIndex, OracleControlledBlockId& id)
++    {
++        if (sequence->unk018 == nullptr)
++            return false;
++
++        // Retail sequence arrays have appeared in both contiguous and pointer-array declarations.
++        // Validate the embedded fixed string rather than trusting either declaration.
++        OracleControlledBlockId candidate = {};
++        if (safeRead(reinterpret_cast<const OracleControlledBlockId*>(sequence->unk018) + blockIndex, candidate)
++            && isPlausibleOracleName(safeRuntimeString(candidate.objectName)))
++        {
++            id = candidate;
++            return true;
++        }
++
++        auto** ids = reinterpret_cast<OracleControlledBlockId**>(sequence->unk018);
++        OracleControlledBlockId* address = nullptr;
++        if (safeRead(ids + blockIndex, address) && safeRead(address, candidate)
++            && isPlausibleOracleName(safeRuntimeString(candidate.objectName)))
++        {
++            id = candidate;
++            return true;
++        }
++        return false;
++    }
++
++    std::string controlledBlockTargetName(
++        const OracleControlledBlock& block, unsigned int blockIndex, unsigned int& targetIndex,
++        unsigned long& blendArrayBaseAddress)
++    {
++        OracleMultiTargetTransformController controller = {};
++        if (!safeRead(block.multiTargetController, controller) || controller.targets == nullptr
++            || controller.targetCount == 0)
++            return {};
++
++        targetIndex = blockIndex;
++        blendArrayBaseAddress
++            = static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(controller.blendInterpolator));
++        const std::uintptr_t blendBase = reinterpret_cast<std::uintptr_t>(controller.blendInterpolator);
++        const std::uintptr_t blockBlend = reinterpret_cast<std::uintptr_t>(block.blendInterpolator);
++        if (blendBase != 0 && blockBlend >= blendBase)
++        {
++            const std::uintptr_t difference = blockBlend - blendBase;
++            if (difference % sizeof(OracleBlendInterpolator) == 0)
++            {
++                const std::uintptr_t candidate = difference / sizeof(OracleBlendInterpolator);
++                if (candidate < controller.targetCount)
++                    targetIndex = static_cast<unsigned int>(candidate);
++            }
++        }
++        if (targetIndex >= controller.targetCount)
++            return {};
++
++        NiAVObject* target = nullptr;
++        const char* targetName = nullptr;
++        if (!safeRead(controller.targets + targetIndex, target) || target == nullptr
++            || !safeRead(reinterpret_cast<const UInt8*>(target) + 0x08, targetName))
++            return {};
++        return safeRuntimeString(targetName);
++    }
++
++    void writeControlledBlockProbe(std::ostream& out, const BSAnimGroupSequence* sequence)
++    {
++        out << "[";
++        bool firstBlock = true;
++        const unsigned int blockCount = std::min<unsigned int>(sequence->arraySize, 512);
++        auto** blocks = reinterpret_cast<OracleControlledBlock**>(sequence->unk014);
++        if (blocks != nullptr)
++        {
++            for (unsigned int blockIndex = 0; blockIndex < blockCount; ++blockIndex)
++            {
++                OracleControlledBlock* blockAddress = nullptr;
++                OracleControlledBlock block = {};
++                // Retail FNV stores these as a contiguous ControlledBlock array.  Some later
++                // reverse-engineered headers describe a pointer array, so accept that shape as
++                // a fallback as well and validate it by resolving the controller's target.
++                bool hasBlock = safeRead(reinterpret_cast<const OracleControlledBlock*>(sequence->unk014) + blockIndex,
++                    block);
++                unsigned int targetIndex = blockIndex;
++                unsigned long blendArrayBaseAddress = 0;
++                std::string controllerObjectName = hasBlock
++                    ? controlledBlockTargetName(block, blockIndex, targetIndex, blendArrayBaseAddress)
++                    : std::string();
++                if (controllerObjectName.empty() && safeRead(blocks + blockIndex, blockAddress)
++                    && safeRead(blockAddress, block))
++                {
++                    controllerObjectName
++                        = controlledBlockTargetName(block, blockIndex, targetIndex, blendArrayBaseAddress);
++                    hasBlock = !controllerObjectName.empty();
++                }
++                if (!hasBlock)
++                    continue;
++
++                OracleControlledBlockId id = {};
++                const bool hasId = readControlledBlockId(sequence, blockIndex, id);
++                const std::string idObjectName = hasId ? safeRuntimeString(id.objectName) : std::string();
++                const std::string objectName
++                    = isPlausibleOracleName(idObjectName) ? idObjectName : controllerObjectName;
++                // High-priority blocks are included even when this old xNVSE ABI cannot resolve
++                // their target by index.  Their shared blend pointer lets the oracle correlate
++                // them with the named lower-priority block that owns the live blend array.
++                if (!isOracleBlendTarget(objectName) && block.priority < 40)
++                    continue;
++
++                if (!firstBlock)
++                    out << ',';
++                firstBlock = false;
++                const std::string controllerType = hasId ? safeRuntimeString(id.controllerType) : std::string();
++                const std::string interpolatorId = hasId ? safeRuntimeString(id.interpolatorId) : std::string();
++                const std::string sourceType = safeRuntimeString(runtimeTypeName(block.interpolator));
++                const std::string controllerRuntimeType
++                    = safeRuntimeString(runtimeTypeName(block.multiTargetController));
++                const std::string blendRuntimeType
++                    = safeRuntimeString(runtimeTypeName(reinterpret_cast<NiObject*>(block.blendInterpolator)));
++                out << "{\"index\":" << blockIndex << ",\"object\":"
++                    << jsonString(objectName.empty() ? "<unresolved>" : objectName.c_str())
++                    << ",\"idObject\":"
++                    << jsonString(idObjectName.empty() ? nullptr : idObjectName.c_str())
++                    << ",\"controllerObject\":"
++                    << jsonString(controllerObjectName.empty() ? nullptr : controllerObjectName.c_str())
++                    << ",\"controllerTargetIndex\":" << targetIndex
++                    << ",\"controllerType\":"
++                    << jsonString(controllerType.empty() ? nullptr : controllerType.c_str())
++                    << ",\"controllerRuntimeType\":"
++                    << jsonString(controllerRuntimeType.empty() ? nullptr : controllerRuntimeType.c_str())
++                    << ",\"interpolatorType\":"
++                    << jsonString(interpolatorId.empty() ? nullptr : interpolatorId.c_str())
++                    << ",\"sourceRuntimeType\":"
++                    << jsonString(sourceType.empty() ? nullptr : sourceType.c_str())
++                    << ",\"sourceAddress\":"
++                    << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(block.interpolator))
++                    << ",\"controllerAddress\":"
++                    << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(block.multiTargetController))
++                    << ",\"blendArrayBaseAddress\":" << blendArrayBaseAddress
++                    << ",\"blendAddress\":"
++                    << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(block.blendInterpolator))
++                    << ",\"blendRuntimeType\":"
++                    << jsonString(blendRuntimeType.empty() ? nullptr : blendRuntimeType.c_str())
++                    << ",\"priority\":" << static_cast<unsigned int>(block.priority)
++                    << ",\"blendIndex\":" << static_cast<unsigned int>(block.blendIndex)
++                    << ",\"sourceInterpolator\":";
++                writeInterpolator(out, block.interpolator);
++
++                const OracleBlendInterpolator* blendAddress = block.blendInterpolator;
++                OracleBlendInterpolator blend = {};
++                out << ",\"blend\":";
++                if (!safeRead(blendAddress, blend))
++                {
++                    out << "null}";
++                    continue;
++                }
++
++                out << "{\"flags\":" << static_cast<unsigned int>(blend.flags)
++                    << ",\"arraySize\":" << static_cast<unsigned int>(blend.arraySize)
++                    << ",\"count\":" << static_cast<unsigned int>(blend.interpolatorCount)
++                    << ",\"singleIndex\":" << static_cast<unsigned int>(blend.singleIndex)
++                    << ",\"highPriority\":" << static_cast<unsigned int>(blend.highPriority)
++                    << ",\"nextHighPriority\":" << static_cast<unsigned int>(blend.nextHighPriority)
++                    << ",\"weightThreshold\":" << blend.weightThreshold
++                    << ",\"singleTime\":" << blend.singleTime
++                    << ",\"highWeightSum\":" << blend.highWeightSum
++                    << ",\"nextHighWeightSum\":" << blend.nextHighWeightSum
++                    << ",\"highEaseSpinner\":" << blend.highEaseSpinner << ",\"items\":[";
++                bool firstItem = true;
++                const unsigned int itemCount = std::min<unsigned int>(blend.arraySize, 32);
++                if (blend.items != nullptr)
++                {
++                    for (unsigned int itemIndex = 0; itemIndex < itemCount; ++itemIndex)
++                    {
++                        OracleBlendItem item = {};
++                        if (!safeRead(blend.items + itemIndex, item))
++                            continue;
++                        if (item.interpolator == nullptr)
++                            continue;
++                        if (!firstItem)
++                            out << ',';
++                        firstItem = false;
++                        out << "{\"index\":" << itemIndex << ",\"weight\":" << item.weight
++                            << ",\"normalizedWeight\":" << item.normalizedWeight
++                            << ",\"priority\":" << static_cast<unsigned int>(item.priority)
++                            << ",\"easeSpinner\":" << item.easeSpinner
++                            << ",\"updateTime\":" << item.updateTime << ",\"interpolator\":";
++                        writeInterpolator(out, item.interpolator);
++                        out << '}';
++                    }
++                }
++                out << "]}}";
++            }
++        }
++        out << ']';
++    }
++
++    const NiTransform& runtimeTransform(const NiAVObject& node, std::size_t offset)
++    {
++        return *reinterpret_cast<const NiTransform*>(reinterpret_cast<const UInt8*>(&node) + offset);
++    }
++
 +    void writeTransform(std::ostream& out, const NiAVObject& node)
 +    {
++        const NiTransform& local = runtimeTransform(node, sNiAVObjectLocalTransformOffset);
++        const NiTransform& world = runtimeTransform(node, sNiAVObjectWorldTransformOffset);
 +        out << "{\"localRotation\":";
-+        writeMatrix(out, node.dat0034.rotate);
++        writeMatrix(out, local.rotate);
 +        out << ",\"localTranslation\":";
-+        writeVector(out, node.dat0034.translate);
++        writeVector(out, local.translate);
++        out << ",\"localScale\":" << local.scale;
 +        out << ",\"worldRotation\":";
-+        writeMatrix(out, node.dat0064.rotate);
++        writeMatrix(out, world.rotate);
 +        out << ",\"worldTranslation\":";
-+        writeVector(out, node.dat0064.translate);
-+        out << ",\"scaleRaw\":" << node.flt002C << '}';
++        writeVector(out, world.translate);
++        out << ",\"worldScale\":" << world.scale << '}';
 +    }
 +
 +    void writeNodeRecursive(std::ostream& out, NiAVObject* object, bool& first, unsigned int depth)
@@ -296,7 +713,9 @@ index 0000000..aa6de83
 +            << ",\"accumRoot\":" << jsonString(sequence->accumRoot)
 +            << ",\"group\":"
 +            << (sequence->animGroup != nullptr ? static_cast<unsigned int>(sequence->animGroup->animGroup) : 0xffff)
-+            << '}';
++            << ",\"controlledBlockCount\":" << sequence->arraySize << ",\"controlledBlocks\":";
++        writeControlledBlockProbe(out, sequence);
++        out << '}';
 +    }
 +
 +    void writeActor(Actor* actor)
@@ -316,13 +735,17 @@ index 0000000..aa6de83
 +            NiNode* root = actor->GetNiNode();
 +
 +            gOutput << std::setprecision(9)
-+                << "{\"schema\":\"nikami-retail-oracle/v2\",\"event\":\"actor-frame\""
++                << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-frame\""
 +                << ",\"frame\":" << gFrame
 +                << ",\"refForm\":" << actor->refID
 +                << ",\"baseForm\":" << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
 +                << ",\"position\":[" << actor->posX << ',' << actor->posY << ',' << actor->posZ << ']'
 +                << ",\"rotation\":[" << actor->rotX << ',' << actor->rotY << ',' << actor->rotZ << ']'
 +                << ",\"processLevel\":" << process->processLevel
++                << ",\"footIkAvailable\":"
++                << (actor->ragDollController != nullptr && actor->ragDollController->bool021F ? "true" : "false")
++                << ",\"footIkEnabled\":"
++                << (actor->ragDollController != nullptr && actor->ragDollController->fikStatus ? "true" : "false")
 +                << ",\"weaponOut\":" << (mhp != nullptr && mhp->isWeaponOut ? "true" : "false")
 +                << ",\"aiming\":" << (mhp != nullptr && mhp->isAiming ? "true" : "false")
 +                << ",\"weapon\":";
@@ -361,6 +784,18 @@ index 0000000..aa6de83
 +            else
 +                gOutput << "null";
 +
++            gOutput << ",\"rootWorldActorDelta\":";
++            if (root != nullptr)
++            {
++                const NiVector3& rootWorld
++                    = runtimeTransform(*root, sNiAVObjectWorldTransformOffset).translate;
++                const NiVector3 delta{ rootWorld.x - actor->posX, rootWorld.y - actor->posY,
++                    rootWorld.z - actor->posZ };
++                writeVector(gOutput, delta);
++            }
++            else
++                gOutput << "null";
++
 +            gOutput << ",\"bones\":[";
 +            bool firstBone = true;
 +            writeNodeRecursive(gOutput, root, firstBone, 0);
@@ -368,7 +803,7 @@ index 0000000..aa6de83
 +        }
 +        __except (EXCEPTION_EXECUTE_HANDLER)
 +        {
-+            gOutput << "{\"schema\":\"nikami-retail-oracle/v2\",\"event\":\"capture-fault\","
++            gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"capture-fault\","
 +                       "\"frame\":" << gFrame << ",\"refForm\":" << actor->refID << "}\n";
 +        }
 +    }
@@ -441,7 +876,7 @@ index 0000000..aa6de83
 +        __try
 +        {
 +            gOutput << std::setprecision(9)
-+                << "{\"schema\":\"nikami-retail-oracle/v2\""
++                << "{\"schema\":" << sSchemaJson
 +                << ",\"event\":\"behavior-snapshot\""
 +                << ",\"label\":\"" << label << '"'
 +                << ",\"frame\":" << gFrame
@@ -464,7 +899,7 @@ index 0000000..aa6de83
 +        }
 +        __except (EXCEPTION_EXECUTE_HANDLER)
 +        {
-+            gOutput << "{\"schema\":\"nikami-retail-oracle/v2\""
++            gOutput << "{\"schema\":" << sSchemaJson
 +                << ",\"event\":\"behavior-capture-fault\""
 +                << ",\"label\":\"" << label << '"'
 +                << ",\"frame\":" << gFrame << "}\n";
@@ -525,6 +960,15 @@ index 0000000..aa6de83
 +
 +    Actor* findDriveActor()
 +    {
++        if (gTargetForm != 0)
++        {
++            TESForm* target = lookupForm(gTargetForm);
++            Actor* targetActor
++                = target != nullptr && target->IsActor_Runtime() ? static_cast<Actor*>(target) : nullptr;
++            if (targetActor != nullptr && targetActor->baseProcess != nullptr && targetActor->GetNiNode() != nullptr)
++                return targetActor;
++        }
++
 +        PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
 +        Actor* fallback = nullptr;
 +        ActorProcessManager* manager = reinterpret_cast<ActorProcessManager*>(0x011E0E80);
@@ -589,53 +1033,161 @@ index 0000000..aa6de83
 +        return succeeded;
 +    }
 +
++    bool equipItemUnsafe(Actor* actor, UInt32 formId)
++    {
++        bool succeeded = false;
++        __try
++        {
++            TESForm* item = lookupForm(formId);
++            if (actor != nullptr && item != nullptr)
++            {
++                using ItemAction = void(__thiscall*)(
++                    Actor*, TESForm*, UInt32, ExtraDataList*, UInt32, bool, UInt32);
++                TESForm* currentWeapon = nullptr;
++                if (actor->baseProcess != nullptr && actor->baseProcess->processLevel <= 1)
++                {
++                    MiddleHighProcess* process = static_cast<MiddleHighProcess*>(actor->baseProcess);
++                    if (process->weaponInfo != nullptr)
++                        currentWeapon = process->weaponInfo->weapon;
++                }
++                if (currentWeapon != nullptr && currentWeapon != item)
++                {
++                    reinterpret_cast<ItemAction>(0x0088C790)(
++                        actor, currentWeapon, 1, nullptr, 1, false, 1);
++                }
++                actor->AddItem(item, nullptr, 1);
++                reinterpret_cast<ItemAction>(0x0088C650)(actor, item, 1, nullptr, 1, false, 1);
++                succeeded = true;
++            }
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            succeeded = false;
++        }
++        return succeeded;
++    }
++
 +    void prepareActor()
 +    {
 +        if (gPrepareRequested || gConsole == nullptr)
 +            return;
 +        gPrepareRequested = true;
 +        gDrivenActor = findDriveActor();
++        if (gDrivenActor != nullptr && !gActorCommands.empty())
++        {
++            gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-commands\""
++                << ",\"frame\":" << gFrame << ",\"refForm\":" << gDrivenActor->refID
++                << ",\"commands\":[";
++            for (std::size_t i = 0; i < gActorCommands.size(); ++i)
++            {
++                if (i != 0)
++                    gOutput << ',';
++                const bool accepted = gConsole->RunScriptLine2(gActorCommands[i].c_str(), gDrivenActor, true);
++                gOutput << "{\"text\":" << jsonString(gActorCommands[i].c_str())
++                    << ",\"accepted\":" << (accepted ? "true" : "false") << '}';
++            }
++            gOutput << "]}\n";
++        }
++        gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"prepare-actor\","
++                   "\"frame\":" << gFrame
++                << ",\"refForm\":" << (gDrivenActor != nullptr ? gDrivenActor->refID : 0) << "}\n";
++        gOutput.flush();
++    }
++
++    void equipActor()
++    {
++        if (gEquipRequested || gConsole == nullptr)
++            return;
++        gEquipRequested = true;
++        if (gDrivenActor == nullptr)
++            gDrivenActor = findDriveActor();
 +        bool addAccepted = gEquipForm == 0;
 +        bool equipAccepted = gEquipForm == 0;
++        bool directEquipApplied = gEquipForm == 0;
++        bool priorWeaponRemoveAccepted = gEquipForm == 0;
++        UInt32 priorWeaponForm = 0;
 +        bool weaponOutAccepted = false;
 +        if (gDrivenActor != nullptr)
 +        {
 +            if (gEquipForm != 0)
 +            {
 +                char command[128] = {};
++                if (gDrivenActor->baseProcess != nullptr && gDrivenActor->baseProcess->processLevel <= 1)
++                {
++                    MiddleHighProcess* process = static_cast<MiddleHighProcess*>(gDrivenActor->baseProcess);
++                    if (process->weaponInfo != nullptr && process->weaponInfo->weapon != nullptr)
++                        priorWeaponForm = process->weaponInfo->weapon->refID;
++                }
++                if (priorWeaponForm != 0 && priorWeaponForm != gEquipForm)
++                {
++                    sprintf_s(command, "RemoveItem %08X 99", priorWeaponForm);
++                    priorWeaponRemoveAccepted = gConsole->RunScriptLine2(command, gDrivenActor, true);
++                }
 +                sprintf_s(command, "AddItem %08X 1", gEquipForm);
 +                addAccepted = gConsole->RunScriptLine2(command, gDrivenActor, true);
 +                sprintf_s(command, "EquipItem %08X 1", gEquipForm);
 +                equipAccepted = gConsole->RunScriptLine2(command, gDrivenActor, true);
++                directEquipApplied = equipItemUnsafe(gDrivenActor, gEquipForm);
 +            }
 +            weaponOutAccepted = setWeaponOutUnsafe(gDrivenActor);
 +        }
-+        gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"prepare-actor\","
++        gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"equip-actor\","
 +                   "\"frame\":" << gFrame
 +                << ",\"refForm\":" << (gDrivenActor != nullptr ? gDrivenActor->refID : 0)
 +                << ",\"equipForm\":" << gEquipForm
++                << ",\"priorWeaponForm\":" << priorWeaponForm
++                << ",\"priorWeaponRemoveAccepted\":" << (priorWeaponRemoveAccepted ? "true" : "false")
 +                << ",\"addAccepted\":" << (addAccepted ? "true" : "false")
 +                << ",\"equipAccepted\":" << (equipAccepted ? "true" : "false")
++                << ",\"directEquipApplied\":" << (directEquipApplied ? "true" : "false")
 +                << ",\"weaponOutAccepted\":" << (weaponOutAccepted ? "true" : "false") << "}\n";
 +        gOutput.flush();
 +    }
 +
 +    void driveActor()
 +    {
-+        if (gDriveRequested || gPlayGroup.empty() || gConsole == nullptr)
++        if (gDriveRequested || (gPlayGroup.empty() && gDriveCommand.empty()) || gConsole == nullptr)
 +            return;
 +        gDriveRequested = true;
 +        Actor* actor = gDrivenActor != nullptr ? gDrivenActor : findDriveActor();
 +        bool accepted = false;
 +        char command[512] = {};
-+        sprintf_s(command, "PlayGroup %s 1", gPlayGroup.c_str());
++        if (!gDriveCommand.empty())
++            strcpy_s(command, gDriveCommand.c_str());
++        else
++            sprintf_s(command, "PlayGroup %s 1", gPlayGroup.c_str());
 +        if (actor != nullptr)
++        {
++            setWeaponOutUnsafe(actor);
 +            accepted = gConsole->RunScriptLine2(command, actor, true);
++        }
 +        gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"drive-actor\","
 +                   "\"frame\":" << gFrame
 +                << ",\"refForm\":" << (actor != nullptr ? actor->refID : 0)
 +                << ",\"group\":" << jsonString(gPlayGroup.c_str())
++                << ",\"command\":" << jsonString(command)
 +                << ",\"accepted\":" << (accepted ? "true" : "false") << "}\n";
++        gOutput.flush();
++    }
++
++    void toggleActorFootIk()
++    {
++        if (gFootIkToggleRequested || gFootIkToggleFrame == 0)
++            return;
++        gFootIkToggleRequested = true;
++        Actor* actor = gDrivenActor != nullptr ? gDrivenActor : findDriveActor();
++        const bool available
++            = actor != nullptr && actor->ragDollController != nullptr && actor->ragDollController->bool021F;
++        const bool before = available && actor->ragDollController->fikStatus;
++        if (available)
++            actor->ragDollController->fikStatus = gFootIkToggleEnabled;
++        gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"foot-ik-toggle\""
++                << ",\"frame\":" << gFrame
++                << ",\"refForm\":" << (actor != nullptr ? actor->refID : 0)
++                << ",\"available\":" << (available ? "true" : "false")
++                << ",\"before\":" << (before ? "true" : "false")
++                << ",\"after\":" << (available && actor->ragDollController->fikStatus ? "true" : "false")
++                << "}\n";
 +        gOutput.flush();
 +    }
 +
@@ -679,6 +1231,11 @@ index 0000000..aa6de83
 +        if (gCaptureAnimation)
 +        {
 +            std::set<Actor*> captured;
++            if (gDrivenActor != nullptr)
++            {
++                captured.insert(gDrivenActor);
++                writeActor(gDrivenActor);
++            }
 +            PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
 +            if (player != nullptr)
 +            {
@@ -715,10 +1272,16 @@ index 0000000..aa6de83
 +            if (gWorldReady)
 +            {
 +                ++gWorldLoopFrame;
-+                if (gCaptureAnimation && !gPrepareRequested && gWorldLoopFrame >= 60)
++                if (gCaptureAnimation && !gPrepareRequested && gWorldLoopFrame >= gPrepareActorFrame)
 +                    prepareActor();
-+                if (gCaptureAnimation && !gPlayGroup.empty() && !gDriveRequested && gWorldLoopFrame >= 180)
++                if (gCaptureAnimation && !gEquipRequested && gWorldLoopFrame >= gEquipActorFrame)
++                    equipActor();
++                if (gCaptureAnimation && (!gPlayGroup.empty() || !gDriveCommand.empty()) && !gDriveRequested
++                    && gWorldLoopFrame >= gDriveActorFrame)
 +                    driveActor();
++                if (gCaptureAnimation && !gFootIkToggleRequested && gFootIkToggleFrame > 0
++                    && gWorldLoopFrame >= gFootIkToggleFrame)
++                    toggleActorFootIk();
 +            }
 +            captureFrame();
 +        }
@@ -753,7 +1316,7 @@ index 0000000..aa6de83
 +{
 +    info->infoVersion = PluginInfo::kInfoVersion;
 +    info->name = "NikamiRetailOracle";
-+    info->version = 2;
++    info->version = 3;
 +    return nvse != nullptr && !nvse->isEditor && !nvse->isNogore
 +        && nvse->runtimeVersion >= RUNTIME_VERSION_1_4_0_525;
 +}
@@ -776,12 +1339,20 @@ index 0000000..aa6de83
 +    gCaptureAnimation = envUInt("NIKAMI_ORACLE_CAPTURE_ANIMATION", 1) != 0;
 +    gSaveName = envString("NIKAMI_ORACLE_SAVE");
 +    gPlayGroup = envString("NIKAMI_ORACLE_PLAY_GROUP");
++    gDriveCommand = envString("NIKAMI_ORACLE_DRIVE_COMMAND");
 +    gQuestForms = envUIntList("NIKAMI_ORACLE_QUEST_FORMS");
 +    gGlobalForms = envUIntList("NIKAMI_ORACLE_GLOBAL_FORMS");
 +    gBehaviorCommands = envCommandList("NIKAMI_ORACLE_COMMANDS");
++    gActorCommands = envCommandList("NIKAMI_ORACLE_ACTOR_COMMANDS");
 +    gBehaviorBeforeFrame = envUInt("NIKAMI_ORACLE_BEFORE_FRAME", 60);
 +    gBehaviorCommandFrame = envUInt("NIKAMI_ORACLE_COMMAND_FRAME", 90);
 +    gBehaviorAfterFrame = envUInt("NIKAMI_ORACLE_AFTER_FRAME", 150);
++    gPrepareActorFrame = (std::max)(1u, envUInt("NIKAMI_ORACLE_PREPARE_ACTOR_FRAME", 60));
++    gEquipActorFrame
++        = (std::max)(gPrepareActorFrame, envUInt("NIKAMI_ORACLE_EQUIP_ACTOR_FRAME", gPrepareActorFrame));
++    gDriveActorFrame = (std::max)(gEquipActorFrame, envUInt("NIKAMI_ORACLE_DRIVE_ACTOR_FRAME", 180));
++    gFootIkToggleFrame = envUInt("NIKAMI_ORACLE_FOOT_IK_TOGGLE_FRAME", 0);
++    gFootIkToggleEnabled = envUInt("NIKAMI_ORACLE_FOOT_IK_TOGGLE_ENABLED", 0) != 0;
 +    gSetStageQuestForm = envUInt("NIKAMI_ORACLE_SET_STAGE_QUEST", 0);
 +    gSetStageIndex = envUInt("NIKAMI_ORACLE_SET_STAGE_INDEX", 0xffff);
 +    gExitWhenDone = envUInt("NIKAMI_ORACLE_EXIT_WHEN_DONE", gSaveName.empty() ? 0 : 1) != 0;
@@ -846,3 +1417,6 @@ index 0000000..d0a7c7b
 +  <ItemGroup><None Include="exports.def" /></ItemGroup>
 +  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 +</Project>
+-- 
+2.53.0.windows.1
+
