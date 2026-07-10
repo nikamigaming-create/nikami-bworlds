@@ -1,0 +1,241 @@
+From f5081023078baa43cee54ae186da590477d53a38 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 16:31:49 -0700
+Subject: [PATCH] Honor Fallout furniture marker and seated state
+
+---
+ apps/openmw/mwclass/esm4npc.cpp       | 12 +++++++++
+ apps/openmw/mwclass/esm4npc.hpp       |  2 ++
+ apps/openmw/mwmechanics/character.cpp | 30 +++++++++++++++++-----
+ apps/openmw/mwrender/animation.cpp    |  6 ++++-
+ apps/openmw/mwworld/scene.cpp         | 36 ++++++++++++++++++++++++---
+ 5 files changed, 75 insertions(+), 11 deletions(-)
+
+diff --git a/apps/openmw/mwclass/esm4npc.cpp b/apps/openmw/mwclass/esm4npc.cpp
+index 841dee592b..27bfa80f3d 100644
+--- a/apps/openmw/mwclass/esm4npc.cpp
++++ b/apps/openmw/mwclass/esm4npc.cpp
+@@ -129,6 +129,7 @@ namespace MWClass
+         std::vector<const ESM4::Clothing*> mEquippedClothing;
+         const ESM4::Weapon* mEquippedWeapon = nullptr;
+         bool mFnvAiSequenceInitialised = false;
++        bool mFurnitureSeated = false;
+ 
+         ESM4NpcCustomData();
+         ESM4NpcCustomData(const ESM4NpcCustomData& other);
+@@ -160,6 +161,7 @@ namespace MWClass
+         , mEquippedClothing(other.mEquippedClothing)
+         , mEquippedWeapon(other.mEquippedWeapon)
+         , mFnvAiSequenceInitialised(other.mFnvAiSequenceInitialised)
++        , mFurnitureSeated(other.mFurnitureSeated)
+     {
+     }
+ 
+@@ -751,6 +753,16 @@ namespace MWClass
+         return getCustomData(ptr).mEquippedWeapon;
+     }
+ 
++    bool ESM4Npc::isFurnitureSeated(const MWWorld::Ptr& ptr)
++    {
++        return getCustomData(ptr).mFurnitureSeated;
++    }
++
++    void ESM4Npc::setFurnitureSeated(const MWWorld::Ptr& ptr, bool seated)
++    {
++        getCustomData(ptr).mFurnitureSeated = seated;
++    }
++
+     bool ESM4Npc::addEquippedArmor(const MWWorld::Ptr& ptr, const ESM4::Armor* armor)
+     {
+         if (armor == nullptr)
+diff --git a/apps/openmw/mwclass/esm4npc.hpp b/apps/openmw/mwclass/esm4npc.hpp
+index 09da8d25e9..7d500c0489 100644
+--- a/apps/openmw/mwclass/esm4npc.hpp
++++ b/apps/openmw/mwclass/esm4npc.hpp
+@@ -96,6 +96,8 @@ namespace MWClass
+         static const std::vector<const ESM4::Armor*>& getEquippedArmor(const MWWorld::Ptr& ptr);
+         static const std::vector<const ESM4::Clothing*>& getEquippedClothing(const MWWorld::Ptr& ptr);
+         static const ESM4::Weapon* getEquippedWeapon(const MWWorld::Ptr& ptr);
++        static bool isFurnitureSeated(const MWWorld::Ptr& ptr);
++        static void setFurnitureSeated(const MWWorld::Ptr& ptr, bool seated);
+         static bool addEquippedArmor(const MWWorld::Ptr& ptr, const ESM4::Armor* armor);
+         static std::string_view chooseEquipmentModel(const ESM4::Armor* rec, bool isFemale);
+         static std::string_view chooseEquipmentModel(const ESM4::Clothing* rec, bool isFemale);
+diff --git a/apps/openmw/mwmechanics/character.cpp b/apps/openmw/mwmechanics/character.cpp
+index adb308bc42..d1e6e5e5f9 100644
+--- a/apps/openmw/mwmechanics/character.cpp
++++ b/apps/openmw/mwmechanics/character.cpp
+@@ -47,6 +47,8 @@
+ #include "../mwbase/windowmanager.hpp"
+ #include "../mwbase/world.hpp"
+ 
++#include "../mwclass/esm4npc.hpp"
++
+ #include "../mwworld/class.hpp"
+ #include "../mwworld/esmstore.hpp"
+ #include "../mwworld/inventorystore.hpp"
+@@ -895,6 +897,8 @@ namespace MWMechanics
+ 
+         MWRender::Animation::AnimPriority priority = getIdlePriority(mIdleState);
+         size_t numLoops = std::numeric_limits<uint32_t>::max();
++        const bool falloutFurnitureSeated
++            = mPtr.getType() == ESM::REC_NPC_4 && MWClass::ESM4Npc::isFurnitureSeated(mPtr);
+ 
+         // Only play "idleswim" or "idlesneak" if they exist. Otherwise, fallback to
+         // "idle"+weapon or "idle".
+@@ -905,7 +909,14 @@ namespace MWMechanics
+             idleGroup = idleStateToAnimGroup(CharState_Idle);
+         }
+ 
+-        if (fallback || mIdleState == CharState_Idle || mIdleState == CharState_SpecialIdle)
++        if (falloutFurnitureSeated && mAnimation->hasAnimation("chairsit"))
++        {
++            fallback = false;
++            priority = getIdlePriority(CharState_Idle);
++            idleGroup = "chairsit";
++            numLoops = std::numeric_limits<uint32_t>::max();
++        }
++        else if (fallback || mIdleState == CharState_Idle || mIdleState == CharState_SpecialIdle)
+         {
+             std::string_view weapShortGroup = getWeaponShortGroup(mWeaponType);
+             if (!weapShortGroup.empty())
+@@ -928,8 +939,8 @@ namespace MWMechanics
+             if (const char* forcedIdleGroup = std::getenv("OPENMW_FNV_FORCE_IDLE_GROUP"))
+             {
+                 std::string forced = Misc::StringUtils::lowerCase(forcedIdleGroup);
+-                if (forced == "idle" || forced == "sitchairlisten" || forced == "sitchairtalk"
+-                    || forced == "sitchaireat")
++                if (forced == "idle" || forced == "chairsit" || forced == "chairsitenter"
++                    || forced == "sitchairlisten" || forced == "sitchairtalk" || forced == "sitchaireat")
+                 {
+                     Log(Debug::Info) << "FNV/ESM4 diag: forcing idle group '" << forced << "' for "
+                                      << mPtr.getCellRef().getRefId();
+@@ -966,7 +977,7 @@ namespace MWMechanics
+ 
+         if (isFalloutActor(mPtr))
+         {
+-            if (mAnimation->hasAnimation("weaponpose"))
++            if (mAnimation->hasAnimation("weaponpose") && !falloutFurnitureSeated)
+             {
+                 MWRender::Animation::AnimPriority weaponPosePriority(Priority_Default);
+                 weaponPosePriority[MWRender::BoneGroup_LeftArm] = Priority_Weapon;
+@@ -983,6 +994,12 @@ namespace MWMechanics
+                 playBlendedAnimation("weaponpose", weaponPosePriority, weaponPoseMask, false, 1.0f, "start", "stop",
+                     0.f, std::numeric_limits<uint32_t>::max(), true);
+             }
++            else if (falloutFurnitureSeated && mAnimation->isPlaying("weaponpose"))
++            {
++                Log(Debug::Info) << "FNV/ESM4 diag: suppressing standing weapon pose while furniture-seated for "
++                                 << mPtr.getCellRef().getRefId();
++                mAnimation->disable("weaponpose");
++            }
+ 
+             if (const char* forcedOverlayGroup = std::getenv("OPENMW_FNV_FORCED_OVERLAY_GROUP"))
+             {
+@@ -1007,7 +1024,8 @@ namespace MWMechanics
+ 
+         const bool hasFalloutSitTalk = isFalloutActor(mPtr) && mAnimation->hasAnimation("sitchairtalk")
+             && std::getenv("OPENMW_FNV_DISABLE_SIT_TALK_OVERLAY") == nullptr;
+-        if (isFalloutActor(mPtr) && mCurrentIdle == "idle" && mAnimation->hasAnimation("sitchairlisten")
++        if (isFalloutActor(mPtr) && (mCurrentIdle == "idle" || mCurrentIdle == "chairsit")
++            && mAnimation->hasAnimation("sitchairlisten")
+             && !hasFalloutSitTalk
+             && std::getenv("OPENMW_FNV_ENABLE_SIT_LISTEN_OVERLAY") != nullptr)
+         {
+@@ -1020,7 +1038,7 @@ namespace MWMechanics
+                 listenPriority, MWRender::BlendMask_LeftArm | MWRender::BlendMask_RightArm, false, 1.0f, "start",
+                 "stop", 0.f, numLoops, true);
+         }
+-        if (isFalloutActor(mPtr) && mCurrentIdle == "idle" && hasFalloutSitTalk
++        if (isFalloutActor(mPtr) && (mCurrentIdle == "idle" || mCurrentIdle == "chairsit") && hasFalloutSitTalk
+             && std::getenv("OPENMW_FNV_ENABLE_SIT_LISTEN_OVERLAY") != nullptr)
+         {
+             MWRender::Animation::AnimPriority talkPriority(Priority_Default);
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+index f6fcbfe959..d0048d7c3e 100644
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -4442,7 +4442,11 @@ namespace MWRender
+             stem.resize(dot);
+         Misc::StringUtils::lowerCaseInPlace(stem);
+ 
+-        if (stem == "dynamicidle_sit" || stem == "dynamicidle_chairsit" || stem == "dynamicidle_sleep")
++        if (stem == "dynamicidle_chairsit")
++            return "chairsit";
++        if (stem == "chair_forwardenter")
++            return "chairsitenter";
++        if (stem == "dynamicidle_sit" || stem == "dynamicidle_sleep")
+             return "idle";
+         if (stem.find("sitchairlisten") != std::string::npos)
+             return "sitchairlisten";
+diff --git a/apps/openmw/mwworld/scene.cpp b/apps/openmw/mwworld/scene.cpp
+index 0eb23d7bea..f0ce39bef5 100644
+--- a/apps/openmw/mwworld/scene.cpp
++++ b/apps/openmw/mwworld/scene.cpp
+@@ -419,6 +419,18 @@ namespace
+                     }
+                 }
+ 
++                // FO3/FNV MNAM is a marker-index bitfield. Retail Easy Pete telemetry, for
++                // example, reports markerIndex=2 for activeMarkers=0x40000004. High bits may
++                // carry furniture capabilities, so only compare indices that exist in the NIF.
++                for (std::size_t i = 0; i < markers.size() && i < 32; ++i)
++                {
++                    if ((furniture->mActiveMarkerFlags & (std::uint32_t{ 1 } << i)) != 0)
++                    {
++                        Log(Debug::Info) << "FNV/ESM4 diag: selected active furniture marker index " << i;
++                        return markers[i];
++                    }
++                }
++
+                 const auto centered = std::min_element(markers.begin(), markers.end(), markerLess);
+                 return centered != markers.end() ? *centered : markers.front();
+             }
+@@ -498,6 +510,9 @@ namespace
+         if (target == nullptr)
+             return FnvPackagePrePlacement::None;
+ 
++        const bool furnitureTarget = store->get<ESM4::Furniture>().search(target->mBaseObj) != nullptr;
++        MWClass::ESM4Npc::setFurnitureSeated(ptr, furnitureTarget);
++
+         const ESM::RefId& currentCellId = ptr.getCell()->getCell()->getId();
+         const bool sameCell = target->mParent == currentCellId;
+         Log(Debug::Info) << "FNV/ESM4 diag: package pre-placement " << selected->mEditorId
+@@ -519,10 +534,22 @@ namespace
+         {
+             const osg::Vec3f proofOffset = transformFnvFurnitureMarkerOffsetForProof(marker.mOffset);
+             const osg::Vec3f worldOffset = rotateFnvPackageOffset(proofOffset, target->mPos.rot[2]);
+-            position.pos[0] += worldOffset.x();
+-            position.pos[1] += worldOffset.y();
+-            position.pos[2] += worldOffset.z();
+-            position.rot[2] = applyFnvFurnitureMarkerHeading(target->mPos.rot[2], marker.mHeading);
++            const bool entryMarkerPlacement = envEnabled("OPENMW_FNV_FURNITURE_ENTRY_MARKER_PLACEMENT");
++            if (furnitureTarget && !entryMarkerPlacement)
++            {
++                // Retail uses this marker transform while state 3 waits for the enter animation,
++                // then accumulated root motion places a state-4 seated actor at the furniture
++                // origin/yaw while retaining the marker height. Loading an already scheduled NPC
++                // begins in the settled state rather than freezing it at the entry marker.
++                position.pos[2] += marker.mOffset.z();
++            }
++            else
++            {
++                position.pos[0] += worldOffset.x();
++                position.pos[1] += worldOffset.y();
++                position.pos[2] += worldOffset.z();
++                position.rot[2] = applyFnvFurnitureMarkerHeading(target->mPos.rot[2], marker.mHeading);
++            }
+             Log(Debug::Info) << "FNV/ESM4 diag: applied furniture marker package placement "
+                              << selected->mEditorId << " targetRef=" << target->mEditorId
+                              << " markerOffset=(" << marker.mOffset.x() << "," << marker.mOffset.y() << ","
+@@ -532,6 +559,7 @@ namespace
+                              << " type=" << marker.mType << " entryPoint=" << marker.mEntryPoint
+                              << " positionRef=" << static_cast<int>(marker.mPositionRef)
+                              << " legacy=" << marker.mLegacy
++                             << " state=" << (furnitureTarget && !entryMarkerPlacement ? "seated" : "entry")
+                              << " finalPos=(" << position.pos[0] << "," << position.pos[1] << ","
+                              << position.pos[2] << ") finalRotZ=" << position.rot[2] << " for "
+                              << traits->mEditorId;
+-- 
+2.53.0.windows.1
+

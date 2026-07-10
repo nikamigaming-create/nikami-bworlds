@@ -1,0 +1,125 @@
+From 0fbd8b425225c64ba0e2978ffb84157cf58b64dd Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 16:31:57 -0700
+Subject: [PATCH] Capture retail furniture state
+
+---
+ nvse_retail_oracle/main.cpp | 67 ++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 66 insertions(+), 1 deletion(-)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index a923cc6..837c2fd 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -31,6 +31,7 @@ namespace
+     UInt32 gEquipForm = 0;
+     bool gAllHighActors = true;
+     bool gCaptureAnimation = true;
++    bool gFurnitureOnly = false;
+     bool gLoadRequested = false;
+     bool gWorldReady = false;
+     bool gPrepareRequested = false;
+@@ -350,6 +351,17 @@ namespace
+         float z;
+     };
+ 
++    // MiddleHighProcess::FurnitureMark at 0x148 in the retail 1.4.0.525 runtime.
++    // Keep this private to the oracle: the public xNVSE headers deliberately leave
++    // the surrounding process members unnamed, while JIP-LN documents this layout.
++    struct OracleFurnitureMark
++    {
++        OracleVector3 position;
++        UInt16 rotation;
++        UInt8 type;
++        UInt8 unknown0F;
++    };
++
+     static_assert(sizeof(OracleQuatTransform) == 0x20);
+     static_assert(sizeof(OracleTransformInterpolator) == 0x2c);
+     static_assert(sizeof(OracleBlendItem) == 0x18);
+@@ -359,6 +371,7 @@ namespace
+     static_assert(sizeof(OracleTimeController) == 0x34);
+     static_assert(sizeof(OracleSetting) == 0x0c);
+     static_assert(sizeof(OracleVector3) == 0x0c);
++    static_assert(sizeof(OracleFurnitureMark) == 0x10);
+     template <class T>
+     bool safeRead(const void* address, T& value)
+     {
+@@ -1223,6 +1236,32 @@ namespace
+             float cameraLodAdjust = 1.f;
+             float actorFadeMultiplier = 1.f;
+             SInt32 boneLodDistanceMultiplier = 0;
++            UInt8 processSitSleepState = 0;
++            UInt32 actorSitSleepState = 0;
++            TESObjectREFR* usedFurniture = nullptr;
++            UInt8 furnitureMarkerIndex = 0xff;
++            OracleFurnitureMark furnitureMark = {};
++            UInt32 usedFurnitureRefForm = 0;
++            UInt32 usedFurnitureBaseForm = 0;
++            bool hasFurnitureProcessState = false;
++            bool hasFurnitureMark = false;
++            safeRead(reinterpret_cast<const UInt8*>(actor) + 0x1AC, actorSitSleepState);
++            if (middleHigh)
++            {
++                const UInt8* processBytes = reinterpret_cast<const UInt8*>(process);
++                hasFurnitureProcessState = safeRead(processBytes + 0x13D, processSitSleepState)
++                    && safeRead(processBytes + 0x140, usedFurniture)
++                    && safeRead(processBytes + 0x144, furnitureMarkerIndex);
++                hasFurnitureMark = safeRead(processBytes + 0x148, furnitureMark);
++                if (usedFurniture != nullptr)
++                {
++                    safeRead(reinterpret_cast<const UInt8*>(usedFurniture) + 0x0C, usedFurnitureRefForm);
++                    TESForm* usedFurnitureBase = nullptr;
++                    if (safeRead(reinterpret_cast<const UInt8*>(usedFurniture) + 0x20, usedFurnitureBase)
++                        && usedFurnitureBase != nullptr)
++                        safeRead(reinterpret_cast<const UInt8*>(usedFurnitureBase) + 0x0C, usedFurnitureBaseForm);
++                }
++            }
+             if (hasCameraPos)
+             {
+                 const float dx = actor->posX - cameraPos.x;
+@@ -1286,7 +1325,32 @@ namespace
+                 << ",\"footIkEnabled\":"
+                 << (actor->ragDollController != nullptr && actor->ragDollController->fikStatus ? "true" : "false")
+                 << ",\"weaponOut\":" << (mhp != nullptr && mhp->isWeaponOut ? "true" : "false")
+-                << ",\"aiming\":" << (mhp != nullptr && mhp->isAiming ? "true" : "false");
++                << ",\"aiming\":" << (mhp != nullptr && mhp->isAiming ? "true" : "false")
++                << ",\"furnitureState\":{"
++                << "\"available\":" << (hasFurnitureProcessState ? "true" : "false")
++                << ",\"actorSitSleepState\":" << actorSitSleepState
++                << ",\"processSitSleepState\":" << static_cast<unsigned int>(processSitSleepState)
++                << ",\"usedFurnitureRefForm\":" << usedFurnitureRefForm
++                << ",\"usedFurnitureBaseForm\":" << usedFurnitureBaseForm
++                << ",\"markerIndex\":" << static_cast<unsigned int>(furnitureMarkerIndex)
++                << ",\"marker\":";
++            if (hasFurnitureMark)
++            {
++                gOutput << "{\"position\":[" << furnitureMark.position.x << ',' << furnitureMark.position.y << ','
++                        << furnitureMark.position.z << ']'
++                        << ",\"rotationRaw\":" << furnitureMark.rotation
++                        << ",\"rotationRadians\":" << static_cast<float>(furnitureMark.rotation) / 1000.f
++                        << ",\"type\":" << static_cast<unsigned int>(furnitureMark.type)
++                        << ",\"unknown0F\":" << static_cast<unsigned int>(furnitureMark.unknown0F) << '}';
++            }
++            else
++                gOutput << "null";
++            gOutput << '}';
++            if (gFurnitureOnly)
++            {
++                gOutput << "}\n";
++                return;
++            }
+             gOutput << ",\"highProcessBoneLodState\":";
+             if (hp != nullptr)
+             {
+@@ -1924,6 +1988,7 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
+     gEquipForm = envUInt("NIKAMI_ORACLE_EQUIP_FORM", 0);
+     gAllHighActors = envUInt("NIKAMI_ORACLE_ALL_HIGH_ACTORS", 1) != 0;
+     gCaptureAnimation = envUInt("NIKAMI_ORACLE_CAPTURE_ANIMATION", 1) != 0;
++    gFurnitureOnly = envUInt("NIKAMI_ORACLE_FURNITURE_ONLY", 0) != 0;
+     gSaveName = envString("NIKAMI_ORACLE_SAVE");
+     gPlayGroup = envString("NIKAMI_ORACLE_PLAY_GROUP");
+     gDriveCommand = envString("NIKAMI_ORACLE_DRIVE_COMMAND");
+-- 
+2.53.0.windows.1
+

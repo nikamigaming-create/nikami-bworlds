@@ -382,12 +382,60 @@ The focused `ESM4QuestRuntimeTest` suite (five tests) and the four
 these proofs has SHA-256
 `DD2E882EBA0AF7D17B1C72FB926E111E3E8A06DD1D9633FB0E14EFCC68E79948`.
 
+## Patch 0009: retail LIP playback and wider conditions
+
+Downstream commit `0d7383112e` decodes FO3/FNV's authored FaceFX LIP stream.
+The 12-byte header is followed by a zero-run-coded payload containing start
+frame, frame count, and 33 float targets at 30 Hz. The target order was checked
+against the FNV executable table and includes the 16 phonemes, eye/brow/look
+tracks, and head pitch/roll/yaw. OpenMW loads the sibling `.lip` from the same
+mounted voice archive and samples it with the sound backend's actual stream
+offset rather than a render-frame counter.
+
+The FNV telemetry proof is
+`run/dialogue-proof/easy-pete-retail-lip-telemetry-v7/fallout_new_vegas-20260710-160643/openmw.log`.
+It attaches drivers to Easy Pete's head, mouth, lower teeth, tongue, and beard,
+then reports authored values including `Th=0.917837`, `BigAah=0.87165`, and
+`OohQ=0.947465` at their retail frames. The corresponding FO3 run is
+`run/dialogue-proof/fo3-lucas-retail-lip-v1/fallout3-20260710-155921/manifest.json`.
+Release `components-tests` passes all 1,295 tests, including compressed LIP,
+track-order, interpolation, and malformed-run cases.
+
+## Patch 0010: scheduled furniture settling
+
+The xNVSE oracle extension at commit `0fbd8b4` records the private retail
+furniture process fields without changing game behavior. The completed Easy
+Pete state trace is
+`run/retail-oracle/fnv-easy-pete-sit-state-v3.jsonl`; the accompanying sequence
+trace is `run/retail-oracle/fnv-easy-pete-sit-animation-v1.jsonl`.
+
+Retail claims chair ref `0010634A`, base `0008B5DE`, and marker index 2. While
+state 3 waits for the enter animation, Pete is at the cached marker
+`(-67911.5781,3445.1416,8387.31055)`, yaw `4.761`, type 14. State 4 then settles
+at the furniture origin/yaw while retaining the marker height. The persistent
+sequence is the 13.333-second `dynamicidle_chairsit.kf`; the concurrent forward
+entry sequence ends at 1.733 seconds.
+
+Downstream commit `f508102307` selects the active MNAM marker bit, loads an
+already scheduled actor at the settled transform, assigns the persistent chair
+idle its own full-body group, and suppresses the standing weapon-pose overlay.
+The OpenMW live log is
+`run/furniture-proof/easy-pete-settled-v1/openmw.log`:
+it selects marker 2, places Easy Pete at `(-67970,3445.57,8387.31)` with yaw
+`1.62`, and plays `dynamicidle_chairsit.kf` as `chairsit`. This promotes
+scheduled settled-chair loading only. Runtime approach/enter, chair ownership,
+stand-up/exit, and arbitrary activation remain required before furniture is a
+complete state machine.
+
+The staged flat `openmw.exe` SHA-256 after patches 0009 and 0010 is
+`D3C0DA887AC583799B053E75418016156A2ABFB0CEA77F094985243CE31D8FE8`.
+
 ## Remaining compatibility work
 
 The first behavior slices are green, but the whole-game claim remains open. The
 next matrices are broad CTDA function and RunOn coverage, compiled Fallout
-script bytecode execution, multi-line voice sequencing and lip synchronization, package
-scheduling/navigation, combat and inventory semantics, and representative
+script bytecode execution, multi-line voice sequencing, complete furniture
+enter/idle/exit transitions, package scheduling/navigation, combat and inventory semantics, and representative
 quest/save differentials across both base games and every configured DLC.
 Animation work must still broaden the oracle across more weapons and animation
 groups and validate equivalent FO3 retail timing before claiming complete pose

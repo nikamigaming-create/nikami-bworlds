@@ -1,0 +1,1037 @@
+From 0d7383112e394d17efd5496b13da797905170e1f Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 16:10:44 -0700
+Subject: [PATCH] Decode Fallout dialogue LIP and expand conditions
+
+---
+ apps/components_tests/CMakeLists.txt          |   1 +
+ apps/components_tests/esm4/testlip.cpp        | 105 +++++++++++
+ .../esm4/testloadbehavior.cpp                 |  23 +++
+ apps/openmw/mwbase/soundmanager.hpp           |   5 +
+ apps/openmw/mwclass/esm4npc.cpp               |  13 ++
+ apps/openmw/mwclass/esm4npc.hpp               |   1 +
+ apps/openmw/mwdialogue/dialoguemanagerimp.cpp | 155 ++++++++++++++--
+ apps/openmw/mwrender/esm4npcanimation.cpp     |  51 ++++-
+ apps/openmw/mwsound/soundmanagerimp.cpp       |  46 ++++-
+ apps/openmw/mwsound/soundmanagerimp.hpp       |   5 +
+ components/CMakeLists.txt                     |   1 +
+ components/esm4/lip.cpp                       | 175 ++++++++++++++++++
+ components/esm4/lip.hpp                       |  35 ++++
+ components/esm4/loadnpc.cpp                   |  13 +-
+ components/esm4/loadnpc.hpp                   |   2 +
+ components/esm4/script.cpp                    |  10 +
+ 16 files changed, 610 insertions(+), 31 deletions(-)
+ create mode 100644 apps/components_tests/esm4/testlip.cpp
+ create mode 100644 components/esm4/lip.cpp
+ create mode 100644 components/esm4/lip.hpp
+
+diff --git a/apps/components_tests/CMakeLists.txt b/apps/components_tests/CMakeLists.txt
+index 74f6d4d8a2..f4efb6a940 100644
+--- a/apps/components_tests/CMakeLists.txt
++++ b/apps/components_tests/CMakeLists.txt
+@@ -69,6 +69,7 @@ file(GLOB UNITTEST_SRC_FILES
+     toutf8/toutf8.cpp
+ 
+     esm4/includes.cpp
++    esm4/testlip.cpp
+     esm4/testloadbehavior.cpp
+     esm4/testloadweap.cpp
+ 
+diff --git a/apps/components_tests/esm4/testlip.cpp b/apps/components_tests/esm4/testlip.cpp
+new file mode 100644
+index 0000000000..093a007b41
+--- /dev/null
++++ b/apps/components_tests/esm4/testlip.cpp
+@@ -0,0 +1,105 @@
++#include <components/esm4/lip.hpp>
++
++#include <gtest/gtest.h>
++
++#include <array>
++#include <cstdint>
++#include <cstring>
++#include <sstream>
++#include <stdexcept>
++#include <string>
++#include <string_view>
++#include <type_traits>
++#include <vector>
++
++namespace
++{
++    template <class T>
++    void appendPod(std::string& output, const T& value)
++    {
++        static_assert(std::is_trivially_copyable_v<T>);
++        output.append(reinterpret_cast<const char*>(&value), sizeof(value));
++    }
++
++    std::string compressZeroRuns(std::string_view input)
++    {
++        std::string output;
++        for (std::size_t offset = 0; offset < input.size();)
++        {
++            if (input[offset] != '\0')
++            {
++                output.push_back(input[offset++]);
++                continue;
++            }
++
++            const std::size_t start = offset;
++            while (offset < input.size() && input[offset] == '\0' && offset - start < 0xffff)
++                ++offset;
++            output.push_back('\0');
++            appendPod(output, static_cast<std::uint16_t>(offset - start));
++        }
++        return output;
++    }
++
++    std::string makeRetailLip()
++    {
++        constexpr std::uint32_t frameCount = 3;
++        std::array<std::array<float, ESM4::LipAnimation::sTargetCount>, frameCount> frames{};
++        frames[0][0] = 0.f;
++        frames[1][0] = 0.5f;
++        frames[2][0] = 1.f;
++        frames[0][32] = -0.25f;
++        frames[1][32] = 0.25f;
++
++        std::string decoded;
++        appendPod(decoded, frameCount);
++        appendPod(decoded, std::int32_t{ -1 });
++        appendPod(decoded, std::uint32_t{ 0 });
++        for (const auto& frame : frames)
++            for (float value : frame)
++                appendPod(decoded, value);
++
++        // Retail FO3/FNV zero-run streams omit four trailing zero bytes. The stored size includes sixteen bytes
++        // outside this decoded payload, matching authored files in both games.
++        decoded.resize(decoded.size() - 4);
++        std::string output;
++        appendPod(output, std::uint32_t{ 1 });
++        appendPod(output, static_cast<std::uint32_t>(decoded.size() + 16));
++        appendPod(output, std::uint32_t{ 1 });
++        output += compressZeroRuns(decoded);
++        return output;
++    }
++
++    TEST(Esm4LipTest, shouldDecodeRetailFalloutCurvesAtThirtyFramesPerSecond)
++    {
++        std::istringstream stream(makeRetailLip());
++        const ESM4::LipAnimation lip = ESM4::LipAnimation::load(stream);
++
++        EXPECT_EQ(lip.getStartFrame(), -1);
++        EXPECT_EQ(lip.getFrameCount(), 3);
++        EXPECT_FLOAT_EQ(lip.getValue("Aah", 0.0), 0.5f);
++        EXPECT_FLOAT_EQ(lip.getValue("aAH", 1.0 / 60.0), 0.75f);
++        EXPECT_FLOAT_EQ(lip.getValue("HeadYaw", 0.0), 0.25f);
++        EXPECT_FLOAT_EQ(lip.getValue("UnknownMorph", 0.0), 0.f);
++        EXPECT_FLOAT_EQ(lip.getValue("Aah", 1.0), 0.f);
++    }
++
++    TEST(Esm4LipTest, shouldExposeRetailTargetOrder)
++    {
++        EXPECT_EQ(ESM4::LipAnimation::getTargetName(0), "Aah");
++        EXPECT_EQ(ESM4::LipAnimation::getTargetName(15), "W");
++        EXPECT_EQ(ESM4::LipAnimation::getTargetName(16), "BlinkLeft");
++        EXPECT_EQ(ESM4::LipAnimation::getTargetName(32), "HeadYaw");
++    }
++
++    TEST(Esm4LipTest, shouldRejectTruncatedZeroRun)
++    {
++        std::string file;
++        appendPod(file, std::uint32_t{ 1 });
++        appendPod(file, std::uint32_t{ 32 });
++        appendPod(file, std::uint32_t{ 1 });
++        file.push_back('\0');
++        std::istringstream stream(file);
++        EXPECT_THROW(ESM4::LipAnimation::load(stream), std::runtime_error);
++    }
++}
+diff --git a/apps/components_tests/esm4/testloadbehavior.cpp b/apps/components_tests/esm4/testloadbehavior.cpp
+index de652ce03a..b4b1958773 100644
+--- a/apps/components_tests/esm4/testloadbehavior.cpp
++++ b/apps/components_tests/esm4/testloadbehavior.cpp
+@@ -1,5 +1,6 @@
+ #include <components/esm4/loaddial.hpp>
+ #include <components/esm4/loadinfo.hpp>
++#include <components/esm4/loadnpc.hpp>
+ #include <components/esm4/loadqust.hpp>
+ #include <components/esm4/reader.hpp>
+ 
+@@ -108,6 +109,28 @@ namespace
+         return result;
+     }
+ 
++    TEST(Esm4BehaviorRecordTest, shouldPreserveNpcVoiceTypeAndAllFactions)
++    {
++        std::string payload;
++        appendSubRecord(payload, "EDID", zString("DialogueActor"));
++        appendSubRecord(payload, "VTCK", std::uint32_t{ 0x1234 });
++        ESM4::ActorFaction first{ .faction = 0x2001, .rank = 2 };
++        ESM4::ActorFaction second{ .faction = 0x2002, .rank = -1 };
++        appendSubRecord(payload, "SNAM", first);
++        appendSubRecord(payload, "SNAM", second);
++
++        auto reader = makeReader("NPC_", 0x1000, payload, 3);
++        ESM4::Npc npc;
++        npc.load(*reader);
++
++        EXPECT_EQ(npc.mVoiceType, ESM::FormId::fromUint32(0x03001234));
++        ASSERT_EQ(npc.mFactions.size(), 2);
++        EXPECT_EQ(ESM::FormId::fromUint32(npc.mFactions[0].faction), ESM::FormId::fromUint32(0x03002001));
++        EXPECT_EQ(npc.mFactions[0].rank, 2);
++        EXPECT_EQ(ESM::FormId::fromUint32(npc.mFactions[1].faction), ESM::FormId::fromUint32(0x03002002));
++        EXPECT_EQ(npc.mFactions[1].rank, -1);
++    }
++
+     TEST(Esm4BehaviorRecordTest, shouldPreserveFalloutQuestStagesObjectivesConditionsAndBytecode)
+     {
+         std::string payload;
+diff --git a/apps/openmw/mwbase/soundmanager.hpp b/apps/openmw/mwbase/soundmanager.hpp
+index 5591b7205c..c2a2ff2fc0 100644
+--- a/apps/openmw/mwbase/soundmanager.hpp
++++ b/apps/openmw/mwbase/soundmanager.hpp
+@@ -148,6 +148,11 @@ namespace MWBase
+         /// and get an average loudness value (scale [0,1]) at the current time position.
+         /// If the actor is not saying anything, returns 0.
+ 
++        virtual float getSaySoundFacialTrackValue(
++            const MWWorld::ConstPtr& reference, std::string_view trackName) const = 0;
++        ///< Evaluate a Fallout 3/New Vegas LIP facial target at the voice playback position.
++        /// If the actor has no authored LIP timeline or is not speaking, returns 0.
++
+         virtual SoundStream* playTrack(const MWSound::DecoderPtr& decoder, Type type) = 0;
+         ///< Play a 2D audio track, using a custom decoder. The caller is expected to call
+         /// stopTrack with the returned handle when done.
+diff --git a/apps/openmw/mwclass/esm4npc.cpp b/apps/openmw/mwclass/esm4npc.cpp
+index e12c73a363..841dee592b 100644
+--- a/apps/openmw/mwclass/esm4npc.cpp
++++ b/apps/openmw/mwclass/esm4npc.cpp
+@@ -112,6 +112,7 @@ namespace MWClass
+     {
+     public:
+         const ESM4::Npc* mTraits = nullptr;
++        const ESM4::Npc* mFactions = nullptr;
+         const ESM4::Npc* mModel = nullptr;
+         const ESM4::Npc* mAIPackage = nullptr;
+         const ESM4::Npc* mStats = nullptr;
+@@ -143,6 +144,7 @@ namespace MWClass
+ 
+     ESM4NpcCustomData::ESM4NpcCustomData(const ESM4NpcCustomData& other)
+         : mTraits(other.mTraits)
++        , mFactions(other.mFactions)
+         , mModel(other.mModel)
+         , mAIPackage(other.mAIPackage)
+         , mStats(other.mStats)
+@@ -492,6 +494,12 @@ namespace MWClass
+             Log(Debug::Warning) << "Traits are not found for ESM4 NPC base record: \"" << base->mEditorId << "\" ("
+                                 << ESM::RefId(base->mId) << ")";
+ 
++        data->mFactions = chooseTemplate(npcRecs, ESM4::Npc::Template_UseFactions);
++
++        if (data->mFactions == nullptr)
++            Log(Debug::Warning) << "Faction data is not found for ESM4 NPC base record: \"" << base->mEditorId
++                                << "\" (" << ESM::RefId(base->mId) << ")";
++
+         data->mModel = chooseTemplate(npcRecs, ESM4::Npc::Template_UseModel);
+ 
+         if (data->mModel == nullptr)
+@@ -761,6 +769,11 @@ namespace MWClass
+         return getCustomData(ptr).mTraits;
+     }
+ 
++    const ESM4::Npc* ESM4Npc::getFactionsRecord(const MWWorld::Ptr& ptr)
++    {
++        return getCustomData(ptr).mFactions;
++    }
++
+     const ESM4::Npc* ESM4Npc::getModelRecord(const MWWorld::Ptr& ptr)
+     {
+         return getCustomData(ptr).mModel;
+diff --git a/apps/openmw/mwclass/esm4npc.hpp b/apps/openmw/mwclass/esm4npc.hpp
+index 5eb95886a9..09da8d25e9 100644
+--- a/apps/openmw/mwclass/esm4npc.hpp
++++ b/apps/openmw/mwclass/esm4npc.hpp
+@@ -86,6 +86,7 @@ namespace MWClass
+         bool canWalk(const MWWorld::ConstPtr& ptr) const override;
+ 
+         static const ESM4::Npc* getTraitsRecord(const MWWorld::Ptr& ptr);
++        static const ESM4::Npc* getFactionsRecord(const MWWorld::Ptr& ptr);
+         static const ESM4::Npc* getModelRecord(const MWWorld::Ptr& ptr);
+         static const ESM4::Npc* getAIPackageRecord(const MWWorld::Ptr& ptr);
+         static const ESM4::Npc* getStatsRecord(const MWWorld::Ptr& ptr);
+diff --git a/apps/openmw/mwdialogue/dialoguemanagerimp.cpp b/apps/openmw/mwdialogue/dialoguemanagerimp.cpp
+index d8c350ba20..ae8caa0962 100644
+--- a/apps/openmw/mwdialogue/dialoguemanagerimp.cpp
++++ b/apps/openmw/mwdialogue/dialoguemanagerimp.cpp
+@@ -15,7 +15,10 @@
+ #include <components/esm3/loadfact.hpp>
+ #include <components/esm3/loadinfo.hpp>
+ #include <components/esm3/loadmgef.hpp>
++#include <components/esm3/loadnpc.hpp>
+ #include <components/esm4/loaddial.hpp>
++#include <components/esm4/loadarmo.hpp>
++#include <components/esm4/loadclot.hpp>
+ #include <components/esm4/loadinfo.hpp>
+ #include <components/esm4/loadnpc.hpp>
+ #include <components/esm4/loadsoun.hpp>
+@@ -49,6 +52,8 @@
+ #include "../mwbase/world.hpp"
+ 
+ #include "../mwworld/class.hpp"
++#include "../mwworld/cell.hpp"
++#include "../mwworld/cellstore.hpp"
+ #include "../mwworld/containerstore.hpp"
+ #include "../mwworld/esmstore.hpp"
+ #include "../mwworld/esm4questruntime.hpp"
+@@ -124,47 +129,163 @@ namespace MWDialogue
+     {
+         if (!info.mSpeaker.isZeroOrUnset())
+         {
+-            const ESM4::Npc* base = mActor.get<ESM4::Npc>()->mBase;
++            const auto* actorRef
++                = mActor.getType() == ESM4::Npc::sRecordId ? mActor.get<ESM4::Npc>() : nullptr;
++            const ESM4::Npc* base = actorRef != nullptr ? actorRef->mBase : nullptr;
+             if (base == nullptr || base->mId != info.mSpeaker)
+                 return false;
+         }
+ 
+         const auto evaluate = [&](const ESM4::TargetCondition& condition) -> std::optional<bool> {
+-            const ESM4::Npc* base = mActor.get<ESM4::Npc>()->mBase;
+-            const ESM4::Npc* traits = MWClass::ESM4Npc::getTraitsRecord(mActor);
++            switch (condition.functionIndex)
++            {
++                case ESM4::FUN_GetQuestRunning:
++                case ESM4::FUN_GetStage:
++                case ESM4::FUN_GetStageDone:
++                case ESM4::FUN_GetGlobalValue:
++                case ESM4::FUN_GetQuestVariable:
++                case ESM4::FUN_GetQuestCompleted:
++                case ESM4::FUN_GetObjectiveCompleted:
++                case ESM4::FUN_GetObjectiveDisplayed:
++                    return MWBase::Environment::get().getWorld()->getESM4QuestRuntime().evaluateConditions({ condition });
++                default:
++                    break;
++            }
++
++            std::uint32_t runOn = condition.runOn;
++            if (runOn == 0 && (condition.condition & ESM4::CTF_RunOnTarget) != 0)
++                runOn = 1;
++
++            MWWorld::Ptr actor;
++            if (runOn == 0)
++                actor = mActor;
++            else if (runOn == 1)
++                actor = MWBase::Environment::get().getWorld()->getPlayerPtr();
++            else if (runOn == 2 && condition.reference != 0)
++            {
++                try
++                {
++                    actor = MWBase::Environment::get().getWorld()->searchPtr(
++                        ESM::RefId(ESM::FormId::fromUint32(condition.reference)), false);
++                }
++                catch (const std::exception&)
++                {
++                }
++            }
++            else if (runOn == 3)
++                mActor.getClass().getCreatureStats(mActor).getAiSequence().getCombatTarget(actor);
++            if (actor.isEmpty())
++                return std::nullopt;
++
++            const auto* actorRef
++                = actor.getType() == ESM4::Npc::sRecordId ? actor.get<ESM4::Npc>() : nullptr;
++            const ESM4::Npc* base = actorRef != nullptr ? actorRef->mBase : nullptr;
++            const ESM4::Npc* traits = actorRef != nullptr ? MWClass::ESM4Npc::getTraitsRecord(actor) : nullptr;
++            const ESM4::Npc* factions
++                = actorRef != nullptr ? MWClass::ESM4Npc::getFactionsRecord(actor) : nullptr;
++            const ESM4::Npc* stats = actorRef != nullptr ? MWClass::ESM4Npc::getStatsRecord(actor) : nullptr;
++            const ESM::FormId parameter = ESM::FormId::fromUint32(condition.param1);
+             float actual = 0.f;
+             switch (condition.functionIndex)
+             {
+                 case ESM4::FUN_GetIsID:
+-                    actual = base != nullptr && base->mId == ESM::FormId::fromUint32(condition.param1) ? 1.f : 0.f;
++                    actual = (base != nullptr && base->mId == parameter)
++                            || actor.getCellRef().getRefId() == ESM::RefId(parameter)
++                            || (actor == MWBase::Environment::get().getWorld()->getPlayerPtr()
++                                && (parameter.mIndex == 0x7 || parameter.mIndex == 0x14))
++                        ? 1.f
++                        : 0.f;
++                    break;
++                case ESM4::FUN_GetIsReference:
++                    actual = actor.getCellRef().getRefNum() == parameter ? 1.f : 0.f;
+                     break;
+                 case ESM4::FUN_GetIsRace:
+-                    actual = traits != nullptr && traits->mRace == ESM::FormId::fromUint32(condition.param1) ? 1.f : 0.f;
++                    actual = traits != nullptr && traits->mRace == parameter ? 1.f : 0.f;
++                    break;
++                case ESM4::FUN_GetIsVoiceType:
++                    actual = traits != nullptr && traits->mVoiceType == parameter ? 1.f : 0.f;
++                    break;
++                case ESM4::FUN_GetIsClass:
++                    actual = stats != nullptr && stats->mClass == parameter ? 1.f : 0.f;
+                     break;
+                 case ESM4::FUN_GetIsSex:
+-                    actual = static_cast<std::uint32_t>(MWClass::ESM4Npc::isFemale(mActor)) == condition.param1 ? 1.f : 0.f;
++                    if (actorRef != nullptr)
++                        actual = static_cast<std::uint32_t>(MWClass::ESM4Npc::isFemale(actor)) == condition.param1 ? 1.f : 0.f;
++                    else if (const auto* npc = actor.get<ESM::NPC>())
++                        actual = static_cast<std::uint32_t>((npc->mBase->mFlags & ESM::NPC::Female) != 0)
++                                == condition.param1
++                            ? 1.f
++                            : 0.f;
++                    break;
++                case ESM4::FUN_GetInFaction:
++                case ESM4::FUN_GetFactionRank:
++                    if (condition.functionIndex == ESM4::FUN_GetFactionRank)
++                        actual = -1.f;
++                    if (factions != nullptr)
++                        for (const ESM4::ActorFaction& faction : factions->mFactions)
++                            if (ESM::FormId::fromUint32(faction.faction) == parameter)
++                            {
++                                actual = condition.functionIndex == ESM4::FUN_GetInFaction ? 1.f : faction.rank;
++                                break;
++                            }
++                    break;
++                case ESM4::FUN_GetInCell:
++                    actual = actor.isInCell() && actor.getCell()->getCell()->getId() == ESM::RefId(parameter) ? 1.f : 0.f;
++                    break;
++                case ESM4::FUN_GetInWorldspace:
++                    actual = actor.isInCell() && actor.getCell()->getCell()->getWorldSpace() == ESM::RefId(parameter)
++                        ? 1.f
++                        : 0.f;
+                     break;
+                 case ESM4::FUN_GetTalkedToPC:
+-                    actual = mTalkedTo ? 1.f : 0.f;
++                    actual = actor.getClass().getCreatureStats(actor).hasTalkedToPlayer() ? 1.f : 0.f;
+                     break;
+                 case ESM4::FUN_GetDead:
+-                    actual = mActor.getClass().getCreatureStats(mActor).isDead() ? 1.f : 0.f;
++                    actual = actor.getClass().getCreatureStats(actor).isDead() ? 1.f : 0.f;
+                     break;
+                 case ESM4::FUN_GetLevel:
+-                    actual = static_cast<float>(mActor.getClass().getCreatureStats(mActor).getLevel());
++                    actual = static_cast<float>(actor.getClass().getCreatureStats(actor).getLevel());
++                    break;
++                case ESM4::FUN_GetHealthPercentage:
++                    actual = actor.getClass().getCreatureStats(actor).getHealth().getRatio();
++                    break;
++                case ESM4::FUN_GetIsCreature:
++                    actual = actor.getClass().isActor() && !actor.getClass().isNpc() ? 1.f : 0.f;
++                    break;
++                case ESM4::FUN_Exists:
++                    actual = 1.f;
++                    break;
++                case ESM4::FUN_GetItemCount:
++                    try
++                    {
++                        actual = static_cast<float>(actor.getClass().getContainerStore(actor).count(ESM::RefId(parameter)));
++                    }
++                    catch (const std::exception&)
++                    {
++                        return std::nullopt;
++                    }
++                    break;
++                case ESM4::FUN_GetEquipped:
++                    if (actorRef != nullptr)
++                    {
++                        const ESM4::Weapon* weapon = MWClass::ESM4Npc::getEquippedWeapon(actor);
++                        actual = weapon != nullptr && weapon->mId == parameter ? 1.f : 0.f;
++                        if (actual == 0.f)
++                            for (const ESM4::Armor* armor : MWClass::ESM4Npc::getEquippedArmor(actor))
++                                if (armor != nullptr && armor->mId == parameter)
++                                    actual = 1.f;
++                        if (actual == 0.f)
++                            for (const ESM4::Clothing* clothing : MWClass::ESM4Npc::getEquippedClothing(actor))
++                                if (clothing != nullptr && clothing->mId == parameter)
++                                    actual = 1.f;
++                    }
+                     break;
+-                case ESM4::FUN_GetQuestRunning:
+-                case ESM4::FUN_GetStage:
+-                case ESM4::FUN_GetStageDone:
+-                case ESM4::FUN_GetGlobalValue:
+-                case ESM4::FUN_GetQuestCompleted:
+-                case ESM4::FUN_GetObjectiveCompleted:
+-                case ESM4::FUN_GetObjectiveDisplayed:
+-                    return MWBase::Environment::get().getWorld()->getESM4QuestRuntime().evaluateConditions({ condition });
+                 default:
+                     return std::nullopt;
+             }
+ 
++            if ((condition.condition & ESM4::CTF_UseGlobal) != 0)
++                return std::nullopt;
+             float expected = condition.comparison;
+             switch (condition.condition & 0xe0)
+             {
+diff --git a/apps/openmw/mwrender/esm4npcanimation.cpp b/apps/openmw/mwrender/esm4npcanimation.cpp
+index 10d123c4fa..af8566bf36 100644
+--- a/apps/openmw/mwrender/esm4npcanimation.cpp
++++ b/apps/openmw/mwrender/esm4npcanimation.cpp
+@@ -62,6 +62,7 @@
+ #include <cstdlib>
+ #include <cstdint>
+ #include <istream>
++#include <limits>
+ #include <map>
+ #include <memory>
+ #include <sstream>
+@@ -2873,8 +2874,10 @@ namespace MWRender
+         class FalloutDialogueMorphDriver : public osg::NodeCallback
+         {
+         public:
+-            FalloutDialogueMorphDriver(Animation* animation, const FaceGenTri& tri, const std::string& model)
+-                : mAnimation(animation)
++            FalloutDialogueMorphDriver(const MWWorld::ConstPtr& actor, Animation* animation, const FaceGenTri& tri,
++                const std::string& model)
++                : mActor(actor)
++                , mAnimation(animation)
+                 , mModel(model)
+             {
+                 for (const auto& [morphName, deltas] : tri.mDiffMorphs)
+@@ -2899,13 +2902,38 @@ namespace MWRender
+ 
+                 std::vector<float> values;
+                 values.reserve(mMorphs.size());
++                float dominantLipValue = 0.f;
++                std::string_view dominantLipTarget;
+ 
+                 for (const Morph& morph : mMorphs)
+                 {
+                     float val = mAnimation->getFalloutHeadAnimTrackValue(morph.name);
++                    const float lipValue
++                        = MWBase::Environment::get().getSoundManager()->getSaySoundFacialTrackValue(mActor, morph.name);
++                    val += lipValue;
++                    if (std::abs(lipValue) > std::abs(dominantLipValue))
++                    {
++                        dominantLipValue = lipValue;
++                        dominantLipTarget = morph.name;
++                    }
+                     values.push_back(val);
+                 }
+ 
++                if (std::getenv("OPENMW_FNV_PROOF_LIP_TELEMETRY") != nullptr
++                    && nv != nullptr && nv->getFrameStamp() != nullptr)
++                {
++                    const std::uint64_t frame = nv->getFrameStamp()->getFrameNumber();
++                    if (frame != mLastTelemetryFrame && frame % 5 == 0)
++                    {
++                        mLastTelemetryFrame = frame;
++                        Log(Debug::Info) << "FNV/ESM4 LIP SAMPLE actor=" << mActor.getCellRef().getRefId()
++                                         << " frame=" << frame << " target="
++                                         << (dominantLipTarget.empty() ? std::string_view("<neutral>")
++                                                                      : dominantLipTarget)
++                                         << " value=" << dominantLipValue;
++                    }
++                }
++
+                 if (mLastValues != values)
+                 {
+                     for (Target& target : mTargets)
+@@ -3031,11 +3059,13 @@ namespace MWRender
+                 }
+             }
+ 
++            MWWorld::ConstPtr mActor;
+             Animation* mAnimation;
+             std::string mModel;
+             std::vector<Morph> mMorphs;
+             std::vector<Target> mTargets;
+             std::vector<float> mLastValues;
++            std::uint64_t mLastTelemetryFrame = std::numeric_limits<std::uint64_t>::max();
+         };
+ 
+         class FalloutDialogueMorphTargetVisitor : public osg::NodeVisitor
+@@ -3069,7 +3099,8 @@ namespace MWRender
+         };
+ 
+         bool applyFalloutDialogueMorph(
+-            Resource::ResourceSystem* resourceSystem, Animation* animation, osg::Node* attached,
++            Resource::ResourceSystem* resourceSystem, const MWWorld::ConstPtr& actor, Animation* animation,
++            osg::Node* attached,
+             std::string_view model, const ESM4::Npc& traits)
+         {
+             if (attached == nullptr)
+@@ -3080,7 +3111,7 @@ namespace MWRender
+                 return false;
+ 
+             osg::ref_ptr<FalloutDialogueMorphDriver> driver
+-                = new FalloutDialogueMorphDriver(animation, *tri, std::string(model));
++                = new FalloutDialogueMorphDriver(actor, animation, *tri, std::string(model));
+             FalloutDialogueMorphTargetVisitor targetVisitor(*driver);
+             attached->accept(targetVisitor);
+ 
+@@ -3088,6 +3119,9 @@ namespace MWRender
+                 return false;
+ 
+             attached->addUpdateCallback(driver);
++            if (std::getenv("OPENMW_FNV_PROOF_LIP_TELEMETRY") != nullptr)
++                Log(Debug::Info) << "FNV/ESM4 LIP DRIVER actor=" << actor.getCellRef().getRefId()
++                                 << " model=\"" << model << "\" attached=1";
+             return true;
+         }
+ 
+@@ -8381,7 +8415,7 @@ namespace MWRender
+             if (attached != nullptr)
+                 applyFalloutProofTriStaticMorph(mResourceSystem, attached.get(), headPart.mesh, traits);
+             if (attached != nullptr)
+-                applyFalloutDialogueMorph(mResourceSystem, this, attached.get(), headPart.mesh, traits);
++                applyFalloutDialogueMorph(mResourceSystem, mPtr, this, attached.get(), headPart.mesh, traits);
+             logFalloutFaceDrawableAudit(attached.get(), headPart.mesh, mPtr, "final-race-head");
+         }
+ 
+@@ -8403,7 +8437,7 @@ namespace MWRender
+                 applyFaceGenEgmMorph(mResourceSystem, attached.get(), hair->mModel, traits);
+                 applyFalloutProofTriStaticMorph(mResourceSystem, attached.get(), hair->mModel, traits);
+                 if (attached != nullptr)
+-                    applyFalloutDialogueMorph(mResourceSystem, this, attached.get(), hair->mModel, traits);
++                    applyFalloutDialogueMorph(mResourceSystem, mPtr, this, attached.get(), hair->mModel, traits);
+                 ++insertedHeadParts;
+             }
+             else
+@@ -8555,7 +8589,7 @@ namespace MWRender
+                 applyFaceGenEgmMorph(mResourceSystem, attached.get(), part->mModel, traits);
+                 applyFalloutProofTriStaticMorph(mResourceSystem, attached.get(), part->mModel, traits);
+                 if (attached != nullptr)
+-                    applyFalloutDialogueMorph(mResourceSystem, this, attached.get(), part->mModel, traits);
++                    applyFalloutDialogueMorph(mResourceSystem, mPtr, this, attached.get(), part->mModel, traits);
+                 if (isFonvFacialHairHeadPart(*part))
+                     usedHeadPartTypes.insert(ESM4::HeadPart::Type_FacialHair);
+                 ++inserted;
+@@ -8573,7 +8607,8 @@ namespace MWRender
+                     applyFaceGenEgmMorph(mResourceSystem, extraAttached.get(), extraPart->mModel, traits);
+                     applyFalloutProofTriStaticMorph(mResourceSystem, extraAttached.get(), extraPart->mModel, traits);
+                     if (extraAttached != nullptr)
+-                        applyFalloutDialogueMorph(mResourceSystem, this, extraAttached.get(), extraPart->mModel, traits);
++                        applyFalloutDialogueMorph(
++                            mResourceSystem, mPtr, this, extraAttached.get(), extraPart->mModel, traits);
+                     if (extraAttached != nullptr && std::getenv("OPENMW_FNV_PROOF_MOUTH_DRIVER") != nullptr
+                         && isFalloutMouthDriverPart(extraPart->mModel))
+                         applyFalloutProofTriOpenMorph(
+diff --git a/apps/openmw/mwsound/soundmanagerimp.cpp b/apps/openmw/mwsound/soundmanagerimp.cpp
+index 54ea10ac3d..43c5ad22da 100644
+--- a/apps/openmw/mwsound/soundmanagerimp.cpp
++++ b/apps/openmw/mwsound/soundmanagerimp.cpp
+@@ -374,7 +374,31 @@ namespace MWSound
+         if (!sound)
+             return;
+ 
+-        mSaySoundsQueue.emplace(ptr.mRef, SaySound{ ptr.mCell, std::move(sound) });
++        std::shared_ptr<const ESM4::LipAnimation> lip;
++        std::string lipName(filename.value());
++        const std::size_t extension = lipName.find_last_of('.');
++        if (extension != std::string::npos)
++            lipName.replace(extension, std::string::npos, ".lip");
++        else
++            lipName += ".lip";
++        const VFS::Path::Normalized lipPath(std::move(lipName));
++        if (mVFS->exists(lipPath))
++        {
++            try
++            {
++                Files::IStreamPtr stream = mVFS->get(lipPath);
++                lip = std::make_shared<ESM4::LipAnimation>(ESM4::LipAnimation::load(*stream));
++                Log(Debug::Info) << "FNV/ESM4 dialogue: loaded authored LIP path=\"" << lipPath
++                                 << "\" startFrame=" << lip->getStartFrame()
++                                 << " frames=" << lip->getFrameCount();
++            }
++            catch (const std::exception& error)
++            {
++                Log(Debug::Warning) << "Failed to load Fallout LIP \"" << lipPath << "\": " << error.what();
++            }
++        }
++
++        mSaySoundsQueue.emplace(ptr.mRef, SaySound{ ptr.mCell, std::move(sound), std::move(lip) });
+     }
+ 
+     float SoundManager::getSaySoundLoudness(const MWWorld::ConstPtr& ptr) const
+@@ -389,6 +413,24 @@ namespace MWSound
+         return 0.0f;
+     }
+ 
++    float SoundManager::getSaySoundFacialTrackValue(
++        const MWWorld::ConstPtr& ptr, std::string_view trackName) const
++    {
++        const auto evaluate = [&](const SaySoundMap& sounds) {
++            const SaySoundMap::const_iterator found = sounds.find(ptr.mRef);
++            if (found == sounds.end() || found->second.mLip == nullptr
++                || !mOutput->isStreamPlaying(found->second.mStream.get()))
++                return 0.f;
++            const double seconds = mOutput->getStreamOffset(found->second.mStream.get());
++            return found->second.mLip->getValue(trackName, seconds);
++        };
++
++        const float queued = evaluate(mSaySoundsQueue);
++        if (queued != 0.f || mSaySoundsQueue.find(ptr.mRef) != mSaySoundsQueue.end())
++            return queued;
++        return evaluate(mActiveSaySounds);
++    }
++
+     void SoundManager::say(VFS::Path::NormalizedView filename)
+     {
+         if (!mOutput->isInitialized())
+@@ -403,7 +445,7 @@ namespace MWSound
+         if (!sound)
+             return;
+ 
+-        mActiveSaySounds.emplace(nullptr, SaySound{ nullptr, std::move(sound) });
++        mActiveSaySounds.emplace(nullptr, SaySound{ nullptr, std::move(sound), nullptr });
+     }
+ 
+     bool SoundManager::sayDone(const MWWorld::ConstPtr& ptr) const
+diff --git a/apps/openmw/mwsound/soundmanagerimp.hpp b/apps/openmw/mwsound/soundmanagerimp.hpp
+index f1b79557a0..676c0a6260 100644
+--- a/apps/openmw/mwsound/soundmanagerimp.hpp
++++ b/apps/openmw/mwsound/soundmanagerimp.hpp
+@@ -8,6 +8,7 @@
+ #include <utility>
+ 
+ #include <components/fallback/fallback.hpp>
++#include <components/esm4/lip.hpp>
+ #include <components/misc/objectpool.hpp>
+ #include <components/misc/strings/algorithm.hpp>
+ #include <components/settings/settings.hpp>
+@@ -76,6 +77,7 @@ namespace MWSound
+         {
+             const MWWorld::CellStore* mCell;
+             StreamPtr mStream;
++            std::shared_ptr<const ESM4::LipAnimation> mLip;
+         };
+ 
+         typedef std::map<const MWWorld::LiveCellRefBase*, SaySound> SaySoundMap;
+@@ -203,6 +205,9 @@ namespace MWSound
+         /// and get an average loudness value (scale [0,1]) at the current time position.
+         /// If the actor is not saying anything, returns 0.
+ 
++        float getSaySoundFacialTrackValue(
++            const MWWorld::ConstPtr& reference, std::string_view trackName) const override;
++
+         Stream* playTrack(const DecoderPtr& decoder, Type type) override;
+         ///< Play a 2D audio track, using a custom decoder
+ 
+diff --git a/components/CMakeLists.txt b/components/CMakeLists.txt
+index ab6fda74ae..1f03547535 100644
+--- a/components/CMakeLists.txt
++++ b/components/CMakeLists.txt
+@@ -208,6 +208,7 @@ add_component_dir (esm4
+     grouptype
+     inventory
+     lighting
++    lip
+     loadachr
+     loadacti
+     loadalch
+diff --git a/components/esm4/lip.cpp b/components/esm4/lip.cpp
+new file mode 100644
+index 0000000000..6d01d4be15
+--- /dev/null
++++ b/components/esm4/lip.cpp
+@@ -0,0 +1,175 @@
++#include "lip.hpp"
++
++#include <algorithm>
++#include <array>
++#include <cmath>
++#include <cstring>
++#include <istream>
++#include <iterator>
++#include <limits>
++#include <stdexcept>
++#include <string>
++#include <vector>
++
++namespace ESM4
++{
++    namespace
++    {
++        constexpr std::uint32_t sCompressed = 0x1;
++        constexpr std::uint32_t sBigEndian = 0x2;
++        constexpr std::size_t sHeaderSize = 12;
++        constexpr std::size_t sDecodedHeaderSize = 12;
++        constexpr std::size_t sRetailImplicitTailSize = 4;
++        constexpr std::uint32_t sMaxDecodedSize = 512 * 1024 * 1024;
++        constexpr std::size_t sMaxFrames = 30 * 60 * 60;
++
++        constexpr std::array<std::string_view, LipAnimation::sTargetCount> sTargetNames{
++            "Aah", "BigAah", "BMP", "ChJSh", "DST", "Eee", "Eh", "FV", "I", "K", "N", "Oh",
++            "OohQ", "R", "Th", "W", "BlinkLeft", "BlinkRight", "BrowDownLeft", "BrowDownRight",
++            "BrowInLeft", "BrowInRight", "BrowUpLeft", "BrowUpRight", "LookDown", "LookLeft",
++            "LookRight", "LookUp", "SquintLeft", "SquintRight", "HeadPitch", "HeadRoll", "HeadYaw"
++        };
++
++        std::uint16_t readUint16(const std::vector<std::uint8_t>& data, std::size_t offset)
++        {
++            if (offset + 2 > data.size())
++                throw std::runtime_error("Truncated Fallout LIP uint16");
++            return static_cast<std::uint16_t>(data[offset])
++                | static_cast<std::uint16_t>(data[offset + 1] << 8);
++        }
++
++        std::uint32_t readUint32(const std::vector<std::uint8_t>& data, std::size_t offset)
++        {
++            if (offset + 4 > data.size())
++                throw std::runtime_error("Truncated Fallout LIP uint32");
++            return static_cast<std::uint32_t>(data[offset])
++                | static_cast<std::uint32_t>(data[offset + 1]) << 8
++                | static_cast<std::uint32_t>(data[offset + 2]) << 16
++                | static_cast<std::uint32_t>(data[offset + 3]) << 24;
++        }
++
++        std::vector<std::uint8_t> decodeZeroRuns(
++            const std::vector<std::uint8_t>& file, std::size_t expectedSize)
++        {
++            std::vector<std::uint8_t> result;
++            result.reserve(expectedSize);
++            for (std::size_t offset = sHeaderSize; offset < file.size();)
++            {
++                const std::uint8_t value = file[offset++];
++                if (value != 0)
++                {
++                    result.push_back(value);
++                    continue;
++                }
++
++                const std::uint16_t count = readUint16(file, offset);
++                offset += 2;
++                if (count == 0 || result.size() + count > expectedSize)
++                    throw std::runtime_error("Invalid Fallout LIP zero run");
++                result.insert(result.end(), count, 0);
++            }
++            if (result.size() != expectedSize)
++                throw std::runtime_error("Truncated Fallout LIP zero-run payload");
++            return result;
++        }
++
++        bool equalAsciiCaseInsensitive(std::string_view left, std::string_view right)
++        {
++            if (left.size() != right.size())
++                return false;
++            return std::equal(left.begin(), left.end(), right.begin(), [](char l, char r) {
++                if (l >= 'A' && l <= 'Z')
++                    l = static_cast<char>(l + ('a' - 'A'));
++                if (r >= 'A' && r <= 'Z')
++                    r = static_cast<char>(r + ('a' - 'A'));
++                return l == r;
++            });
++        }
++    }
++
++    LipAnimation LipAnimation::load(std::istream& stream)
++    {
++        const std::vector<std::uint8_t> file{
++            std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()
++        };
++        if (file.size() < sHeaderSize)
++            throw std::runtime_error("Truncated Fallout LIP header");
++
++        const std::uint32_t version = readUint32(file, 0);
++        const std::uint32_t storedSize = readUint32(file, 4);
++        const std::uint32_t flags = readUint32(file, 8);
++        if (version != 1)
++            throw std::runtime_error("Unsupported Fallout LIP version");
++        if ((flags & sBigEndian) != 0)
++            throw std::runtime_error("Big-endian Fallout LIP is not supported");
++        if (storedSize < 16 || storedSize > sMaxDecodedSize)
++            throw std::runtime_error("Invalid Fallout LIP decoded size");
++
++        std::vector<std::uint8_t> decoded;
++        if ((flags & sCompressed) != 0)
++            decoded = decodeZeroRuns(file, storedSize - 16);
++        else
++        {
++            if (file.size() <= sHeaderSize || file[sHeaderSize] != 2)
++                throw std::runtime_error("Invalid uncompressed Fallout LIP payload");
++            decoded.assign(file.begin() + sHeaderSize + 1, file.end());
++        }
++
++        if (decoded.size() < sDecodedHeaderSize)
++            throw std::runtime_error("Truncated Fallout LIP animation header");
++        const std::uint32_t frameCount = readUint32(decoded, 0);
++        const std::int32_t startFrame = static_cast<std::int32_t>(readUint32(decoded, 4));
++        if (frameCount == 0 || frameCount > sMaxFrames)
++            throw std::runtime_error("Invalid Fallout LIP frame count");
++
++        const std::size_t requiredSize
++            = sDecodedHeaderSize + static_cast<std::size_t>(frameCount) * sTargetCount * sizeof(float);
++        if (decoded.size() + sRetailImplicitTailSize < requiredSize || decoded.size() > requiredSize)
++            throw std::runtime_error("Unexpected Fallout LIP target payload size");
++        decoded.resize(requiredSize, 0);
++
++        LipAnimation result;
++        result.mStartFrame = startFrame;
++        result.mFrames.resize(frameCount);
++        std::size_t offset = sDecodedHeaderSize;
++        for (auto& frame : result.mFrames)
++        {
++            for (float& value : frame)
++            {
++                const std::uint32_t bits = readUint32(decoded, offset);
++                std::memcpy(&value, &bits, sizeof(value));
++                if (!std::isfinite(value) || std::abs(value) > 16.f)
++                    throw std::runtime_error("Invalid Fallout LIP target value");
++                offset += sizeof(float);
++            }
++        }
++        return result;
++    }
++
++    float LipAnimation::getValue(std::string_view target, double seconds) const
++    {
++        for (std::size_t i = 0; i < sTargetNames.size(); ++i)
++            if (equalAsciiCaseInsensitive(target, sTargetNames[i]))
++                return getValue(i, seconds);
++        return 0.f;
++    }
++
++    float LipAnimation::getValue(std::size_t target, double seconds) const
++    {
++        if (target >= sTargetCount || mFrames.empty() || !std::isfinite(seconds))
++            return 0.f;
++
++        const double position = seconds * sFramesPerSecond - static_cast<double>(mStartFrame);
++        if (position < 0.0 || position > static_cast<double>(mFrames.size() - 1))
++            return 0.f;
++        const std::size_t lower = static_cast<std::size_t>(position);
++        const std::size_t upper = std::min(lower + 1, mFrames.size() - 1);
++        const float factor = static_cast<float>(position - static_cast<double>(lower));
++        return mFrames[lower][target] + (mFrames[upper][target] - mFrames[lower][target]) * factor;
++    }
++
++    std::string_view LipAnimation::getTargetName(std::size_t target)
++    {
++        return target < sTargetNames.size() ? sTargetNames[target] : std::string_view{};
++    }
++}
+diff --git a/components/esm4/lip.hpp b/components/esm4/lip.hpp
+new file mode 100644
+index 0000000000..64c8fa60cb
+--- /dev/null
++++ b/components/esm4/lip.hpp
+@@ -0,0 +1,35 @@
++#ifndef OPENMW_COMPONENTS_ESM4_LIP_H
++#define OPENMW_COMPONENTS_ESM4_LIP_H
++
++#include <array>
++#include <cstddef>
++#include <cstdint>
++#include <iosfwd>
++#include <string_view>
++#include <vector>
++
++namespace ESM4
++{
++    class LipAnimation
++    {
++    public:
++        static constexpr std::size_t sTargetCount = 33;
++        static constexpr float sFramesPerSecond = 30.f;
++
++        static LipAnimation load(std::istream& stream);
++
++        float getValue(std::string_view target, double seconds) const;
++        float getValue(std::size_t target, double seconds) const;
++
++        std::int32_t getStartFrame() const { return mStartFrame; }
++        std::size_t getFrameCount() const { return mFrames.size(); }
++
++        static std::string_view getTargetName(std::size_t target);
++
++    private:
++        std::int32_t mStartFrame = 0;
++        std::vector<std::array<float, sTargetCount>> mFrames;
++    };
++}
++
++#endif
+diff --git a/components/esm4/loadnpc.cpp b/components/esm4/loadnpc.cpp
+index 5dcbfa5a10..177111b40e 100644
+--- a/components/esm4/loadnpc.cpp
++++ b/components/esm4/loadnpc.cpp
+@@ -138,12 +138,15 @@ void ESM4::Npc::load(ESM4::Reader& reader)
+                 break;
+             case ESM::fourCC("SNAM"):
+             {
++                ActorFaction faction{};
+                 // FO4, FO76
+                 if (subHdr.dataSize == 5)
+-                    reader.get(&mFaction, 5);
++                    reader.get(&faction, 5);
+                 else
+-                    reader.get(mFaction);
+-                reader.adjustFormId(mFaction.faction);
++                    reader.get(faction);
++                reader.adjustFormId(faction.faction);
++                mFaction = faction;
++                mFactions.push_back(faction);
+                 break;
+             }
+             case ESM::fourCC("RNAM"):
+@@ -402,7 +405,6 @@ void ESM4::Npc::load(ESM4::Reader& reader)
+             case ESM::fourCC("PRKZ"):
+             case ESM::fourCC("SPCT"):
+             case ESM::fourCC("VMAD"):
+-            case ESM::fourCC("VTCK"):
+             case ESM::fourCC("GNAM"):
+             case ESM::fourCC("SHRT"):
+             case ESM::fourCC("SPOR"):
+@@ -447,6 +449,9 @@ void ESM4::Npc::load(ESM4::Reader& reader)
+             case ESM::fourCC("FMIN"): // FO4 morph subrecords end
+                 reader.skipSubRecordData();
+                 break;
++            case ESM::fourCC("VTCK"):
++                reader.getFormId(mVoiceType);
++                break;
+             default:
+                 if (reader.skipUnknownStarfieldSubRecordData("loadnpc"))
+                     break;
+diff --git a/components/esm4/loadnpc.hpp b/components/esm4/loadnpc.hpp
+index 47b0797cc9..b812b9204e 100644
+--- a/components/esm4/loadnpc.hpp
++++ b/components/esm4/loadnpc.hpp
+@@ -199,6 +199,7 @@ namespace ESM4
+         ESM::FormId mClass;
+         ESM::FormId mHair; // not for TES5, see mHeadParts
+         ESM::FormId mEyes;
++        ESM::FormId mVoiceType;
+ 
+         std::vector<ESM::FormId> mHeadParts; // FO3/FONV/TES5
+ 
+@@ -215,6 +216,7 @@ namespace ESM4
+         std::vector<ESM::FormId> mAIPackages; // seems to be in priority order, 0 = highest priority
+         ActorBaseConfig mBaseConfig{}; // union
+         ActorFaction mFaction{};
++        std::vector<ActorFaction> mFactions;
+         Data mData{};
+         ESM::FormId mCombatStyle;
+         ESM::FormId mSoundBase;
+diff --git a/components/esm4/script.cpp b/components/esm4/script.cpp
+index adf6706142..d44f76eca6 100644
+--- a/components/esm4/script.cpp
++++ b/components/esm4/script.cpp
+@@ -128,11 +128,21 @@ namespace ESM4
+ 
+         switch (condition.functionIndex)
+         {
++            case FUN_GetDistance:
++            case FUN_GetItemCount:
++            case FUN_GetDeadCount:
+             case FUN_GetInCell:
+             case FUN_GetIsClass:
+             case FUN_GetIsRace:
++            case FUN_GetIsVoiceType:
+             case FUN_GetInFaction:
+             case FUN_GetIsID:
++            case FUN_GetEquipped:
++            case FUN_GetIsCurrentPackage:
++            case FUN_GetIsReference:
++            case FUN_GetInWorldspace:
++            case FUN_GetHasNote:
++            case FUN_HasPerk:
+             case FUN_GetGlobalValue:
+             case FUN_GetQuestVariable:
+             case FUN_GetQuestRunning:
+-- 
+2.53.0.windows.1
+

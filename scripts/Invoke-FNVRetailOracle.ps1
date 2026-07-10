@@ -25,6 +25,7 @@ param(
     [int]$FootIkToggleFrame = 0,
     [ValidateSet(-1, 0, 1)]
     [int]$FootIkToggleEnabled = -1,
+    [switch]$FurnitureOnly,
     [switch]$CaptureAnimation
 )
 
@@ -130,6 +131,7 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_EQUIP_FORM = $EquipForm
     NIKAMI_ORACLE_ALL_HIGH_ACTORS = if ($CaptureAnimation) { "1" } else { "0" }
     NIKAMI_ORACLE_CAPTURE_ANIMATION = if ($CaptureAnimation) { "1" } else { "0" }
+    NIKAMI_ORACLE_FURNITURE_ONLY = if ($FurnitureOnly) { "1" } else { "0" }
     NIKAMI_ORACLE_SAVE = $SaveName
     NIKAMI_ORACLE_PLAY_GROUP = $PlayGroup
     NIKAMI_ORACLE_DRIVE_COMMAND = $DriveCommand
@@ -244,6 +246,7 @@ if ($complete.Count -ne 1) {
     setStageQuestForm = $SetStageQuestForm
     setStageIndex = $SetStageIndex
     captureAnimation = [bool]$CaptureAnimation
+    furnitureOnly = [bool]$FurnitureOnly
     sampleEvery = $SampleEvery
     targetForm = $TargetForm
     equipForm = $EquipForm

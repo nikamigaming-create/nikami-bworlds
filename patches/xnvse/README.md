@@ -32,4 +32,7 @@ actor/bone-LOD settings. Its runtime-only struct views are confined to the
 oracle plugin and do not modify xNVSE itself. Patch 0002 adds authored group and
 blend telemetry. Patch 0003 records the exact retail distance quotient, the
 temporary `AnimData` sequence gate, and every call to the original bone-LOD
-writer. The capture runner restores the pre-existing retail DLL after each run.
+writer. Patch 0004 records the retail `sitSleepState`, claimed furniture
+reference, marker index, and cached marker transform, with a furniture-only
+mode for long AI/package captures. The capture runner restores the pre-existing
+retail DLL after each run.

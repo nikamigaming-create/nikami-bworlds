@@ -37,6 +37,14 @@ Patch 0008 fixes the packed TRDT response number, resolves authored FO3/FNV
 voice files from the mounted archive index, executes common INFO quest/result
 commands, persists named quest variables, and adds deterministic topic proof
 selection. It is exported from downstream commit `7a159454ed`.
+Patch 0009 decodes the retail compressed `.lip` format, samples its 33 FaceFX
+targets on the real voice clock, routes them through every available TRI face
+part, and expands CTDA subject/reference/faction/item/cell coverage. It is
+exported from downstream commit `0d7383112e`.
+Patch 0010 selects the active FURN marker bit, distinguishes the retail entry
+marker from the settled chair transform, gives the persistent chair idle its
+own full-body group, and suppresses standing weapon pose while seated. It is
+exported from downstream commit `f508102307`.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 
@@ -95,9 +103,11 @@ through 0006. The reproducible xNVSE oracle overlay lives separately under
 `patches/xnvse/`; it is never part of the OpenMW apply queue. Patch 0007's
 FaceGen proof boundary remains the Easy Pete slice. Patch 0008 proves authored
 greeting/topic voice in both FNV and FO3 plus Easy Pete's four retail quest
-variable writes. Broader CTDA/RunOn coverage, compiled bytecode, multi-line
-voice queues/lip sync, and service menus remain explicit follow-on gates rather
-than implied compatibility claims.
+variable writes. Patch 0009 proves retail LIP channel delivery in FNV and FO3.
+Patch 0010 proves scheduled settled-chair loading for Easy Pete; enter/stand
+transitions and arbitrary runtime furniture activation remain open. Broader
+CTDA/RunOn coverage, compiled bytecode, multi-line voice queues, and service
+menus remain explicit follow-on gates rather than implied compatibility claims.
 
 If one downstream patch matures into something upstream-worthy, split it into a
 clean branch in the external OpenMW checkout and submit a normal upstream PR.
