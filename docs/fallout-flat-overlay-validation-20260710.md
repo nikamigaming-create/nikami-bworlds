@@ -1,8 +1,9 @@
 # Fallout 3 / New Vegas Flat Overlay Validation — 2026-07-10
 
-This note is the promotion record for OpenMW overlay patches 0002 and 0003.
-Patch 0002 covers the actor-animation and attachment milestone. Patch 0003 is
-the first bounded behavioral-runtime milestone. It does **not** claim complete
+This note is the promotion record for OpenMW overlay patches 0002 through 0005.
+Patch 0002 covers actor animation and attachments, patch 0003 the first bounded
+behavioral runtime, and patches 0004/0005 retail animation priority and bone-LOD
+parity. It does **not** claim complete
 dialogue execution, AI scheduling, compiled-script interpretation, combat,
 inventory, or whole-game parity.
 
@@ -34,8 +35,8 @@ XR is intentionally out of scope. Every promoted run used flat `openmw.exe`.
 
 The spline behavior was cross-checked against the official
 [NifSkope controller implementation](https://github.com/niftools/nifskope/blob/develop/src/gl/glcontroller.cpp).
-Runtime root and weapon-family behavior was checked with the isolated modified
-xNVSE oracle in `external/xnvse/nvse_retail_oracle/`.
+Runtime root and weapon-family behavior was checked with the isolated xNVSE
+overlay exported under `patches/xnvse/`.
 
 ## Reproduction
 
@@ -121,8 +122,9 @@ Patch SHA-256:
 - 0002: `36FCD799B930946AB1C6CE2DDAABCFEEB8E6FCC727A8EFF78C576D6299515DA0`
 - 0003: `359B8D5A1E43E167B4A4B86B09783A797856F933553CD66879255434F4CA20C5`
 - 0004: `B22982BA2D4458D55F009B2FC0B4B2A3430669FBBE6A47FB8F0F5B02A4AD07E8`
+- 0005: `40FA5D12D3CD71CCE4F24C597EF3F22C16ED25036794DCBDF824AD7E996E00F8`
 
-The ordered 0001 through 0004 queue was cumulatively apply-checked from clean
+The ordered 0001 through 0005 queue was cumulatively apply-checked from clean
 OpenMW base `c30c830d8e` with `scripts/Apply-OpenMWPatches.ps1 -Check`.
 
 ### Retail xNVSE oracle
@@ -130,7 +132,7 @@ OpenMW base `c30c830d8e` with `scripts/Apply-OpenMWPatches.ps1 -Check`.
 The isolated oracle is an overlay against xNVSE commit `175bb28`:
 
 - patch: `patches/xnvse/0001-add-nikami-retail-oracle.patch`
-- patch SHA-256: `320EE72E5896578E949675D4E48527DB86F2766A43E886EE8D95758139121743`
+- patch SHA-256: `A82E0829AD3DE064AE9483F966962C96985553D77694EA6CD5107C9058DFC641`
 - runner: `scripts/Invoke-FNVRetailOracle.ps1`
 - exact capture: `run/retail-oracle/fnv-goodsprings-direct-vcg02-stage5-timescale12.jsonl`
 
@@ -230,12 +232,59 @@ The major-bone pose-curve comparison reports exact `Weapon`, head maximum
 rotation residual 0.065 degrees, arm maximum 0.055 degrees, and root-translation
 shape within 0.049 units after removing sequence-start/callback phase offset.
 
-The expanded 61-node comparison also isolates the next engine task. Retail
-creates manager-controlled blend targets (blend flags 5) for finger, twist, and
-toe chains; normal limbs use flags 1. OpenMW's five coarse body masks currently
-select one source for all descendants and cannot reproduce those per-target
-manager-controlled transitions. This is recorded as an open parity gap, not
-papered over with a joint-name correction.
+The expanded 61-node comparison then isolated the remaining finger, twist,
+pauldron, and toe behavior. Patch 0005 resolves the cause described below; it
+does not use a joint-name correction.
+
+## Patch 0005: Bethesda bone-LOD runtime parity
+
+Downstream commit `0bdacbfcdd` and patch 0005 load the authored
+`NiBSBoneLODController` node groups from the skeleton NIF and tag the
+corresponding scene nodes. The runtime suppresses animation callbacks only for
+groups below the active LOD. It therefore preserves full-detail finger and
+twist animation close to the camera and freezes the same fine joints as retail
+at distance. No bone-name table is embedded in the engine patch.
+
+The extended xNVSE oracle at commit `0b69e6d` established the retail rule from
+FNV 1.4.0.525 directly:
+
+- the skeleton declares eight groups; group 0 contains exactly 38 finger,
+  thumb, forearm/upper-arm twist, pauldron, and toe nodes;
+- retail LOD 1 changes those 38 targets to manager-controlled blend flags 5
+  with their active high-priority interpolator normalized weight at zero;
+- live `iBoneLODDistMult` is 1000, while camera-distance samples report LOD 0
+  at 1248.22, LOD 1 at 1251.15, and LOD 2 at 2705.18; and
+- the resulting ladder is `floor(cameraDistance / 1250)`, with the player held
+  at LOD 0 and levels capped by the eight authored groups.
+
+The exact retail captures are:
+
+- controller/groups and blend state: `run/retail-oracle/fnv-retail-v12-bone-lod-structured.jsonl`;
+- live settings: `run/retail-oracle/fnv-retail-v16-lod-settings.jsonl`;
+- 1248-to-1251 boundary: `run/retail-oracle/fnv-retail-v24-bone-lod-camera-distance.jsonl`; and
+- LOD 2 at 2705 units: `run/retail-oracle/fnv-retail-v25-bone-lod-visible-2700.jsonl`.
+
+`scripts/Compare-BethesdaBoneLodMotion.ps1` reads group 0 from the NIF audit
+instead of hardcoding names. Its retail-frame-84-through-96 versus OpenMW
+report is `matched`: all 38 nodes were present, retail maximum retained-pose
+motion was `0.00000296` degrees, and OpenMW maximum was `0.00000241` degrees.
+The report is
+`run/transform-oracle/fnv-retail-v10-f84-96-vs-openmw-bone-lod-motion.json`.
+
+Final flat `openmw.exe` SHA-256 is
+`295609B2E2DC0117B70545C7D75EFA300F468E83930EFABF2542DD7920492593`.
+Both release proofs captured 31 consecutive native frames, exited 0, produced
+no crash report, and required no forced kill:
+
+- FNV: `run/transform-oracle/bone-lod-final-proof/fallout_new_vegas-20260710-092044/manifest.json`;
+- FNV clip: `run/transform-oracle/bone-lod-final-proof/fallout_new_vegas-20260710-092044/fnv-final-front-walk.mp4`;
+- FO3: `run/transform-oracle/bone-lod-final-fo3-proof/fallout3-20260710-092428/manifest.json`; and
+- FO3 clip: `run/transform-oracle/bone-lod-final-fo3-proof/fallout3-20260710-092428/fo3-final-front-walk.mp4`.
+
+The close FNV actor transitions from its pre-camera distant LOD to LOD 0 and
+keeps its animated fingers on the rifle. The FO3 actor likewise keeps head,
+hat, beard, hands, rifle, torso, and legs attached. Only flat `openmw.exe` was
+launched; no XR executable or headset runtime was started.
 
 ## Remaining compatibility work
 
@@ -244,9 +293,10 @@ next matrices are dialogue/topic selection and result execution, broad CTDA
 function coverage, compiled Fallout script bytecode execution, package
 scheduling/navigation, combat and inventory semantics, and representative
 quest/save differentials across both base games and every configured DLC.
-Animation work must additionally implement Gamebryo-compatible per-target
-manager-controlled blend state for finger, twist, and toe targets, then rerun
-the 61-node oracle comparison before claiming complete pose parity.
+Animation work must still reproduce the exact retained fine-joint pose when a
+bone-LOD transition occurs after a different prior animation history, broaden
+the oracle across more weapons and animation groups, and validate equivalent
+FO3 retail timing before claiming complete pose parity.
 
 Visual parity also remains a permanent release gate: head, face, hair, beard or
 headgear, hands, body, feet, weapon sockets, muzzle and magazine helpers, and

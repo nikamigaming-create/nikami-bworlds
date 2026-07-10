@@ -24,7 +24,9 @@ attachment, FormID-script, and weapon-selector correction exported from commit
 global, VM-command, and save-state foundation exported from downstream commit
 `af8eaca764`. Patch 0004 is the retail-priority weapon-pose correction and
 transform-oracle instrumentation exported from downstream commit `8d59cdf54a`.
-Together they reproduce the currently proven flat runtime without
+Patch 0005 reads Bethesda's authored `NiBSBoneLODController` groups, applies
+the retail camera-distance ladder, and is exported from downstream commit
+`0bdacbfcdd`. Together they reproduce the currently proven flat runtime without
 vendoring game data or the OpenMW source tree.
 
 For routine downstream updates, rebase the dedicated overlay branch onto the
@@ -78,7 +80,7 @@ test `openmw_vr.exe` as part of the flat compatibility gate.
 See `docs/fallout-flat-overlay-validation-20260710.md` for the exact retail
 oracle evidence, unit/sanitizer gates, record-load manifests, quest/save
 differentials, and native FO3/FNV walking proofs used to promote patches 0002
-and 0003. The reproducible xNVSE oracle overlay lives separately under
+through 0005. The reproducible xNVSE oracle overlay lives separately under
 `patches/xnvse/`; it is never part of the OpenMW apply queue.
 
 If one downstream patch matures into something upstream-worthy, split it into a
