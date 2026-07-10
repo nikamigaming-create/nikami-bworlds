@@ -26,8 +26,11 @@ global, VM-command, and save-state foundation exported from downstream commit
 transform-oracle instrumentation exported from downstream commit `8d59cdf54a`.
 Patch 0005 reads Bethesda's authored `NiBSBoneLODController` groups, applies
 the retail camera-distance ladder, and is exported from downstream commit
-`0bdacbfcdd`. Together they reproduce the currently proven flat runtime without
-vendoring game data or the OpenMW source tree.
+`0bdacbfcdd`. Patch 0006 applies the fully disassembled retail scale/camera/fade
+equation and defers a LOD change while OpenMW's equivalent temporary scripted
+sequence is active; it is exported from downstream commit `980555702e`.
+Together they reproduce the currently proven flat runtime without vendoring
+game data or the OpenMW source tree.
 
 For routine downstream updates, rebase the dedicated overlay branch onto the
 new downstream base, resolve conflicts there, rebuild and prove the flat target,
@@ -80,7 +83,7 @@ test `openmw_vr.exe` as part of the flat compatibility gate.
 See `docs/fallout-flat-overlay-validation-20260710.md` for the exact retail
 oracle evidence, unit/sanitizer gates, record-load manifests, quest/save
 differentials, and native FO3/FNV walking proofs used to promote patches 0002
-through 0005. The reproducible xNVSE oracle overlay lives separately under
+through 0006. The reproducible xNVSE oracle overlay lives separately under
 `patches/xnvse/`; it is never part of the OpenMW apply queue.
 
 If one downstream patch matures into something upstream-worthy, split it into a

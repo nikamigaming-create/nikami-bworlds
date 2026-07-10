@@ -1,0 +1,231 @@
+From 0b69e6dcdc4f20f80b64e1928debeeb904b28253 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 09:23:08 -0700
+Subject: [PATCH 2/3] Capture retail Bethesda bone LOD state
+
+---
+ nvse_retail_oracle/main.cpp | 160 +++++++++++++++++++++++++++++++++++-
+ 1 file changed, 158 insertions(+), 2 deletions(-)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index db4a34a..da899a6 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -5,6 +5,7 @@
+ #include <Windows.h>
+ 
+ #include <algorithm>
++#include <cmath>
+ #include <cstdint>
+ #include <cstring>
+ #include <cstdlib>
+@@ -149,13 +150,47 @@ namespace
+         UInt8 pad3E[2];
+     };
+ 
++    struct OracleTimeController
++    {
++        void** vtable;
++        UInt32 refCount;
++        UInt16 flags;
++        UInt16 unknown0A;
++        float frequency;
++        float phaseTime;
++        float lowKeyTime;
++        float highKeyTime;
++        float startTime;
++        float lastTime;
++        float weightedLastTime;
++        float scaledTime;
++        NiObject* target;
++        OracleTimeController* next;
++    };
++
++    struct OracleSetting
++    {
++        void** vtable;
++        UInt32 rawValue;
++        const char* name;
++    };
++
++    struct OracleVector3
++    {
++        float x;
++        float y;
++        float z;
++    };
++
+     static_assert(sizeof(OracleQuatTransform) == 0x20);
+     static_assert(sizeof(OracleTransformInterpolator) == 0x2c);
+     static_assert(sizeof(OracleBlendItem) == 0x18);
+     static_assert(sizeof(OracleBlendInterpolator) == 0x30);
+     static_assert(sizeof(OracleControlledBlock) == 0x10);
+     static_assert(sizeof(OracleMultiTargetTransformController) == 0x40);
+-
++    static_assert(sizeof(OracleTimeController) == 0x34);
++    static_assert(sizeof(OracleSetting) == 0x0c);
++    static_assert(sizeof(OracleVector3) == 0x0c);
+     template <class T>
+     bool safeRead(const void* address, T& value)
+     {
+@@ -378,7 +413,16 @@ namespace
+             "Bip01 Neck1", "Bip01 Head", "Bip01 L Clavicle", "Bip01 L UpperArm", "Bip01 L Forearm",
+             "Bip01 L Hand", "Bip01 R Clavicle", "Bip01 R UpperArm", "Bip01 R Forearm", "Bip01 R Hand",
+             "Bip01 L Thigh", "Bip01 L Calf", "Bip01 L Foot", "Bip01 L Toe0", "Bip01 R Thigh",
+-            "Bip01 R Calf", "Bip01 R Foot", "Bip01 R Toe0", "Weapon" };
++            "Bip01 R Calf", "Bip01 R Foot", "Bip01 R Toe0", "Bip01 LUpArmTwistBone",
++            "Bip01 RUpArmTwistBone", "Bip01 L ForeTwist", "Bip01 R ForeTwist", "Bip01 L Thumb1",
++            "Bip01 L Thumb11", "Bip01 L Thumb12", "Bip01 R Thumb1", "Bip01 R Thumb11", "Bip01 R Thumb12",
++            "Bip01 L Finger1", "Bip01 L Finger11", "Bip01 L Finger12", "Bip01 L Finger2",
++            "Bip01 L Finger21", "Bip01 L Finger22", "Bip01 L Finger3", "Bip01 L Finger31",
++            "Bip01 L Finger32", "Bip01 L Finger4", "Bip01 L Finger41", "Bip01 L Finger42",
++            "Bip01 R Finger1", "Bip01 R Finger11", "Bip01 R Finger12", "Bip01 R Finger2",
++            "Bip01 R Finger21", "Bip01 R Finger22", "Bip01 R Finger3", "Bip01 R Finger31",
++            "Bip01 R Finger32", "Bip01 R Finger4", "Bip01 R Finger41", "Bip01 R Finger42",
++            "Bip01 LPauldron", "Bip01 RPauldron", "Weapon" };
+         for (const char* target : targets)
+         {
+             if (_stricmp(name.c_str(), target) == 0)
+@@ -637,6 +681,76 @@ namespace
+             writeNodeRecursive(out, node->m_children.data[i], first, depth + 1);
+     }
+ 
++    void writeBoneLodProbe(std::ostream& out, NiBSBoneLODController* controllerAddress)
++    {
++        if (controllerAddress == nullptr)
++        {
++            out << "null";
++            return;
++        }
++
++        NiObject* object = reinterpret_cast<NiObject*>(controllerAddress);
++        const std::string type = safeRuntimeString(runtimeTypeName(object));
++        OracleTimeController base = {};
++        out << "{\"address\":"
++            << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(controllerAddress))
++            << ",\"type\":" << jsonString(type.empty() ? nullptr : type.c_str());
++        if (safeRead(controllerAddress, base))
++        {
++            out << ",\"flags\":" << base.flags
++                << ",\"frequency\":" << base.frequency
++                << ",\"phaseTime\":" << base.phaseTime
++                << ",\"lowKeyTime\":" << base.lowKeyTime
++                << ",\"highKeyTime\":" << base.highKeyTime
++                << ",\"startTime\":" << base.startTime
++                << ",\"lastTime\":" << base.lastTime
++                << ",\"weightedLastTime\":" << base.weightedLastTime
++                << ",\"scaledTime\":" << base.scaledTime
++                << ",\"targetAddress\":"
++                << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(base.target));
++        }
++
++        UInt32 currentLod = 0;
++        UInt32 declaredGroupCount = 0;
++        safeRead(reinterpret_cast<const UInt8*>(controllerAddress) + 0x34, currentLod);
++        safeRead(reinterpret_cast<const UInt8*>(controllerAddress) + 0x38, declaredGroupCount);
++        out << ",\"currentLod\":" << currentLod
++            << ",\"declaredGroupCount\":" << declaredGroupCount;
++
++        out << ",\"rawWords34ToB0\":[";
++        bool first = true;
++        for (std::size_t offset = 0x34; offset <= 0xB0; offset += sizeof(UInt32))
++        {
++            UInt32 word = 0;
++            if (!safeRead(reinterpret_cast<const UInt8*>(controllerAddress) + offset, word))
++                break;
++            if (!first)
++                out << ',';
++            first = false;
++            out << word;
++        }
++        out << "]}";
++    }
++
++    void writeSettingProbe(std::ostream& out, std::uintptr_t address)
++    {
++        OracleSetting setting = {};
++        if (!safeRead(reinterpret_cast<const void*>(address), setting))
++        {
++            out << "null";
++            return;
++        }
++
++        float floatValue = 0.f;
++        std::memcpy(&floatValue, &setting.rawValue, sizeof(floatValue));
++        const std::string name = safeRuntimeString(setting.name);
++        out << "{\"address\":" << static_cast<unsigned long>(address)
++            << ",\"name\":" << jsonString(name.empty() ? nullptr : name.c_str())
++            << ",\"rawValue\":" << setting.rawValue
++            << ",\"integerValue\":" << static_cast<SInt32>(setting.rawValue)
++            << ",\"floatValue\":" << floatValue << '}';
++    }
++
+     void writeSequence(std::ostream& out, const BSAnimGroupSequence* sequence)
+     {
+         if (sequence == nullptr)
+@@ -680,6 +794,13 @@ namespace
+             HighProcess* hp = process->processLevel == 0 ? static_cast<HighProcess*>(process) : nullptr;
+             TESObjectWEAP* weapon = mhp != nullptr && mhp->weaponInfo != nullptr ? mhp->weaponInfo->weapon : nullptr;
+             NiNode* root = actor->GetNiNode();
++            PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
++            OracleVector3 cameraPos3rdPerson = {};
++            OracleVector3 cameraPos = {};
++            const bool hasCameraPos3rdPerson = player != nullptr
++                && safeRead(reinterpret_cast<const UInt8*>(player) + 0xD58, cameraPos3rdPerson);
++            const bool hasCameraPos = player != nullptr
++                && safeRead(reinterpret_cast<const UInt8*>(player) + 0xDE0, cameraPos);
+ 
+             gOutput << std::setprecision(9)
+                 << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-frame\""
+@@ -688,6 +809,23 @@ namespace
+                 << ",\"baseForm\":" << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
+                 << ",\"position\":[" << actor->posX << ',' << actor->posY << ',' << actor->posZ << ']'
+                 << ",\"rotation\":[" << actor->rotX << ',' << actor->rotY << ',' << actor->rotZ << ']'
++                << ",\"cameraPos3rdPerson\":";
++            if (hasCameraPos3rdPerson)
++                gOutput << '[' << cameraPos3rdPerson.x << ',' << cameraPos3rdPerson.y << ',' << cameraPos3rdPerson.z << ']';
++            else
++                gOutput << "null";
++            gOutput << ",\"cameraPos\":";
++            if (hasCameraPos)
++            {
++                const float dx = actor->posX - cameraPos.x;
++                const float dy = actor->posY - cameraPos.y;
++                const float dz = actor->posZ - cameraPos.z;
++                gOutput << '[' << cameraPos.x << ',' << cameraPos.y << ',' << cameraPos.z << ']'
++                    << ",\"cameraDistance\":" << std::sqrt(dx * dx + dy * dy + dz * dz);
++            }
++            else
++                gOutput << "null,\"cameraDistance\":null";
++            gOutput
+                 << ",\"processLevel\":" << process->processLevel
+                 << ",\"footIkAvailable\":"
+                 << (actor->ragDollController != nullptr && actor->ragDollController->bool021F ? "true" : "false")
+@@ -710,6 +848,24 @@ namespace
+             else
+                 gOutput << "null";
+ 
++            gOutput << ",\"boneLodController\":";
++            writeBoneLodProbe(gOutput, hp != nullptr ? hp->ptr2E4 : nullptr);
++            gOutput << ",\"lodSettings\":[";
++            constexpr std::uintptr_t lodSettingAddresses[] = {
++                0x011CCF88, // iBoneLODDistMult
++                0x011DAC38, // fActorLODDefault:LOD
++                0x011DAAF4, // fActorLODMax:LOD
++                0x011DAB1C, // fActorLODMin:LOD
++                0x011C3EC0, // fLODFadeOutMultActors:LOD
++            };
++            for (std::size_t settingIndex = 0; settingIndex < std::size(lodSettingAddresses); ++settingIndex)
++            {
++                if (settingIndex != 0)
++                    gOutput << ',';
++                writeSettingProbe(gOutput, lodSettingAddresses[settingIndex]);
++            }
++            gOutput << ']';
++
+             gOutput << ",\"middleHighSequences\":[";
+             for (unsigned int i = 0; i < 3; ++i)
+             {
+-- 
+2.53.0.windows.1
+

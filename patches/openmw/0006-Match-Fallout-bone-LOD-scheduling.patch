@@ -1,0 +1,145 @@
+From 980555702e6fe75e209baf19abe11f1fe3d0b35f Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 10:37:02 -0700
+Subject: [PATCH] Match Fallout bone LOD scheduling
+
+---
+ apps/openmw/mwrender/animation.cpp | 45 +++++++++++++++++++++++++-----
+ apps/openmw/mwrender/animation.hpp |  1 +
+ apps/openmw/mwrender/camera.cpp    |  5 ++++
+ apps/openmw/mwrender/camera.hpp    |  1 +
+ 4 files changed, 45 insertions(+), 7 deletions(-)
+
+diff --git a/apps/openmw/mwrender/animation.cpp b/apps/openmw/mwrender/animation.cpp
+index 7b6f8bef8f..f6fcbfe959 100644
+--- a/apps/openmw/mwrender/animation.cpp
++++ b/apps/openmw/mwrender/animation.cpp
+@@ -5428,9 +5428,15 @@ namespace MWRender
+             || Misc::StringUtils::ciEqual(mPtr.getCellRef().getRefId().serializeText(), "player"))
+             return 0;
+ 
+-        // Retail FNV advances the authored bone-LOD group at each 1250-unit
+-        // camera-distance step (1248.22 -> 0, 1251.15 -> 1, 2705.18 -> 2).
+-        float lodDistance = 1250.f;
++        // FalloutNV 1.4.0.525 HighProcess computes:
++        // floor((cameraDistance / actorScale) * 12 * cameraLodAdjust
++        //       / (iBoneLODDistMult * actorFadeMultiplier)).
++        // The retail defaults 1000 and 15 produce the observed 1250-unit step
++        // at actorScale=1 and cameraLodAdjust=1.
++        float distanceMultiplier = 1000.f;
++        float actorFadeMultiplier = 15.f;
++        float distanceConstant = 12.f;
++        float forcedLodDistance = 0.f;
+         const char* configured = std::getenv("OPENMW_ESM4_BONE_LOD_DISTANCE");
+         if (configured == nullptr)
+             configured = std::getenv("OPENMW_ESM4_BONE_LOD_NEAR_DISTANCE");
+@@ -5439,14 +5445,27 @@ namespace MWRender
+             char* end = nullptr;
+             const float value = std::strtof(configured, &end);
+             if (end != configured && *end == '\0' && std::isfinite(value) && value > 0.f)
+-                lodDistance = value;
++                forcedLodDistance = value;
+         }
+ 
+         osg::Vec3d lodOrigin(player.getRefData().getPosition().asVec3());
++        float cameraLodAdjust = 1.f;
+         if (MWRender::Camera* camera = MWBase::Environment::get().getWorld()->getCamera())
++        {
+             lodOrigin = camera->getPosition();
++            cameraLodAdjust = camera->getLodScale();
++        }
+         const osg::Vec3d delta = osg::Vec3d(mPtr.getRefData().getPosition().asVec3()) - lodOrigin;
+-        return std::clamp(static_cast<int>(std::sqrt(delta.length2()) / lodDistance), 0, 8);
++        const float distance = static_cast<float>(std::sqrt(delta.length2()));
++        if (forcedLodDistance > 0.f)
++            return std::clamp(static_cast<int>(distance / forcedLodDistance), 0, 8);
++
++        const float actorScale = std::max(std::abs(mPtr.getCellRef().getScale()), 0.0001f);
++        if (!std::isfinite(cameraLodAdjust) || cameraLodAdjust <= 0.f)
++            cameraLodAdjust = 1.f;
++        const float quotient = (distance / actorScale) * distanceConstant * cameraLodAdjust
++            / (distanceMultiplier * actorFadeMultiplier);
++        return std::clamp(static_cast<int>(std::floor(quotient)), 0, 8);
+     }
+ 
+     bool Animation::isBethesdaBoneLodSuppressed(const osg::Node* node) const
+@@ -5458,6 +5477,16 @@ namespace MWRender
+             && group < static_cast<unsigned int>(mBethesdaBoneLodLevel);
+     }
+ 
++    bool Animation::shouldDeferBethesdaBoneLodChange() const
++    {
++        if (!mPlayScriptedOnly)
++            return false;
++        return std::any_of(mStates.begin(), mStates.end(), [](const auto& state) {
++            return state.second.mPlaying
++                && state.second.mPriority.contains(MWMechanics::Priority_Scripted);
++        });
++    }
++
+     void Animation::resetActiveGroups()
+     {
+ //## VR_PATCH BEGIN
+@@ -5468,7 +5497,9 @@ namespace MWRender
+         size_t falloutAddedControllers = 0;
+         size_t falloutBoneLodSuppressedControllers = 0;
+         bool accumResetAttached = false;
+-        mBethesdaBoneLodLevel = falloutNpc ? getBethesdaBoneLodLevel() : 0;
++        const int requestedBoneLodLevel = falloutNpc ? getBethesdaBoneLodLevel() : 0;
++        if (mBethesdaBoneLodLevel < 0 || !shouldDeferBethesdaBoneLodChange())
++            mBethesdaBoneLodLevel = requestedBoneLodLevel;
+         // remove all previous external controllers from the scene graph
+         for (auto it = mActiveControllers.begin(); it != mActiveControllers.end(); ++it)
+         {
+@@ -5802,7 +5833,7 @@ namespace MWRender
+         if (falloutNpc)
+         {
+             const int boneLodLevel = getBethesdaBoneLodLevel();
+-            if (boneLodLevel != mBethesdaBoneLodLevel)
++            if (boneLodLevel != mBethesdaBoneLodLevel && !shouldDeferBethesdaBoneLodChange())
+             {
+                 mBethesdaBoneLodLevel = boneLodLevel;
+                 resetActiveGroups();
+diff --git a/apps/openmw/mwrender/animation.hpp b/apps/openmw/mwrender/animation.hpp
+index b9b07b20ab..b9a4c671e8 100644
+--- a/apps/openmw/mwrender/animation.hpp
++++ b/apps/openmw/mwrender/animation.hpp
+@@ -274,6 +274,7 @@ namespace MWRender
+ 
+         int getBethesdaBoneLodLevel() const;
+         bool isBethesdaBoneLodSuppressed(const osg::Node* node) const;
++        bool shouldDeferBethesdaBoneLodChange() const;
+ 
+         std::string describeActiveFalloutAnimationStates() const;
+         size_t forceFalloutNativeUpdateTraversalOnce(std::string_view reason);
+diff --git a/apps/openmw/mwrender/camera.cpp b/apps/openmw/mwrender/camera.cpp
+index 027dc113af..887aae438b 100644
+--- a/apps/openmw/mwrender/camera.cpp
++++ b/apps/openmw/mwrender/camera.cpp
+@@ -116,6 +116,11 @@ namespace MWRender
+ //## VR_PATCH END
+     }
+ 
++    float Camera::getLodScale() const
++    {
++        return mCamera.valid() ? mCamera->getLODScale() : 1.f;
++    }
++
+     Camera::~Camera()
+     {
+         mCamera->removeUpdateCallback(mUpdateCallback);
+diff --git a/apps/openmw/mwrender/camera.hpp b/apps/openmw/mwrender/camera.hpp
+index 05cd427d26..e467c7417e 100644
+--- a/apps/openmw/mwrender/camera.hpp
++++ b/apps/openmw/mwrender/camera.hpp
+@@ -149,6 +149,7 @@ namespace MWRender
+ 
+         const osg::Matrixf& getViewMatrix() const { return mViewMatrix; }
+         const osg::Matrixf& getProjectionMatrix() const { return mProjectionMatrix; }
++        float getLodScale() const;
+ 
+ //## VR_PATCH BEGIN
+         void setPose(const Stereo::Pose& pose);
+-- 
+2.53.0.windows.1
+

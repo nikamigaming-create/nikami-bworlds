@@ -236,7 +236,7 @@ The expanded 61-node comparison then isolated the remaining finger, twist,
 pauldron, and toe behavior. Patch 0005 resolves the cause described below; it
 does not use a joint-name correction.
 
-## Patch 0005: Bethesda bone-LOD runtime parity
+## Patches 0005-0006: Bethesda bone-LOD runtime parity
 
 Downstream commit `0bdacbfcdd` and patch 0005 load the authored
 `NiBSBoneLODController` node groups from the skeleton NIF and tag the
@@ -245,24 +245,41 @@ groups below the active LOD. It therefore preserves full-detail finger and
 twist animation close to the camera and freezes the same fine joints as retail
 at distance. No bone-name table is embedded in the engine patch.
 
-The extended xNVSE oracle at commit `0b69e6d` established the retail rule from
-FNV 1.4.0.525 directly:
+The extended xNVSE oracle through commit `670a18f` and downstream OpenMW commit
+`980555702e` established and implement the retail rule from FNV 1.4.0.525
+directly:
 
 - the skeleton declares eight groups; group 0 contains exactly 38 finger,
   thumb, forearm/upper-arm twist, pauldron, and toe nodes;
 - retail LOD 1 changes those 38 targets to manager-controlled blend flags 5
   with their active high-priority interpolator normalized weight at zero;
-- live `iBoneLODDistMult` is 1000, while camera-distance samples report LOD 0
-  at 1248.22, LOD 1 at 1251.15, and LOD 2 at 2705.18; and
-- the resulting ladder is `floor(cameraDistance / 1250)`, with the player held
-  at LOD 0 and levels capped by the eight authored groups.
+- live `iBoneLODDistMult` is 1000 and the actor fade multiplier is 15; the
+  disassembled writer computes
+  `floor((cameraDistance / actorScale) * 12 * cameraLodAdjust /
+  (iBoneLODDistMult * actorFadeMultiplier))`;
+- the default scale/LOD-adjust values reduce that equation to the observed
+  1250-unit step: LOD 0 at 1248.22, LOD 1 at 1251.15, and LOD 2 at 2705.18;
+- the player remains at LOD 0 and levels are capped by the eight authored
+  groups; and
+- the high-process path runs every frame, but retail does not call the writer
+  while either temporary `AnimData` sequence slot at `+0x104/+0x108` is
+  occupied. In the controlled one-shot `Forward` capture those slots clear and
+  the original writer begins on frame 52, then runs every subsequent frame.
 
 The exact retail captures are:
 
 - controller/groups and blend state: `run/retail-oracle/fnv-retail-v12-bone-lod-structured.jsonl`;
 - live settings: `run/retail-oracle/fnv-retail-v16-lod-settings.jsonl`;
 - 1248-to-1251 boundary: `run/retail-oracle/fnv-retail-v24-bone-lod-camera-distance.jsonl`; and
-- LOD 2 at 2705 units: `run/retail-oracle/fnv-retail-v25-bone-lod-visible-2700.jsonl`.
+- LOD 2 at 2705 units: `run/retail-oracle/fnv-retail-v25-bone-lod-visible-2700.jsonl`;
+- exact equation while moving: `run/retail-oracle/fnv-retail-v32-bone-lod-equation-walk.jsonl`; and
+- hooked high-process guard transition: `run/retail-oracle/fnv-retail-v41-high-process-guard-values.jsonl`.
+
+`scripts/Test-FNVRetailBoneLodParity.ps1` makes those facts executable. Its
+report at `run/transform-oracle/fnv-retail-bone-lod-parity-v1.json` is
+`matched`: 35 equation frames have maximum quotient error `6.0e-9`, the guard
+and writer both transition on frame 52, and 59 sampled authored nodes match the
+cumulative LOD 1 and LOD 2 group-freeze rule.
 
 `scripts/Compare-BethesdaBoneLodMotion.ps1` reads group 0 from the NIF audit
 instead of hardcoding names. Its retail-frame-84-through-96 versus OpenMW
@@ -272,14 +289,14 @@ The report is
 `run/transform-oracle/fnv-retail-v10-f84-96-vs-openmw-bone-lod-motion.json`.
 
 Final flat `openmw.exe` SHA-256 is
-`295609B2E2DC0117B70545C7D75EFA300F468E83930EFABF2542DD7920492593`.
+`DA80A4BE37B887AA234C5288483472E27C55A473BD6F4CFE7DA1682F8AEE83F6`.
 Both release proofs captured 31 consecutive native frames, exited 0, produced
 no crash report, and required no forced kill:
 
-- FNV: `run/transform-oracle/bone-lod-final-proof/fallout_new_vegas-20260710-092044/manifest.json`;
-- FNV clip: `run/transform-oracle/bone-lod-final-proof/fallout_new_vegas-20260710-092044/fnv-final-front-walk.mp4`;
-- FO3: `run/transform-oracle/bone-lod-final-fo3-proof/fallout3-20260710-092428/manifest.json`; and
-- FO3 clip: `run/transform-oracle/bone-lod-final-fo3-proof/fallout3-20260710-092428/fo3-final-front-walk.mp4`.
+- FNV: `run/transform-oracle/bone-lod-cadence-fnv-proof/fallout_new_vegas-20260710-103300/manifest.json`;
+- FNV clip: `run/transform-oracle/bone-lod-cadence-fnv-proof/fallout_new_vegas-20260710-103300/fnv-cadence-front-walk.mp4`;
+- FO3: `run/transform-oracle/bone-lod-cadence-fo3-proof/fallout3-20260710-103435/manifest.json`; and
+- FO3 clip: `run/transform-oracle/bone-lod-cadence-fo3-proof/fallout3-20260710-103435/fo3-cadence-front-walk.mp4`.
 
 The close FNV actor transitions from its pre-camera distant LOD to LOD 0 and
 keeps its animated fingers on the rifle. The FO3 actor likewise keeps head,
@@ -293,10 +310,9 @@ next matrices are dialogue/topic selection and result execution, broad CTDA
 function coverage, compiled Fallout script bytecode execution, package
 scheduling/navigation, combat and inventory semantics, and representative
 quest/save differentials across both base games and every configured DLC.
-Animation work must still reproduce the exact retained fine-joint pose when a
-bone-LOD transition occurs after a different prior animation history, broaden
-the oracle across more weapons and animation groups, and validate equivalent
-FO3 retail timing before claiming complete pose parity.
+Animation work must still broaden the oracle across more weapons and animation
+groups and validate equivalent FO3 retail timing before claiming complete pose
+parity.
 
 Visual parity also remains a permanent release gate: head, face, hair, beard or
 headgear, hands, body, feet, weapon sockets, muzzle and magazine helpers, and

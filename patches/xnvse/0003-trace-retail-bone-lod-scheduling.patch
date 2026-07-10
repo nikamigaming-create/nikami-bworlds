@@ -1,0 +1,592 @@
+From 670a18f9eff489a97c01e96e3f8d958e2197cd77 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 10:36:54 -0700
+Subject: [PATCH 3/3] Trace retail bone LOD scheduling
+
+---
+ nvse_retail_oracle/main.cpp | 502 +++++++++++++++++++++++++++++++++++-
+ 1 file changed, 495 insertions(+), 7 deletions(-)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index da899a6..a923cc6 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -59,6 +59,9 @@ namespace
+     bool gBehaviorBeforeCaptured = false;
+     bool gBehaviorCommandsRun = false;
+     bool gBehaviorAfterCaptured = false;
++    bool gBoneLodCodeReferencesWritten = false;
++    bool gBoneLodWriterCallsHooked = false;
++    bool gHighProcessBoneLodPathHooked = false;
+     Actor* gDrivenActor = nullptr;
+ 
+     constexpr const char* sSchema = "nikami-retail-oracle/v3";
+@@ -68,6 +71,171 @@ namespace
+ 
+     static_assert(sizeof(NiTransform) == 0x34);
+ 
++    void __cdecl recordBoneLodWriterCall(HighProcess* process, Actor* actor)
++    {
++        if (!gCaptureAnimation || !gOutput.is_open() || process == nullptr || actor == nullptr
++            || (gTargetForm != 0 && actor->refID != gTargetForm
++                && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm)))
++            return;
++
++        SInt32 controllerLod = -2;
++        if (process->ptr2E4 != nullptr)
++            std::memcpy(&controllerLod, reinterpret_cast<const UInt8*>(process->ptr2E4) + 0x34, sizeof(controllerLod));
++        gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"bone-lod-writer-call\""
++                << ",\"frame\":" << gFrame
++                << ",\"worldLoopFrame\":" << gWorldLoopFrame
++                << ",\"refForm\":" << actor->refID
++                << ",\"actorLifeState\":" << actor->lifeState
++                << ",\"processCachedLod\":" << static_cast<SInt32>(process->unk2E8)
++                << ",\"controllerLod\":" << controllerLod << "}\n";
++        gOutput.flush();
++    }
++
++    void __cdecl recordHighProcessBoneLodPath(HighProcess* process, Actor* actor)
++    {
++        if (!gCaptureAnimation || !gOutput.is_open() || process == nullptr || actor == nullptr
++            || (gTargetForm != 0 && actor->refID != gTargetForm
++                && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm)))
++            return;
++        bool refGate = false;
++        bool refFlagA = false;
++        bool refFlagB = false;
++        void* actorState = nullptr;
++        bool actorStateReady = false;
++        bool actorTypeGate = false;
++        void* processState = nullptr;
++        bool processStateGate = false;
++        __try
++        {
++            refGate = reinterpret_cast<bool(__thiscall*)(Actor*)>(0x00574900)(actor);
++            refFlagA = reinterpret_cast<bool(__thiscall*)(Actor*)>(0x00440D80)(actor);
++            refFlagB = reinterpret_cast<bool(__thiscall*)(Actor*)>(0x00440DA0)(actor);
++            actorState = reinterpret_cast<void*(__thiscall*)(Actor*)>(0x008D6F30)(actor);
++            if (actorState != nullptr)
++                actorStateReady = reinterpret_cast<bool(__thiscall*)(void*)>(0x00450FF0)(actorState);
++            void** actorVtable = *reinterpret_cast<void***>(actor);
++            actorTypeGate = reinterpret_cast<bool(__thiscall*)(Actor*)>(actorVtable[0x100 / 4])(actor);
++            void** processVtable = *reinterpret_cast<void***>(process);
++            processState = reinterpret_cast<void*(__thiscall*)(HighProcess*)>(processVtable[0x1B8 / 4])(process);
++            if (processState != nullptr)
++                processStateGate = reinterpret_cast<bool(__thiscall*)(void*)>(0x00493830)(processState);
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++        }
++        gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"high-process-bone-lod-path\""
++                << ",\"frame\":" << gFrame
++                << ",\"worldLoopFrame\":" << gWorldLoopFrame
++                << ",\"refForm\":" << actor->refID
++                << ",\"actorLifeState\":" << actor->lifeState
++                << ",\"fadeType\":" << process->fadeType
++                << ",\"guards\":{\"refGate\":" << (refGate ? "true" : "false")
++                << ",\"refFlagA\":" << (refFlagA ? "true" : "false")
++                << ",\"refFlagB\":" << (refFlagB ? "true" : "false")
++                << ",\"actorState\":"
++                << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(actorState))
++                << ",\"actorStateReady\":" << (actorStateReady ? "true" : "false")
++                << ",\"actorTypeGate\":" << (actorTypeGate ? "true" : "false")
++                << ",\"processState\":"
++                << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(processState))
++                << ",\"processStateGate\":" << (processStateGate ? "true" : "false") << "}}\n";
++        gOutput.flush();
++    }
++
++    __declspec(naked) void boneLodWriterHook()
++    {
++        __asm
++        {
++            push ebp
++            mov ebp, esp
++            push ecx
++            mov eax, dword ptr [ebp + 8]
++            push eax
++            mov ecx, dword ptr [ebp - 4]
++            mov eax, 0x008E5730
++            call eax
++            mov eax, dword ptr [ebp + 8]
++            push eax
++            mov eax, dword ptr [ebp - 4]
++            push eax
++            call recordBoneLodWriterCall
++            add esp, 8
++            mov esp, ebp
++            pop ebp
++            ret 4
++        }
++    }
++
++    __declspec(naked) void highProcessBoneLodPathHook()
++    {
++        __asm
++        {
++            push ebp
++            mov ebp, esp
++            push ecx
++            mov eax, dword ptr [ebp + 8]
++            push eax
++            mov eax, dword ptr [ebp - 4]
++            push eax
++            call recordHighProcessBoneLodPath
++            add esp, 8
++            mov eax, dword ptr [ebp + 8]
++            push eax
++            mov ecx, dword ptr [ebp - 4]
++            mov eax, 0x008EEEC0
++            call eax
++            mov esp, ebp
++            pop ebp
++            ret 4
++        }
++    }
++
++    bool hookRetailCall(std::uintptr_t callAddress, std::uintptr_t expectedTarget, const void* hook)
++    {
++        UInt8 opcode = 0;
++        SInt32 displacement = 0;
++        std::memcpy(&opcode, reinterpret_cast<const void*>(callAddress), sizeof(opcode));
++        std::memcpy(&displacement, reinterpret_cast<const void*>(callAddress + 1), sizeof(displacement));
++        if (opcode != 0xE8 || callAddress + 5 + displacement != expectedTarget)
++            return false;
++
++        DWORD oldProtect = 0;
++        if (VirtualProtect(reinterpret_cast<void*>(callAddress), 5, PAGE_EXECUTE_READWRITE, &oldProtect) == FALSE)
++            return false;
++        const SInt32 hookDisplacement = static_cast<SInt32>(reinterpret_cast<std::uintptr_t>(hook) - callAddress - 5);
++        std::memcpy(reinterpret_cast<void*>(callAddress + 1), &hookDisplacement, sizeof(hookDisplacement));
++        FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<const void*>(callAddress), 5);
++        DWORD restoredProtect = 0;
++        VirtualProtect(reinterpret_cast<void*>(callAddress), 5, oldProtect, &restoredProtect);
++        return true;
++    }
++
++    bool hookBoneLodWriterCalls()
++    {
++        const bool primary = hookRetailCall(0x008EF21D, 0x008E5730, boneLodWriterHook);
++        const bool refresh = hookRetailCall(0x008FE3F2, 0x008E5730, boneLodWriterHook);
++        return primary && refresh;
++    }
++
++    bool hookHighProcessBoneLodPath()
++    {
++        constexpr std::uintptr_t vtableEntry = 0x01087864 + 4 * sizeof(std::uintptr_t);
++        constexpr std::uintptr_t expectedTarget = 0x008EEEC0;
++        std::uintptr_t currentTarget = 0;
++        std::memcpy(&currentTarget, reinterpret_cast<const void*>(vtableEntry), sizeof(currentTarget));
++        if (currentTarget != expectedTarget)
++            return false;
++        DWORD oldProtect = 0;
++        if (VirtualProtect(reinterpret_cast<void*>(vtableEntry), sizeof(currentTarget), PAGE_READWRITE, &oldProtect)
++            == FALSE)
++            return false;
++        const std::uintptr_t hook = reinterpret_cast<std::uintptr_t>(highProcessBoneLodPathHook);
++        std::memcpy(reinterpret_cast<void*>(vtableEntry), &hook, sizeof(hook));
++        DWORD restoredProtect = 0;
++        VirtualProtect(reinterpret_cast<void*>(vtableEntry), sizeof(currentTarget), oldProtect, &restoredProtect);
++        return true;
++    }
++
+     // xNVSE's public NiControllerSequence declaration predates the fully reversed
+     // Gamebryo runtime layout.  Keep the retail-oracle-only views here so the
+     // telemetry can describe the blend graph without changing xNVSE itself.
+@@ -351,7 +519,10 @@ namespace
+         {
+             gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"start\","
+                        "\"runtime\":\"FalloutNV-1.4.0.525\","
+-                       "\"niAvObjectTransformLayout\":\"local@0x34/world@0x68/NiTransform@0x34\"}\n";
++                       "\"boneLodWriterCallsHooked\":" << (gBoneLodWriterCallsHooked ? "true" : "false") << ','
++                    << "\"highProcessBoneLodPathHooked\":"
++                    << (gHighProcessBoneLodPathHooked ? "true" : "false") << ','
++                    << "\"niAvObjectTransformLayout\":\"local@0x34/world@0x68/NiTransform@0x34\"}\n";
+             gOutput.flush();
+         }
+     }
+@@ -668,6 +839,7 @@ namespace
+                 out << ',';
+             first = false;
+             out << "{\"name\":" << jsonString(object->m_pcName) << ",\"depth\":" << depth
++                << ",\"runtimeFlags\":" << object->unk0030
+                 << ",\"transform\":";
+             writeTransform(out, *object);
+             out << '}';
+@@ -732,6 +904,251 @@ namespace
+         out << "]}";
+     }
+ 
++    void writeRuntimeVtableProbe(std::ostream& out, const void* objectAddress)
++    {
++        void** vtable = nullptr;
++        if (!safeRead(objectAddress, vtable) || vtable == nullptr)
++        {
++            out << "null";
++            return;
++        }
++
++        constexpr unsigned int entryCount = 46;
++        out << "{\"address\":" << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(vtable))
++            << ",\"entries\":[";
++        std::uintptr_t entries[entryCount] = {};
++        for (unsigned int index = 0; index < entryCount; ++index)
++        {
++            safeRead(vtable + index, entries[index]);
++            if (index != 0)
++                out << ',';
++            out << static_cast<unsigned long>(entries[index]);
++        }
++        out << "],\"methodCode\":[";
++        bool firstMethod = true;
++        for (unsigned int index = 35; index < entryCount; ++index)
++        {
++            if (entries[index] < 0x00400000 || entries[index] >= 0x01180000)
++                continue;
++            if (!firstMethod)
++                out << ',';
++            firstMethod = false;
++            out << "{\"index\":" << index
++                << ",\"address\":" << static_cast<unsigned long>(entries[index])
++                << ",\"bytes\":[";
++            for (unsigned int byteIndex = 0; byteIndex < 128; ++byteIndex)
++            {
++                UInt8 byte = 0;
++                if (!safeRead(reinterpret_cast<const UInt8*>(entries[index]) + byteIndex, byte))
++                    break;
++                if (byteIndex != 0)
++                    out << ',';
++                out << static_cast<unsigned int>(byte);
++            }
++            out << "]}";
++        }
++        out << "]}";
++    }
++
++    void writeActorBoneLodGateProbe(std::ostream& out, const Actor* actor)
++    {
++        void** vtable = nullptr;
++        constexpr unsigned int gateVtableIndex = 0xBA;
++        std::uintptr_t methodAddress = 0;
++        if (!safeRead(actor, vtable) || vtable == nullptr
++            || !safeRead(vtable + gateVtableIndex, methodAddress))
++        {
++            out << "null";
++            return;
++        }
++
++        out << "{\"vtableAddress\":"
++            << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(vtable))
++            << ",\"index\":" << gateVtableIndex
++            << ",\"methodAddress\":" << static_cast<unsigned long>(methodAddress)
++            << ",\"bytes\":[";
++        for (unsigned int byteIndex = 0; byteIndex < 512; ++byteIndex)
++        {
++            UInt8 byte = 0;
++            if (!safeRead(reinterpret_cast<const UInt8*>(methodAddress) + byteIndex, byte))
++                break;
++            if (byteIndex != 0)
++                out << ',';
++            out << static_cast<unsigned int>(byte);
++        }
++        out << "]}";
++    }
++
++    void writeHighProcessVtableProbe(std::ostream& out)
++    {
++        constexpr std::uintptr_t vtableAddress = 0x01087864;
++        constexpr unsigned int entryCount = 16;
++        std::uintptr_t entries[entryCount] = {};
++        out << "{\"address\":" << static_cast<unsigned long>(vtableAddress) << ",\"entries\":[";
++        for (unsigned int index = 0; index < entryCount; ++index)
++        {
++            safeRead(reinterpret_cast<const std::uintptr_t*>(vtableAddress) + index, entries[index]);
++            if (index != 0)
++                out << ',';
++            out << static_cast<unsigned long>(entries[index]);
++        }
++        out << "],\"runProcessAddress\":" << static_cast<unsigned long>(entries[3])
++            << ",\"runProcessBytes\":[";
++        for (unsigned int byteIndex = 0; byteIndex < 4096; ++byteIndex)
++        {
++            UInt8 byte = 0;
++            if (!safeRead(reinterpret_cast<const UInt8*>(entries[3]) + byteIndex, byte))
++                break;
++            if (byteIndex != 0)
++                out << ',';
++            out << static_cast<unsigned int>(byte);
++        }
++        out << "]}";
++    }
++
++    void writeRuntimeReferenceProbe(std::ostream& out)
++    {
++        struct Target
++        {
++            const char* name;
++            UInt32 value;
++        };
++        constexpr Target targets[] = {
++            { "iBoneLODDistMult", 0x011CCF88 },
++            { "fActorLODDefault", 0x011DAC38 },
++            { "fActorLODMax", 0x011DAAF4 },
++            { "fActorLODMin", 0x011DAB1C },
++            { "fLODFadeOutMultActors", 0x011C3EC0 },
++            { "NiBSBoneLODControllerVtable", 0x010C29CC },
++            { "HighProcessBoneLodWriter", 0x008E5730 },
++        };
++
++        constexpr std::uintptr_t imageBegin = 0x00400000;
++        constexpr std::uintptr_t imageEnd = 0x01180000;
++        constexpr std::size_t chunkSize = 0x10000;
++        std::vector<UInt8> bytes(chunkSize + sizeof(UInt32));
++        std::vector<std::vector<std::uintptr_t>> matches(std::size(targets));
++        for (std::uintptr_t chunkBegin = imageBegin; chunkBegin < imageEnd; chunkBegin += chunkSize)
++        {
++            const std::size_t requested
++                = std::min<std::size_t>(bytes.size(), static_cast<std::size_t>(imageEnd - chunkBegin));
++            SIZE_T bytesRead = 0;
++            if (ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(chunkBegin), bytes.data(),
++                    requested, &bytesRead)
++                    == FALSE
++                || bytesRead < sizeof(UInt32))
++                continue;
++
++            for (std::size_t offset = 0; offset + sizeof(UInt32) <= bytesRead; ++offset)
++            {
++                UInt32 value = 0;
++                std::memcpy(&value, bytes.data() + offset, sizeof(value));
++                for (std::size_t targetIndex = 0; targetIndex < std::size(targets); ++targetIndex)
++                {
++                    if (value == targets[targetIndex].value && matches[targetIndex].size() < 128)
++                        matches[targetIndex].push_back(chunkBegin + offset);
++                }
++                if ((bytes[offset] == 0xE8 || bytes[offset] == 0xE9)
++                    && offset + 5 <= bytesRead)
++                {
++                    SInt32 displacement = 0;
++                    std::memcpy(&displacement, bytes.data() + offset + 1, sizeof(displacement));
++                    const std::uintptr_t destination = chunkBegin + offset + 5 + displacement;
++                    for (std::size_t targetIndex = 0; targetIndex < std::size(targets); ++targetIndex)
++                    {
++                        if (destination == targets[targetIndex].value && matches[targetIndex].size() < 128)
++                            matches[targetIndex].push_back(chunkBegin + offset);
++                    }
++                }
++            }
++        }
++
++        out << '[';
++        for (std::size_t targetIndex = 0; targetIndex < std::size(targets); ++targetIndex)
++        {
++            if (targetIndex != 0)
++                out << ',';
++            out << "{\"name\":" << jsonString(targets[targetIndex].name)
++                << ",\"value\":" << targets[targetIndex].value << ",\"matches\":[";
++            for (std::size_t matchIndex = 0; matchIndex < matches[targetIndex].size(); ++matchIndex)
++            {
++                if (matchIndex != 0)
++                    out << ',';
++                const std::uintptr_t address = matches[targetIndex][matchIndex];
++                const bool isBoneLodWriterReference = targets[targetIndex].value == 0x008E5730;
++                const std::uintptr_t contextBefore = isBoneLodWriterReference ? 8192 : 256;
++                const unsigned int contextSize = isBoneLodWriterReference ? 16384 : 1024;
++                const std::uintptr_t codeBegin
++                    = address >= imageBegin + contextBefore ? address - contextBefore : imageBegin;
++                out << "{\"address\":" << static_cast<unsigned long>(address) << ",\"codeAddress\":"
++                    << static_cast<unsigned long>(codeBegin) << ",\"bytes\":[";
++                for (unsigned int byteIndex = 0; byteIndex < contextSize; ++byteIndex)
++                {
++                    UInt8 byte = 0;
++                    if (!safeRead(reinterpret_cast<const UInt8*>(codeBegin) + byteIndex, byte))
++                        break;
++                    if (byteIndex != 0)
++                        out << ',';
++                    out << static_cast<unsigned int>(byte);
++                }
++                out << "]}";
++            }
++            out << "]}";
++        }
++        out << ']';
++    }
++
++    void writeKnownBoneLodFunctionProbe(std::ostream& out)
++    {
++        struct Function
++        {
++            const char* name;
++            std::uintptr_t address;
++        };
++        constexpr Function functions[] = {
++            { "HighProcessBoneLodWriter", 0x008E5730 },
++            { "GetScale", 0x00567400 },
++            { "ActorBoneLodGateState", 0x004F8960 },
++            { "AnimDataBoneLodGate", 0x00493830 },
++            { "AnimDataBoneLodGateState", 0x008256D0 },
++            { "Call45C670", 0x0045C670 },
++            { "Call558310", 0x00558310 },
++            { "Call43C490", 0x0043C490 },
++            { "Call439EF0", 0x00439EF0 },
++            { "Call53D280", 0x0053D280 },
++            { "VectorLength", 0x00457990 },
++            { "Call408840", 0x00408840 },
++            { "Call6629F0", 0x006629F0 },
++            { "Call508070", 0x00508070 },
++            { "GetLodFadeMultiplier", 0x007D1D00 },
++            { "BoneLodGroupCount", 0x009E32D0 },
++            { "SetBoneLod", 0x00C52960 },
++        };
++        out << '[';
++        for (std::size_t functionIndex = 0; functionIndex < std::size(functions); ++functionIndex)
++        {
++            if (functionIndex != 0)
++                out << ',';
++            out << "{\"name\":" << jsonString(functions[functionIndex].name)
++                << ",\"address\":" << static_cast<unsigned long>(functions[functionIndex].address)
++                << ",\"bytes\":[";
++            for (unsigned int byteIndex = 0; byteIndex < 1024; ++byteIndex)
++            {
++                UInt8 byte = 0;
++                if (!safeRead(reinterpret_cast<const UInt8*>(functions[functionIndex].address) + byteIndex, byte))
++                    break;
++                if (byteIndex != 0)
++                    out << ',';
++                out << static_cast<unsigned int>(byte);
++            }
++            out << "]}";
++        }
++        double distanceConstant = 0.0;
++        safeRead(reinterpret_cast<const void*>(0x01035710), distanceConstant);
++        out << ",{\"name\":\"distanceConstant\",\"address\":16996112,\"doubleValue\":"
++            << distanceConstant << "}]";
++    }
++
+     void writeSettingProbe(std::ostream& out, std::uintptr_t address)
+     {
+         OracleSetting setting = {};
+@@ -801,6 +1218,34 @@ namespace
+                 && safeRead(reinterpret_cast<const UInt8*>(player) + 0xD58, cameraPos3rdPerson);
+             const bool hasCameraPos = player != nullptr
+                 && safeRead(reinterpret_cast<const UInt8*>(player) + 0xDE0, cameraPos);
++            float cameraDistance = 0.f;
++            float actorScale = 1.f;
++            float cameraLodAdjust = 1.f;
++            float actorFadeMultiplier = 1.f;
++            SInt32 boneLodDistanceMultiplier = 0;
++            if (hasCameraPos)
++            {
++                const float dx = actor->posX - cameraPos.x;
++                const float dy = actor->posY - cameraPos.y;
++                const float dz = actor->posZ - cameraPos.z;
++                cameraDistance = std::sqrt(dx * dx + dy * dy + dz * dz);
++            }
++            actorScale = reinterpret_cast<float(__thiscall*)(Actor*)>(0x00567400)(actor);
++            void* sceneGraphOwner = reinterpret_cast<void*(__cdecl*)()>(0x0045C670)();
++            void* sceneCamera = sceneGraphOwner != nullptr
++                ? reinterpret_cast<void*(__thiscall*)(void*)>(0x006629F0)(sceneGraphOwner)
++                : nullptr;
++            if (sceneCamera != nullptr)
++                cameraLodAdjust = reinterpret_cast<float(__thiscall*)(void*)>(0x00508070)(sceneCamera);
++            safeRead(reinterpret_cast<const void*>(0x011AD7C4), actorFadeMultiplier);
++            OracleSetting boneLodDistanceSetting = {};
++            if (safeRead(reinterpret_cast<const void*>(0x011CCF88), boneLodDistanceSetting))
++                boneLodDistanceMultiplier = static_cast<SInt32>(boneLodDistanceSetting.rawValue);
++            const double boneLodQuotient = actorScale > 0.f && boneLodDistanceMultiplier > 0
++                && actorFadeMultiplier > 0.f
++                ? (static_cast<double>(cameraDistance) / actorScale) * 12.0 * cameraLodAdjust
++                    / (boneLodDistanceMultiplier * actorFadeMultiplier)
++                : -1.0;
+ 
+             gOutput << std::setprecision(9)
+                 << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-frame\""
+@@ -817,23 +1262,42 @@ namespace
+             gOutput << ",\"cameraPos\":";
+             if (hasCameraPos)
+             {
+-                const float dx = actor->posX - cameraPos.x;
+-                const float dy = actor->posY - cameraPos.y;
+-                const float dz = actor->posZ - cameraPos.z;
+                 gOutput << '[' << cameraPos.x << ',' << cameraPos.y << ',' << cameraPos.z << ']'
+-                    << ",\"cameraDistance\":" << std::sqrt(dx * dx + dy * dy + dz * dz);
++                    << ",\"cameraDistance\":" << cameraDistance;
+             }
+             else
+                 gOutput << "null,\"cameraDistance\":null";
+             gOutput
++                << ",\"boneLodInputs\":{\"actorScale\":" << actorScale
++                << ",\"cameraLodAdjust\":" << cameraLodAdjust
++                << ",\"distanceConstant\":12"
++                << ",\"distanceMultiplier\":" << boneLodDistanceMultiplier
++                << ",\"actorFadeMultiplier\":" << actorFadeMultiplier
++                << ",\"quotient\":" << boneLodQuotient
++                << ",\"predictedLod\":"
++                << (boneLodQuotient >= 0.0 ? static_cast<SInt32>(std::floor(boneLodQuotient)) : -1) << '}'
++                << ",\"actorBoneLodGate\":";
++            writeActorBoneLodGateProbe(gOutput, actor);
++            gOutput
++                << ",\"actorLifeState\":" << actor->lifeState
+                 << ",\"processLevel\":" << process->processLevel
+                 << ",\"footIkAvailable\":"
+                 << (actor->ragDollController != nullptr && actor->ragDollController->bool021F ? "true" : "false")
+                 << ",\"footIkEnabled\":"
+                 << (actor->ragDollController != nullptr && actor->ragDollController->fikStatus ? "true" : "false")
+                 << ",\"weaponOut\":" << (mhp != nullptr && mhp->isWeaponOut ? "true" : "false")
+-                << ",\"aiming\":" << (mhp != nullptr && mhp->isAiming ? "true" : "false")
+-                << ",\"weapon\":";
++                << ",\"aiming\":" << (mhp != nullptr && mhp->isAiming ? "true" : "false");
++            gOutput << ",\"highProcessBoneLodState\":";
++            if (hp != nullptr)
++            {
++                gOutput << "{\"cachedLod\":" << static_cast<SInt32>(hp->unk2E8)
++                    << ",\"fadeType\":" << hp->fadeType
++                    << ",\"delayTime\":" << hp->delayTime
++                    << ",\"alpha\":" << hp->alpha << '}';
++            }
++            else
++                gOutput << "null";
++            gOutput << ",\"weapon\":";
+             if (weapon != nullptr)
+             {
+                 gOutput << "{\"form\":" << weapon->refID
+@@ -850,6 +1314,26 @@ namespace
+ 
+             gOutput << ",\"boneLodController\":";
+             writeBoneLodProbe(gOutput, hp != nullptr ? hp->ptr2E4 : nullptr);
++            gOutput << ",\"boneLodVtable\":";
++            writeRuntimeVtableProbe(gOutput, hp != nullptr ? hp->ptr2E4 : nullptr);
++            gOutput << ",\"highProcessVtable\":";
++            if (!gBoneLodCodeReferencesWritten)
++                writeHighProcessVtableProbe(gOutput);
++            else
++                gOutput << "null";
++            gOutput << ",\"boneLodCodeReferences\":";
++            if (!gBoneLodCodeReferencesWritten)
++            {
++                writeRuntimeReferenceProbe(gOutput);
++                gOutput << ",\"boneLodFunctionCode\":";
++                writeKnownBoneLodFunctionProbe(gOutput);
++                gBoneLodCodeReferencesWritten = true;
++            }
++            else
++            {
++                gOutput << "null";
++                gOutput << ",\"boneLodFunctionCode\":null";
++            }
+             gOutput << ",\"lodSettings\":[";
+             constexpr std::uintptr_t lodSettingAddresses[] = {
+                 0x011CCF88, // iBoneLODDistMult
+@@ -1460,6 +1944,10 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
+     gSetStageIndex = envUInt("NIKAMI_ORACLE_SET_STAGE_INDEX", 0xffff);
+     gExitWhenDone = envUInt("NIKAMI_ORACLE_EXIT_WHEN_DONE", gSaveName.empty() ? 0 : 1) != 0;
+     gWorldReady = gSaveName.empty();
++    gBoneLodWriterCallsHooked = hookBoneLodWriterCalls();
++    gHighProcessBoneLodPathHooked = hookHighProcessBoneLodPath();
++    if (!gBoneLodWriterCallsHooked || !gHighProcessBoneLodPathHooked)
++        return false;
+     gMessaging->RegisterListener(gPluginHandle, "NVSE", messageHandler);
+     return true;
+ }
+-- 
+2.53.0.windows.1
+
