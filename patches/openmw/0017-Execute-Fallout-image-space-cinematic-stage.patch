@@ -1,0 +1,1157 @@
+From 5ae0146a49cb33417206bdda0f38cf76ed6714a1 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Sat, 11 Jul 2026 02:04:07 -0700
+Subject: [PATCH] Execute Fallout image-space cinematic stage
+
+---
+ apps/components_tests/CMakeLists.txt          |   1 +
+ .../esm4/testloadimagespace.cpp               | 181 ++++++++++++++++++
+ apps/openmw/mwrender/postprocessor.cpp        |  17 ++
+ apps/openmw/mwrender/postprocessor.hpp        |   4 +
+ apps/openmw/mwworld/esmstore.hpp              |   7 +-
+ apps/openmw/mwworld/store.cpp                 |   2 +
+ apps/openmw/mwworld/weather.cpp               |  84 ++++++++
+ apps/openmw/mwworld/weather.hpp               |   2 +
+ components/CMakeLists.txt                     |   3 +
+ components/esm4/imagespacecomposition.cpp     | 160 ++++++++++++++++
+ components/esm4/imagespacecomposition.hpp     |  32 ++++
+ components/esm4/loadcell.cpp                  |   7 +-
+ components/esm4/loadcell.hpp                  |   1 +
+ components/esm4/loadimad.cpp                  | 118 ++++++++++++
+ components/esm4/loadimad.hpp                  |  90 +++++++++
+ components/esm4/loadimgs.cpp                  |  39 ++++
+ components/esm4/loadimgs.hpp                  |  67 +++++++
+ components/esm4/loadwrld.cpp                  |   7 +-
+ components/esm4/loadwrld.hpp                  |   1 +
+ components/esm4/records.hpp                   |   2 +
+ .../shaders/internal_fallout_imagespace.omwfx |  40 ++++
+ 21 files changed, 862 insertions(+), 3 deletions(-)
+ create mode 100644 apps/components_tests/esm4/testloadimagespace.cpp
+ create mode 100644 components/esm4/imagespacecomposition.cpp
+ create mode 100644 components/esm4/imagespacecomposition.hpp
+ create mode 100644 components/esm4/loadimad.cpp
+ create mode 100644 components/esm4/loadimad.hpp
+ create mode 100644 components/esm4/loadimgs.cpp
+ create mode 100644 components/esm4/loadimgs.hpp
+ create mode 100644 files/data/shaders/internal_fallout_imagespace.omwfx
+
+diff --git a/apps/components_tests/CMakeLists.txt b/apps/components_tests/CMakeLists.txt
+index f2c5eb8d29..21a3a6a5ae 100644
+--- a/apps/components_tests/CMakeLists.txt
++++ b/apps/components_tests/CMakeLists.txt
+@@ -73,6 +73,7 @@ file(GLOB UNITTEST_SRC_FILES
+     esm4/testloadbehavior.cpp
+     esm4/testloadweap.cpp
+     esm4/testloadweather.cpp
++    esm4/testloadimagespace.cpp
+ 
+     fx/lexer.cpp
+     fx/technique.cpp
+diff --git a/apps/components_tests/esm4/testloadimagespace.cpp b/apps/components_tests/esm4/testloadimagespace.cpp
+new file mode 100644
+index 0000000000..dd4e1d0776
+--- /dev/null
++++ b/apps/components_tests/esm4/testloadimagespace.cpp
+@@ -0,0 +1,181 @@
++#include <components/esm4/imagespacecomposition.hpp>
++#include <components/esm4/loadimad.hpp>
++#include <components/esm4/loadimgs.hpp>
++#include <components/esm4/reader.hpp>
++
++#include <gtest/gtest.h>
++
++#include <array>
++#include <cstdint>
++#include <cstring>
++#include <limits>
++#include <memory>
++#include <sstream>
++#include <string>
++#include <string_view>
++#include <type_traits>
++
++namespace
++{
++    template <class T>
++    void appendPod(std::string& output, const T& value)
++    {
++        static_assert(std::is_trivially_copyable_v<T>);
++        output.append(reinterpret_cast<const char*>(&value), sizeof(value));
++    }
++
++    void appendSubRecord(std::string& output, std::string_view type, std::string_view data)
++    {
++        ASSERT_EQ(type.size(), 4);
++        ASSERT_LE(data.size(), std::numeric_limits<std::uint16_t>::max());
++        output.append(type);
++        appendPod(output, static_cast<std::uint16_t>(data.size()));
++        output.append(data);
++    }
++
++    template <class T>
++    void appendSubRecord(std::string& output, std::string_view type, const T& data)
++    {
++        appendSubRecord(output, type, std::string_view(reinterpret_cast<const char*>(&data), sizeof(data)));
++    }
++
++    void appendSubRecord(std::string& output, std::string_view type, const std::string& data)
++    {
++        appendSubRecord(output, type, std::string_view(data));
++    }
++
++    std::unique_ptr<ESM4::Reader> makeReader(
++        std::string_view recordType, std::uint32_t formId, std::string payload, std::uint32_t modIndex = 0)
++    {
++        std::string hedr;
++        appendPod(hedr, 1.34f);
++        appendPod(hedr, std::int32_t{ 2 });
++        appendPod(hedr, std::uint32_t{ 0x800 });
++        std::string headerPayload;
++        appendSubRecord(headerPayload, "HEDR", hedr);
++
++        const auto appendRecord = [](std::string& output, std::string_view type, std::uint32_t id,
++                                      std::string_view body) {
++            output.append(type);
++            appendPod(output, static_cast<std::uint32_t>(body.size()));
++            appendPod(output, std::uint32_t{ 0 });
++            appendPod(output, id);
++            appendPod(output, std::uint32_t{ 0 });
++            appendPod(output, std::uint16_t{ 0 });
++            appendPod(output, std::uint16_t{ 0 });
++            output.append(body);
++        };
++
++        std::string plugin;
++        appendRecord(plugin, "TES4", 0, headerPayload);
++        appendRecord(plugin, recordType, formId, payload);
++        auto stream = std::make_unique<std::istringstream>(plugin, std::ios::in | std::ios::binary);
++        auto reader = std::make_unique<ESM4::Reader>(std::move(stream), "imagespace.esm", nullptr, nullptr, true);
++        reader->setModIndex(modIndex);
++        EXPECT_TRUE(reader->getRecordHeader());
++        reader->getRecordData();
++        return reader;
++    }
++
++    TEST(Esm4ImageSpaceTest, shouldParseRetailFNVBaseTraits)
++    {
++        std::string payload;
++        appendSubRecord(payload, "EDID", std::string_view("NVDefaultExterior\0", 18));
++        std::array<float, 38> data{};
++        data[ESM4::ImageSpace::Trait_TargetLuminance] = 1.4f;
++        data[ESM4::ImageSpace::Trait_SunlightDimmer] = 1.1f;
++        data[ESM4::ImageSpace::Trait_SkinDimmer] = 0.55f;
++        data[ESM4::ImageSpace::Trait_CinematicSaturation] = 1.1f;
++        data[ESM4::ImageSpace::Trait_CinematicContrastAverageLuminance] = 0.2f;
++        data[ESM4::ImageSpace::Trait_CinematicContrast] = 1.1f;
++        data[ESM4::ImageSpace::Trait_CinematicBrightness] = 1.f;
++        data[ESM4::ImageSpace::Trait_CinematicTintRed] = 0.984313726f;
++        data[ESM4::ImageSpace::Trait_CinematicTintGreen] = 0.568627477f;
++        data[ESM4::ImageSpace::Trait_CinematicTintStrength] = 0.330000013f;
++        appendSubRecord(payload, "DNAM", data);
++
++        auto reader = makeReader("IMGS", 0x8809d, payload, 2);
++        ESM4::ImageSpace imageSpace;
++        imageSpace.load(*reader);
++
++        EXPECT_EQ(imageSpace.mId, ESM::FormId::fromUint32(0x0208809d));
++        EXPECT_EQ(imageSpace.mEditorId, "NVDefaultExterior");
++        EXPECT_FLOAT_EQ(imageSpace.mTraits[ESM4::ImageSpace::Trait_TargetLuminance], 1.4f);
++        EXPECT_FLOAT_EQ(imageSpace.mTraits[ESM4::ImageSpace::Trait_SkinDimmer], 0.55f);
++        EXPECT_FLOAT_EQ(imageSpace.mTraits[ESM4::ImageSpace::Trait_CinematicTintStrength], 0.330000013f);
++    }
++
++    TEST(Esm4ImageSpaceTest, shouldParseRetailFNVModifierKeys)
++    {
++        std::string payload;
++        appendSubRecord(payload, "EDID", std::string_view("NVWastelandIS\0", 14));
++        std::array<std::uint8_t, 244> data{};
++        const float duration = 1.f;
++        std::memcpy(data.data() + 4, &duration, sizeof(duration));
++        appendSubRecord(payload, "DNAM", data);
++
++        const std::array<ESM4::ImageSpaceModifier::FloatKey, 2> skin
++            = { { { 0.f, 0.35f }, { 1.f, 0.6f } } };
++        const std::array<ESM4::ImageSpaceModifier::FloatKey, 2> brightness
++            = { { { 0.f, 1.3f }, { 1.f, 1.1f } } };
++        appendSubRecord(payload, std::string_view("\2IAD", 4), skin);
++        appendSubRecord(payload, std::string_view("\24IAD", 4), brightness);
++
++        const std::array<ESM4::ImageSpaceModifier::ColorKey, 2> tint = { { { 0.f,
++            { 1.f, 0.737254918f, 0.050980393f, 0.392156869f } }, { 1.f, { 1.f, 1.f, 1.f, 0.f } } } };
++        appendSubRecord(payload, "TNAM", tint);
++
++        auto reader = makeReader("IMAD", 0x0cee18, payload, 2);
++        ESM4::ImageSpaceModifier modifier;
++        modifier.load(*reader);
++
++        EXPECT_EQ(modifier.mId, ESM::FormId::fromUint32(0x020cee18));
++        EXPECT_EQ(modifier.mEditorId, "NVWastelandIS");
++        EXPECT_FLOAT_EQ(modifier.mDuration, 1.f);
++        ASSERT_EQ(modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_SkinDimmer].size(), 2);
++        EXPECT_FLOAT_EQ(modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_SkinDimmer][0].value, 0.35f);
++        ASSERT_EQ(modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_CinematicBrightness].size(), 2);
++        EXPECT_FLOAT_EQ(
++            modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_CinematicBrightness][0].value, 1.3f);
++        ASSERT_EQ(modifier.mTint.size(), 2);
++        EXPECT_FLOAT_EQ(modifier.mTint[0].value[3], 0.392156869f);
++    }
++
++    TEST(Esm4ImageSpaceTest, shouldReproduceCapturedRetailFNVFinalConstants)
++    {
++        ESM4::ImageSpace base;
++        base.mTraits[ESM4::ImageSpace::Trait_TargetLuminance] = 1.4f;
++        base.mTraits[ESM4::ImageSpace::Trait_SunlightDimmer] = 1.1f;
++        base.mTraits[ESM4::ImageSpace::Trait_SkinDimmer] = 0.55f;
++        base.mTraits[ESM4::ImageSpace::Trait_CinematicSaturation] = 1.1f;
++        base.mTraits[ESM4::ImageSpace::Trait_CinematicContrastAverageLuminance] = 0.2f;
++        base.mTraits[ESM4::ImageSpace::Trait_CinematicContrast] = 1.1f;
++        base.mTraits[ESM4::ImageSpace::Trait_CinematicBrightness] = 1.f;
++        base.mTraits[ESM4::ImageSpace::Trait_CinematicTintRed] = 0.984313726f;
++        base.mTraits[ESM4::ImageSpace::Trait_CinematicTintGreen] = 0.568627477f;
++        base.mTraits[ESM4::ImageSpace::Trait_CinematicTintBlue] = 0.f;
++        base.mTraits[ESM4::ImageSpace::Trait_CinematicTintStrength] = 0.330000013f;
++
++        ESM4::ImageSpaceModifier modifier;
++        modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_SkinDimmer].push_back({ 0.f, 0.35f });
++        modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_SunlightDimmer].push_back({ 0.f, 1.1f });
++        modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_CinematicSaturation].push_back({ 0.f, 1.f });
++        modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_CinematicContrast].push_back({ 0.f, 1.f });
++        modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_CinematicContrastAverageLuminance].push_back(
++            { 0.f, 1.f });
++        modifier.mMultiply[ESM4::ImageSpaceModifier::Channel_CinematicBrightness].push_back({ 0.f, 1.3f });
++        modifier.mTint.push_back({ 0.f, { 1.f, 0.737254918f, 0.050980393f, 0.392156869f } });
++
++        // Retail Sky exposed the same static IMAD as complementary fade-in/fade-out instances.
++        const auto result = ESM4::composeImageSpace(base,
++            { { &modifier, 0.f, 0.401982009f }, { &modifier, 0.f, 0.598017991f } });
++
++        EXPECT_NEAR(result.mTraits[ESM4::ImageSpace::Trait_SkinDimmer], 0.1925f, 1e-6f);
++        EXPECT_NEAR(result.mTraits[ESM4::ImageSpace::Trait_SunlightDimmer], 1.21f, 1e-6f);
++        EXPECT_NEAR(result.mTraits[ESM4::ImageSpace::Trait_CinematicBrightness], 1.3f, 1e-6f);
++        EXPECT_NEAR(result.mTint[0], 0.992831886f, 1e-6f);
++        EXPECT_NEAR(result.mTint[1], 0.660198152f, 1e-6f);
++        EXPECT_NEAR(result.mTint[2], 0.0276841652f, 1e-6f);
++        EXPECT_NEAR(result.mTint[3], 0.392156869f, 1e-6f);
++    }
++}
+diff --git a/apps/openmw/mwrender/postprocessor.cpp b/apps/openmw/mwrender/postprocessor.cpp
+index 5f5e9e0068..34a24d1152 100644
+--- a/apps/openmw/mwrender/postprocessor.cpp
++++ b/apps/openmw/mwrender/postprocessor.cpp
+@@ -287,6 +287,23 @@ namespace MWRender
+         mRendering.getSkyManager()->setSunglare(true);
+     }
+ 
++    void PostProcessor::setFalloutImageSpace(
++        const osg::Vec4f& cinematic, const osg::Vec4f& tint, const osg::Vec4f& fade)
++    {
++        if (!mFalloutImageSpaceTechnique)
++        {
++            mFalloutImageSpaceTechnique = loadTechnique("internal_fallout_imagespace");
++            mFalloutImageSpaceTechnique->setInternal(true);
++            mFalloutImageSpaceTechnique->setLocked(true);
++            mInternalTechniques.push_back(mFalloutImageSpaceTechnique);
++            enable();
++        }
++
++        setUniform(mFalloutImageSpaceTechnique, "uFalloutCinematic", cinematic);
++        setUniform(mFalloutImageSpaceTechnique, "uFalloutTint", tint);
++        setUniform(mFalloutImageSpaceTechnique, "uFalloutFade", fade);
++    }
++
+     void PostProcessor::traverse(osg::NodeVisitor& nv)
+     {
+         size_t frameId = nv.getTraversalNumber() % 2;
+diff --git a/apps/openmw/mwrender/postprocessor.hpp b/apps/openmw/mwrender/postprocessor.hpp
+index f81a50e9d6..9dac7ae79b 100644
+--- a/apps/openmw/mwrender/postprocessor.hpp
++++ b/apps/openmw/mwrender/postprocessor.hpp
+@@ -174,6 +174,9 @@ namespace MWRender
+ 
+         void setUnderwaterFlag(bool underwater) { mUnderwater = underwater; }
+ 
++        void setFalloutImageSpace(
++            const osg::Vec4f& cinematic, const osg::Vec4f& tint, const osg::Vec4f& fade);
++
+         void toggleMode();
+ 
+         std::shared_ptr<Fx::Technique> loadTechnique(VFS::Path::NormalizedView path, bool loadNextFrame = false);
+@@ -232,6 +235,7 @@ namespace MWRender
+         TechniqueList mTemplates;
+         TechniqueList mQueuedTemplates;
+         TechniqueList mInternalTechniques;
++        std::shared_ptr<Fx::Technique> mFalloutImageSpaceTechnique;
+ 
+         std::unordered_set<VFS::Path::Normalized, VFS::Path::Hash, std::equal_to<>> mTechniqueFiles;
+ 
+diff --git a/apps/openmw/mwworld/esmstore.hpp b/apps/openmw/mwworld/esmstore.hpp
+index 2831869832..8da1e5b00c 100644
+--- a/apps/openmw/mwworld/esmstore.hpp
++++ b/apps/openmw/mwworld/esmstore.hpp
+@@ -11,6 +11,8 @@
+ #include <components/esm/refid.hpp>
+ #include <components/esm3/loadgmst.hpp>
+ #include <components/esm4/loadwthr.hpp>
++#include <components/esm4/loadimgs.hpp>
++#include <components/esm4/loadimad.hpp>
+ #include <components/misc/tuplemeta.hpp>
+ 
+ #include "store.hpp"
+@@ -127,6 +129,8 @@ namespace ESM4
+     struct Tree;
+     struct Weapon;
+     struct Weather;
++    struct ImageSpace;
++    struct ImageSpaceModifier;
+     struct World;
+ }
+ 
+@@ -168,7 +172,8 @@ namespace MWWorld
+             Store<ESM4::Npc>, Store<ESM4::Outfit>, Store<ESM4::Potion>, Store<ESM4::Quest>, Store<ESM4::Race>,
+             Store<ESM4::Reference>, Store<ESM4::Script>, Store<ESM4::Sound>, Store<ESM4::SoundReference>,
+             Store<ESM4::Static>, Store<ESM4::StaticCollection>, Store<ESM4::Terminal>, Store<ESM4::TextureSet>,
+-            Store<ESM4::Tree>, Store<ESM4::Weapon>, Store<ESM4::Weather>, Store<ESM4::World>>;
++            Store<ESM4::Tree>, Store<ESM4::Weapon>, Store<ESM4::Weather>, Store<ESM4::ImageSpace>,
++            Store<ESM4::ImageSpaceModifier>, Store<ESM4::World>>;
+ 
+     private:
+         template <typename T>
+diff --git a/apps/openmw/mwworld/store.cpp b/apps/openmw/mwworld/store.cpp
+index 0326198bd0..7866a50764 100644
+--- a/apps/openmw/mwworld/store.cpp
++++ b/apps/openmw/mwworld/store.cpp
+@@ -1389,4 +1389,6 @@ template class MWWorld::TypedDynamicStore<ESM4::TextureSet>;
+ template class MWWorld::TypedDynamicStore<ESM4::Tree>;
+ template class MWWorld::TypedDynamicStore<ESM4::Weapon>;
+ template class MWWorld::TypedDynamicStore<ESM4::Weather>;
++template class MWWorld::TypedDynamicStore<ESM4::ImageSpace>;
++template class MWWorld::TypedDynamicStore<ESM4::ImageSpaceModifier>;
+ template class MWWorld::TypedDynamicStore<ESM4::World>;
+diff --git a/apps/openmw/mwworld/weather.cpp b/apps/openmw/mwworld/weather.cpp
+index 62ebcc2532..8a2ab72424 100644
+--- a/apps/openmw/mwworld/weather.cpp
++++ b/apps/openmw/mwworld/weather.cpp
+@@ -13,6 +13,11 @@
+ #include <components/esm3/loadregn.hpp>
+ #include <components/esm3/weatherstate.hpp>
+ #include <components/esm4/loadwthr.hpp>
++#include <components/esm4/imagespacecomposition.hpp>
++#include <components/esm4/loadcell.hpp>
++#include <components/esm4/loadimad.hpp>
++#include <components/esm4/loadimgs.hpp>
++#include <components/esm4/loadwrld.hpp>
+ 
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/soundmanager.hpp"
+@@ -23,6 +28,7 @@
+ #include "../mwsound/sound.hpp"
+ 
+ #include "../mwrender/renderingmanager.hpp"
++#include "../mwrender/postprocessor.hpp"
+ #include "../mwrender/sky.hpp"
+ 
+ #include "cellstore.hpp"
+@@ -905,6 +911,83 @@ namespace MWWorld
+         }
+ 
+         calculateWeatherResult(time.getHour(), duration, paused);
++
++        ESM::RefId imageSpaceId;
++        if (const char* proofImageSpace = std::getenv("OPENMW_FNV_PROOF_IMAGE_SPACE_ID"))
++        {
++            const std::string_view value(proofImageSpace);
++            if (value.starts_with("FormId:") || value.starts_with("formid:"))
++                imageSpaceId = ESM::RefId::deserializeText(value);
++        }
++        if (imageSpaceId.empty() && player.getCell() != nullptr && player.getCell()->getCell() != nullptr
++            && player.getCell()->getCell()->isEsm4())
++        {
++            const ESM4::Cell& cell = player.getCell()->getCell()->getEsm4();
++            ESM::FormId cellImageSpaceId = cell.mImageSpace;
++            if (!cellImageSpaceId.isSet() && cell.isExterior())
++            {
++                if (const ESM4::World* world = mStore.get<ESM4::World>().search(ESM::RefId(cell.mParent)))
++                    cellImageSpaceId = world->mImageSpace;
++            }
++            imageSpaceId = ESM::RefId(cellImageSpaceId);
++        }
++
++        if (const ESM4::ImageSpace* base = mStore.get<ESM4::ImageSpace>().search(imageSpaceId))
++        {
++            std::vector<ESM4::ImageSpaceModifierContribution> modifiers;
++            const Weather& falloutWeather = mWeatherSettings[mCurrentWeather];
++
++            // The afternoon segment and its complementary Sky instance
++            // strengths are retail-captured. Other time segments currently
++            // retain the base IMGS until their transition timings are captured.
++            if (time.getHour() >= 12.f && time.getHour() <= mTimeSettings.mDayEnd)
++            {
++                const float dayStrength = mTimeSettings.mDayEnd > 12.f
++                    ? std::clamp((time.getHour() - 12.f) / (mTimeSettings.mDayEnd - 12.f), 0.f, 1.f)
++                    : 0.f;
++                const auto addModifier = [&](ESM4::Weather::Time timeIndex, float strength) {
++                    const ESM::FormId id = falloutWeather.mFalloutImageSpaceModifiers[timeIndex];
++                    if (const ESM4::ImageSpaceModifier* modifier
++                        = mStore.get<ESM4::ImageSpaceModifier>().search(ESM::RefId(id)))
++                        modifiers.push_back({ modifier, 0.f, strength });
++                };
++                addModifier(ESM4::Weather::Time_HighNoon, 1.f - dayStrength);
++                addModifier(ESM4::Weather::Time_Day, dayStrength);
++            }
++
++            const ESM4::ComposedImageSpace composed = ESM4::composeImageSpace(*base, modifiers);
++            const float sunlightDimmer = composed.mTraits[ESM4::ImageSpace::Trait_SunlightDimmer];
++            for (int component = 0; component < 3; ++component)
++                mResult.mSunColor[component] *= sunlightDimmer;
++
++            mRendering.getPostProcessor()->setFalloutImageSpace(
++                osg::Vec4f(composed.mTraits[ESM4::ImageSpace::Trait_CinematicSaturation],
++                    composed.mTraits[ESM4::ImageSpace::Trait_CinematicContrastAverageLuminance],
++                    composed.mTraits[ESM4::ImageSpace::Trait_CinematicContrast],
++                    composed.mTraits[ESM4::ImageSpace::Trait_CinematicBrightness]),
++                osg::Vec4f(composed.mTint[0], composed.mTint[1], composed.mTint[2], composed.mTint[3]),
++                osg::Vec4f(composed.mFade[0], composed.mFade[1], composed.mFade[2], composed.mFade[3]));
++
++            if (std::getenv("OPENMW_FNV_PROOF_IMAGE_SPACE_ID") != nullptr)
++            {
++                static int imageSpaceLogs = 0;
++                if (imageSpaceLogs++ < 12)
++                {
++                    Log(Debug::Info) << "FNV/ESM4 proof: composed image space base=" << base->mId
++                                     << " weather=" << falloutWeather.mId << " modifiers=" << modifiers.size()
++                                     << " skinDimmer="
++                                     << composed.mTraits[ESM4::ImageSpace::Trait_SkinDimmer]
++                                     << " sunlightDimmer=" << sunlightDimmer << " cinematic=("
++                                     << composed.mTraits[ESM4::ImageSpace::Trait_CinematicSaturation] << ","
++                                     << composed.mTraits[
++                                            ESM4::ImageSpace::Trait_CinematicContrastAverageLuminance]
++                                     << "," << composed.mTraits[ESM4::ImageSpace::Trait_CinematicContrast] << ","
++                                     << composed.mTraits[ESM4::ImageSpace::Trait_CinematicBrightness] << ") tint=("
++                                     << composed.mTint[0] << "," << composed.mTint[1] << "," << composed.mTint[2]
++                                     << "," << composed.mTint[3] << ")";
++                }
++            }
++        }
+         if (std::getenv("OPENMW_FNV_PROOF_WEATHER_ID") != nullptr)
+         {
+             static int proofWeatherLogs = 0;
+@@ -1280,6 +1363,7 @@ namespace MWWorld
+             weather.mWindSpeed = static_cast<float>(source.mData.windSpeed) / 255.f;
+             weather.mCloudSpeed = static_cast<float>(source.mData.lowerCloudSpeed) / 255.f;
+             weather.mGlareView = static_cast<float>(source.mData.sunGlare) / 255.f;
++            weather.mFalloutImageSpaceModifiers = source.mImageSpaceModifiers;
+             mWeatherSettings.push_back(std::move(weather));
+             ++imported;
+         }
+diff --git a/apps/openmw/mwworld/weather.hpp b/apps/openmw/mwworld/weather.hpp
+index 970f6bcc54..883fc1bd0a 100644
+--- a/apps/openmw/mwworld/weather.hpp
++++ b/apps/openmw/mwworld/weather.hpp
+@@ -11,6 +11,7 @@
+ #include <osg/Vec4f>
+ 
+ #include <components/esm/refid.hpp>
++#include <components/esm/formid.hpp>
+ #include <components/fallback/fallback.hpp>
+ 
+ #include "../mwbase/soundmanager.hpp"
+@@ -167,6 +168,7 @@ namespace MWWorld
+         std::optional<FalloutWeatherColorSamples> mFalloutHorizonColors;
+         std::optional<FalloutWeatherColorSamples> mFalloutAmbientColors;
+         std::optional<FalloutWeatherColorSamples> mFalloutSunlightColors;
++        std::array<ESM::FormId, 6> mFalloutImageSpaceModifiers{};
+ 
+         // Fog depth/density
+         TimeOfDayInterpolator<float> mLandFogDepth;
+diff --git a/components/CMakeLists.txt b/components/CMakeLists.txt
+index 28409f2123..ba9ac2079c 100644
+--- a/components/CMakeLists.txt
++++ b/components/CMakeLists.txt
+@@ -288,6 +288,9 @@ add_component_dir (esm4
+     loadtxst
+     loadweap
+     loadwthr
++    loadimgs
++    loadimad
++    imagespacecomposition
+     loadwrld
+     magiceffectid
+     reader
+diff --git a/components/esm4/imagespacecomposition.cpp b/components/esm4/imagespacecomposition.cpp
+new file mode 100644
+index 0000000000..2fcdc6f715
+--- /dev/null
++++ b/components/esm4/imagespacecomposition.cpp
+@@ -0,0 +1,160 @@
++#include "imagespacecomposition.hpp"
++
++#include <algorithm>
++#include <array>
++#include <cmath>
++#include <unordered_map>
++
++namespace
++{
++    constexpr std::array<std::size_t, ESM4::ImageSpaceModifier::sMultiplyAddChannelCount> sTraitForChannel = {
++        ESM4::ImageSpace::Trait_EyeAdaptSpeed,
++        ESM4::ImageSpace::Trait_HdrBlurRadius,
++        ESM4::ImageSpace::Trait_SkinDimmer,
++        ESM4::ImageSpace::Trait_EmissiveMultiplier,
++        ESM4::ImageSpace::Trait_TargetLuminance,
++        ESM4::ImageSpace::Trait_UpperLuminanceClamp,
++        ESM4::ImageSpace::Trait_BrightScale,
++        ESM4::ImageSpace::Trait_BrightClamp,
++        ESM4::ImageSpace::Trait_LuminanceRampNoTexture,
++        ESM4::ImageSpace::Trait_LuminanceRampMin,
++        ESM4::ImageSpace::Trait_LuminanceRampMax,
++        ESM4::ImageSpace::Trait_SunlightDimmer,
++        ESM4::ImageSpace::Trait_GrassDimmer,
++        ESM4::ImageSpace::Trait_TreeDimmer,
++        ESM4::ImageSpace::Trait_BloomBlurRadius,
++        ESM4::ImageSpace::Trait_BloomAlphaInterior,
++        ESM4::ImageSpace::Trait_BloomAlphaExterior,
++        ESM4::ImageSpace::Trait_CinematicSaturation,
++        ESM4::ImageSpace::Trait_CinematicContrast,
++        ESM4::ImageSpace::Trait_CinematicContrastAverageLuminance,
++        ESM4::ImageSpace::Trait_CinematicBrightness,
++    };
++
++    float evaluate(const std::vector<ESM4::ImageSpaceModifier::FloatKey>& keys, float time, float neutral)
++    {
++        if (keys.empty())
++            return neutral;
++        if (keys.size() == 1 || time <= keys.front().time)
++            return keys.front().value;
++        for (std::size_t i = 1; i < keys.size(); ++i)
++        {
++            if (time <= keys[i].time)
++            {
++                const float duration = keys[i].time - keys[i - 1].time;
++                if (duration <= 0.f)
++                    return keys[i].value;
++                const float factor = std::clamp((time - keys[i - 1].time) / duration, 0.f, 1.f);
++                return std::lerp(keys[i - 1].value, keys[i].value, factor);
++            }
++        }
++        return keys.back().value;
++    }
++
++    std::array<float, 4> evaluate(
++        const std::vector<ESM4::ImageSpaceModifier::ColorKey>& keys, float time, std::array<float, 4> neutral)
++    {
++        if (keys.empty())
++            return neutral;
++        if (keys.size() == 1 || time <= keys.front().time)
++            return keys.front().value;
++        for (std::size_t i = 1; i < keys.size(); ++i)
++        {
++            if (time <= keys[i].time)
++            {
++                const float duration = keys[i].time - keys[i - 1].time;
++                if (duration <= 0.f)
++                    return keys[i].value;
++                const float factor = std::clamp((time - keys[i - 1].time) / duration, 0.f, 1.f);
++                std::array<float, 4> result{};
++                for (std::size_t component = 0; component < result.size(); ++component)
++                    result[component] = std::lerp(keys[i - 1].value[component], keys[i].value[component], factor);
++                return result;
++            }
++        }
++        return keys.back().value;
++    }
++}
++
++ESM4::ComposedImageSpace ESM4::composeImageSpace(
++    const ImageSpace& base, const std::vector<ImageSpaceModifierContribution>& modifiers)
++{
++    ComposedImageSpace result;
++    result.mTraits = base.mTraits;
++
++    std::array<float, ImageSpaceModifier::sMultiplyAddChannelCount> multiplierDelta{};
++    std::array<float, ImageSpaceModifier::sMultiplyAddChannelCount> additive{};
++
++    const float baseTintStrength = std::max(0.f, base.mTraits[ImageSpace::Trait_CinematicTintStrength]);
++    std::array<float, 3> tintNumerator = {
++        base.mTraits[ImageSpace::Trait_CinematicTintRed] * baseTintStrength,
++        base.mTraits[ImageSpace::Trait_CinematicTintGreen] * baseTintStrength,
++        base.mTraits[ImageSpace::Trait_CinematicTintBlue] * baseTintStrength,
++    };
++    float tintWeight = baseTintStrength;
++    float strongestTint = baseTintStrength;
++    std::unordered_map<const ImageSpaceModifier*, float> tintStrengthByModifier;
++
++    std::array<float, 3> fadeNumerator{};
++    float fadeWeight = 0.f;
++    float strongestFade = 0.f;
++    std::unordered_map<const ImageSpaceModifier*, float> fadeStrengthByModifier;
++
++    for (const ImageSpaceModifierContribution& contribution : modifiers)
++    {
++        if (contribution.mModifier == nullptr || !std::isfinite(contribution.mStrength))
++            continue;
++        const float strength = std::max(0.f, contribution.mStrength);
++        const ImageSpaceModifier& modifier = *contribution.mModifier;
++        for (std::size_t channel = 0; channel < ImageSpaceModifier::sMultiplyAddChannelCount; ++channel)
++        {
++            multiplierDelta[channel]
++                += (evaluate(modifier.mMultiply[channel], contribution.mTime, 1.f) - 1.f) * strength;
++            additive[channel] += evaluate(modifier.mAdd[channel], contribution.mTime, 0.f) * strength;
++        }
++
++        const std::array<float, 4> tint = evaluate(modifier.mTint, contribution.mTime, { 1.f, 1.f, 1.f, 0.f });
++        const float tintStrength = std::max(0.f, tint[3]) * strength;
++        for (std::size_t component = 0; component < 3; ++component)
++            tintNumerator[component] += tint[component] * tintStrength;
++        tintWeight += tintStrength;
++        tintStrengthByModifier[&modifier] += tintStrength;
++
++        const std::array<float, 4> fade = evaluate(modifier.mFade, contribution.mTime, { 0.f, 0.f, 0.f, 0.f });
++        const float fadeStrength = std::max(0.f, fade[3]) * strength;
++        for (std::size_t component = 0; component < 3; ++component)
++            fadeNumerator[component] += fade[component] * fadeStrength;
++        fadeWeight += fadeStrength;
++        fadeStrengthByModifier[&modifier] += fadeStrength;
++    }
++
++    for (const auto& entry : tintStrengthByModifier)
++        strongestTint = std::max(strongestTint, entry.second);
++    for (const auto& entry : fadeStrengthByModifier)
++        strongestFade = std::max(strongestFade, entry.second);
++
++    for (std::size_t channel = 0; channel < ImageSpaceModifier::sMultiplyAddChannelCount; ++channel)
++    {
++        const std::size_t trait = sTraitForChannel[channel];
++        result.mTraits[trait] = base.mTraits[trait] * (1.f + multiplierDelta[channel]) + additive[channel];
++    }
++
++    if (tintWeight > 0.f)
++    {
++        for (std::size_t component = 0; component < 3; ++component)
++            result.mTint[component] = tintNumerator[component] / tintWeight;
++        result.mTint[3] = strongestTint;
++    }
++    if (fadeWeight > 0.f)
++    {
++        for (std::size_t component = 0; component < 3; ++component)
++            result.mFade[component] = fadeNumerator[component] / fadeWeight;
++        result.mFade[3] = strongestFade;
++    }
++
++    result.mTraits[ImageSpace::Trait_CinematicTintRed] = result.mTint[0];
++    result.mTraits[ImageSpace::Trait_CinematicTintGreen] = result.mTint[1];
++    result.mTraits[ImageSpace::Trait_CinematicTintBlue] = result.mTint[2];
++    result.mTraits[ImageSpace::Trait_CinematicTintStrength] = result.mTint[3];
++    return result;
++}
+diff --git a/components/esm4/imagespacecomposition.hpp b/components/esm4/imagespacecomposition.hpp
+new file mode 100644
+index 0000000000..059c69912d
+--- /dev/null
++++ b/components/esm4/imagespacecomposition.hpp
+@@ -0,0 +1,32 @@
++#ifndef OPENMW_COMPONENTS_ESM4_IMAGESPACECOMPOSITION_H
++#define OPENMW_COMPONENTS_ESM4_IMAGESPACECOMPOSITION_H
++
++#include "loadimad.hpp"
++#include "loadimgs.hpp"
++
++#include <array>
++#include <vector>
++
++namespace ESM4
++{
++    struct ImageSpaceModifierContribution
++    {
++        const ImageSpaceModifier* mModifier = nullptr;
++        float mTime = 0.f;
++        float mStrength = 0.f;
++    };
++
++    struct ComposedImageSpace
++    {
++        std::array<float, ImageSpace::sTraitCount> mTraits{};
++        std::array<float, 4> mTint{ 1.f, 1.f, 1.f, 0.f };
++        std::array<float, 4> mFade{ 0.f, 0.f, 0.f, 0.f };
++    };
++
++    /// Compose an IMGS with active IMAD instances using the Gamebryo neutral-delta convention.
++    /// A multiplier contributes (value - 1) * strength and an additive channel contributes value * strength.
++    ComposedImageSpace composeImageSpace(
++        const ImageSpace& base, const std::vector<ImageSpaceModifierContribution>& modifiers);
++}
++
++#endif
+diff --git a/components/esm4/loadcell.cpp b/components/esm4/loadcell.cpp
+index a3342a4d1a..91f6284fc6 100644
+--- a/components/esm4/loadcell.cpp
++++ b/components/esm4/loadcell.cpp
+@@ -245,6 +245,12 @@ void ESM4::Cell::load(ESM4::Reader& reader)
+                 else
+                     reader.skipSubRecordData();
+                 break;
++            case ESM::fourCC("XCIM"):
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mImageSpace);
++                else
++                    reader.skipSubRecordData();
++                break;
+             case ESM::fourCC("TVDT"):
+             case ESM::fourCC("XBPS"): // Starfield
+             case ESM::fourCC("XCLA"): // Starfield
+@@ -259,7 +265,6 @@ void ESM4::Cell::load(ESM4::Reader& reader)
+             case ESM::fourCC("XWCS"):
+             case ESM::fourCC("XWCU"):
+             case ESM::fourCC("XWCN"):
+-            case ESM::fourCC("XCIM"):
+             case ESM::fourCC("XEZN"):
+             case ESM::fourCC("XWEM"):
+             case ESM::fourCC("XILL"):
+diff --git a/components/esm4/loadcell.hpp b/components/esm4/loadcell.hpp
+index 7b874b4179..dde563584b 100644
+--- a/components/esm4/loadcell.hpp
++++ b/components/esm4/loadcell.hpp
+@@ -91,6 +91,7 @@ namespace ESM4
+ 
+         ESM::FormId mMusic; // FO3/FONV
+         ESM::FormId mAcousticSpace; // FO3/FONV
++        ESM::FormId mImageSpace; // FO3/FONV
+         // TES4: 0 = default, 1 = public, 2 = dungeon
+         // FO3/FONV have more types (not sure how they are used, however)
+         std::uint8_t mMusicType = 0;
+diff --git a/components/esm4/loadimad.cpp b/components/esm4/loadimad.cpp
+new file mode 100644
+index 0000000000..44ffaa945e
+--- /dev/null
++++ b/components/esm4/loadimad.cpp
+@@ -0,0 +1,118 @@
++#include "loadimad.hpp"
++
++#include <cstring>
++#include <stdexcept>
++
++#include "reader.hpp"
++
++namespace
++{
++    template <class T>
++    std::vector<T> readKeys(ESM4::Reader& reader, std::uint32_t byteCount)
++    {
++        std::vector<std::uint8_t> raw(byteCount);
++        if (!raw.empty())
++            reader.get(raw.data(), raw.size());
++        if (byteCount % sizeof(T) != 0)
++            return {};
++        std::vector<T> result(byteCount / sizeof(T));
++        if (!result.empty())
++            std::memcpy(result.data(), raw.data(), raw.size());
++        return result;
++    }
++}
++
++void ESM4::ImageSpaceModifier::load(Reader& reader)
++{
++    mId = reader.getFormIdFromHeader();
++    mFlags = reader.hdr().record.flags;
++
++    while (reader.getSubRecordHeader())
++    {
++        const SubRecordHeader& subHdr = reader.subRecordHeader();
++        const std::uint32_t iadSuffix = ESM::fourCC("\0IAD") & 0xffffff00u;
++        if ((subHdr.typeId & 0xffffff00u) == iadSuffix)
++        {
++            const std::uint8_t channel = static_cast<std::uint8_t>(subHdr.typeId & 0xffu);
++            if (channel < sMultiplyAddChannelCount)
++                mMultiply[channel] = readKeys<FloatKey>(reader, subHdr.dataSize);
++            else if (channel >= 0x40 && channel < 0x40 + sMultiplyAddChannelCount)
++                mAdd[channel - 0x40] = readKeys<FloatKey>(reader, subHdr.dataSize);
++            else
++                reader.skipSubRecordData();
++            continue;
++        }
++
++        switch (subHdr.typeId)
++        {
++            case ESM::fourCC("EDID"):
++                reader.getZString(mEditorId);
++                break;
++            case ESM::fourCC("DNAM"):
++                mData.resize(subHdr.dataSize);
++                if (!mData.empty())
++                    reader.get(mData.data(), mData.size());
++                if (mData.size() >= 8)
++                {
++                    std::memcpy(&mAdapterFlags, mData.data(), sizeof(mAdapterFlags));
++                    std::memcpy(&mDuration, mData.data() + 4, sizeof(mDuration));
++                }
++                break;
++            case ESM::fourCC("BNAM"):
++                mBlurRadius = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("VNAM"):
++                mDoubleVisionStrength = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("TNAM"):
++                mTint = readKeys<ColorKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("NAM3"):
++                mFade = readKeys<ColorKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("RNAM"):
++                mRadialBlurStrength = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("SNAM"):
++                mRadialBlurRampUp = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("UNAM"):
++                mRadialBlurStart = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("NAM1"):
++                mRadialBlurRampDown = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("NAM2"):
++                mRadialBlurDownStart = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("WNAM"):
++                mDepthOfFieldStrength = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("XNAM"):
++                mDepthOfFieldDistance = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("YNAM"):
++                mDepthOfFieldRange = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("NAM4"):
++                mMotionBlurStrength = readKeys<FloatKey>(reader, subHdr.dataSize);
++                break;
++            case ESM::fourCC("RDSD"):
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mIntroSound);
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("RDSI"):
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mOutroSound);
++                else
++                    reader.skipSubRecordData();
++                break;
++            default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadimad"))
++                    break;
++                throw std::runtime_error("ESM4::IMAD::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
++        }
++    }
++}
+diff --git a/components/esm4/loadimad.hpp b/components/esm4/loadimad.hpp
+new file mode 100644
+index 0000000000..1826e9534a
+--- /dev/null
++++ b/components/esm4/loadimad.hpp
+@@ -0,0 +1,90 @@
++#ifndef OPENMW_COMPONENTS_ESM4_LOADIMAD_H
++#define OPENMW_COMPONENTS_ESM4_LOADIMAD_H
++
++#include <array>
++#include <cstdint>
++#include <string>
++#include <vector>
++
++#include <components/esm/defs.hpp>
++#include <components/esm/formid.hpp>
++
++namespace ESM4
++{
++    class Reader;
++
++    struct ImageSpaceModifier
++    {
++        static constexpr std::size_t sMultiplyAddChannelCount = 21;
++
++        enum MultiplyAddChannel : std::size_t
++        {
++            Channel_EyeAdaptSpeed,
++            Channel_HdrBlurRadius,
++            Channel_SkinDimmer,
++            Channel_EmissiveMultiplier,
++            Channel_TargetLuminance,
++            Channel_UpperLuminanceClamp,
++            Channel_BrightScale,
++            Channel_BrightClamp,
++            Channel_LuminanceRampNoTexture,
++            Channel_LuminanceRampMin,
++            Channel_LuminanceRampMax,
++            Channel_SunlightDimmer,
++            Channel_GrassDimmer,
++            Channel_TreeDimmer,
++            Channel_BloomBlurRadius,
++            Channel_BloomAlphaInterior,
++            Channel_BloomAlphaExterior,
++            Channel_CinematicSaturation,
++            Channel_CinematicContrast,
++            Channel_CinematicContrastAverageLuminance,
++            Channel_CinematicBrightness,
++        };
++
++        struct FloatKey
++        {
++            float time = 0.f;
++            float value = 0.f;
++        };
++
++        struct ColorKey
++        {
++            float time = 0.f;
++            std::array<float, 4> value{};
++        };
++
++        ESM::FormId mId;
++        std::uint32_t mFlags = 0;
++        std::string mEditorId;
++        std::uint32_t mAdapterFlags = 0;
++        float mDuration = 0.f;
++        std::vector<std::uint8_t> mData;
++        std::array<std::vector<FloatKey>, sMultiplyAddChannelCount> mMultiply;
++        std::array<std::vector<FloatKey>, sMultiplyAddChannelCount> mAdd;
++        std::vector<FloatKey> mBlurRadius;
++        std::vector<FloatKey> mDoubleVisionStrength;
++        std::vector<ColorKey> mTint;
++        std::vector<ColorKey> mFade;
++        std::vector<FloatKey> mRadialBlurStrength;
++        std::vector<FloatKey> mRadialBlurRampUp;
++        std::vector<FloatKey> mRadialBlurStart;
++        std::vector<FloatKey> mRadialBlurRampDown;
++        std::vector<FloatKey> mRadialBlurDownStart;
++        std::vector<FloatKey> mDepthOfFieldStrength;
++        std::vector<FloatKey> mDepthOfFieldDistance;
++        std::vector<FloatKey> mDepthOfFieldRange;
++        std::vector<FloatKey> mMotionBlurStrength;
++        ESM::FormId mIntroSound;
++        ESM::FormId mOutroSound;
++
++        void load(Reader& reader);
++
++        static constexpr ESM::RecNameInts sRecordId = ESM::RecNameInts::REC_IMAD4;
++    };
++
++    static_assert(sizeof(ImageSpaceModifier::FloatKey) == 8);
++    static_assert(sizeof(ImageSpaceModifier::ColorKey) == 20);
++}
++
++#endif
+diff --git a/components/esm4/loadimgs.cpp b/components/esm4/loadimgs.cpp
+new file mode 100644
+index 0000000000..98f022a903
+--- /dev/null
++++ b/components/esm4/loadimgs.cpp
+@@ -0,0 +1,39 @@
++#include "loadimgs.hpp"
++
++#include <algorithm>
++#include <cstring>
++#include <stdexcept>
++#include <vector>
++
++#include "reader.hpp"
++
++void ESM4::ImageSpace::load(Reader& reader)
++{
++    mId = reader.getFormIdFromHeader();
++    mFlags = reader.hdr().record.flags;
++
++    while (reader.getSubRecordHeader())
++    {
++        const SubRecordHeader& subHdr = reader.subRecordHeader();
++        switch (subHdr.typeId)
++        {
++            case ESM::fourCC("EDID"):
++                reader.getZString(mEditorId);
++                break;
++            case ESM::fourCC("DNAM"):
++            {
++                std::vector<std::uint8_t> raw(subHdr.dataSize);
++                if (!raw.empty())
++                    reader.get(raw.data(), raw.size());
++                const std::size_t traitBytes = std::min(raw.size(), sizeof(mTraits));
++                if (traitBytes != 0)
++                    std::memcpy(mTraits.data(), raw.data(), traitBytes);
++                break;
++            }
++            default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadimgs"))
++                    break;
++                throw std::runtime_error("ESM4::IMGS::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
++        }
++    }
++}
+diff --git a/components/esm4/loadimgs.hpp b/components/esm4/loadimgs.hpp
+new file mode 100644
+index 0000000000..beaed5e850
+--- /dev/null
++++ b/components/esm4/loadimgs.hpp
+@@ -0,0 +1,67 @@
++#ifndef OPENMW_COMPONENTS_ESM4_LOADIMGS_H
++#define OPENMW_COMPONENTS_ESM4_LOADIMGS_H
++
++#include <array>
++#include <cstdint>
++#include <string>
++
++#include <components/esm/defs.hpp>
++#include <components/esm/formid.hpp>
++
++namespace ESM4
++{
++    class Reader;
++
++    struct ImageSpace
++    {
++        static constexpr std::size_t sTraitCount = 33;
++
++        enum Trait : std::size_t
++        {
++            Trait_EyeAdaptSpeed,
++            Trait_HdrBlurRadius,
++            Trait_HdrBlurPasses,
++            Trait_EmissiveMultiplier,
++            Trait_TargetLuminance,
++            Trait_UpperLuminanceClamp,
++            Trait_BrightScale,
++            Trait_BrightClamp,
++            Trait_LuminanceRampNoTexture,
++            Trait_LuminanceRampMin,
++            Trait_LuminanceRampMax,
++            Trait_SunlightDimmer,
++            Trait_GrassDimmer,
++            Trait_TreeDimmer,
++            Trait_SkinDimmer,
++            Trait_BloomBlurRadius,
++            Trait_BloomAlphaInterior,
++            Trait_BloomAlphaExterior,
++            Trait_GetHitBlurRadius,
++            Trait_GetHitBlurDamping,
++            Trait_GetHitDamping,
++            Trait_NightEyeTintRed,
++            Trait_NightEyeTintGreen,
++            Trait_NightEyeTintBlue,
++            Trait_NightEyeBrightness,
++            Trait_CinematicSaturation,
++            Trait_CinematicContrastAverageLuminance,
++            Trait_CinematicContrast,
++            Trait_CinematicBrightness,
++            Trait_CinematicTintRed,
++            Trait_CinematicTintGreen,
++            Trait_CinematicTintBlue,
++            Trait_CinematicTintStrength,
++        };
++
++        ESM::FormId mId;
++        std::uint32_t mFlags = 0;
++        std::string mEditorId;
++        std::array<float, sTraitCount> mTraits{};
++
++        void load(Reader& reader);
++
++        static constexpr ESM::RecNameInts sRecordId = ESM::RecNameInts::REC_IMGS4;
++    };
++}
++
++#endif
+diff --git a/components/esm4/loadwrld.cpp b/components/esm4/loadwrld.cpp
+index bc3b128620..6f942bf550 100644
+--- a/components/esm4/loadwrld.cpp
++++ b/components/esm4/loadwrld.cpp
+@@ -185,6 +185,12 @@ void ESM4::World::load(ESM4::Reader& reader)
+                 else
+                     reader.skipSubRecordData();
+                 break;
++            case ESM::fourCC("INAM"): // FO3/FNV exterior image space
++                if (subHdr.dataSize == sizeof(ESM::FormId))
++                    reader.getFormId(mImageSpace);
++                else
++                    reader.skipSubRecordData();
++                break;
+             case ESM::fourCC("PNAM"):
+                 if (subHdr.dataSize == sizeof(mParentUseFlags))
+                     reader.get(mParentUseFlags);
+@@ -235,7 +241,6 @@ void ESM4::World::load(ESM4::Reader& reader)
+             case ESM::fourCC("MODC"):
+             case ESM::fourCC("MODS"):
+             case ESM::fourCC("MODF"): // Model data end
+-            case ESM::fourCC("INAM"): // FO3
+             case ESM::fourCC("NNAM"): // FO3
+             case ESM::fourCC("XNAM"): // FO3
+             case ESM::fourCC("IMPS"): // FO3 Anchorage
+diff --git a/components/esm4/loadwrld.hpp b/components/esm4/loadwrld.hpp
+index f354fa3f08..8b72fabc61 100644
+--- a/components/esm4/loadwrld.hpp
++++ b/components/esm4/loadwrld.hpp
+@@ -103,6 +103,7 @@ namespace ESM4
+         ESM::FormId mParent; // parent worldspace formid
+         std::uint8_t mWorldFlags;
+         ESM::FormId mClimate;
++        ESM::FormId mImageSpace;
+         ESM::FormId mWater;
+         float mLandLevel;
+         float mWaterLevel;
+diff --git a/components/esm4/records.hpp b/components/esm4/records.hpp
+index 9f8718bf83..d5b067d11d 100644
+--- a/components/esm4/records.hpp
++++ b/components/esm4/records.hpp
+@@ -80,6 +80,8 @@
+ #include <components/esm4/loadtxst.hpp>
+ #include <components/esm4/loadweap.hpp>
+ #include <components/esm4/loadwthr.hpp>
++#include <components/esm4/loadimgs.hpp>
++#include <components/esm4/loadimad.hpp>
+ #include <components/esm4/loadwrld.hpp>
+ 
+ #endif
+diff --git a/files/data/shaders/internal_fallout_imagespace.omwfx b/files/data/shaders/internal_fallout_imagespace.omwfx
+new file mode 100644
+index 0000000000..5e5a91b8cb
+--- /dev/null
++++ b/files/data/shaders/internal_fallout_imagespace.omwfx
+@@ -0,0 +1,40 @@
++uniform_vec4 uFalloutCinematic {
++    default = vec4(1.0, 0.0, 1.0, 1.0);
++}
++
++uniform_vec4 uFalloutTint {
++    default = vec4(1.0, 1.0, 1.0, 0.0);
++}
++
++uniform_vec4 uFalloutFade {
++    default = vec4(0.0, 0.0, 0.0, 0.0);
++}
++
++fragment main {
++    omw_In vec2 omw_TexCoord;
++
++    void main()
++    {
++        vec4 source = omw_GetLastShader(omw_TexCoord);
++        vec3 color = source.rgb;
++
++        // ISHDRBLENDINSHADERCIN.pso, package 13: luminance/saturation,
++        // weighted tint, then brightness/contrast about average luminance.
++        float luminance = dot(color, vec3(0.299, 0.587, 0.114));
++        color = mix(vec3(luminance), color, uFalloutCinematic.x);
++        color = mix(color, vec3(luminance) * uFalloutTint.rgb, uFalloutTint.a);
++        color = ((color * uFalloutCinematic.w) - uFalloutCinematic.y)
++            * uFalloutCinematic.z + uFalloutCinematic.y;
++        color = mix(color, uFalloutFade.rgb, uFalloutFade.a);
++
++        omw_FragColor = vec4(color, source.a);
++    }
++}
++
++technique {
++    description = "Internal Fallout 3/New Vegas image-space cinematic stage";
++    version = "1.0";
++    author = "OpenMW Fallout compatibility overlay";
++    passes = main;
++    flags = hidden;
++}
+-- 
+2.53.0.windows.1
+

@@ -1329,6 +1329,7 @@
           "environment": {
             "OPENMW_FNV_BOOTSTRAP_HOUR": "14.45",
             "OPENMW_FNV_PROOF_WEATHER_ID": "FormId:0x11237d7",
+            "OPENMW_FNV_PROOF_IMAGE_SPACE_ID": "FormId:0x108809d",
             "OPENMW_PROOF_DELAY_STARTUP_SCRIPT": "1",
             "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
             "OPENMW_FNV_DISABLE_PACKAGE_PREPLACEMENT": "1",
@@ -1395,6 +1396,7 @@
           },
           "notes": [
             "Uses the authored Easy Pete reference and the live Bip01 Head world transform; it does not stage or rotate the actor.",
+            "Pins the load-order-adjusted NVDefaultExterior IMGS used by the generated Goodsprings bridge cell; patch 0017 then resolves the current weather's authored IMAD records and executes the retail cinematic stage.",
             "The maintained world-viewer camera owns the native screenshot path. A requested frame is held until the head remains in the portrait safe area and both live hand bones remain below the face for eight consecutive frames; rejected poses do not advance the screenshot schedule. This face/material slice hides the equipped weapon and must not enable legacy bind-pose or hand-bind-frame proof overrides; weapon attachment is a separate gate."
           ]
         },

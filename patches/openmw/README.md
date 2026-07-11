@@ -101,6 +101,19 @@ passing acceptance event per native file. In
 until 248 and 277 respectively; both accepted files are centered, hat-complete,
 weapon-free portraits captured without foreground focus. This is an evidence
 quality gate, not a skin, hair, or material parity claim.
+Patch 0017 loads FO3/FNV `IMGS` and `IMAD` records, preserves cell/world image
+space links, composes active weather modifiers with the base traits, applies
+the authored sunlight multiplier, and executes the final retail
+`ISHDRBLENDINSHADERCIN` cinematic/tint/fade math as a hidden flat-screen
+post-process pass. It is exported from downstream commit `5ae0146a49`. The
+`fallout_new_vegas-20260711-020053` proof resolves `NVDefaultExterior`
+(`FormId:0x108809d`) and the two complementary `NVWastelandIS` instances, then
+reproduces retail `skinDimmer=0.1925`, `sunlightDimmer=1.21`, cinematic
+`(1.1,0.2,1.1,1.3)`, and tint
+`(0.992832,0.660198,0.0276842,0.392157)` in live OpenMW. Five byte-level tests
+cover the record layouts, composition, and FO3/FNV weather rows. Retail HDR
+downsample/adaptation/bright-pass/bloom and the skin-only material dimmer are
+still open; patch 0017 is not a full color-parity claim.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 

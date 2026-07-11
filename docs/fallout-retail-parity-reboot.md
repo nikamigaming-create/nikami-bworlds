@@ -246,6 +246,40 @@ total entries, a 748-byte selected shader, and FNV-1a `0x0A008802`, matching the
 runtime hook. Do not commit the extracted `.pso`; only the hashes, constants,
 and derived formula belong in the public evidence ledger.
 
+Patch 0017 is the maintained OpenMW execution slice for that evidence. It adds
+the `IMGS`/`IMAD` stores and record readers, preserves `WRLD.INAM` and
+`CELL.XCIM`, composes the base and active weather modifier instances, applies
+the sunlight multiplier, and runs the final cinematic/tint/fade shader in the
+flat post-processor. Verify the byte contracts before launching:
+
+```powershell
+cmake --build D:\Modlists\fnv\openmw-source\MSVC2022_64 `
+  --config Release --target components-tests -- /m:4
+
+& D:\Modlists\fnv\openmw-source\MSVC2022_64\Release\components-tests.exe `
+  --gtest_filter=Esm4ImageSpaceTest.*:Esm4WeatherTest.*
+```
+
+The five tests must pass. The maintained no-focus native proof is:
+
+```powershell
+.\scripts\Invoke-RealWorldScreenshots.ps1 `
+  -WorldId fallout_new_vegas -Mode flat -SkipMenu `
+  -StartSlice goodsprings-easy-pete-actor-tracked-portrait
+```
+
+The catalog pins `NVDefaultExterior` as load-order-adjusted
+`FormId:0x108809d` because the generated Goodsprings bridge cell is ESM3 and
+cannot yet expose its underlying ESM4 world link. The engine still resolves
+the weather IMADs from `NVWastelandGS` data. The reference run is
+`run/real-world-screenshots/fallout_new_vegas-20260711-020053`: exit 0, two
+accepted native frames, and exact live constants `skinDimmer=0.1925`,
+`sunlightDimmer=1.21`, cinematic `(1.1,0.2,1.1,1.3)`, tint
+`(0.992832,0.660198,0.0276842,0.392157)`. Do not call this full retail color
+parity: the HDR adaptation/bright-pass/bloom chain, skin-only material dimmer,
+automatic generated-cell world link, remaining time transitions, and FO3
+matrix are still open.
+
 Furniture evidence already captured:
 
 ```text

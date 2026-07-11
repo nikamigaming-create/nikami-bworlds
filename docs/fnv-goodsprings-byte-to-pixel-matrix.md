@@ -163,3 +163,17 @@ The weather IMAD's first static keys multiply brightness by `1.3`, sunlight by
 `0.392156869`. Strength-weighting the base and modifier tint colors produces
 the measured runtime RGB `(0.992831886,0.660198152,0.0276841652)` exactly.
 These byte-to-runtime identities are the implementation tests for OpenMW.
+
+Patch 0017 now turns those identities into a flat OpenMW pixel path. It parses
+`IMGS`/`IMAD`, composes duplicate weather instances by their complementary
+strengths, and implements the exact final D3D9 instruction order: luminance,
+saturation, tint toward `luminance * tintRGB`, brightness/contrast, then fade.
+The no-focus run `fallout_new_vegas-20260711-020053` logged the retail values
+above to six decimals, accepted requested portraits at frames 248 and 277, and
+exited 0. The prior no-image-space frame averaged RGB
+`(49.8483,49.0518,55.5299)` while the new native frame averaged
+`(53.4765,53.0857,61.6333)`; that delta is evidence that the pass executed, not
+a parity score because the actor pose differs slightly between runs. The
+remaining color work is the captured HDR/adaptation/bright-pass/bloom chain
+and the skin-only material dimmer; hair/sideburn and hand/weapon geometry stay
+separate gates.
