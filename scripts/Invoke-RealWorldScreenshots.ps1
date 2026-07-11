@@ -1793,8 +1793,10 @@ foreach ($id in $WorldId) {
             $validationFailures = [System.Collections.Generic.List[string]]::new()
             $expectedActor = [string](Get-PropertyValue $validation "expectedActor")
             $requireActorFramingTelemetry = $true -eq (Get-PropertyValue $validation "requireActorFramingTelemetry")
+            $requirePortraitAcceptanceTelemetry = $true -eq (Get-PropertyValue $validation "requirePortraitAcceptanceTelemetry")
             $actorObserved = $null
             $actorFramingPassed = $null
+            $portraitAcceptanceCount = $null
             if (-not [string]::IsNullOrWhiteSpace([string]$manifest.logPath) -and (Test-Path -LiteralPath $manifest.logPath)) {
                 $runLogText = Get-Content -LiteralPath $manifest.logPath -Raw
                 if (-not [string]::IsNullOrWhiteSpace($expectedActor)) {
@@ -1809,8 +1811,20 @@ foreach ($id in $WorldId) {
                         $validationFailures.Add("no passing actor-framing telemetry was recorded") | Out-Null
                     }
                 }
+                if ($requirePortraitAcceptanceTelemetry) {
+                    $portraitAcceptanceCount = [regex]::Matches(
+                        $runLogText,
+                        'World viewer portrait capture accepted:.*status=pass'
+                    ).Count
+                    $capturedNativeCount = @($manifest.screenshots | Where-Object { $_.source -eq "openmw-native-screenshot" }).Count
+                    if ($portraitAcceptanceCount -ne $capturedNativeCount) {
+                        $validationFailures.Add(
+                            "portrait acceptance telemetry count $portraitAcceptanceCount does not match native screenshot count $capturedNativeCount"
+                        ) | Out-Null
+                    }
+                }
             }
-            elseif (-not [string]::IsNullOrWhiteSpace($expectedActor) -or $requireActorFramingTelemetry) {
+            elseif (-not [string]::IsNullOrWhiteSpace($expectedActor) -or $requireActorFramingTelemetry -or $requirePortraitAcceptanceTelemetry) {
                 $validationFailures.Add("runtime log required by actor-aware validation is missing") | Out-Null
             }
             $manifest.validationEvidence = [ordered]@{
@@ -1818,6 +1832,8 @@ foreach ($id in $WorldId) {
                 actorObserved = $actorObserved
                 actorFramingTelemetryRequired = [bool]$requireActorFramingTelemetry
                 actorFramingPassed = $actorFramingPassed
+                portraitAcceptanceTelemetryRequired = [bool]$requirePortraitAcceptanceTelemetry
+                portraitAcceptanceCount = $portraitAcceptanceCount
                 failures = @($validationFailures.ToArray())
                 status = if ($validationFailures.Count -eq 0) { "pass" } else { "fail" }
             }

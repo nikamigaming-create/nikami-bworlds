@@ -14,3 +14,4 @@
 0013-Restore-retail-FaceGen-child-basis.patch
 0014-Emit-actor-aware-portrait-framing-telemetry.patch
 0015-Load-and-render-Fallout-weather-records.patch
+0016-Reject-obstructed-portrait-capture-frames.patch

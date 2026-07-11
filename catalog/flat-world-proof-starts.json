@@ -1341,7 +1341,10 @@
             "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD": "1",
             "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_DISTANCE": "30",
             "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_FOCUS": "2",
-            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_EYE_Z": "0"
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_EYE_Z": "0",
+            "OPENMW_WORLD_VIEWER_REQUIRE_PORTRAIT_CLEAR": "1",
+            "OPENMW_WORLD_VIEWER_PORTRAIT_CLEAR_FRAMES": "8",
+            "OPENMW_WORLD_VIEWER_PORTRAIT_MAX_HAND_OFFSET_Z": "-18"
           },
           "anchor": {
             "source": "FalloutNV.esm EasyPeteRef FormId:0x104c80; live rendered face bounds drive the proof camera",
@@ -1384,6 +1387,7 @@
             "visualReviewRequired": true,
             "expectedActor": "GSEasyPete",
             "requireActorFramingTelemetry": true,
+            "requirePortraitAcceptanceTelemetry": true,
             "knownFailureClasses": [
               "skin-color-retail-mismatch",
               "hair-sideburn-geometry-missing"
@@ -1391,7 +1395,7 @@
           },
           "notes": [
             "Uses the authored Easy Pete reference and the live Bip01 Head world transform; it does not stage or rotate the actor.",
-            "The maintained world-viewer camera owns the native screenshot path. This face/material slice hides the equipped weapon for clean composition and must not enable legacy bind-pose or hand-bind-frame proof overrides; weapon attachment is a separate gate."
+            "The maintained world-viewer camera owns the native screenshot path. A requested frame is held until the head remains in the portrait safe area and both live hand bones remain below the face for eight consecutive frames; rejected poses do not advance the screenshot schedule. This face/material slice hides the equipped weapon and must not enable legacy bind-pose or hand-bind-frame proof overrides; weapon attachment is a separate gate."
           ]
         },
         "goodsprings-easy-pete-dialogue": {

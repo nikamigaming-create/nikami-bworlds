@@ -91,6 +91,16 @@ unmeasured time segments retain the legacy four-sample interpolation. The
 remaining orange final-frame difference is now isolated to the linked weather
 image-space modifier, which patch 0015 parses as a FormID but does not yet
 execute.
+Patch 0016 turns actor portrait frame numbers into retry points. Before the
+engine queues a native file it projects the live head into a configurable safe
+area, requires both animated hand bones to remain below the face, and requires
+the head position/forward axis to remain stable for consecutive frames. It is
+exported from downstream commit `77e5f4a8ef`. The root harness requires one
+passing acceptance event per native file. In
+`fallout_new_vegas-20260711-005513`, requested frames 240 and 270 were held
+until 248 and 277 respectively; both accepted files are centered, hat-complete,
+weapon-free portraits captured without foreground focus. This is an evidence
+quality gate, not a skin, hair, or material parity claim.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 

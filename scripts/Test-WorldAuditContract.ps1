@@ -934,6 +934,28 @@ if ($failures.Count -eq 0) {
             }
             Add-FlatWorldStartValidationFailures -Failures $failures -Label $sliceLabel -Spec $sliceStartSpec -AllowedPrefixes $allowedEnvironmentPrefixes -DefaultCapture $defaultCaptureSpec
 
+            $resolvedValidation = Get-PropertyValue $sliceStartSpec "validation"
+            if ($true -eq (Get-PropertyValue $resolvedValidation "requirePortraitAcceptanceTelemetry")) {
+                $resolvedEnvironment = Get-PropertyValue $sliceStartSpec "environment"
+                if ([string](Get-PropertyValue $resolvedEnvironment "OPENMW_WORLD_VIEWER_REQUIRE_PORTRAIT_CLEAR") -ne "1") {
+                    $failures.Add("$sliceLabel requires portrait acceptance telemetry but does not enable OPENMW_WORLD_VIEWER_REQUIRE_PORTRAIT_CLEAR=1")
+                }
+                $resolvedCapture = Merge-CatalogPropertyObject $defaultCaptureSpec (Get-PropertyValue $sliceStartSpec "capture")
+                $portraitExpectedCount = Get-PropertyValue $resolvedCapture "expectedScreenshotCount"
+                $portraitExpectedCountValid = $false
+                if ($null -ne $portraitExpectedCount) {
+                    try {
+                        $portraitExpectedCountValid = [int]$portraitExpectedCount -gt 0
+                    }
+                    catch {
+                        $portraitExpectedCountValid = $false
+                    }
+                }
+                if (-not $portraitExpectedCountValid) {
+                    $failures.Add("$sliceLabel requires portrait acceptance telemetry but has no positive capture.expectedScreenshotCount")
+                }
+            }
+
             $sequenceCount = Get-CameraSequenceCount $sliceStartSpec
             if ($sequenceCount -gt 1) {
                 $resolvedCapture = Merge-CatalogPropertyObject $defaultCaptureSpec (Get-PropertyValue $sliceStartSpec "capture")

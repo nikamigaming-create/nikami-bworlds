@@ -109,6 +109,20 @@ The tight portrait run at
 no equipped weapon obstructing the face/material gate. Weapon attachment is a
 separate failing slice rather than a contaminant in the portrait comparison.
 
+Patch 0016 closes the remaining evidence-quality hole exposed by the earlier
+burst: a correct camera transform was not enough when an animated hand crossed
+the face. The scheduled frame now waits until the live head projects inside the
+portrait safe area, both `Bip01 L Hand`/`Bip01 R Hand` bones are at least 18
+units below the head, and the head transform is stable for eight consecutive
+frames. The runner also rejects a manifest unless every native file has a
+matching `World viewer portrait capture accepted` event. The final flat run at
+`run/real-world-screenshots/fallout_new_vegas-20260711-005513` accepted the two
+requests at frames 248 and 277 with normalized head position `(0.5,0.5)`, hand
+offsets near `(-46.9,-45.6)`, exit code 0, and no foreground focus. Both frames
+retain Pete's hat and shoulders with no hand or weapon covering the head. This
+promotes the composition harness only; it does not promote retail color,
+hair/sideburn geometry, or weapon attachment.
+
 The earlier color verdict also mixed environment state: retail's saved global
 snapshot reports `GameHour=14.4492416`, while the OpenMW proof forced noon.
 The maintained portrait now uses `14.45`. xNVSE patch 0009 additionally records
