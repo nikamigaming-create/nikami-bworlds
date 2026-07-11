@@ -85,10 +85,26 @@ The maintained flat OpenMW portrait slice is
 `goodsprings-easy-pete-actor-tracked-portrait`. It follows the live
 `Bip01 Head` world transform and its local +Y face-forward axis through the
 world-viewer camera path; it does not stage or rotate Pete and does not enable
-the legacy bind-pose or hand-bind-frame proof modes. The run at
-`run/real-world-screenshots/fallout_new_vegas-20260710-225714` keeps Pete's
-head and torso framed in both native screenshots. Visual review still rejects
-both frames: head/face geometry is detached at his right cheek, his skin tone
-does not match retail, scalp/sideburn hair is missing, and the hand/sidearm
-assembly is wrong. The slice is therefore marked `visualReviewRequired`; a
-native PNG count is not a parity pass.
+the legacy bind-pose or hand-bind-frame proof modes. Patch 0013 then restores
+the retail-measured +90-degree Y child basis that is lost when OpenMW consumes
+the `BSFaceGenNiNodeBiped` wrapper during attachment. The face-parts-only A/B
+runs at `fallout_new_vegas-20260710-231306` and
+`fallout_new_vegas-20260710-232016` isolate that basis: the detached cluster
+coalesces only with the measured transform. The no-override full-actor run at
+`run/real-world-screenshots/fallout_new_vegas-20260710-232355` keeps Pete's
+head and torso framed and the static face parts attached in both native
+screenshots. Visual review still rejects the pixels because skin/material
+color, scalp/sideburn hair, and the hand/sidearm assembly do not match retail.
+The slice therefore remains `visualReviewRequired`; a native PNG count is not
+a parity pass.
+
+Patch 0014 and the root runner now make that framing contract machine checked.
+Scheduled native capture does not focus or take over the desktop. The engine
+emits the live actor reference, head center/forward axis, camera eye/target,
+target error, and requested/actual distance. The harness requires both that
+telemetry and the named `GSEasyPete` runtime ledger before accepting the files.
+The tight portrait run at
+`run/real-world-screenshots/fallout_new_vegas-20260710-234240` passed with
+`targetError=0`, `eyeDistance=30`, two native frames, no foreground focus, and
+no equipped weapon obstructing the face/material gate. Weapon attachment is a
+separate failing slice rather than a contaminant in the portrait comparison.

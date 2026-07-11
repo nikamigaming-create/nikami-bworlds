@@ -1334,10 +1334,11 @@
             "OPENMW_FNV_DISABLE_AI_PACKAGES": "1",
             "OPENMW_FNV_PROOF_TARGET_NPC": "GSEasyPete",
             "OPENMW_FNV_HIDE_PLAYER_PROOF_PARTS": "1",
+            "OPENMW_FNV_PROOF_HIDE_EQUIPPED_WEAPON": "1",
             "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_REF": "FormId:0x1104c80",
             "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD": "1",
-            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_DISTANCE": "52",
-            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_FOCUS": "4",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_DISTANCE": "30",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_FOCUS": "2",
             "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_EYE_Z": "0"
           },
           "anchor": {
@@ -1380,16 +1381,15 @@
           "validation": {
             "visualReviewRequired": true,
             "expectedActor": "GSEasyPete",
+            "requireActorFramingTelemetry": true,
             "knownFailureClasses": [
-              "face-geometry-detached",
               "skin-color-retail-mismatch",
-              "hair-sideburn-geometry-missing",
-              "hand-weapon-attachment-mismatch"
+              "hair-sideburn-geometry-missing"
             ]
           },
           "notes": [
             "Uses the authored Easy Pete reference and the live Bip01 Head world transform; it does not stage or rotate the actor.",
-            "The maintained world-viewer camera owns the native screenshot path. This slice must not enable legacy bind-pose or hand-bind-frame proof overrides."
+            "The maintained world-viewer camera owns the native screenshot path. This face/material slice hides the equipped weapon for clean composition and must not enable legacy bind-pose or hand-bind-frame proof overrides; weapon attachment is a separate gate."
           ]
         },
         "goodsprings-easy-pete-dialogue": {

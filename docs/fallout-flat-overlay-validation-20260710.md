@@ -348,6 +348,40 @@ camera remains an in-world moving-pose proof, so a controlled retail/OpenMW
 pixel-differential and a broader NPC matrix are still required before claiming
 every-pixel color parity.
 
+### Patch 0013: retail FaceGen child basis
+
+Retail xNVSE scene-graph telemetry in
+`run/retail-oracle/fnv-easy-pete-checkpoint-animation-v2.jsonl` records an
+identity `BSFaceGenNiNodeBiped` below `Bip01 Head` and the same +90-degree Y
+local rotation on its static mouth, teeth, tongue, eye, brow, beard, and
+scalp-hair children. OpenMW consumes the wrapper while attaching those parts,
+so patch 0013 restores the measured child basis at the attachment boundary.
+
+The face-parts-only run `fallout_new_vegas-20260710-231306` retained the
+detached cluster with the zero default. The otherwise identical measured-basis
+run `fallout_new_vegas-20260710-232016` coalesced it. The full-actor,
+no-environment-override run `fallout_new_vegas-20260710-232355` kept mouth,
+eyes, beard, hat, and head together in both native frames. The remaining wrong
+skin/material response, scalp/sideburn presentation, and hand/sidearm assembly
+are separate failing gates; this patch does not claim whole-head parity.
+
+### Patch 0014: actor-aware, background-safe portrait capture
+
+The static world-viewer camera now reports the exact live actor reference,
+head center and forward axis, camera eye and target, target error, and actual
+versus requested distance every 30 frames. `Invoke-RealWorldScreenshots.ps1`
+requires a named actor ledger and a passing framing row when the catalog asks
+for actor-aware validation; otherwise it marks the capture
+`rejected-native-validation`. Scheduled native capture with no input events no
+longer calls the foreground-window focus path.
+
+The proof run `fallout_new_vegas-20260710-234240` kept the window in the
+background, observed `GSEasyPete`, recorded `targetError=0` and
+`eyeDistance=30`, captured two 800x600 native frames, exited 0, and passed the
+machine framing gate. Its weapon-free, tight composition is suitable for the
+remaining skin/material and hair/sideburn differential, but visual review is
+still mandatory and still failing those pixels.
+
 ### Authored dialogue voice and result execution
 
 Patch `0008` advances the bridge from visible INFO text to data-backed runtime

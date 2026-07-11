@@ -11,3 +11,5 @@
 0010-Honor-Fallout-furniture-marker-and-seated-state.patch
 0011-Match-retail-furniture-entry-and-head-attachments.patch
 0012-Track-Fallout-portrait-camera-from-live-head-bone.patch
+0013-Restore-retail-FaceGen-child-basis.patch
+0014-Emit-actor-aware-portrait-framing-telemetry.patch

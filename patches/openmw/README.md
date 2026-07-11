@@ -60,6 +60,24 @@ so diagnostics do not flood once per actor per frame. It is exported from
 downstream commit `8b0fb494b3`. The actor-tracked Easy Pete run proves stable
 framing only; detached face geometry, skin color, hair/sideburns, and the
 hand/sidearm assembly still fail visual review.
+Patch 0013 restores the authored +90-degree Y local basis on the static
+FO3/FNV FaceGen mouth, teeth, tongue, eye, brow, beard, and scalp-hair
+children after the original wrapper node is consumed by attachment. It is
+exported from downstream commit `7f083907cb`. Retail xNVSE hierarchy telemetry
+measured the same matrix on every `BSFaceGenNiNodeBiped` child; the isolated
+OpenMW run at `fallout_new_vegas-20260710-232016` coalesced the parts only when
+that measured basis was supplied, and the no-override full-actor run at
+`fallout_new_vegas-20260710-232355` retained the correction. Skin/material,
+scalp/sideburn, and hand/sidearm parity remain failing gates.
+Patch 0014 emits actor-aware portrait telemetry from the same live head pose
+used by the maintained camera. It records the actor reference, head center,
+forward axis, eye, target, target error, and requested/actual distance, then
+marks the sample pass or fail. It is exported from downstream commit
+`4e2b743d8b`. The root harness consumes that structured line together with the
+expected NPC ledger; missing or failing evidence rejects the capture. The
+`fallout_new_vegas-20260710-234240` run passed both gates without focusing the
+game window and produced two tight, weapon-free native portraits. Visual pixel
+review remains independently required.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 

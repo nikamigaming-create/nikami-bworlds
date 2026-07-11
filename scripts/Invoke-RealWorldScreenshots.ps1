@@ -1499,6 +1499,16 @@ foreach ($id in $WorldId) {
         presentationPolicy = $presentationPolicy
         processEnvironment = @()
         inputEvents = @($effectiveInputEvents)
+        windowFocus = [ordered]@{
+            required = [bool]((-not $engineScreenshotEnabled) -or $effectiveInputEvents.Count -gt 0)
+            used = $false
+            reason = if ($engineScreenshotEnabled -and $effectiveInputEvents.Count -eq 0) {
+                "scheduled native capture requires no foreground input"
+            } else {
+                "native screenshot action or explicit input events require foreground input"
+            }
+        }
+        validationEvidence = $null
         guardrails = @(
             "repo-local-openmw-runtime",
             "real-profile-launch",
@@ -1566,7 +1576,13 @@ foreach ($id in $WorldId) {
             $manifest.status = if ($process.HasExited) { "exited-before-window" } else { "no-window" }
         }
         else {
-            Focus-GameWindow -Process $process -Window $window
+            if ($manifest.windowFocus.required) {
+                Focus-GameWindow -Process $process -Window $window
+                $manifest.windowFocus.used = $true
+            }
+            else {
+                Write-Host "Leaving the game window in the background; scheduled native capture needs no input focus."
+            }
             $knownNativeScreenshots = @{}
             Get-NativeScreenshotFiles -Directory $nativeScreensDir | ForEach-Object {
                 $knownNativeScreenshots[$_.FullName] = $true
@@ -1768,6 +1784,46 @@ foreach ($id in $WorldId) {
             $runLogPath = Join-Path $worldOutput "openmw.log"
             Copy-Item -LiteralPath $profileLogPath -Destination $runLogPath -Force
             $manifest.logPath = $runLogPath
+        }
+
+        $validation = if ($null -ne $catalogStartSpec) {
+            Get-PropertyValue $catalogStartSpec "validation"
+        } else { $null }
+        if ($null -ne $validation) {
+            $validationFailures = [System.Collections.Generic.List[string]]::new()
+            $expectedActor = [string](Get-PropertyValue $validation "expectedActor")
+            $requireActorFramingTelemetry = $true -eq (Get-PropertyValue $validation "requireActorFramingTelemetry")
+            $actorObserved = $null
+            $actorFramingPassed = $null
+            if (-not [string]::IsNullOrWhiteSpace([string]$manifest.logPath) -and (Test-Path -LiteralPath $manifest.logPath)) {
+                $runLogText = Get-Content -LiteralPath $manifest.logPath -Raw
+                if (-not [string]::IsNullOrWhiteSpace($expectedActor)) {
+                    $actorObserved = [bool]($runLogText -match ('npc="' + [regex]::Escape($expectedActor) + '"'))
+                    if (-not $actorObserved) {
+                        $validationFailures.Add("expected actor '$expectedActor' was not present in the structured runtime ledger") | Out-Null
+                    }
+                }
+                if ($requireActorFramingTelemetry) {
+                    $actorFramingPassed = [bool]($runLogText -match 'World viewer actor framing:.*status=pass')
+                    if (-not $actorFramingPassed) {
+                        $validationFailures.Add("no passing actor-framing telemetry was recorded") | Out-Null
+                    }
+                }
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($expectedActor) -or $requireActorFramingTelemetry) {
+                $validationFailures.Add("runtime log required by actor-aware validation is missing") | Out-Null
+            }
+            $manifest.validationEvidence = [ordered]@{
+                expectedActor = if ([string]::IsNullOrWhiteSpace($expectedActor)) { $null } else { $expectedActor }
+                actorObserved = $actorObserved
+                actorFramingTelemetryRequired = [bool]$requireActorFramingTelemetry
+                actorFramingPassed = $actorFramingPassed
+                failures = @($validationFailures.ToArray())
+                status = if ($validationFailures.Count -eq 0) { "pass" } else { "fail" }
+            }
+            if ($validationFailures.Count -gt 0 -and $manifest.screenshots.Count -gt 0) {
+                $manifest.status = "rejected-native-validation"
+            }
         }
 
         $manifest.completedAt = (Get-Date).ToString("o")
