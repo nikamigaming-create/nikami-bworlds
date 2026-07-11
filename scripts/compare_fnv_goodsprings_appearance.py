@@ -5,6 +5,8 @@ import argparse
 import json
 from pathlib import Path
 
+from PIL import Image, ImageStat
+
 
 def form_int(value):
     if value in (None, ""):
@@ -21,7 +23,25 @@ def load_events(path):
         return [json.loads(line) for line in stream if line.strip()]
 
 
+def image_metrics(path):
+    with Image.open(path) as image:
+        grayscale = image.convert("L")
+        stats = ImageStat.Stat(grayscale)
+        width, height = image.size
+        center = grayscale.crop((width // 4, height // 3, width * 3 // 4, height * 9 // 10))
+        center_stats = ImageStat.Stat(center)
+        return {
+            "width": width,
+            "height": height,
+            "meanLuma": round(stats.mean[0], 3),
+            "lumaStdDev": round(stats.stddev[0], 3),
+            "centerMeanLuma": round(center_stats.mean[0], 3),
+            "centerLumaStdDev": round(center_stats.stddev[0], 3),
+        }
+
+
 def compare_target(target, capture_path):
+    expected_ref = form_int(target["reference"]["form"])
     result = {
         "id": target["id"],
         "reference": target["reference"]["form"],
@@ -31,6 +51,12 @@ def compare_target(target, capture_path):
     }
     if capture_path is None:
         return result
+    screenshot_root = capture_path.with_suffix("").with_name(capture_path.stem + "-screens")
+    screenshot_label = f"{expected_ref:08x}"
+    raw_screenshot = screenshot_root / f"frame-target-{screenshot_label}.bmp"
+    proof_crop = screenshot_root / f"frame-target-{screenshot_label}-proof-crop.png"
+    result["rawScreenshot"] = str(raw_screenshot.resolve()) if raw_screenshot.is_file() else None
+    result["proofCrop"] = str(proof_crop.resolve()) if proof_crop.is_file() else None
     events = load_events(capture_path)
     faults = [event for event in events if "fault" in event.get("event", "")]
     if faults:
@@ -38,13 +64,27 @@ def compare_target(target, capture_path):
         result["mismatches"].append({"field": "faults", "actual": [event["event"] for event in faults]})
         return result
     if not target["category"].endswith("humanoid"):
-        event = next((event for event in events if event.get("event") == "target-appearance"), None)
+        event = next(
+            (
+                event
+                for event in events
+                if event.get("event") == "target-appearance" and event.get("refForm") == expected_ref
+            ),
+            None,
+        )
         result["status"] = "captured" if event else "failing"
         if event is None:
             result["mismatches"].append({"field": "target-appearance", "actual": "missing"})
         return result
 
-    event = next((event for event in events if event.get("event") == "npc-appearance"), None)
+    event = next(
+        (
+            event
+            for event in events
+            if event.get("event") == "npc-appearance" and event.get("refForm") == expected_ref
+        ),
+        None,
+    )
     if event is None:
         result["status"] = "failing"
         result["mismatches"].append({"field": "npc-appearance", "actual": "missing"})
@@ -89,6 +129,28 @@ def compare_target(target, capture_path):
         result["mismatches"].append(
             {"field": "raceFaceSlots", "expectedCount": 8, "actualCount": len(event.get("raceFaceSlots", []))}
         )
+    if not raw_screenshot.is_file() or not proof_crop.is_file():
+        result["mismatches"].append(
+            {
+                "field": "pixelEvidence",
+                "expected": "raw BMP and proof crop",
+                "actual": {
+                    "raw": raw_screenshot.is_file(),
+                    "proofCrop": proof_crop.is_file(),
+                },
+            }
+        )
+    else:
+        metrics = image_metrics(proof_crop)
+        result["pixelMetrics"] = metrics
+        if metrics["width"] < 800 or metrics["height"] < 600:
+            result["mismatches"].append(
+                {"field": "pixelDimensions", "expected": ">=800x600", "actual": metrics}
+            )
+        if metrics["meanLuma"] < 3 or metrics["lumaStdDev"] < 3:
+            result["mismatches"].append(
+                {"field": "pixelReadiness", "expected": "rendered non-black frame", "actual": metrics}
+            )
     result["status"] = "passed" if not result["mismatches"] else "failing"
     return result
 
@@ -118,6 +180,11 @@ def main():
         "counts": counts,
         "complete": counts["pending"] == 0 and counts["failing"] == 0,
         "rows": rows,
+        "screenshots": [
+            {"target": row["id"], "path": row["proofCrop"]}
+            for row in rows
+            if row.get("proofCrop")
+        ],
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

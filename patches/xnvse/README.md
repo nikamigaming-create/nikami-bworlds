@@ -48,6 +48,12 @@ head-part models, race face model/texture slots, and FaceGen channel shapes.
 The event contains stable content identifiers and paths, not runtime pointers.
 `scripts/compare_fnv_goodsprings_appearance.py` checks those values against the
 independently parsed ESM matrix.
+Patch 0008 cycles multiple declared humanoid references in one retail process,
+records every target transition, optionally enables staged references and their
+authored XESP parents, moves the player through the normal console command,
+waits for a live head and appearance event, and requests one screenshot per
+target. Staged state is explicit telemetry and must not be presented as natural
+AI/quest-state evidence.
 
 For the complete side-by-side capture discipline, current worktree checkpoint,
 and rules for extending this oracle without changing retail behavior, read

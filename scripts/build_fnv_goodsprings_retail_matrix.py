@@ -153,6 +153,8 @@ def build_matrix(esm_path):
             "authoredPlacement": {
                 "position": placement.get("pos"),
                 "rotationRadians": placement.get("rot"),
+                "enableParent": placement.get("enableParent"),
+                "enableParentFlags": placement.get("enableParentFlags", 0),
             },
             "captureContract": {
                 "retail": ["frontPortrait", "leftProfile", "rightProfile", "fullBodyIdle"],

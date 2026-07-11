@@ -28,7 +28,7 @@ it is not shipped in, linked into, or required by the OpenMW runtime.
 | OpenMW working checkout | `D:\Modlists\fnv\openmw-source` | `codex/bethesda-baked-flat-overlay-snapshot` |
 | OpenMW clean queue base | external checkout commit `c30c830d8e` | patches apply in `patches/openmw/series` order |
 | FNV/xNVSE working checkout | configured by the retail runner | xNVSE base `175bb28` |
-| Retail oracle queue | `patches/xnvse` | `0001` through `0007` |
+| Retail oracle queue | `patches/xnvse` | `0001` through `0008` |
 | OpenMW queue | `patches/openmw` | promoted queue through `0011` |
 | Retail captures | `run/retail-oracle` | immutable evidence; add a new version instead of overwriting |
 | OpenMW proof captures | under `run/`, plus the configured OpenMW proof directory | never promote on image statistics alone |

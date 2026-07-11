@@ -43,7 +43,15 @@ param(
     [switch]$PortraitCamera,
     [ValidateRange(32, 1000)]
     [float]$PortraitDistance = 110,
-    [switch]$RequireAppearanceTelemetry
+    [switch]$RequireAppearanceTelemetry,
+    [string[]]$BatchTargetForm = @(),
+    [ValidateRange(1, 600)]
+    [int]$BatchSettleFrames = 20,
+    [ValidateRange(1, 60)]
+    [int]$BatchAdvanceFrames = 3,
+    [switch]$BatchMoveToTargets,
+    [switch]$BatchEnableTargets,
+    [string[]]$BatchEnableParentForm = @()
 )
 
 Set-StrictMode -Version Latest
@@ -143,6 +151,8 @@ if ($DriveCommand -match '[|\r\n]') {
     throw "Retail oracle drive command cannot contain pipe or newline characters: $DriveCommand"
 }
 $ScreenshotFrame = @($ScreenshotFrame | Sort-Object -Unique)
+$BatchTargetForm = @($BatchTargetForm | Select-Object -Unique)
+$BatchEnableParentForm = @($BatchEnableParentForm | Select-Object -Unique)
 foreach ($frame in $ScreenshotFrame) {
     if ($frame -lt 1 -or $frame -gt $MaxFrames) {
         throw "ScreenshotFrame must be between 1 and MaxFrames: $frame"
@@ -151,7 +161,21 @@ foreach ($frame in $ScreenshotFrame) {
 if ($PortraitCamera -and $TargetForm -match '^(0[xX]0+|0+)$') {
     throw "PortraitCamera requires a nonzero TargetForm."
 }
-if ($ScreenshotFrame.Count -gt 0 -and [string]::IsNullOrWhiteSpace($ScreenshotDirectory)) {
+foreach ($form in $BatchTargetForm) {
+    if ($form -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$' -or $form -match '^(0[xX]0+|0+)$') {
+        throw "BatchTargetForm requires nonzero decimal or 0x-prefixed FormIDs, got: $form"
+    }
+}
+foreach ($form in $BatchEnableParentForm) {
+    if ($form -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$' -or $form -match '^(0[xX]0+|0+)$') {
+        throw "BatchEnableParentForm requires nonzero decimal or 0x-prefixed FormIDs, got: $form"
+    }
+}
+if ($BatchTargetForm.Count -gt 0 -and $ScreenshotFrame.Count -gt 0) {
+    throw "BatchTargetForm owns its screenshot schedule; do not also pass ScreenshotFrame."
+}
+$expectedScreenshotCount = $ScreenshotFrame.Count + $BatchTargetForm.Count
+if ($expectedScreenshotCount -gt 0 -and [string]::IsNullOrWhiteSpace($ScreenshotDirectory)) {
     $ScreenshotDirectory = "$OutputPath-screens"
 }
 
@@ -247,6 +271,12 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_SET_STAGE_QUEST = $SetStageQuestForm
     NIKAMI_ORACLE_SET_STAGE_INDEX = [string]$SetStageIndex
     NIKAMI_ORACLE_SCREENSHOT_FRAMES = (@($ScreenshotFrame) -join ",")
+    NIKAMI_ORACLE_BATCH_TARGET_FORMS = (@($BatchTargetForm) -join ",")
+    NIKAMI_ORACLE_BATCH_SETTLE_FRAMES = [string]$BatchSettleFrames
+    NIKAMI_ORACLE_BATCH_ADVANCE_FRAMES = [string]$BatchAdvanceFrames
+    NIKAMI_ORACLE_BATCH_MOVE_TO_TARGETS = if ($BatchMoveToTargets) { "1" } else { "0" }
+    NIKAMI_ORACLE_BATCH_ENABLE_TARGETS = if ($BatchEnableTargets) { "1" } else { "0" }
+    NIKAMI_ORACLE_BATCH_ENABLE_PARENT_FORMS = (@($BatchEnableParentForm) -join ",")
     NIKAMI_ORACLE_PORTRAIT_CAMERA = if ($PortraitCamera) { "1" } else { "0" }
     NIKAMI_ORACLE_PORTRAIT_DISTANCE = [string]$PortraitDistance
     NIKAMI_ORACLE_EXIT_WHEN_DONE = "1"
@@ -256,7 +286,7 @@ $gameProcess = $null
 $hadInstalledPlugin = Test-Path -LiteralPath $installedPlugin -PathType Leaf
 
 try {
-    if ($ScreenshotFrame.Count -gt 0) {
+    if ($expectedScreenshotCount -gt 0) {
         if (Test-Path -LiteralPath $screenshotBackupDirectory) {
             throw "Refusing to overwrite stale screenshot backup: $screenshotBackupDirectory"
         }
@@ -374,14 +404,16 @@ finally {
             Remove-FileWithRetry -Path $fixture.Destination
         }
     }
-    if ($ScreenshotFrame.Count -gt 0) {
+    if ($expectedScreenshotCount -gt 0) {
         $newScreenshots = @(Get-ChildItem -LiteralPath $gameRootPath -Filter 'ScreenShot*.bmp' -File |
             Sort-Object LastWriteTime, Name)
         for ($index = 0; $index -lt $newScreenshots.Count; $index++) {
             $frameLabel = if ($index -lt $ScreenshotFrame.Count) {
                 '{0:D6}' -f $ScreenshotFrame[$index]
+            } elseif (($index - $ScreenshotFrame.Count) -lt $BatchTargetForm.Count) {
+                'target-' + (($BatchTargetForm[$index - $ScreenshotFrame.Count] -replace '^0[xX]', '').ToLowerInvariant())
             } else {
-                'extra-{0:D3}' -f ($index - $ScreenshotFrame.Count + 1)
+                'extra-{0:D3}' -f ($index - $expectedScreenshotCount + 1)
             }
             $capturePath = Join-Path $screenshotOutputDirectory "frame-$frameLabel.bmp"
             Move-Item -LiteralPath $newScreenshots[$index].FullName -Destination $capturePath
@@ -414,15 +446,18 @@ if (@($snapshots | Where-Object { $_.label -eq "before" }).Count -ne 1 -or
 if ($complete.Count -ne 1) {
     throw "Retail oracle did not report capture completion."
 }
-$screenshotRequests = @($events | Where-Object { $_.event -eq "screenshot-request" -and $_.accepted })
-if ($ScreenshotFrame.Count -gt 0 -and
-    ($screenshotRequests.Count -ne $ScreenshotFrame.Count -or $capturedScreenshots.Count -ne $ScreenshotFrame.Count)) {
-    throw "Expected $($ScreenshotFrame.Count) accepted screenshot(s), got $($screenshotRequests.Count) request(s) and $($capturedScreenshots.Count) file(s)."
+$screenshotRequests = @($events | Where-Object {
+    $_.event -in @("screenshot-request", "batch-screenshot-request") -and $_.accepted
+})
+if ($expectedScreenshotCount -gt 0 -and
+    ($screenshotRequests.Count -ne $expectedScreenshotCount -or $capturedScreenshots.Count -ne $expectedScreenshotCount)) {
+    throw "Expected $expectedScreenshotCount accepted screenshot(s), got $($screenshotRequests.Count) request(s) and $($capturedScreenshots.Count) file(s)."
 }
-if ($PortraitCamera) {
+$expectedPortraitEvents = if ($BatchTargetForm.Count -gt 0) { $BatchTargetForm.Count } elseif ($PortraitCamera) { 1 } else { 0 }
+if ($expectedPortraitEvents -gt 0) {
     $portraitEvents = @($events | Where-Object { $_.event -eq "portrait-camera-set" })
-    if ($portraitEvents.Count -ne 1) {
-        throw "Portrait camera did not resolve and frame exactly one actor head."
+    if ($portraitEvents.Count -ne $expectedPortraitEvents) {
+        throw "Portrait camera resolved $($portraitEvents.Count) actor head(s), expected $expectedPortraitEvents."
     }
     Add-Type -AssemblyName System.Drawing
     foreach ($screenshot in $capturedScreenshots) {
@@ -466,8 +501,9 @@ if ($PortraitCamera) {
     }
 }
 $appearanceEvents = @($events | Where-Object { $_.event -in @("npc-appearance", "target-appearance") })
-if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne 1) {
-    throw "Expected exactly one target appearance event, got $($appearanceEvents.Count)."
+$expectedAppearanceEvents = if ($BatchTargetForm.Count -gt 0) { $BatchTargetForm.Count } else { 1 }
+if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne $expectedAppearanceEvents) {
+    throw "Expected $expectedAppearanceEvents target appearance event(s), got $($appearanceEvents.Count)."
 }
 
 [pscustomobject][ordered]@{
@@ -487,6 +523,12 @@ if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne 1) {
     backgroundDataMode = [bool]$BackgroundDataMode
     visibleGame = [bool]$VisibleGame
     screenshotFrames = @($ScreenshotFrame)
+    batchTargetForms = @($BatchTargetForm)
+    batchSettleFrames = $BatchSettleFrames
+    batchAdvanceFrames = $BatchAdvanceFrames
+    batchMoveToTargets = [bool]$BatchMoveToTargets
+    batchEnableTargets = [bool]$BatchEnableTargets
+    batchEnableParentForms = @($BatchEnableParentForm)
     screenshots = @($capturedScreenshots)
     portraitProofCrops = @($portraitProofCrops)
     portraitCamera = [bool]$PortraitCamera

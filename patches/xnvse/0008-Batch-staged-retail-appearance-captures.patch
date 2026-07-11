@@ -1,0 +1,169 @@
+From 078864872000d38d642a40737e1d82db44907c4d Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 22:11:37 -0700
+Subject: [PATCH] Batch staged retail appearance captures
+
+---
+ nvse_retail_oracle/main.cpp | 125 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 125 insertions(+)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index 200b96d..0ec8720 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -74,6 +74,17 @@ namespace
+     std::vector<std::string> gFurnitureSettledCommands;
+     std::vector<UInt32> gScreenshotFrames;
+     std::size_t gScreenshotFrameIndex = 0;
++    std::vector<UInt32> gBatchTargetForms;
++    std::size_t gBatchTargetIndex = 0;
++    UInt32 gBatchTargetReadyFrame = 0;
++    bool gBatchScreenshotRequested = false;
++    unsigned int gBatchSettleFrames = 20;
++    unsigned int gBatchAdvanceFrames = 3;
++    bool gBatchMoveToTargets = false;
++    bool gBatchEnableTargets = false;
++    bool gBatchTargetLoadRequested = false;
++    std::vector<UInt32> gBatchEnableParentForms;
++    bool gBatchEnableParentsRequested = false;
+     bool gPortraitCamera = false;
+     bool gPortraitCameraRequested = false;
+     bool gPortraitCameraLogged = false;
+@@ -2446,13 +2457,114 @@ namespace
+             gConsole->RunScriptLine2("QuitGame", nullptr, true);
+     }
+ 
++    void driveBatchTargetLoading()
++    {
++        if (gBatchTargetForms.empty() || gBatchTargetLoadRequested || gConsole == nullptr)
++            return;
++        if (!gBatchEnableParentsRequested)
++        {
++            gBatchEnableParentsRequested = true;
++            for (const UInt32 parentForm : gBatchEnableParentForms)
++            {
++                TESForm* form = lookupForm(parentForm);
++                TESObjectREFR* parent = form != nullptr && form->GetIsReference()
++                    ? static_cast<TESObjectREFR*>(form)
++                    : nullptr;
++                const bool accepted = parent != nullptr && gConsole->RunScriptLine2("Enable", parent, true);
++                gOutput << "{\"schema\":" << sSchemaJson
++                        << ",\"event\":\"batch-enable-parent-request\""
++                        << ",\"frame\":" << gFrame
++                        << ",\"parentForm\":" << parentForm
++                        << ",\"referenceAvailable\":" << (parent != nullptr ? "true" : "false")
++                        << ",\"accepted\":" << (accepted ? "true" : "false") << "}\n";
++            }
++            gOutput.flush();
++        }
++        gBatchTargetLoadRequested = true;
++        TESForm* targetForm = lookupForm(gTargetForm);
++        TESObjectREFR* target = targetForm != nullptr && targetForm->GetIsReference()
++            ? static_cast<TESObjectREFR*>(targetForm)
++            : nullptr;
++        bool enableAccepted = !gBatchEnableTargets;
++        if (gBatchEnableTargets && target != nullptr)
++            enableAccepted = gConsole->RunScriptLine2("Enable", target, true);
++        bool moveAccepted = !gBatchMoveToTargets;
++        if (gBatchMoveToTargets)
++        {
++            char command[64] = {};
++            sprintf_s(command, "player.moveto %08X", gTargetForm);
++            moveAccepted = gConsole->RunScriptLine2(command, nullptr, true);
++        }
++        gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"batch-target-load-request\""
++                << ",\"frame\":" << gFrame
++                << ",\"targetIndex\":" << gBatchTargetIndex
++                << ",\"targetForm\":" << gTargetForm
++                << ",\"referenceAvailable\":" << (target != nullptr ? "true" : "false")
++                << ",\"enableRequested\":" << (gBatchEnableTargets ? "true" : "false")
++                << ",\"enableAccepted\":" << (enableAccepted ? "true" : "false")
++                << ",\"moveRequested\":" << (gBatchMoveToTargets ? "true" : "false")
++                << ",\"moveAccepted\":" << (moveAccepted ? "true" : "false") << "}\n";
++        gOutput.flush();
++    }
++
++    void captureAppearanceBatch()
++    {
++        if (gBatchTargetForms.empty() || gFinishRequested)
++            return;
++        if (!gPortraitCameraLogged || !gAppearanceLogged)
++            return;
++        if (gBatchTargetReadyFrame == 0)
++        {
++            gBatchTargetReadyFrame = gFrame;
++            gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"batch-target-ready\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"targetIndex\":" << gBatchTargetIndex
++                    << ",\"targetForm\":" << gTargetForm << "}\n";
++            gOutput.flush();
++        }
++        const UInt32 screenshotFrame = gBatchTargetReadyFrame + gBatchSettleFrames;
++        if (!gBatchScreenshotRequested && gFrame >= screenshotFrame)
++        {
++            gBatchScreenshotRequested = true;
++            const bool accepted = gConsole != nullptr && gConsole->RunScriptLine2("TapKey 183", nullptr, true);
++            gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"batch-screenshot-request\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"targetIndex\":" << gBatchTargetIndex
++                    << ",\"targetForm\":" << gTargetForm
++                    << ",\"accepted\":" << (accepted ? "true" : "false") << "}\n";
++            gOutput.flush();
++        }
++        if (!gBatchScreenshotRequested || gFrame < screenshotFrame + gBatchAdvanceFrames)
++            return;
++
++        gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"batch-target-complete\""
++                << ",\"frame\":" << gFrame
++                << ",\"targetIndex\":" << gBatchTargetIndex
++                << ",\"targetForm\":" << gTargetForm << "}\n";
++        gOutput.flush();
++        ++gBatchTargetIndex;
++        if (gBatchTargetIndex >= gBatchTargetForms.size())
++        {
++            finishCapture();
++            return;
++        }
++        gTargetForm = gBatchTargetForms[gBatchTargetIndex];
++        gAppearanceLogged = false;
++        gPortraitCameraLogged = false;
++        gBatchTargetReadyFrame = 0;
++        gBatchScreenshotRequested = false;
++        gBatchTargetLoadRequested = false;
++    }
++
+     void captureFrame()
+     {
+         openOutput();
+         if (!gOutput || !gWorldReady || gFrame >= gMaxFrames)
+             return;
+         ++gFrame;
++        driveBatchTargetLoading();
+         captureTargetAppearance();
++        captureAppearanceBatch();
+         if (!gBehaviorBeforeCaptured && gFrame >= gBehaviorBeforeFrame)
+         {
+             gBehaviorBeforeCaptured = true;
+@@ -2656,6 +2768,19 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
+     std::sort(gScreenshotFrames.begin(), gScreenshotFrames.end());
+     gScreenshotFrames.erase(
+         std::unique(gScreenshotFrames.begin(), gScreenshotFrames.end()), gScreenshotFrames.end());
++    gBatchTargetForms = envUIntList("NIKAMI_ORACLE_BATCH_TARGET_FORMS");
++    gBatchTargetForms.erase(
++        std::remove(gBatchTargetForms.begin(), gBatchTargetForms.end(), 0), gBatchTargetForms.end());
++    gBatchSettleFrames = (std::max)(1u, envUInt("NIKAMI_ORACLE_BATCH_SETTLE_FRAMES", 20));
++    gBatchAdvanceFrames = (std::max)(1u, envUInt("NIKAMI_ORACLE_BATCH_ADVANCE_FRAMES", 3));
++    gBatchMoveToTargets = envUInt("NIKAMI_ORACLE_BATCH_MOVE_TO_TARGETS", 0) != 0;
++    gBatchEnableTargets = envUInt("NIKAMI_ORACLE_BATCH_ENABLE_TARGETS", 0) != 0;
++    gBatchEnableParentForms = envUIntList("NIKAMI_ORACLE_BATCH_ENABLE_PARENT_FORMS");
++    if (!gBatchTargetForms.empty())
++    {
++        gTargetForm = gBatchTargetForms.front();
++        gPortraitCamera = true;
++    }
+     gBehaviorBeforeFrame = envUInt("NIKAMI_ORACLE_BEFORE_FRAME", 60);
+     gBehaviorCommandFrame = envUInt("NIKAMI_ORACLE_COMMAND_FRAME", 90);
+     gBehaviorAfterFrame = envUInt("NIKAMI_ORACLE_AFTER_FRAME", 150);
+-- 
+2.53.0.windows.1
+

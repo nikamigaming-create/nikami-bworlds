@@ -125,6 +125,9 @@ class ESM4Catalog:
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "DATA" and len(raw) >= 24:
                 fields["pos"] = [f32(raw, 0), f32(raw, 4), f32(raw, 8)]
                 fields["rot"] = [f32(raw, 12), f32(raw, 16), f32(raw, 20)]
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XESP" and len(raw) >= 8:
+                fields["enableParent"] = form_from_raw(raw, self.mod_index)
+                fields["enableParentFlags"] = u32(raw, 4)
             elif rtype in ("NPC_", "CREA") and name == "ACBS" and len(raw) >= 4:
                 fields["actorFlags"] = u32(raw, 0)
                 # TES4-family actor flags use bit 0 for female on the games we mine here.
@@ -309,6 +312,9 @@ class ESM4Catalog:
                     "pos": fields.get("pos"),
                     "rot": fields.get("rot"),
                     "editorId": fields.get("editorId", ""),
+                    "enableParent": form_hex(fields.get("enableParent")),
+                    "openmwEnableParent": openmw_form_id(fields.get("enableParent")),
+                    "enableParentFlags": fields.get("enableParentFlags", 0),
                 }
                 self.placements.append(placement)
 

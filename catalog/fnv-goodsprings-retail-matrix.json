@@ -62,7 +62,9 @@
           0.0,
           -0.0,
           1.5000004768371582
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -269,7 +271,9 @@
           0.0,
           -0.0,
           1.5708025693893433
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -476,7 +480,9 @@
           0.0,
           -0.0,
           3.195590019226074
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -683,7 +689,9 @@
           0.0,
           -0.0,
           1.5831924676895142
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -910,7 +918,9 @@
           0.0,
           -0.0,
           3.156200408935547
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -1117,7 +1127,9 @@
           0.0,
           -0.0,
           0.3999999761581421
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -1373,7 +1385,9 @@
           0.0,
           -0.0,
           0.16378168761730194
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -1600,7 +1614,9 @@
           0.0,
           -0.0,
           3.100005626678467
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -1827,7 +1843,9 @@
           0.0,
           -0.0,
           2.90000057220459
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -2063,7 +2081,9 @@
           0.0,
           -0.0,
           1.600000023841858
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -2299,7 +2319,9 @@
           0.0,
           -0.0,
           1.5831916332244873
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -2549,7 +2571,9 @@
           0.0,
           -0.0,
           0.014604161493480206
-        ]
+        ],
+        "enableParent": "0x105d4c",
+        "enableParentFlags": 56766976
       },
       "captureContract": {
         "retail": [
@@ -2734,7 +2758,9 @@
           0.0,
           -0.0,
           5.739382266998291
-        ]
+        ],
+        "enableParent": "0x105d4c",
+        "enableParentFlags": 56766976
       },
       "captureContract": {
         "retail": [
@@ -3010,7 +3036,9 @@
           0.0,
           -0.0,
           5.4393815994262695
-        ]
+        ],
+        "enableParent": "0x105d4c",
+        "enableParentFlags": 56766976
       },
       "captureContract": {
         "retail": [
@@ -3246,7 +3274,9 @@
           0.0,
           -0.0,
           5.83938455581665
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -3482,7 +3512,9 @@
           0.0,
           -0.0,
           5.639382839202881
-        ]
+        ],
+        "enableParent": "0x105d4c",
+        "enableParentFlags": 56766976
       },
       "captureContract": {
         "retail": [
@@ -3696,7 +3728,9 @@
           0.0,
           -0.0,
           5.339382171630859
-        ]
+        ],
+        "enableParent": "0x105d4c",
+        "enableParentFlags": 56766976
       },
       "captureContract": {
         "retail": [
@@ -3932,7 +3966,9 @@
           0.0,
           -0.0,
           6.258487701416016e-07
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [
@@ -3997,7 +4033,9 @@
           0.0,
           -0.0,
           3.1000096797943115
-        ]
+        ],
+        "enableParent": null,
+        "enableParentFlags": 0
       },
       "captureContract": {
         "retail": [

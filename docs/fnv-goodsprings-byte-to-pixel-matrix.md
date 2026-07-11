@@ -41,6 +41,20 @@ FaceGen coefficient payloads.
 
 Run the retail side with `-RequireAppearanceTelemetry`; the runner rejects a
 capture unless exactly one `npc-appearance` or `target-appearance` event exists.
+For the whole humanoid matrix, use the grouped batch wrapper. `-StageReferences`
+is required for initially disabled settlers and Powder Gangers; every staged
+Enable/XESP-parent action is logged:
+
+```powershell
+.\scripts\Invoke-FNVGoodspringsAppearanceMatrix.ps1 `
+  -RunId fnv-goodsprings-retail-baseline `
+  -StageReferences
+```
+
+The wrapper groups actors by cell, uses a 90-frame post-load settle, requires
+one runtime appearance event, head-frame event, raw BMP, and proof crop per
+humanoid, runs the ESM differential, and creates a contact sheet. Its final
+status remains `review-required`; image statistics cannot approve framing.
 Compare captures with:
 
 ```powershell
@@ -52,7 +66,11 @@ python scripts/compare_fnv_goodsprings_appearance.py `
 
 ## Current evidence
 
-Easy Pete and `GSSettlerAM` both pass the ESM-to-retail runtime differential.
+All 17 humanoids pass the ESM-to-retail runtime differential in
+`fnv-goodsprings-all-humanoids-differential-v3.json`. The visually reviewed
+17-frame retail contact sheet is
+`fnv-goodsprings-all-humanoids-contact-sheet-v3.png`. Easy Pete and
+`GSSettlerAM` illustrate the contract:
 Pete resolves to AfricanAmericanOldAged, HairAfricanAmericanBaseOld,
 EyeDarkBrown, BeardFullOld, and HCLR `[192,192,192,0]`. GSSettlerAM resolves to
 its direct Asian/HairMessy01 traits despite having `TPLT` and `EAMT`: its ACBS
