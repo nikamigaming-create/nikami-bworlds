@@ -109,6 +109,11 @@ transitions and arbitrary runtime furniture activation remain open. Broader
 CTDA/RunOn coverage, compiled bytecode, multi-line voice queues, and service
 menus remain explicit follow-on gates rather than implied compatibility claims.
 
+On a cold restart, read `../../docs/fallout-retail-parity-reboot.md` before
+editing an external checkout. Every new compatibility assumption must also be
+classified in `../../docs/fallout-compatibility-evidence-ledger.md`; rows
+marked partial, unproven, or failing cannot support a parity claim.
+
 If one downstream patch matures into something upstream-worthy, split it into a
 clean branch in the external OpenMW checkout and submit a normal upstream PR.
 After it lands upstream, drop the local patch from this queue and update the

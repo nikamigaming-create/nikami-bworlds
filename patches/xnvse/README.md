@@ -36,3 +36,9 @@ writer. Patch 0004 records the retail `sitSleepState`, claimed furniture
 reference, marker index, and cached marker transform, with a furniture-only
 mode for long AI/package captures. The capture runner restores the pre-existing
 retail DLL after each run.
+
+For the complete side-by-side capture discipline, current worktree checkpoint,
+and rules for extending this oracle without changing retail behavior, read
+`../../docs/fallout-retail-parity-reboot.md`. Record every new inferred or
+measured rule in `../../docs/fallout-compatibility-evidence-ledger.md` before
+using it to support a compatibility claim.

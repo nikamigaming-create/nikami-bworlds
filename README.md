@@ -98,6 +98,10 @@ keep local proof work separate from upstreamable OpenMW patch slices.
 See [world-profile-isolation.md](docs/world-profile-isolation.md) for the
 content/settings/user-data isolation rules that keep Morrowind and ESM4 worlds
 from contaminating each other.
+For the active Fallout 3/New Vegas retail-parity work, start with
+[fallout-retail-parity-reboot.md](docs/fallout-retail-parity-reboot.md), then
+use [fallout-compatibility-evidence-ledger.md](docs/fallout-compatibility-evidence-ledger.md)
+to distinguish proven rules from partial or guessed behavior.
 
 Generate the world-walker seed manifest:
 
