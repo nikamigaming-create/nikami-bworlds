@@ -1323,6 +1323,75 @@
             "Flat close-up colour and head-part gate; package relocation is disabled so the authored exterior ref stays in frame."
           ]
         },
+        "goodsprings-easy-pete-actor-tracked-portrait": {
+          "label": "Goodsprings Easy Pete actor-tracked retail portrait",
+          "scriptRun": "config/proofs/fnv-easy-pete-idle.txt",
+          "environment": {
+            "OPENMW_PROOF_DELAY_STARTUP_SCRIPT": "1",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_FNV_DISABLE_PACKAGE_PREPLACEMENT": "1",
+            "OPENMW_FNV_DISABLE_PACKAGE_PROCEDURE": "1",
+            "OPENMW_FNV_DISABLE_AI_PACKAGES": "1",
+            "OPENMW_FNV_PROOF_TARGET_NPC": "GSEasyPete",
+            "OPENMW_FNV_HIDE_PLAYER_PROOF_PARTS": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_REF": "FormId:0x1104c80",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_DISTANCE": "52",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_FOCUS": "4",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_EYE_Z": "0"
+          },
+          "anchor": {
+            "source": "FalloutNV.esm EasyPeteRef FormId:0x104c80; live rendered face bounds drive the proof camera",
+            "position": {
+              "x": -67730,
+              "y": 3342,
+              "z": 8392
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -67730,
+                "y": 3342,
+                "z": 8496
+              },
+              "target": {
+                "x": -67844.867,
+                "y": 3333.970,
+                "z": 8477
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 16,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "240,270",
+            "expectedScreenshotCount": 2,
+            "crashReportSettleSeconds": 3
+          },
+          "validation": {
+            "visualReviewRequired": true,
+            "expectedActor": "GSEasyPete",
+            "knownFailureClasses": [
+              "face-geometry-detached",
+              "skin-color-retail-mismatch",
+              "hair-sideburn-geometry-missing",
+              "hand-weapon-attachment-mismatch"
+            ]
+          },
+          "notes": [
+            "Uses the authored Easy Pete reference and the live Bip01 Head world transform; it does not stage or rotate the actor.",
+            "The maintained world-viewer camera owns the native screenshot path. This slice must not enable legacy bind-pose or hand-bind-frame proof overrides."
+          ]
+        },
         "goodsprings-easy-pete-dialogue": {
           "label": "Goodsprings Easy Pete retail dialogue GUI proof",
           "scriptRun": "config/proofs/fnv-easy-pete-idle.txt",

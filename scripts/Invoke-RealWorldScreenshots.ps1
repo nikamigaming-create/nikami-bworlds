@@ -1484,6 +1484,7 @@ foreach ($id in $WorldId) {
                 anchor = Get-PropertyValue $catalogStartSpec "anchor"
                 presentation = Get-PropertyValue $catalogStartSpec "presentation"
                 capture = Get-PropertyValue $catalogStartSpec "capture"
+                validation = Get-PropertyValue $catalogStartSpec "validation"
                 scriptRun = $catalogScriptRun
             }
         } else { $null }
@@ -1697,6 +1698,12 @@ foreach ($id in $WorldId) {
             $sources = @($manifest.screenshots | ForEach-Object { $_.source } | Select-Object -Unique)
             if ($sources -contains "openmw-native-screenshot") {
                 $manifest.status = "captured-native"
+                $validation = if ($null -ne $catalogStartSpec) {
+                    Get-PropertyValue $catalogStartSpec "validation"
+                } else { $null }
+                if ($true -eq (Get-PropertyValue $validation "visualReviewRequired")) {
+                    $manifest.status = "captured-native-review-required"
+                }
             }
             elseif ($sources -contains "window-screenshot-fallback") {
                 $manifest.status = "captured-window-fallback"

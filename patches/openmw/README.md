@@ -52,6 +52,14 @@ basis, and adds a focused clamped-endpoint controller test. It is exported from
 downstream commit `20dab7436f`. The hat placement is improved, but Easy Pete's
 hair/sideburn and skin/beard differential still fails; patch 0011 is not a
 whole-head parity claim.
+Patch 0012 makes portrait capture follow the live `Bip01 Head` world transform
+and local +Y face-forward axis instead of the actor root or conservative
+skinned-drawable bounds. It also stops proof-only hidden weapons from retaining
+their weapon-pose overlay and marks disabled proof AI initialization complete
+so diagnostics do not flood once per actor per frame. It is exported from
+downstream commit `8b0fb494b3`. The actor-tracked Easy Pete run proves stable
+framing only; detached face geometry, skin color, hair/sideburns, and the
+hand/sidearm assembly still fail visual review.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 

@@ -80,3 +80,15 @@ earlier EAMT-only inheritance assumption.
 These passes prove the retail input contract only. OpenMW still visibly fails
 Easy Pete's skin/beard color and hair/sideburn presentation, so pixel parity is
 not promoted.
+
+The maintained flat OpenMW portrait slice is
+`goodsprings-easy-pete-actor-tracked-portrait`. It follows the live
+`Bip01 Head` world transform and its local +Y face-forward axis through the
+world-viewer camera path; it does not stage or rotate Pete and does not enable
+the legacy bind-pose or hand-bind-frame proof modes. The run at
+`run/real-world-screenshots/fallout_new_vegas-20260710-225714` keeps Pete's
+head and torso framed in both native screenshots. Visual review still rejects
+both frames: head/face geometry is detached at his right cheek, his skin tone
+does not match retail, scalp/sideburn hair is missing, and the hand/sidearm
+assembly is wrong. The slice is therefore marked `visualReviewRequired`; a
+native PNG count is not a parity pass.
