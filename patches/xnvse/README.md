@@ -54,6 +54,13 @@ authored XESP parents, moves the player through the normal console command,
 waits for a live head and appearance event, and requests one screenshot per
 target. Staged state is explicit telemetry and must not be presented as natural
 AI/quest-state evidence.
+Patch 0009 reads the public JIP LN NVSE `Sky` runtime layout used by retail
+FalloutNV 1.4.0.525 and records current/previous/default/override weather
+FormIDs, transition percentage, sky mode/flags, runtime game hour, and the
+resolved ambient, directional, and fog light colors. This removes the need to
+infer a material mismatch from screenshots taken under different weather or
+time state. The Win32 Release oracle builds cleanly; runtime capture of the new
+event is pending the next bounded retail session and must not be claimed yet.
 
 For the complete side-by-side capture discipline, current worktree checkpoint,
 and rules for extending this oracle without changing retail behavior, read

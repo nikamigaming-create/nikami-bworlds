@@ -1,0 +1,92 @@
+From f7c8dfde8b92c2a10731ec02f2e980620f9d36e9 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 23:54:32 -0700
+Subject: [PATCH] Capture retail render environment telemetry
+
+---
+ nvse_retail_oracle/main.cpp | 55 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 55 insertions(+)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index 0ec8720..fe89a63 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -89,6 +89,7 @@ namespace
+     bool gPortraitCameraRequested = false;
+     bool gPortraitCameraLogged = false;
+     bool gAppearanceLogged = false;
++    bool gRenderEnvironmentLogged = false;
+     float gPortraitDistance = 110.f;
+     unsigned int gBehaviorBeforeFrame = 60;
+     unsigned int gBehaviorCommandFrame = 90;
+@@ -1684,6 +1685,59 @@ namespace
+         return formsMap != nullptr && *formsMap != nullptr ? (*formsMap)->Lookup(formId) : nullptr;
+     }
+ 
++    void captureRetailRenderEnvironment()
++    {
++        if (gRenderEnvironmentLogged)
++            return;
++
++        // JIP LN NVSE's public FalloutNV 1.4.0.525 Sky layout maps the singleton
++        // at 0x11DEA20, weather pointers at 0x10..0x1C, runtime light colors at
++        // 0x60/0x6C, and the time/transition fields at 0xEC..0xF8. Record the
++        // resolved runtime values instead of inferring color from the save or ESM.
++        __try
++        {
++            const UInt8* sky = *reinterpret_cast<const UInt8**>(0x011DEA20);
++            if (sky == nullptr)
++                return;
++            const TESWeather* current = *reinterpret_cast<TESWeather* const*>(sky + 0x10);
++            const TESWeather* previous = *reinterpret_cast<TESWeather* const*>(sky + 0x14);
++            const TESWeather* fallback = *reinterpret_cast<TESWeather* const*>(sky + 0x18);
++            const TESWeather* overrideWeather = *reinterpret_cast<TESWeather* const*>(sky + 0x1C);
++            const float* ambient = reinterpret_cast<const float*>(sky + 0x60);
++            const float* directional = reinterpret_cast<const float*>(sky + 0x6C);
++            const float* fog = reinterpret_cast<const float*>(sky + 0xC0);
++            const float gameHour = *reinterpret_cast<const float*>(sky + 0xEC);
++            const float lastUpdateHour = *reinterpret_cast<const float*>(sky + 0xF0);
++            const float transition = *reinterpret_cast<const float*>(sky + 0xF4);
++            const UInt32 skyMode = *reinterpret_cast<const UInt32*>(sky + 0xF8);
++            const UInt32 flags = *reinterpret_cast<const UInt32*>(sky + 0x118);
++            gRenderEnvironmentLogged = true;
++            gOutput << std::setprecision(9)
++                    << "{\"schema\":" << sSchemaJson << ",\"event\":\"render-environment\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"currentWeatherForm\":" << (current != nullptr ? current->refID : 0)
++                    << ",\"previousWeatherForm\":" << (previous != nullptr ? previous->refID : 0)
++                    << ",\"defaultWeatherForm\":" << (fallback != nullptr ? fallback->refID : 0)
++                    << ",\"overrideWeatherForm\":" << (overrideWeather != nullptr ? overrideWeather->refID : 0)
++                    << ",\"gameHour\":" << gameHour
++                    << ",\"lastUpdateHour\":" << lastUpdateHour
++                    << ",\"weatherPercent\":" << transition
++                    << ",\"skyMode\":" << skyMode
++                    << ",\"flags\":" << flags
++                    << ",\"sunAmbient\":[" << ambient[0] << ',' << ambient[1] << ',' << ambient[2] << ']'
++                    << ",\"sunDirectional\":[" << directional[0] << ',' << directional[1] << ','
++                    << directional[2] << ']'
++                    << ",\"sunFog\":[" << fog[0] << ',' << fog[1] << ',' << fog[2] << "]}\n";
++            gOutput.flush();
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"render-environment-fault\""
++                    << ",\"frame\":" << gFrame << "}\n";
++            gOutput.flush();
++        }
++    }
++
+     void writeQuestState(UInt32 formId)
+     {
+         TESForm* form = lookupForm(formId);
+@@ -1977,6 +2031,7 @@ namespace
+         Actor* actor = findDriveActor();
+         if (actor == nullptr || actor->baseForm == nullptr)
+             return;
++        captureRetailRenderEnvironment();
+ 
+         NpcAppearanceSnapshot snapshot = {};
+         if (!readNpcAppearanceUnsafe(actor, snapshot))
+-- 
+2.53.0.windows.1
+

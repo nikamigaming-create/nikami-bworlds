@@ -1327,6 +1327,7 @@
           "label": "Goodsprings Easy Pete actor-tracked retail portrait",
           "scriptRun": "config/proofs/fnv-easy-pete-idle.txt",
           "environment": {
+            "OPENMW_FNV_BOOTSTRAP_HOUR": "14.45",
             "OPENMW_PROOF_DELAY_STARTUP_SCRIPT": "1",
             "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
             "OPENMW_FNV_DISABLE_PACKAGE_PREPLACEMENT": "1",

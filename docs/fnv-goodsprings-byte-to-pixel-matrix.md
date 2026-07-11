@@ -108,3 +108,11 @@ The tight portrait run at
 `targetError=0`, `eyeDistance=30`, two native frames, no foreground focus, and
 no equipped weapon obstructing the face/material gate. Weapon attachment is a
 separate failing slice rather than a contaminant in the portrait comparison.
+
+The earlier color verdict also mixed environment state: retail's saved global
+snapshot reports `GameHour=14.4492416`, while the OpenMW proof forced noon.
+The maintained portrait now uses `14.45`. xNVSE patch 0009 additionally records
+the live weather FormIDs/transition and resolved ambient, directional, and fog
+colors. Its Win32 build passes, but the new runtime event has not yet been
+captured, so the remaining color difference is not classified as a shader bug
+until that environment gate is matched.
