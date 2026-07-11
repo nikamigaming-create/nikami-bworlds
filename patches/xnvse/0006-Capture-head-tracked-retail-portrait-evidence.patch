@@ -1,0 +1,194 @@
+From fef75e6ce290cd55f506d9eba4f1108ade7d9cca Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 20:29:37 -0700
+Subject: [PATCH] Capture head-tracked retail portrait evidence
+
+---
+ nvse_retail_oracle/main.cpp | 129 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 129 insertions(+)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index 5cb9cd1..738c614 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -71,6 +71,12 @@ namespace
+     std::vector<std::string> gBehaviorCommands;
+     std::vector<std::string> gActorCommands;
+     std::vector<std::string> gFurnitureSettledCommands;
++    std::vector<UInt32> gScreenshotFrames;
++    std::size_t gScreenshotFrameIndex = 0;
++    bool gPortraitCamera = false;
++    bool gPortraitCameraRequested = false;
++    bool gPortraitCameraLogged = false;
++    float gPortraitDistance = 110.f;
+     unsigned int gBehaviorBeforeFrame = 60;
+     unsigned int gBehaviorCommandFrame = 90;
+     unsigned int gBehaviorAfterFrame = 150;
+@@ -933,6 +939,24 @@ namespace
+             writeNodeRecursive(out, node->m_children.data[i], first, depth + 1);
+     }
+ 
++    NiAVObject* findNodeRecursive(NiAVObject* object, const char* name, unsigned int depth = 0)
++    {
++        if (object == nullptr || name == nullptr || depth > 64)
++            return nullptr;
++        if (object->m_pcName != nullptr && _stricmp(object->m_pcName, name) == 0)
++            return object;
++        NiNode* node = object->GetAsNiNode();
++        if (node == nullptr || node->m_children.data == nullptr)
++            return nullptr;
++        const unsigned int count = std::min<unsigned int>(node->m_children.firstFreeEntry, 2048);
++        for (unsigned int i = 0; i < count; ++i)
++        {
++            if (NiAVObject* found = findNodeRecursive(node->m_children.data[i], name, depth + 1))
++                return found;
++        }
++        return nullptr;
++    }
++
+     void writeBoneLodProbe(std::ostream& out, NiBSBoneLODController* controllerAddress)
+     {
+         if (controllerAddress == nullptr)
+@@ -1948,6 +1972,91 @@ namespace
+         }
+     }
+ 
++    void drivePortraitCamera()
++    {
++        if (!gPortraitCamera || gConsole == nullptr || gTargetForm == 0)
++            return;
++        PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
++        Actor* actor = findDriveActor();
++        if (player == nullptr || actor == nullptr)
++            return;
++        if (!gPortraitCameraRequested)
++        {
++            gPortraitCameraRequested = true;
++            const bool tfcAccepted = gConsole->RunScriptLine2("TFC", nullptr, true);
++            const bool menusAccepted = gConsole->RunScriptLine2("ToggleMenus", nullptr, true);
++            gOutput << "{\"schema\":" << sSchemaJson
++                    << ",\"event\":\"portrait-camera-request\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"refForm\":" << actor->refID
++                    << ",\"tfcAccepted\":" << (tfcAccepted ? "true" : "false")
++                    << ",\"toggleMenusAccepted\":" << (menusAccepted ? "true" : "false") << "}\n";
++            gOutput.flush();
++            return;
++        }
++
++        __try
++        {
++            NiNode* root = actor->GetNiNode();
++            NiAVObject* head = findNodeRecursive(root, "Bip01 Head");
++            if (head == nullptr)
++                return;
++            const NiTransform headTransform = runtimeTransform(*head, sNiAVObjectWorldTransformOffset);
++            const NiVector3 headWorld = headTransform.translate;
++            const float headDx = headWorld.x - actor->posX;
++            const float headDy = headWorld.y - actor->posY;
++            const float headDz = headWorld.z - actor->posZ;
++            if (headDx * headDx + headDy * headDy + headDz * headDz < 400.f)
++                return;
++            const float aimX = headWorld.x;
++            const float aimY = headWorld.y;
++            const float aimZ = headWorld.z + 20.f;
++            // Bethesda bipeds use local X along the neck/head bone and local Y as the
++            // face-forward axis.  Follow the rendered head rather than the actor root:
++            // seated idles can turn the head far enough to turn an actor-root camera
++            // into an accidental profile shot.
++            float forwardX = headTransform.rotate.data[1];
++            float forwardY = headTransform.rotate.data[4];
++            const float forwardLength = std::sqrt(forwardX * forwardX + forwardY * forwardY);
++            if (forwardLength < 0.25f)
++                return;
++            forwardX /= forwardLength;
++            forwardY /= forwardLength;
++            const float cameraX = aimX + forwardX * gPortraitDistance;
++            const float cameraY = aimY + forwardY * gPortraitDistance;
++            const float cameraZ = aimZ;
++            const float cameraYaw = std::atan2(aimX - cameraX, aimY - cameraY);
++            const float cameraPitch = 0.f;
++            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E0) = cameraYaw;
++            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E4) = cameraPitch;
++            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E8) = cameraX;
++            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7EC) = cameraY;
++            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7F0) = cameraZ;
++            if (!gPortraitCameraLogged)
++            {
++                gPortraitCameraLogged = true;
++                gOutput << std::setprecision(9)
++                        << "{\"schema\":" << sSchemaJson
++                        << ",\"event\":\"portrait-camera-set\""
++                        << ",\"frame\":" << gFrame
++                        << ",\"refForm\":" << actor->refID
++                        << ",\"headWorld\":[" << headWorld.x << ',' << headWorld.y << ',' << headWorld.z << ']'
++                        << ",\"headForwardXY\":[" << forwardX << ',' << forwardY << ']'
++                        << ",\"aim\":[" << aimX << ',' << aimY << ',' << aimZ << ']'
++                        << ",\"camera\":[" << cameraX << ',' << cameraY << ',' << cameraZ << ']'
++                        << ",\"rotation\":[" << cameraPitch << ',' << cameraYaw << "]}\n";
++                gOutput.flush();
++            }
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            gOutput << "{\"schema\":" << sSchemaJson
++                    << ",\"event\":\"portrait-camera-fault\""
++                    << ",\"frame\":" << gFrame << "}\n";
++            gOutput.flush();
++        }
++    }
++
+     void requestLoad()
+     {
+         if (gLoadRequested || gSaveName.empty() || gConsole == nullptr)
+@@ -2167,6 +2276,19 @@ namespace
+         }
+         if (!gBehaviorCommandsRun && gFrame >= gBehaviorCommandFrame)
+             runBehaviorCommands();
++        while (gScreenshotFrameIndex < gScreenshotFrames.size()
++            && gFrame >= gScreenshotFrames[gScreenshotFrameIndex])
++        {
++            const UInt32 requestedFrame = gScreenshotFrames[gScreenshotFrameIndex++];
++            const bool accepted = gConsole != nullptr
++                && gConsole->RunScriptLine2("TapKey 183", nullptr, true);
++            gOutput << "{\"schema\":" << sSchemaJson
++                    << ",\"event\":\"screenshot-request\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"requestedFrame\":" << requestedFrame
++                    << ",\"accepted\":" << (accepted ? "true" : "false") << "}\n";
++            gOutput.flush();
++        }
+         if (!gBehaviorAfterCaptured && gFrame >= gBehaviorAfterFrame)
+         {
+             gBehaviorAfterCaptured = true;
+@@ -2258,6 +2380,7 @@ namespace
+                     }
+                 }
+                 driveObserverApproach();
++                drivePortraitCamera();
+                 if (gCaptureAnimation && !gPrepareRequested && gWorldLoopFrame >= gPrepareActorFrame)
+                     prepareActor();
+                 if (gCaptureAnimation && !gEquipRequested && gWorldLoopFrame >= gEquipActorFrame)
+@@ -2335,6 +2458,8 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
+         = envUInt("NIKAMI_ORACLE_EXIT_AFTER_FURNITURE_SETTLED_SAMPLES", 0);
+     gFurnitureReleaseSamples = (std::max)(1u, envUInt("NIKAMI_ORACLE_FURNITURE_RELEASE_SAMPLES", 3));
+     gCloseMenusDuringCapture = envUInt("NIKAMI_ORACLE_CLOSE_MENUS", 0) != 0;
++    gPortraitCamera = envUInt("NIKAMI_ORACLE_PORTRAIT_CAMERA", 0) != 0;
++    gPortraitDistance = (std::max)(32.f, envFloat("NIKAMI_ORACLE_PORTRAIT_DISTANCE", 110.f));
+     gSaveName = envString("NIKAMI_ORACLE_SAVE");
+     gPlayGroup = envString("NIKAMI_ORACLE_PLAY_GROUP");
+     gDriveCommand = envString("NIKAMI_ORACLE_DRIVE_COMMAND");
+@@ -2343,6 +2468,10 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
+     gBehaviorCommands = envCommandList("NIKAMI_ORACLE_COMMANDS");
+     gActorCommands = envCommandList("NIKAMI_ORACLE_ACTOR_COMMANDS");
+     gFurnitureSettledCommands = envCommandList("NIKAMI_ORACLE_FURNITURE_SETTLED_COMMANDS");
++    gScreenshotFrames = envUIntList("NIKAMI_ORACLE_SCREENSHOT_FRAMES");
++    std::sort(gScreenshotFrames.begin(), gScreenshotFrames.end());
++    gScreenshotFrames.erase(
++        std::unique(gScreenshotFrames.begin(), gScreenshotFrames.end()), gScreenshotFrames.end());
+     gBehaviorBeforeFrame = envUInt("NIKAMI_ORACLE_BEFORE_FRAME", 60);
+     gBehaviorCommandFrame = envUInt("NIKAMI_ORACLE_COMMAND_FRAME", 90);
+     gBehaviorAfterFrame = envUInt("NIKAMI_ORACLE_AFTER_FRAME", 150);
+-- 
+2.53.0.windows.1
+

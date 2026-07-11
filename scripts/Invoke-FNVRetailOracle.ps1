@@ -37,7 +37,12 @@ param(
     [int]$FurnitureReleaseSamples = 3,
     [switch]$BackgroundDataMode,
     [switch]$VisibleGame,
-    [switch]$CaptureAnimation
+    [switch]$CaptureAnimation,
+    [int[]]$ScreenshotFrame = @(),
+    [string]$ScreenshotDirectory = "",
+    [switch]$PortraitCamera,
+    [ValidateRange(32, 1000)]
+    [float]$PortraitDistance = 110
 )
 
 Set-StrictMode -Version Latest
@@ -136,6 +141,18 @@ foreach ($waypoint in @($ObserverWaypoint)) {
 if ($DriveCommand -match '[|\r\n]') {
     throw "Retail oracle drive command cannot contain pipe or newline characters: $DriveCommand"
 }
+$ScreenshotFrame = @($ScreenshotFrame | Sort-Object -Unique)
+foreach ($frame in $ScreenshotFrame) {
+    if ($frame -lt 1 -or $frame -gt $MaxFrames) {
+        throw "ScreenshotFrame must be between 1 and MaxFrames: $frame"
+    }
+}
+if ($PortraitCamera -and $TargetForm -match '^(0[xX]0+|0+)$') {
+    throw "PortraitCamera requires a nonzero TargetForm."
+}
+if ($ScreenshotFrame.Count -gt 0 -and [string]::IsNullOrWhiteSpace($ScreenshotDirectory)) {
+    $ScreenshotDirectory = "$OutputPath-screens"
+}
 
 $gameRootPath = Resolve-AbsolutePath $GameRoot
 $loader = Join-Path $gameRootPath "nvse_loader.exe"
@@ -145,6 +162,14 @@ $output = Resolve-AbsolutePath $OutputPath
 $pluginDirectory = Join-Path $gameRootPath "Data\NVSE\Plugins"
 $installedPlugin = Join-Path $pluginDirectory "nvse_retail_oracle.dll"
 $backupPlugin = "$installedPlugin.nikami-backup-$PID"
+$screenshotBackupDirectory = Join-Path $gameRootPath ".nikami-screenshot-backup-$PID"
+$screenshotOutputDirectory = if ([string]::IsNullOrWhiteSpace($ScreenshotDirectory)) {
+    $null
+} else {
+    Resolve-AbsolutePath $ScreenshotDirectory
+}
+$capturedScreenshots = @()
+$portraitProofCrops = @()
 $fixtureDestinations = @()
 $resolvedSaveFixture = $null
 $fixtureSaveName = $null
@@ -220,6 +245,9 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_AFTER_FRAME = [string]$AfterFrame
     NIKAMI_ORACLE_SET_STAGE_QUEST = $SetStageQuestForm
     NIKAMI_ORACLE_SET_STAGE_INDEX = [string]$SetStageIndex
+    NIKAMI_ORACLE_SCREENSHOT_FRAMES = (@($ScreenshotFrame) -join ",")
+    NIKAMI_ORACLE_PORTRAIT_CAMERA = if ($PortraitCamera) { "1" } else { "0" }
+    NIKAMI_ORACLE_PORTRAIT_DISTANCE = [string]$PortraitDistance
     NIKAMI_ORACLE_EXIT_WHEN_DONE = "1"
 }
 $previousEnvironment = @{}
@@ -227,6 +255,19 @@ $gameProcess = $null
 $hadInstalledPlugin = Test-Path -LiteralPath $installedPlugin -PathType Leaf
 
 try {
+    if ($ScreenshotFrame.Count -gt 0) {
+        if (Test-Path -LiteralPath $screenshotBackupDirectory) {
+            throw "Refusing to overwrite stale screenshot backup: $screenshotBackupDirectory"
+        }
+        New-Item -ItemType Directory -Path $screenshotBackupDirectory | Out-Null
+        foreach ($existingScreenshot in @(Get-ChildItem -LiteralPath $gameRootPath -Filter 'ScreenShot*.bmp' -File)) {
+            Move-Item -LiteralPath $existingScreenshot.FullName -Destination $screenshotBackupDirectory
+        }
+        New-Item -ItemType Directory -Force -Path $screenshotOutputDirectory | Out-Null
+        if (@(Get-ChildItem -LiteralPath $screenshotOutputDirectory -Filter 'frame-*.bmp' -File).Count -gt 0) {
+            throw "ScreenshotDirectory already contains frame-*.bmp files: $screenshotOutputDirectory"
+        }
+    }
     foreach ($fixture in $fixtureDestinations) {
         Copy-Item -LiteralPath $fixture.Source -Destination $fixture.Destination
     }
@@ -332,6 +373,26 @@ finally {
             Remove-FileWithRetry -Path $fixture.Destination
         }
     }
+    if ($ScreenshotFrame.Count -gt 0) {
+        $newScreenshots = @(Get-ChildItem -LiteralPath $gameRootPath -Filter 'ScreenShot*.bmp' -File |
+            Sort-Object LastWriteTime, Name)
+        for ($index = 0; $index -lt $newScreenshots.Count; $index++) {
+            $frameLabel = if ($index -lt $ScreenshotFrame.Count) {
+                '{0:D6}' -f $ScreenshotFrame[$index]
+            } else {
+                'extra-{0:D3}' -f ($index - $ScreenshotFrame.Count + 1)
+            }
+            $capturePath = Join-Path $screenshotOutputDirectory "frame-$frameLabel.bmp"
+            Move-Item -LiteralPath $newScreenshots[$index].FullName -Destination $capturePath
+            $capturedScreenshots += $capturePath
+        }
+        if (Test-Path -LiteralPath $screenshotBackupDirectory) {
+            foreach ($originalScreenshot in @(Get-ChildItem -LiteralPath $screenshotBackupDirectory -File)) {
+                Move-Item -LiteralPath $originalScreenshot.FullName -Destination $gameRootPath
+            }
+            Remove-Item -LiteralPath $screenshotBackupDirectory -Force
+        }
+    }
 }
 
 if (-not (Test-Path -LiteralPath $output -PathType Leaf)) {
@@ -352,6 +413,57 @@ if (@($snapshots | Where-Object { $_.label -eq "before" }).Count -ne 1 -or
 if ($complete.Count -ne 1) {
     throw "Retail oracle did not report capture completion."
 }
+$screenshotRequests = @($events | Where-Object { $_.event -eq "screenshot-request" -and $_.accepted })
+if ($ScreenshotFrame.Count -gt 0 -and
+    ($screenshotRequests.Count -ne $ScreenshotFrame.Count -or $capturedScreenshots.Count -ne $ScreenshotFrame.Count)) {
+    throw "Expected $($ScreenshotFrame.Count) accepted screenshot(s), got $($screenshotRequests.Count) request(s) and $($capturedScreenshots.Count) file(s)."
+}
+if ($PortraitCamera) {
+    $portraitEvents = @($events | Where-Object { $_.event -eq "portrait-camera-set" })
+    if ($portraitEvents.Count -ne 1) {
+        throw "Portrait camera did not resolve and frame exactly one actor head."
+    }
+    Add-Type -AssemblyName System.Drawing
+    foreach ($screenshot in $capturedScreenshots) {
+        $sourceImage = [System.Drawing.Bitmap]::FromFile($screenshot)
+        try {
+            if ($sourceImage.Width -lt 800 -or $sourceImage.Height -lt 600) {
+                throw "Portrait screenshot is too small to validate: $screenshot"
+            }
+            # Preserve the raw retail frame.  The derived square only removes unused
+            # peripheral scenery; the head-relative camera keeps the actor in this
+            # lower-center safe region at every supported aspect ratio.
+            $cropSize = [Math]::Min($sourceImage.Width, [Math]::Floor($sourceImage.Height * 0.875))
+            $cropX = [Math]::Floor(($sourceImage.Width - $cropSize) / 2)
+            $cropY = $sourceImage.Height - $cropSize
+            $proofImage = New-Object System.Drawing.Bitmap(
+                $cropSize, $cropSize, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+            try {
+                $graphics = [System.Drawing.Graphics]::FromImage($proofImage)
+                try {
+                    $sourceRectangle = New-Object System.Drawing.Rectangle($cropX, $cropY, $cropSize, $cropSize)
+                    $targetRectangle = New-Object System.Drawing.Rectangle(0, 0, $cropSize, $cropSize)
+                    $graphics.DrawImage(
+                        $sourceImage, $targetRectangle, $sourceRectangle, [System.Drawing.GraphicsUnit]::Pixel)
+                }
+                finally {
+                    $graphics.Dispose()
+                }
+                $proofPath = [System.IO.Path]::Combine(
+                    [System.IO.Path]::GetDirectoryName($screenshot),
+                    [System.IO.Path]::GetFileNameWithoutExtension($screenshot) + '-proof-crop.png')
+                $proofImage.Save($proofPath, [System.Drawing.Imaging.ImageFormat]::Png)
+                $portraitProofCrops += $proofPath
+            }
+            finally {
+                $proofImage.Dispose()
+            }
+        }
+        finally {
+            $sourceImage.Dispose()
+        }
+    }
+}
 
 [pscustomobject][ordered]@{
     schema = "nikami-fnv-retail-oracle-run/v1"
@@ -369,6 +481,11 @@ if ($complete.Count -ne 1) {
     furnitureReleaseSamples = $FurnitureReleaseSamples
     backgroundDataMode = [bool]$BackgroundDataMode
     visibleGame = [bool]$VisibleGame
+    screenshotFrames = @($ScreenshotFrame)
+    screenshots = @($capturedScreenshots)
+    portraitProofCrops = @($portraitProofCrops)
+    portraitCamera = [bool]$PortraitCamera
+    portraitDistance = $PortraitDistance
     setStageQuestForm = $SetStageQuestForm
     setStageIndex = $SetStageIndex
     captureAnimation = [bool]$CaptureAnimation

@@ -37,8 +37,12 @@ reference, marker index, and cached marker transform, with a furniture-only
 mode for long AI/package captures. Patch 0005 adds focus-independent
 background collection, engine-driven observer waypoints, event-bounded
 furniture completion, reusable save fixtures, and explicit scene-node parent
-names. The capture runner restores the pre-existing retail DLL, temporary save
-fixtures, and process environment after each run.
+names. Patch 0006 adds in-process retail screenshots and a portrait camera that
+resolves `Bip01 Head` recursively and follows its rendered face-forward axis;
+this avoids actor-root/profile framing errors during seated idles. The capture
+runner restores the pre-existing retail DLL, screenshots, temporary save
+fixtures, and process environment after each run. Raw BMP frames are retained
+beside derived `-proof-crop.png` images; the crop never replaces source pixels.
 
 For the complete side-by-side capture discipline, current worktree checkpoint,
 and rules for extending this oracle without changing retail behavior, read

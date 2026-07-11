@@ -155,6 +155,37 @@ reloaded checkpoint reconstructed at `(-67968.75,3450.40674,8387.31055)`.
 Use the live lifecycle for world-placement comparison and checkpoints for
 state, hierarchy, equipment, face, bone, controller, and animation probes.
 
+### Head-tracked retail pixels
+
+Patch 0006 and the generic runner capture retail pixels without taking window
+focus. The plugin resolves `Bip01 Head` recursively, follows the rendered
+head's face-forward axis rather than the actor-root yaw, drives the free camera
+in-process, and requests the normal retail screenshot at declared frames. The
+runner moves only newly created BMPs into the evidence directory, restores any
+pre-existing retail screenshots, and derives a square PNG proof crop while
+preserving the raw frame.
+
+Easy Pete checkpoint example:
+
+```powershell
+.\scripts\Invoke-FNVRetailOracle.ps1 `
+  -PluginDll D:\path\to\xnvse\nvse_retail_oracle\build\nvse_retail_oracle.dll `
+  -OutputPath run\retail-oracle\fnv-easy-pete-portrait-camera-v5.jsonl `
+  -ScreenshotDirectory run\retail-oracle\fnv-easy-pete-portrait-camera-v5-screens `
+  -ScreenshotFrame 30 -PortraitCamera -PortraitDistance 70 `
+  -SaveFixture run\retail-oracle\checkpoints\NikamiOracleEasyPeteSeated.fos `
+  -TargetForm 0x00104C80 -BeforeFrame 10 -CommandFrame 20 -AfterFrame 30 `
+  -MaxFrames 40 -SampleEvery 1 -BackgroundDataMode
+```
+
+The run is acceptable only when it has one accepted `screenshot-request`, one
+`portrait-camera-set`, one BMP, one proof crop, and no `*-fault` event. For v5,
+the resolved head was `(-67952.6484,3446.4502,8462.33789)`, about 75 world units
+above the actor root; this explicitly rejects the earlier actor-root framing
+mistake. Pixel evidence proves what retail drew at that frame, not that OpenMW
+matches it. Record OpenMW hair, beard, skin, eye, or attachment differences as
+failures until a controlled side-by-side comparison passes.
+
 ## Recreate the xNVSE retail oracle
 
 Apply the queue to a clean xNVSE checkout at `175bb28`:
@@ -194,6 +225,9 @@ run/retail-oracle/fnv-easy-pete-sit-animation-v1.jsonl
 run/retail-oracle/fnv-easy-pete-background-v5.jsonl
 run/retail-oracle/fnv-easy-pete-checkpoint-fast-v2.jsonl
 run/retail-oracle/fnv-easy-pete-checkpoint-animation-v2.jsonl
+run/retail-oracle/fnv-easy-pete-portrait-camera-v5.jsonl
+run/retail-oracle/fnv-easy-pete-portrait-camera-v5-screens/frame-000030.bmp
+run/retail-oracle/fnv-easy-pete-portrait-camera-v5-screens/frame-000030-proof-crop.png
 ```
 
 Easy Pete's retail facts from those files:
