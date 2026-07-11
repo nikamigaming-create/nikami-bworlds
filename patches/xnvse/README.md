@@ -59,8 +59,13 @@ FalloutNV 1.4.0.525 and records current/previous/default/override weather
 FormIDs, transition percentage, sky mode/flags, runtime game hour, and the
 resolved ambient, directional, and fog light colors. This removes the need to
 infer a material mismatch from screenshots taken under different weather or
-time state. The Win32 Release oracle builds cleanly; runtime capture of the new
-event is pending the next bounded retail session and must not be claimed yet.
+time state. The Win32 Release oracle builds cleanly and the event is
+runtime-proven in hidden/background mode. The authoritative seated Easy Pete
+fixture event is
+`run/retail-oracle/fnv-easy-pete-seated-render-environment-v1.jsonl`; it reports
+current weather `0x001237D7`, no transition, `GameHour=14.4118919`, ambient
+`(0.369318515,0.4469423,0.578699231)`, and directional/fog light
+`(1,0.890196145,0.666666687)`.
 
 For the complete side-by-side capture discipline, current worktree checkpoint,
 and rules for extending this oracle without changing retail behavior, read

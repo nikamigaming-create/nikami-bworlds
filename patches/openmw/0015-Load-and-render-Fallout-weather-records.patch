@@ -1,0 +1,787 @@
+From 052c704d629bf9bd880c12a494bc65b2c545e816 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Sat, 11 Jul 2026 00:34:55 -0700
+Subject: [PATCH] Load and render Fallout weather records
+
+---
+ apps/components_tests/CMakeLists.txt          |   1 +
+ .../components_tests/esm4/testloadweather.cpp | 134 ++++++++++++++++++
+ apps/openmw/mwworld/esmstore.hpp              |   4 +-
+ apps/openmw/mwworld/store.cpp                 |   1 +
+ apps/openmw/mwworld/weather.cpp               | 125 +++++++++++++++-
+ apps/openmw/mwworld/weather.hpp               |  21 +++
+ apps/openmw/mwworld/worldimp.cpp              |  34 +++--
+ apps/openmw_tests/mwworld/testweather.cpp     |  18 +++
+ components/CMakeLists.txt                     |   1 +
+ components/esm4/loadwthr.cpp                  | 121 ++++++++++++++++
+ components/esm4/loadwthr.hpp                  |  99 +++++++++++++
+ components/esm4/records.hpp                   |   1 +
+ 12 files changed, 544 insertions(+), 16 deletions(-)
+ create mode 100644 apps/components_tests/esm4/testloadweather.cpp
+ create mode 100644 components/esm4/loadwthr.cpp
+ create mode 100644 components/esm4/loadwthr.hpp
+
+diff --git a/apps/components_tests/CMakeLists.txt b/apps/components_tests/CMakeLists.txt
+index f4efb6a940..f2c5eb8d29 100644
+--- a/apps/components_tests/CMakeLists.txt
++++ b/apps/components_tests/CMakeLists.txt
+@@ -72,6 +72,7 @@ file(GLOB UNITTEST_SRC_FILES
+     esm4/testlip.cpp
+     esm4/testloadbehavior.cpp
+     esm4/testloadweap.cpp
++    esm4/testloadweather.cpp
+ 
+     fx/lexer.cpp
+     fx/technique.cpp
+diff --git a/apps/components_tests/esm4/testloadweather.cpp b/apps/components_tests/esm4/testloadweather.cpp
+new file mode 100644
+index 0000000000..422cd1fb18
+--- /dev/null
++++ b/apps/components_tests/esm4/testloadweather.cpp
+@@ -0,0 +1,134 @@
++#include <components/esm4/loadwthr.hpp>
++#include <components/esm4/reader.hpp>
++
++#include <gtest/gtest.h>
++
++#include <array>
++#include <cstdint>
++#include <cstring>
++#include <limits>
++#include <memory>
++#include <sstream>
++#include <string>
++#include <string_view>
++#include <type_traits>
++
++namespace
++{
++    template <class T>
++    void appendPod(std::string& output, const T& value)
++    {
++        static_assert(std::is_trivially_copyable_v<T>);
++        output.append(reinterpret_cast<const char*>(&value), sizeof(value));
++    }
++
++    void appendFourCC(std::string& output, std::string_view value)
++    {
++        ASSERT_EQ(value.size(), 4);
++        output.append(value);
++    }
++
++    void appendSubRecord(std::string& output, std::string_view type, std::string_view data)
++    {
++        ASSERT_EQ(type.size(), 4);
++        ASSERT_LE(data.size(), std::numeric_limits<std::uint16_t>::max());
++        output.append(type);
++        appendPod(output, static_cast<std::uint16_t>(data.size()));
++        output.append(data);
++    }
++
++    template <class T>
++    void appendSubRecord(std::string& output, std::string_view type, const T& data)
++    {
++        appendSubRecord(output, type, std::string_view(reinterpret_cast<const char*>(&data), sizeof(data)));
++    }
++
++    void appendSubRecord(std::string& output, std::string_view type, const std::string& data)
++    {
++        appendSubRecord(output, type, std::string_view(data));
++    }
++
++    std::unique_ptr<ESM4::Reader> makeReader(std::string payload, std::uint32_t modIndex = 0)
++    {
++        std::string hedr;
++        appendPod(hedr, 1.34f);
++        appendPod(hedr, std::int32_t{ 2 });
++        appendPod(hedr, std::uint32_t{ 0x800 });
++        std::string headerPayload;
++        appendSubRecord(headerPayload, "HEDR", hedr);
++
++        const auto appendRecord = [](std::string& output, std::string_view type, std::uint32_t formId,
++                                      std::string_view body) {
++            output.append(type);
++            appendPod(output, static_cast<std::uint32_t>(body.size()));
++            appendPod(output, std::uint32_t{ 0 });
++            appendPod(output, formId);
++            appendPod(output, std::uint32_t{ 0 });
++            appendPod(output, std::uint16_t{ 0 });
++            appendPod(output, std::uint16_t{ 0 });
++            output.append(body);
++        };
++
++        std::string plugin;
++        appendRecord(plugin, "TES4", 0, headerPayload);
++        appendRecord(plugin, "WTHR", 0x1237d7, payload);
++        auto stream = std::make_unique<std::istringstream>(plugin, std::ios::in | std::ios::binary);
++        auto reader = std::make_unique<ESM4::Reader>(std::move(stream), "weather.esm", nullptr, nullptr, true);
++        reader->setModIndex(modIndex);
++        EXPECT_TRUE(reader->getRecordHeader());
++        reader->getRecordData();
++        return reader;
++    }
++
++    TEST(Esm4WeatherTest, shouldParseRetailFNVWeatherColorsAndImageSpaces)
++    {
++        std::string payload;
++        appendSubRecord(payload, "EDID", std::string_view("NVWastelandGS\0", 14));
++        appendSubRecord(payload, std::string_view("\0IAD", 4), std::uint32_t{ 0x0cee1a });
++        appendSubRecord(payload, std::string_view("\1IAD", 4), std::uint32_t{ 0x0cee18 });
++        appendSubRecord(payload, std::string_view("\4IAD", 4), std::uint32_t{ 0x0cee18 });
++
++        std::array<std::array<ESM4::Weather::Color, ESM4::Weather::sTimeCount>,
++            ESM4::Weather::sColorTypeCount>
++            colors{};
++        colors[ESM4::Weather::Color_Ambient][ESM4::Weather::Time_Day] = { 87, 105, 138, 0 };
++        colors[ESM4::Weather::Color_Ambient][ESM4::Weather::Time_HighNoon] = { 99, 120, 154, 0 };
++        colors[ESM4::Weather::Color_Sunlight][ESM4::Weather::Time_Day] = { 255, 227, 170, 0 };
++        appendSubRecord(payload, "NAM0", colors);
++
++        std::array<float, 6> fog{ 10.f, 120000.f, 0.f, 150000.f, 0.5f, 0.5f };
++        appendSubRecord(payload, "FNAM", fog);
++        std::array<std::uint8_t, 15> data{ 50, 45, 45, 255, 54, 0, 0, 0, 0, 0, 255, 1, 0, 0, 0 };
++        appendSubRecord(payload, "DATA", data);
++
++        auto reader = makeReader(payload, 2);
++        ESM4::Weather weather;
++        weather.load(*reader);
++
++        EXPECT_EQ(weather.mId, ESM::FormId::fromUint32(0x021237d7));
++        EXPECT_EQ(weather.mEditorId, "NVWastelandGS");
++        EXPECT_EQ(weather.mImageSpaceModifiers[ESM4::Weather::Time_Sunrise],
++            ESM::FormId::fromUint32(0x020cee1a));
++        EXPECT_EQ(weather.mColors[ESM4::Weather::Color_Ambient][ESM4::Weather::Time_Day].r, 87);
++        EXPECT_EQ(weather.mColors[ESM4::Weather::Color_Ambient][ESM4::Weather::Time_HighNoon].b, 154);
++        EXPECT_EQ(weather.mColors[ESM4::Weather::Color_Sunlight][ESM4::Weather::Time_Day].g, 227);
++        EXPECT_FLOAT_EQ(weather.mFogDistance[1], 120000.f);
++        EXPECT_EQ(weather.mData.transitionDelta, 255);
++        EXPECT_EQ(weather.mData.classification, 1);
++    }
++
++    TEST(Esm4WeatherTest, shouldExpandFO3FourTimeColorRowsWithoutInventingHighNoon)
++    {
++        std::string payload;
++        std::array<std::array<ESM4::Weather::Color, 4>, ESM4::Weather::sColorTypeCount> colors{};
++        colors[ESM4::Weather::Color_Ambient][ESM4::Weather::Time_Night] = { 12, 34, 56, 0 };
++        appendSubRecord(payload, "NAM0", colors);
++
++        auto reader = makeReader(payload);
++        ESM4::Weather weather;
++        weather.load(*reader);
++
++        EXPECT_EQ(weather.mColors[ESM4::Weather::Color_Ambient][ESM4::Weather::Time_Night].b, 56);
++        EXPECT_EQ(weather.mColors[ESM4::Weather::Color_Ambient][ESM4::Weather::Time_HighNoon].r, 0);
++    }
++}
+diff --git a/apps/openmw/mwworld/esmstore.hpp b/apps/openmw/mwworld/esmstore.hpp
+index 23b64870b3..2831869832 100644
+--- a/apps/openmw/mwworld/esmstore.hpp
++++ b/apps/openmw/mwworld/esmstore.hpp
+@@ -10,6 +10,7 @@
+ #include <components/esm/luascripts.hpp>
+ #include <components/esm/refid.hpp>
+ #include <components/esm3/loadgmst.hpp>
++#include <components/esm4/loadwthr.hpp>
+ #include <components/misc/tuplemeta.hpp>
+ 
+ #include "store.hpp"
+@@ -125,6 +126,7 @@ namespace ESM4
+     struct TextureSet;
+     struct Tree;
+     struct Weapon;
++    struct Weather;
+     struct World;
+ }
+ 
+@@ -166,7 +168,7 @@ namespace MWWorld
+             Store<ESM4::Npc>, Store<ESM4::Outfit>, Store<ESM4::Potion>, Store<ESM4::Quest>, Store<ESM4::Race>,
+             Store<ESM4::Reference>, Store<ESM4::Script>, Store<ESM4::Sound>, Store<ESM4::SoundReference>,
+             Store<ESM4::Static>, Store<ESM4::StaticCollection>, Store<ESM4::Terminal>, Store<ESM4::TextureSet>,
+-            Store<ESM4::Tree>, Store<ESM4::Weapon>, Store<ESM4::World>>;
++            Store<ESM4::Tree>, Store<ESM4::Weapon>, Store<ESM4::Weather>, Store<ESM4::World>>;
+ 
+     private:
+         template <typename T>
+diff --git a/apps/openmw/mwworld/store.cpp b/apps/openmw/mwworld/store.cpp
+index 92c43c6814..0326198bd0 100644
+--- a/apps/openmw/mwworld/store.cpp
++++ b/apps/openmw/mwworld/store.cpp
+@@ -1388,4 +1388,5 @@ template class MWWorld::TypedDynamicStore<ESM4::Terminal>;
+ template class MWWorld::TypedDynamicStore<ESM4::TextureSet>;
+ template class MWWorld::TypedDynamicStore<ESM4::Tree>;
+ template class MWWorld::TypedDynamicStore<ESM4::Weapon>;
++template class MWWorld::TypedDynamicStore<ESM4::Weather>;
+ template class MWWorld::TypedDynamicStore<ESM4::World>;
+diff --git a/apps/openmw/mwworld/weather.cpp b/apps/openmw/mwworld/weather.cpp
+index 0f5a4ea186..62ebcc2532 100644
+--- a/apps/openmw/mwworld/weather.cpp
++++ b/apps/openmw/mwworld/weather.cpp
+@@ -12,6 +12,7 @@
+ #include <components/esm3/esmwriter.hpp>
+ #include <components/esm3/loadregn.hpp>
+ #include <components/esm3/weatherstate.hpp>
++#include <components/esm4/loadwthr.hpp>
+ 
+ #include "../mwbase/environment.hpp"
+ #include "../mwbase/soundmanager.hpp"
+@@ -85,6 +86,35 @@ namespace MWWorld
+                 getOptionalWeatherColour(weatherName, colourGroup, "Sunset", fallback.getSunsetValue()),
+                 getOptionalWeatherColour(weatherName, colourGroup, "Night", fallback.getNightValue()));
+         }
++
++        osg::Vec4f falloutColor(const ESM4::Weather::Color& value)
++        {
++            constexpr float byteToFloat = 1.f / 255.f;
++            return osg::Vec4f(value.r * byteToFloat, value.g * byteToFloat, value.b * byteToFloat, 1.f);
++        }
++
++        FalloutWeatherColorSamples falloutColorSamples(
++            const ESM4::Weather& weather, ESM4::Weather::ColorType type)
++        {
++            FalloutWeatherColorSamples result;
++            for (std::size_t i = 0; i < result.size(); ++i)
++                result[i] = falloutColor(weather.mColors[type][i]);
++            return result;
++        }
++    }
++
++    osg::Vec4f sampleFalloutWeatherColor(
++        const FalloutWeatherColorSamples& samples, float gameHour, const TimeOfDaySettings& timeSettings)
++    {
++        constexpr float highNoon = 12.f;
++        // xNVSE measured NVWastelandGS at 14.4118919 as the exact linear
++        // blend from High Noon to Day across 12:00 -> sunset begin 18:00.
++        // Callers deliberately use the legacy four-sample path outside this
++        // measured interval until each remaining retail segment is captured.
++        const float factor = timeSettings.mDayEnd > highNoon
++            ? std::clamp((gameHour - highNoon) / (timeSettings.mDayEnd - highNoon), 0.f, 1.f)
++            : 0.f;
++        return lerp(samples[ESM4::Weather::Time_HighNoon], samples[ESM4::Weather::Time_Day], factor);
+     }
+ 
+     template <typename T>
+@@ -705,6 +735,8 @@ namespace MWWorld
+             mRegions.insert(std::make_pair(it->mId, RegionWeather(*it)));
+         }
+ 
++        importFalloutWeather();
++
+         forceWeather(0);
+     }
+ 
+@@ -732,6 +764,15 @@ namespace MWWorld
+         return nullptr;
+     }
+ 
++    bool WeatherManager::forceWeather(const ESM::RefId& weatherID)
++    {
++        const Weather* weather = getWeather(weatherID);
++        if (weather == nullptr)
++            return false;
++        forceWeather(weather->mScriptId);
++        return true;
++    }
++
+     void WeatherManager::changeWeather(const ESM::RefId& regionID, const ESM::RefId& weatherID)
+     {
+         auto wIt = std::find_if(mWeatherSettings.begin(), mWeatherSettings.end(),
+@@ -1187,6 +1228,65 @@ namespace MWWorld
+         mWeatherSettings.push_back(std::move(weather));
+     }
+ 
++    void WeatherManager::importFalloutWeather()
++    {
++        std::size_t imported = 0;
++        for (const ESM4::Weather& source : mStore.get<ESM4::Weather>())
++        {
++            const int scriptId = static_cast<int>(mWeatherSettings.size());
++            // Construct from the known-complete Clear defaults, then replace
++            // every FO3/FNV field currently consumed by the flat renderer.
++            Weather weather(source.mId, scriptId, "Clear", 1000.f, mRainSpeed, 1.f, 0.f, "");
++            weather.mName = source.mEditorId;
++            for (auto it = source.mCloudTextures.rbegin(); it != source.mCloudTextures.rend(); ++it)
++            {
++                if (!it->empty())
++                {
++                    weather.mCloudTexture = *it;
++                    break;
++                }
++            }
++            const FalloutWeatherColorSamples sky
++                = falloutColorSamples(source, ESM4::Weather::Color_SkyUpper);
++            const FalloutWeatherColorSamples fog = falloutColorSamples(source, ESM4::Weather::Color_Fog);
++            const FalloutWeatherColorSamples ambient
++                = falloutColorSamples(source, ESM4::Weather::Color_Ambient);
++            const FalloutWeatherColorSamples sunlight
++                = falloutColorSamples(source, ESM4::Weather::Color_Sunlight);
++            const FalloutWeatherColorSamples skyLower
++                = falloutColorSamples(source, ESM4::Weather::Color_SkyLower);
++            const FalloutWeatherColorSamples horizon
++                = falloutColorSamples(source, ESM4::Weather::Color_Horizon);
++            weather.mSkyColor = TimeOfDayInterpolator<osg::Vec4f>(sky[0], sky[1], sky[2], sky[3]);
++            weather.mFogColor = TimeOfDayInterpolator<osg::Vec4f>(fog[0], fog[1], fog[2], fog[3]);
++            weather.mAmbientColor = TimeOfDayInterpolator<osg::Vec4f>(ambient[0], ambient[1], ambient[2], ambient[3]);
++            weather.mSunColor
++                = TimeOfDayInterpolator<osg::Vec4f>(sunlight[0], sunlight[1], sunlight[2], sunlight[3]);
++            weather.mSkyLowerColor
++                = TimeOfDayInterpolator<osg::Vec4f>(skyLower[0], skyLower[1], skyLower[2], skyLower[3]);
++            weather.mSkyHorizonColor
++                = TimeOfDayInterpolator<osg::Vec4f>(horizon[0], horizon[1], horizon[2], horizon[3]);
++            const bool hasHighNoon = source.mImageSpaceModifiers[ESM4::Weather::Time_HighNoon].isSet()
++                || ambient[ESM4::Weather::Time_HighNoon] != osg::Vec4f(0.f, 0.f, 0.f, 1.f);
++            if (hasHighNoon)
++            {
++                weather.mFalloutSkyColors = sky;
++                weather.mFalloutFogColors = fog;
++                weather.mFalloutAmbientColors = ambient;
++                weather.mFalloutSunlightColors = sunlight;
++                weather.mFalloutSkyLowerColors = skyLower;
++                weather.mFalloutHorizonColors = horizon;
++            }
++            weather.mWindSpeed = static_cast<float>(source.mData.windSpeed) / 255.f;
++            weather.mCloudSpeed = static_cast<float>(source.mData.lowerCloudSpeed) / 255.f;
++            weather.mGlareView = static_cast<float>(source.mData.sunGlare) / 255.f;
++            mWeatherSettings.push_back(std::move(weather));
++            ++imported;
++        }
++        if (imported != 0)
++            Log(Debug::Info) << "FNV/ESM4: imported weather records count=" << imported;
++    }
++
+     inline void WeatherManager::importRegions()
+     {
+         for (const ESM::Region& region : mStore.get<ESM::Region>())
+@@ -1376,12 +1476,25 @@ namespace MWWorld
+                 > mTimeSettings.mNightStart + mTimeSettings.mStarsPostSunsetStart - mTimeSettings.mStarsFadingDuration);
+ 
+         mResult.mFogDepth = current.mLandFogDepth.getValue(gameHour, mTimeSettings, "Fog");
+-        mResult.mFogColor = current.mFogColor.getValue(gameHour, mTimeSettings, "Fog");
+-        mResult.mAmbientColor = current.mAmbientColor.getValue(gameHour, mTimeSettings, "Ambient");
+-        mResult.mSunColor = current.mSunColor.getValue(gameHour, mTimeSettings, "Sun");
+-        mResult.mSkyColor = current.mSkyColor.getValue(gameHour, mTimeSettings, "Sky");
+-        mResult.mSkyLowerColor = current.mSkyLowerColor.getValue(gameHour, mTimeSettings, "Sky");
+-        mResult.mSkyHorizonColor = current.mSkyHorizonColor.getValue(gameHour, mTimeSettings, "Sky");
++        const bool measuredFalloutAfternoon = gameHour >= 12.f && gameHour <= mTimeSettings.mDayEnd;
++        mResult.mFogColor = current.mFalloutFogColors && measuredFalloutAfternoon
++            ? sampleFalloutWeatherColor(*current.mFalloutFogColors, gameHour, mTimeSettings)
++            : current.mFogColor.getValue(gameHour, mTimeSettings, "Fog");
++        mResult.mAmbientColor = current.mFalloutAmbientColors && measuredFalloutAfternoon
++            ? sampleFalloutWeatherColor(*current.mFalloutAmbientColors, gameHour, mTimeSettings)
++            : current.mAmbientColor.getValue(gameHour, mTimeSettings, "Ambient");
++        mResult.mSunColor = current.mFalloutSunlightColors && measuredFalloutAfternoon
++            ? sampleFalloutWeatherColor(*current.mFalloutSunlightColors, gameHour, mTimeSettings)
++            : current.mSunColor.getValue(gameHour, mTimeSettings, "Sun");
++        mResult.mSkyColor = current.mFalloutSkyColors && measuredFalloutAfternoon
++            ? sampleFalloutWeatherColor(*current.mFalloutSkyColors, gameHour, mTimeSettings)
++            : current.mSkyColor.getValue(gameHour, mTimeSettings, "Sky");
++        mResult.mSkyLowerColor = current.mFalloutSkyLowerColors && measuredFalloutAfternoon
++            ? sampleFalloutWeatherColor(*current.mFalloutSkyLowerColors, gameHour, mTimeSettings)
++            : current.mSkyLowerColor.getValue(gameHour, mTimeSettings, "Sky");
++        mResult.mSkyHorizonColor = current.mFalloutHorizonColors && measuredFalloutAfternoon
++            ? sampleFalloutWeatherColor(*current.mFalloutHorizonColors, gameHour, mTimeSettings)
++            : current.mSkyHorizonColor.getValue(gameHour, mTimeSettings, "Sky");
+         mResult.mNightFade = mNightFade.getValue(gameHour, mTimeSettings, "Stars");
+         mResult.mDLFogFactor = current.mDL.FogFactor;
+         mResult.mDLFogOffset = current.mDL.FogOffset;
+diff --git a/apps/openmw/mwworld/weather.hpp b/apps/openmw/mwworld/weather.hpp
+index d4679105b1..970f6bcc54 100644
+--- a/apps/openmw/mwworld/weather.hpp
++++ b/apps/openmw/mwworld/weather.hpp
+@@ -2,7 +2,9 @@
+ #define GAME_MWWORLD_WEATHER_H
+ 
+ #include <cstdint>
++#include <array>
+ #include <map>
++#include <optional>
+ #include <span>
+ #include <string>
+ 
+@@ -94,6 +96,11 @@ namespace MWWorld
+         }
+     };
+ 
++    using FalloutWeatherColorSamples = std::array<osg::Vec4f, 6>;
++
++    osg::Vec4f sampleFalloutWeatherColor(
++        const FalloutWeatherColorSamples& samples, float gameHour, const TimeOfDaySettings& timeSettings);
++
+     /// Interpolates between 4 data points (sunrise, day, sunset, night) based on the time of day.
+     /// The template value could be a floating point number, or a color.
+     template <typename T>
+@@ -150,6 +157,17 @@ namespace MWWorld
+         // Sun (directional) lighting color
+         TimeOfDayInterpolator<osg::Vec4f> mSunColor;
+ 
++        // FO3/FNV add high-noon (and, in FNV, serialized midnight) samples to
++        // the four legacy weather colors. The afternoon high-noon -> day
++        // segment is retail-measured; other segments retain the legacy path
++        // until a record supplies the extra sample.
++        std::optional<FalloutWeatherColorSamples> mFalloutSkyColors;
++        std::optional<FalloutWeatherColorSamples> mFalloutFogColors;
++        std::optional<FalloutWeatherColorSamples> mFalloutSkyLowerColors;
++        std::optional<FalloutWeatherColorSamples> mFalloutHorizonColors;
++        std::optional<FalloutWeatherColorSamples> mFalloutAmbientColors;
++        std::optional<FalloutWeatherColorSamples> mFalloutSunlightColors;
++
+         // Fog depth/density
+         TimeOfDayInterpolator<float> mLandFogDepth;
+ 
+@@ -356,6 +374,7 @@ namespace MWWorld
+         int getNextWeatherID() const { return mNextWeather; }
+ 
+         void forceWeather(const int weatherID);
++        bool forceWeather(const ESM::RefId& weatherID);
+ 
+         float getTransitionFactor() const { return mTransitionFactor; }
+ 
+@@ -422,6 +441,8 @@ namespace MWWorld
+         void addWeather(
+             const std::string& name, float dlFactor, float dlOffset, const std::string& particleEffect = "");
+ 
++        void importFalloutWeather();
++
+         void importRegions();
+ 
+         void regionalWeatherChanged(const ESM::RefId& regionID, RegionWeather& region);
+diff --git a/apps/openmw/mwworld/worldimp.cpp b/apps/openmw/mwworld/worldimp.cpp
+index 9450c89f38..ef2befc4ac 100644
+--- a/apps/openmw/mwworld/worldimp.cpp
++++ b/apps/openmw/mwworld/worldimp.cpp
+@@ -4211,23 +4211,39 @@ namespace MWWorld
+         mWeatherManager->update(duration, paused, time, isExterior);
+         if (const char* weatherIdEnv = std::getenv("OPENMW_FNV_PROOF_WEATHER_ID"))
+         {
+-            char* end = nullptr;
+-            const long weatherId = std::strtol(weatherIdEnv, &end, 10);
+             static bool loggedProofWeather = false;
+-            if (end != weatherIdEnv && weatherId >= 0)
++            const std::string_view weatherText(weatherIdEnv);
++            if (weatherText.starts_with("FormId:") || weatherText.starts_with("formid:"))
+             {
+-                mWeatherManager->forceWeather(static_cast<int>(weatherId));
++                const ESM::RefId weatherId = ESM::RefId::deserializeText(weatherText);
++                const bool forced = mWeatherManager->forceWeather(weatherId);
+                 if (!loggedProofWeather)
+                 {
+-                    Log(Debug::Info) << "FNV/ESM4 proof: force-weather manager override weatherId=" << weatherId
+-                                     << " isExterior=" << isExterior;
++                    Log(forced ? Debug::Info : Debug::Warning)
++                        << "FNV/ESM4 proof: force-weather FormID override weatherId=" << weatherId
++                        << " resolved=" << forced << " isExterior=" << isExterior;
+                     loggedProofWeather = true;
+                 }
+             }
+-            else if (!loggedProofWeather)
++            else
+             {
+-                Log(Debug::Warning) << "FNV/ESM4 proof: ignored invalid force-weather id '" << weatherIdEnv << "'";
+-                loggedProofWeather = true;
++                char* end = nullptr;
++                const long weatherId = std::strtol(weatherIdEnv, &end, 10);
++                if (end != weatherIdEnv && weatherId >= 0)
++                {
++                    mWeatherManager->forceWeather(static_cast<int>(weatherId));
++                    if (!loggedProofWeather)
++                    {
++                        Log(Debug::Info) << "FNV/ESM4 proof: force-weather manager override weatherId=" << weatherId
++                                         << " isExterior=" << isExterior;
++                        loggedProofWeather = true;
++                    }
++                }
++                else if (!loggedProofWeather)
++                {
++                    Log(Debug::Warning) << "FNV/ESM4 proof: ignored invalid force-weather id '" << weatherIdEnv << "'";
++                    loggedProofWeather = true;
++                }
+             }
+         }
+     }
+diff --git a/apps/openmw_tests/mwworld/testweather.cpp b/apps/openmw_tests/mwworld/testweather.cpp
+index 4b7fd8f9e2..dd8123f2a6 100644
+--- a/apps/openmw_tests/mwworld/testweather.cpp
++++ b/apps/openmw_tests/mwworld/testweather.cpp
+@@ -9,6 +9,24 @@ namespace MWWorld
+ {
+     namespace
+     {
++        TEST(MWWorldWeatherTest, samplesRetailFNVHighNoonToDayAfternoonSegment)
++        {
++            FalloutWeatherColorSamples ambient{};
++            ambient[1] = osg::Vec4f(87.f / 255.f, 105.f / 255.f, 138.f / 255.f, 1.f);
++            ambient[4] = osg::Vec4f(99.f / 255.f, 120.f / 255.f, 154.f / 255.f, 1.f);
++            TimeOfDaySettings settings{};
++            settings.mNightEnd = 6.f;
++            settings.mDayStart = 8.f;
++            settings.mDayEnd = 18.f;
++            settings.mNightStart = 20.f;
++
++            const osg::Vec4f sampled = sampleFalloutWeatherColor(ambient, 14.4118919f, settings);
++
++            EXPECT_NEAR(sampled.r(), 0.369318515f, 0.000001f);
++            EXPECT_NEAR(sampled.g(), 0.4469423f, 0.000001f);
++            EXPECT_NEAR(sampled.b(), 0.578699231f, 0.000001f);
++        }
++
+         // MASSER PHASES
+ 
+         TEST(MWWorldWeatherTest, masserPhasesFullToWaningGibbousAtCorrectTimes)
+diff --git a/components/CMakeLists.txt b/components/CMakeLists.txt
+index 1f03547535..28409f2123 100644
+--- a/components/CMakeLists.txt
++++ b/components/CMakeLists.txt
+@@ -287,6 +287,7 @@ add_component_dir (esm4
+     loadtree
+     loadtxst
+     loadweap
++    loadwthr
+     loadwrld
+     magiceffectid
+     reader
+diff --git a/components/esm4/loadwthr.cpp b/components/esm4/loadwthr.cpp
+new file mode 100644
+index 0000000000..79cd08f07f
+--- /dev/null
++++ b/components/esm4/loadwthr.cpp
+@@ -0,0 +1,121 @@
++#include "loadwthr.hpp"
++
++#include <algorithm>
++#include <stdexcept>
++
++#include "reader.hpp"
++
++namespace
++{
++    template <class T>
++    void readFixedOrSkip(ESM4::Reader& reader, const ESM4::SubRecordHeader& header, T& value)
++    {
++        if (header.dataSize == sizeof(value))
++            reader.get(value);
++        else
++            reader.skipSubRecordData();
++    }
++}
++
++void ESM4::Weather::load(Reader& reader)
++{
++    mId = reader.getFormIdFromHeader();
++    mFlags = reader.hdr().record.flags;
++
++    while (reader.getSubRecordHeader())
++    {
++        const SubRecordHeader& subHdr = reader.subRecordHeader();
++        switch (subHdr.typeId)
++        {
++            case ESM::fourCC("EDID"):
++                reader.getZString(mEditorId);
++                break;
++            case ESM::fourCC("\0IAD"):
++                reader.getFormId(mImageSpaceModifiers[Time_Sunrise]);
++                break;
++            case ESM::fourCC("\1IAD"):
++                reader.getFormId(mImageSpaceModifiers[Time_Day]);
++                break;
++            case ESM::fourCC("\2IAD"):
++                reader.getFormId(mImageSpaceModifiers[Time_Sunset]);
++                break;
++            case ESM::fourCC("\3IAD"):
++                reader.getFormId(mImageSpaceModifiers[Time_Night]);
++                break;
++            case ESM::fourCC("\4IAD"):
++                reader.getFormId(mImageSpaceModifiers[Time_HighNoon]);
++                break;
++            case ESM::fourCC("\5IAD"):
++                reader.getFormId(mImageSpaceModifiers[Time_Midnight]);
++                break;
++            case ESM::fourCC("DNAM"):
++                reader.getZString(mCloudTextures[0]);
++                break;
++            case ESM::fourCC("CNAM"):
++                reader.getZString(mCloudTextures[1]);
++                break;
++            case ESM::fourCC("ANAM"):
++                reader.getZString(mCloudTextures[2]);
++                break;
++            case ESM::fourCC("BNAM"):
++                reader.getZString(mCloudTextures[3]);
++                break;
++            case ESM::fourCC("MODL"):
++                reader.getZString(mModel);
++                break;
++            case ESM::fourCC("ONAM"):
++                readFixedOrSkip(reader, subHdr, mCloudSpeeds);
++                break;
++            case ESM::fourCC("PNAM"):
++                readFixedOrSkip(reader, subHdr, mCloudColors);
++                break;
++            case ESM::fourCC("NAM0"):
++                if (subHdr.dataSize == 4 * sTimeCount * sColorTypeCount)
++                    reader.get(mColors);
++                else if (subHdr.dataSize == 4 * 4 * sColorTypeCount)
++                {
++                    std::array<std::array<Color, 4>, sColorTypeCount> fo3Colors{};
++                    reader.get(fo3Colors);
++                    for (std::size_t type = 0; type < sColorTypeCount; ++type)
++                        std::copy(fo3Colors[type].begin(), fo3Colors[type].end(), mColors[type].begin());
++                }
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("FNAM"):
++                readFixedOrSkip(reader, subHdr, mFogDistance);
++                break;
++            case ESM::fourCC("DATA"):
++                if (subHdr.dataSize == 15)
++                    reader.get(&mData, 15);
++                else
++                    reader.skipSubRecordData();
++                break;
++            case ESM::fourCC("SNAM"):
++            {
++                if (subHdr.dataSize != 8)
++                {
++                    reader.skipSubRecordData();
++                    break;
++                }
++                Sound sound;
++                reader.getFormId(sound.sound);
++                reader.get(sound.type);
++                mSounds.push_back(sound);
++                break;
++            }
++            case ESM::fourCC("LNAM"):
++            case ESM::fourCC("INAM"):
++            case ESM::fourCC("MODB"):
++            case ESM::fourCC("MODT"):
++            case ESM::fourCC("MODS"):
++            case ESM::fourCC("MODD"):
++                reader.skipSubRecordData();
++                break;
++            default:
++                if (reader.skipUnknownStarfieldSubRecordData("loadwthr"))
++                    break;
++                throw std::runtime_error("ESM4::WTHR::load - Unknown subrecord " + ESM::printName(subHdr.typeId));
++        }
++    }
++}
+diff --git a/components/esm4/loadwthr.hpp b/components/esm4/loadwthr.hpp
+new file mode 100644
+index 0000000000..d3d61151bf
+--- /dev/null
++++ b/components/esm4/loadwthr.hpp
+@@ -0,0 +1,99 @@
++#ifndef OPENMW_COMPONENTS_ESM4_LOADWTHR_H
++#define OPENMW_COMPONENTS_ESM4_LOADWTHR_H
++
++#include <array>
++#include <cstdint>
++#include <string>
++#include <vector>
++
++#include <components/esm/defs.hpp>
++#include <components/esm/formid.hpp>
++
++namespace ESM4
++{
++    class Reader;
++
++    struct Weather
++    {
++        static constexpr std::size_t sTimeCount = 6;
++        static constexpr std::size_t sColorTypeCount = 10;
++        static constexpr std::size_t sCloudLayerCount = 4;
++
++        enum Time : std::size_t
++        {
++            Time_Sunrise,
++            Time_Day,
++            Time_Sunset,
++            Time_Night,
++            Time_HighNoon,
++            Time_Midnight,
++        };
++
++        enum ColorType : std::size_t
++        {
++            Color_SkyUpper,
++            Color_Fog,
++            Color_Unused2,
++            Color_Ambient,
++            Color_Sunlight,
++            Color_Sun,
++            Color_Stars,
++            Color_SkyLower,
++            Color_Horizon,
++            Color_Unused9,
++        };
++
++        struct Color
++        {
++            std::uint8_t r = 0;
++            std::uint8_t g = 0;
++            std::uint8_t b = 0;
++            std::uint8_t unused = 0;
++        };
++
++        struct Data
++        {
++            std::uint8_t windSpeed = 0;
++            std::uint8_t lowerCloudSpeed = 0;
++            std::uint8_t upperCloudSpeed = 0;
++            std::uint8_t transitionDelta = 0;
++            std::uint8_t sunGlare = 0;
++            std::uint8_t sunDamage = 0;
++            std::uint8_t precipitationBeginFadeIn = 0;
++            std::uint8_t precipitationEndFadeOut = 0;
++            std::uint8_t lightningBeginFadeIn = 0;
++            std::uint8_t lightningEndFadeOut = 0;
++            std::uint8_t lightningFrequency = 0;
++            std::uint8_t classification = 0;
++            Color lightningColor;
++        };
++
++        struct Sound
++        {
++            ESM::FormId sound;
++            std::uint32_t type = 0;
++        };
++
++        ESM::FormId mId;
++        std::uint32_t mFlags = 0;
++        std::string mEditorId;
++        std::array<ESM::FormId, sTimeCount> mImageSpaceModifiers;
++        std::array<std::string, sCloudLayerCount> mCloudTextures;
++        std::string mModel;
++        std::array<std::uint8_t, sCloudLayerCount> mCloudSpeeds{};
++        std::array<std::array<Color, sTimeCount>, sCloudLayerCount> mCloudColors{};
++        std::array<std::array<Color, sTimeCount>, sColorTypeCount> mColors{};
++        std::array<float, 6> mFogDistance{};
++        Data mData;
++        std::vector<Sound> mSounds;
++
++        void load(Reader& reader);
++
++        static constexpr ESM::RecNameInts sRecordId = ESM::RecNameInts::REC_WTHR4;
++    };
++
++    static_assert(sizeof(Weather::Color) == 4);
++    static_assert(sizeof(Weather::Data) == 16);
++}
++
++#endif
+diff --git a/components/esm4/records.hpp b/components/esm4/records.hpp
+index 88f8b77462..9f8718bf83 100644
+--- a/components/esm4/records.hpp
++++ b/components/esm4/records.hpp
+@@ -79,6 +79,7 @@
+ #include <components/esm4/loadtree.hpp>
+ #include <components/esm4/loadtxst.hpp>
+ #include <components/esm4/loadweap.hpp>
++#include <components/esm4/loadwthr.hpp>
+ #include <components/esm4/loadwrld.hpp>
+ 
+ #endif
+-- 
+2.53.0.windows.1
+

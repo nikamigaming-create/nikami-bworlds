@@ -113,6 +113,15 @@ The earlier color verdict also mixed environment state: retail's saved global
 snapshot reports `GameHour=14.4492416`, while the OpenMW proof forced noon.
 The maintained portrait now uses `14.45`. xNVSE patch 0009 additionally records
 the live weather FormIDs/transition and resolved ambient, directional, and fog
-colors. Its Win32 build passes, but the new runtime event has not yet been
-captured, so the remaining color difference is not classified as a shader bug
-until that environment gate is matched.
+colors.
+
+That environment gate is now measured and matched. The hidden retail run
+`fnv-easy-pete-seated-render-environment-v1.jsonl` reports weather
+`0x001237D7` (`NVWastelandGS`), no active transition, hour `14.4118919`,
+ambient `(0.369318515,0.4469423,0.578699231)`, and warm directional/fog light
+`(1,0.890196145,0.666666687)`. Patch 0015 loads the record and the OpenMW run
+`fallout_new_vegas-20260711-003100` resolves it as
+`FormId:0x11237d7`, imports 98 FNV weather records, and reproduces those vectors
+at the proof hour. The frame remains less orange/contrasty than retail, which
+isolates the next missing layer to the linked day/high-noon image-space
+modifier `0x000CEE18`; it is no longer evidence for retuning Pete's diffuse.

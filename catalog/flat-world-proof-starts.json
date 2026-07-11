@@ -1328,6 +1328,7 @@
           "scriptRun": "config/proofs/fnv-easy-pete-idle.txt",
           "environment": {
             "OPENMW_FNV_BOOTSTRAP_HOUR": "14.45",
+            "OPENMW_FNV_PROOF_WEATHER_ID": "FormId:0x11237d7",
             "OPENMW_PROOF_DELAY_STARTUP_SCRIPT": "1",
             "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
             "OPENMW_FNV_DISABLE_PACKAGE_PREPLACEMENT": "1",

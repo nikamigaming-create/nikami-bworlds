@@ -78,6 +78,19 @@ expected NPC ledger; missing or failing evidence rejects the capture. The
 `fallout_new_vegas-20260710-234240` run passed both gates without focusing the
 game window and produced two tight, weapon-free native portraits. Visual pixel
 review remains independently required.
+Patch 0015 loads FO3/FNV `WTHR` records instead of substituting OpenMW's ten
+Morrowind weather presets. It preserves linked image-space modifiers, four
+cloud layers, cloud colors/speeds, FO3 four-time and FNV six-time color rows,
+fog distances, weather data, and sounds; imports 98 base FNV weather records
+into the runtime; and permits an exact load-order-adjusted weather FormID to be
+selected. It is exported from downstream commit `052c704d62`. The
+`fallout_new_vegas-20260711-003100` proof resolves retail `NVWastelandGS`
+(`FormId:0x11237d7`) and matches the xNVSE afternoon ambient and directional
+vectors. Only the retail-measured high-noon-to-day interpolation is enabled;
+unmeasured time segments retain the legacy four-sample interpolation. The
+remaining orange final-frame difference is now isolated to the linked weather
+image-space modifier, which patch 0015 parses as a FormID but does not yet
+execute.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 

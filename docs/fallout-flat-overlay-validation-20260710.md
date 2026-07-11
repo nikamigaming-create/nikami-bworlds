@@ -382,6 +382,28 @@ machine framing gate. Its weapon-free, tight composition is suitable for the
 remaining skin/material and hair/sideburn differential, but visual review is
 still mandatory and still failing those pixels.
 
+### Patch 0015: FO3/FNV weather records and measured afternoon lighting
+
+xNVSE patch 0009 captured the seated retail fixture in hidden background mode:
+current WTHR `0x001237D7` (`NVWastelandGS`), no transition, runtime hour
+`14.4118919`, ambient `(0.369318515,0.4469423,0.578699231)`, and directional
+and fog light `(1,0.890196145,0.666666687)`. The source event is
+`run/retail-oracle/fnv-easy-pete-seated-render-environment-v1.jsonl`.
+
+Patch 0015 adds FO3/FNV WTHR parsing/storage for linked IMADs, four cloud
+layers, cloud colors and speed, FO3 four-time and FNV six-time color tables,
+fog values, weather data, and sounds. Two parser tests cover the actual FNV
+layout and the shorter FO3 table. A focused runtime test reproduces the exact
+xNVSE high-noon-to-day interpolation at 14.4118919; unmeasured day segments
+still use the established four-sample path rather than a guessed formula.
+
+The native flat run `fallout_new_vegas-20260711-003100` imported 98 FNV weather
+records, resolved `FormId:0x11237d7` to runtime slot 33, matched the retail
+ambient/sun vectors, passed actor-aware framing, captured two native frames,
+and exited 0. Retail's linked day/high-noon IMAD `0x000CEE18` is preserved by
+the WTHR loader but not executed yet; the final orange/contrast differential
+therefore remains an explicit image-space failure.
+
 ### Authored dialogue voice and result execution
 
 Patch `0008` advances the bridge from visible INFO text to data-backed runtime
