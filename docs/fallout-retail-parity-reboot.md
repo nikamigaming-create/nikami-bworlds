@@ -199,6 +199,13 @@ The `Bip01` compressed B-spline translation begins near
 `(-0.026445,54.321801,0.000755)`. Its delta, interpreted in actor-local space
 at the retail entry yaw, explains the retail marker-to-seat displacement.
 
+The matching `chair_forwardexit.kf` track runs in reverse: approximately
+`(-0.02681,54.32169,0.00080)` at `0.0` seconds to
+`(0.00080,-1.10450,0.00080)` at `1.533333` seconds. This proves the serialized
+exit curve but does not by itself establish how retail transfers that curve
+between the skeleton root and actor reference. Capture the retail exit actor
+and root transforms before changing OpenMW's exit placement.
+
 The active debug pass found that `NifOsg::KeyframeController::getTranslation`
 returned zero for compressed B-spline controllers even though the render
 callback sampled those splines correctly. The current unpromoted fix samples
@@ -257,7 +264,15 @@ That position differs from the xNVSE retail capture by about `0.03` world
 units and proves the marker-to-seat rule for this actor/marker/animation. It
 does not prove other marker directions, exit, fast-forward, or headgear.
 
-The exit and headgear/face gates still fail. The older image
+An accelerated-world-time flat run in
+`easy_pete_20260710_181841.log` proves that the schedule becomes inactive,
+`chairforwardexit` plays, and the package reaches `state=complete`. Its current
+endpoint is about another 55 units behind the seat (`x=-68022.3`), not the
+entry side. Therefore lifecycle completion passes while spatial exit parity
+still fails. Do not reverse or suppress the curve from visual intuition; first
+capture retail actor/root transforms throughout exit.
+
+The spatial exit and headgear/face gates still fail. The older image
 `easy_pete_20260710_165942_shot03.png` remains useful failure evidence for the
 pre-fix chair placement and detached hat; never reuse it as a success image.
 The latest attachment audit still reports `mouth-not-front`, `eye-not-front`,
