@@ -43,6 +43,11 @@ this avoids actor-root/profile framing errors during seated idles. The capture
 runner restores the pre-existing retail DLL, screenshots, temporary save
 fixtures, and process environment after each run. Raw BMP frames are retained
 beside derived `-proof-crop.png` images; the crop never replaces source pixels.
+Patch 0007 records the effective runtime NPC race, sex, hair, eyes, HCLR bytes,
+head-part models, race face model/texture slots, and FaceGen channel shapes.
+The event contains stable content identifiers and paths, not runtime pointers.
+`scripts/compare_fnv_goodsprings_appearance.py` checks those values against the
+independently parsed ESM matrix.
 
 For the complete side-by-side capture discipline, current worktree checkpoint,
 and rules for extending this oracle without changing retail behavior, read

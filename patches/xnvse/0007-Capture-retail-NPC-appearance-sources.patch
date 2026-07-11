@@ -1,0 +1,226 @@
+From 8905cf9d858acedb27040a23c51da3082bea6a61 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 21:16:07 -0700
+Subject: [PATCH] Capture retail NPC appearance sources
+
+---
+ nvse_retail_oracle/main.cpp | 184 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 184 insertions(+)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index 738c614..200b96d 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -1,4 +1,5 @@
+ #include "nvse/PluginAPI.h"
++#include "nvse/GameForms.h"
+ #include "nvse/GameObjects.h"
+ #include "nvse/NiObjects.h"
+ 
+@@ -76,6 +77,7 @@ namespace
+     bool gPortraitCamera = false;
+     bool gPortraitCameraRequested = false;
+     bool gPortraitCameraLogged = false;
++    bool gAppearanceLogged = false;
+     float gPortraitDistance = 110.f;
+     unsigned int gBehaviorBeforeFrame = 60;
+     unsigned int gBehaviorCommandFrame = 90;
+@@ -1856,6 +1858,187 @@ namespace
+         return nullptr;
+     }
+ 
++    struct NpcAppearanceSnapshot
++    {
++        bool npc;
++        bool female;
++        UInt8 baseType;
++        UInt32 refForm;
++        UInt32 baseForm;
++        UInt32 raceForm;
++        UInt32 raceFieldForm;
++        UInt32 runtimeRaceForm;
++        UInt32 hairForm;
++        UInt32 eyesForm;
++        UInt32 copyFromForm;
++        float hairLength;
++        UInt8 hairColor[4];
++        const char* hairModel;
++        const char* eyeTexture;
++        struct HeadPart
++        {
++            UInt32 form;
++            const char* model;
++        } headParts[32];
++        unsigned int headPartCount;
++        struct FaceGenChannel
++        {
++            UInt32 count;
++            UInt32 size;
++            bool hasValues;
++        } faceGenChannels[3];
++        struct RaceFaceSlot
++        {
++            const char* model;
++            const char* texture;
++        } raceFaceSlots[8];
++        unsigned int raceFaceSlotCount;
++    };
++
++    bool readNpcAppearanceUnsafe(Actor* actor, NpcAppearanceSnapshot& result)
++    {
++        __try
++        {
++            TESForm* base = actor->baseForm;
++            result.refForm = actor->refID;
++            result.baseForm = base->refID;
++            result.baseType = base->typeID;
++            result.npc = base->typeID == kFormType_TESNPC;
++            if (!result.npc)
++                return true;
++
++            TESNPC* npc = static_cast<TESNPC*>(base);
++            TESRace* race = npc->race.race != nullptr ? npc->race.race : npc->race1EC;
++            result.female = npc->baseData.IsFemale();
++            result.raceForm = race != nullptr ? race->refID : 0;
++            result.raceFieldForm = npc->race.race != nullptr ? npc->race.race->refID : 0;
++            result.runtimeRaceForm = npc->race1EC != nullptr ? npc->race1EC->refID : 0;
++            result.hairForm = npc->hair != nullptr ? npc->hair->refID : 0;
++            result.hairLength = npc->hairLength;
++            result.eyesForm = npc->eyes != nullptr ? npc->eyes->refID : 0;
++            result.hairColor[0] = static_cast<UInt8>(npc->hairColor & 0xff);
++            result.hairColor[1] = static_cast<UInt8>((npc->hairColor >> 8) & 0xff);
++            result.hairColor[2] = static_cast<UInt8>((npc->hairColor >> 16) & 0xff);
++            result.hairColor[3] = static_cast<UInt8>((npc->hairColor >> 24) & 0xff);
++            result.copyFromForm = npc->copyFrom != nullptr ? npc->copyFrom->refID : 0;
++            result.hairModel = npc->hair != nullptr ? npc->hair->model.nifPath.m_data : "";
++            result.eyeTexture = npc->eyes != nullptr ? npc->eyes->texture.ddsPath.m_data : "";
++
++            for (tList<BGSHeadPart>::Iterator iter = npc->headPart.Begin();
++                 !iter.End() && result.headPartCount < 32; ++iter)
++            {
++                BGSHeadPart* part = iter.Get();
++                if (part == nullptr)
++                    continue;
++                NpcAppearanceSnapshot::HeadPart& item = result.headParts[result.headPartCount++];
++                item.form = part->refID;
++                item.model = part->texSwap.nifPath.m_data;
++            }
++            for (unsigned int i = 0; i < 3; ++i)
++            {
++                const TESNPC::FaceGenData& channel = npc->faceGenData[i];
++                result.faceGenChannels[i].count = channel.count;
++                result.faceGenChannels[i].size = channel.size;
++                result.faceGenChannels[i].hasValues = channel.values != nullptr;
++            }
++            if (race != nullptr)
++            {
++                const unsigned int sex = result.female ? 1u : 0u;
++                result.raceFaceSlotCount = 8;
++                for (unsigned int i = 0; i < 8; ++i)
++                {
++                    result.raceFaceSlots[i].model = race->faceModels[sex][i].nifPath.m_data;
++                    result.raceFaceSlots[i].texture = race->faceTextures[sex][i].ddsPath.m_data;
++                }
++            }
++            return true;
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            return false;
++        }
++    }
++
++    void captureTargetAppearance()
++    {
++        if (gAppearanceLogged || gTargetForm == 0)
++            return;
++        Actor* actor = findDriveActor();
++        if (actor == nullptr || actor->baseForm == nullptr)
++            return;
++
++        NpcAppearanceSnapshot snapshot = {};
++        if (!readNpcAppearanceUnsafe(actor, snapshot))
++        {
++            gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"npc-appearance-fault\""
++                    << ",\"frame\":" << gFrame << "}\n";
++            gOutput.flush();
++            return;
++        }
++        gAppearanceLogged = true;
++        if (!snapshot.npc)
++        {
++            gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"target-appearance\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"refForm\":" << snapshot.refForm
++                    << ",\"baseForm\":" << snapshot.baseForm
++                    << ",\"baseType\":" << static_cast<UInt32>(snapshot.baseType)
++                    << ",\"npc\":false}\n";
++            gOutput.flush();
++            return;
++        }
++
++        gOutput << std::setprecision(9)
++                << "{\"schema\":" << sSchemaJson << ",\"event\":\"npc-appearance\""
++                << ",\"frame\":" << gFrame
++                << ",\"refForm\":" << snapshot.refForm
++                << ",\"baseForm\":" << snapshot.baseForm
++                << ",\"female\":" << (snapshot.female ? "true" : "false")
++                << ",\"raceForm\":" << snapshot.raceForm
++                << ",\"raceFieldForm\":" << snapshot.raceFieldForm
++                << ",\"runtimeRaceForm\":" << snapshot.runtimeRaceForm
++                << ",\"hairForm\":" << snapshot.hairForm
++                << ",\"hairLength\":" << snapshot.hairLength
++                << ",\"eyesForm\":" << snapshot.eyesForm
++                << ",\"hairColorRgba\":[" << static_cast<UInt32>(snapshot.hairColor[0]) << ','
++                << static_cast<UInt32>(snapshot.hairColor[1]) << ','
++                << static_cast<UInt32>(snapshot.hairColor[2]) << ','
++                << static_cast<UInt32>(snapshot.hairColor[3]) << ']'
++                << ",\"copyFromForm\":" << snapshot.copyFromForm
++                << ",\"hairModel\":" << jsonString(snapshot.hairModel)
++                << ",\"eyeTexture\":" << jsonString(snapshot.eyeTexture)
++                << ",\"headParts\":[";
++        for (unsigned int i = 0; i < snapshot.headPartCount; ++i)
++        {
++            if (i != 0)
++                gOutput << ',';
++            gOutput << "{\"form\":" << snapshot.headParts[i].form
++                    << ",\"model\":" << jsonString(snapshot.headParts[i].model) << '}';
++        }
++        gOutput << "],\"faceGenChannels\":[";
++        for (unsigned int i = 0; i < 3; ++i)
++        {
++            if (i != 0)
++                gOutput << ',';
++            const NpcAppearanceSnapshot::FaceGenChannel& channel = snapshot.faceGenChannels[i];
++            gOutput << "{\"index\":" << i
++                    << ",\"count\":" << channel.count
++                    << ",\"size\":" << channel.size
++                    << ",\"hasValues\":" << (channel.hasValues ? "true" : "false") << '}';
++        }
++        gOutput << "],\"raceFaceSlots\":[";
++        for (unsigned int i = 0; i < snapshot.raceFaceSlotCount; ++i)
++        {
++            if (i != 0)
++                gOutput << ',';
++            gOutput << "{\"index\":" << i
++                    << ",\"model\":" << jsonString(snapshot.raceFaceSlots[i].model)
++                    << ",\"texture\":" << jsonString(snapshot.raceFaceSlots[i].texture) << '}';
++        }
++        gOutput << "]}\n";
++        gOutput.flush();
++    }
++
+     void driveObserverApproach()
+     {
+         if (gObserverApproachForm == 0 || gObserverApproachComplete || gConsole == nullptr)
+@@ -2269,6 +2452,7 @@ namespace
+         if (!gOutput || !gWorldReady || gFrame >= gMaxFrames)
+             return;
+         ++gFrame;
++        captureTargetAppearance();
+         if (!gBehaviorBeforeCaptured && gFrame >= gBehaviorBeforeFrame)
+         {
+             gBehaviorBeforeCaptured = true;
+-- 
+2.53.0.windows.1
+

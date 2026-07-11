@@ -1,0 +1,31 @@
+{
+  "schema": "nikami-openmw-base-lock/v1",
+  "verifiedAt": "2026-07-10",
+  "workingCheckout": "D:\\Modlists\\fnv\\openmw-source",
+  "overlayRepositoryBranch": "codex/bethesda-flat-overlay",
+  "workingBranch": "codex/bethesda-baked-flat-overlay-snapshot",
+  "queueBase": "c30c830d8e0b173e17eee17fc63cc059c559a5ba",
+  "remotes": {
+    "official": {
+      "name": "upstream",
+      "url": "https://gitlab.com/OpenMW/openmw.git",
+      "observedMaster": "13b1f39492a6291236078958ee91fef24a0128dd"
+    },
+    "vrFork": {
+      "name": "origin",
+      "url": "https://gitlab.com/madsbuvi/openmw",
+      "observedOpenmwVr": "0f520f65c3e085369e66d6a90ce871e817d4533f"
+    }
+  },
+  "unpublishedBaseDelta": {
+    "commitCountAheadOfOriginOpenmwVr": 98,
+    "status": "must-be-extracted-or-published",
+    "constraint": "patches/openmw currently require queueBase and do not apply to official master"
+  },
+  "layers": [
+    "official-openmw-moving-reference",
+    "openmw-vr-fork-and-unpublished-98-commit-base-delta",
+    "flat-bethesda-overlay-patches-0001-through-0011",
+    "future-vr-integration-after-flat-parity"
+  ]
+}

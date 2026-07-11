@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import math
 import struct
@@ -130,7 +131,28 @@ class ESM4Catalog:
                 fields["femaleFlag"] = (fields["actorFlags"] & 1) != 0
             elif rtype == "NPC_" and name == "RNAM" and len(raw) >= 4:
                 fields["race"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "NPC_" and name == "HNAM" and len(raw) >= 4:
+                fields["hair"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "NPC_" and name == "ENAM" and len(raw) >= 4:
+                fields["eyes"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "NPC_" and name == "PNAM" and len(raw) >= 4:
+                fields.setdefault("headParts", []).append(form_from_raw(raw, self.mod_index))
+            elif rtype == "NPC_" and name == "TPLT" and len(raw) >= 4:
+                fields["baseTemplate"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "NPC_" and name == "EAMT" and len(raw) >= 2:
+                fields["templateFlags"] = u16(raw, 0)
+            elif rtype == "NPC_" and name == "LNAM" and len(raw) >= 4:
+                fields["hairLength"] = f32(raw, 0)
+            elif rtype == "NPC_" and name == "HCLR" and len(raw) >= 4:
+                fields["hairColorRgba"] = list(raw[:4])
+            elif rtype == "NPC_" and name in ("FGGS", "FGGA", "FGTS"):
+                fields.setdefault("faceGenFingerprints", {})[name] = {
+                    "bytes": len(raw),
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                }
             elif rtype in ("NPC_", "CREA") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
+                fields.setdefault("models", []).append(zstr(raw))
+            elif rtype in ("HAIR", "EYES", "HDPT") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
                 fields.setdefault("models", []).append(zstr(raw))
             elif rtype in ("LVLN", "LVLC") and name == "LVLO" and len(raw) >= 8:
                 fields.setdefault("leveledEntries", []).append(form(u32(raw, 4), self.mod_index))
@@ -207,6 +229,26 @@ class ESM4Catalog:
                 if "race" in fields:
                     record["race"] = form_hex(fields.get("race"))
                     record["openmwRace"] = openmw_form_id(fields.get("race"))
+                if "hair" in fields:
+                    record["hair"] = form_hex(fields.get("hair"))
+                    record["openmwHair"] = openmw_form_id(fields.get("hair"))
+                if "eyes" in fields:
+                    record["eyes"] = form_hex(fields.get("eyes"))
+                    record["openmwEyes"] = openmw_form_id(fields.get("eyes"))
+                if "headParts" in fields:
+                    record["headParts"] = [form_hex(value) for value in fields["headParts"] if value]
+                    record["openmwHeadParts"] = [openmw_form_id(value) for value in fields["headParts"] if value]
+                if "baseTemplate" in fields:
+                    record["baseTemplate"] = form_hex(fields.get("baseTemplate"))
+                    record["openmwBaseTemplate"] = openmw_form_id(fields.get("baseTemplate"))
+                if "templateFlags" in fields:
+                    record["templateFlags"] = fields["templateFlags"]
+                if "hairLength" in fields:
+                    record["hairLength"] = fields["hairLength"]
+                if "hairColorRgba" in fields:
+                    record["hairColorRgba"] = fields["hairColorRgba"]
+                if "faceGenFingerprints" in fields:
+                    record["faceGenFingerprints"] = fields["faceGenFingerprints"]
                 if "models" in fields:
                     record["models"] = fields["models"][:8]
                 if "leveledEntries" in fields:

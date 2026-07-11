@@ -45,6 +45,13 @@ Patch 0010 selects the active FURN marker bit, distinguishes the retail entry
 marker from the settled chair transform, gives the persistent chair idle its
 own full-body group, and suppresses standing weapon pose while seated. It is
 exported from downstream commit `f508102307`.
+Patch 0011 samples accumulated B-spline root translation, matches the measured
+Easy Pete entry/settled chair path, removes the disproven schedule-expiry chair
+release, attaches Fallout face/headgear parts to their measured retail head
+basis, and adds a focused clamped-endpoint controller test. It is exported from
+downstream commit `20dab7436f`. The hat placement is improved, but Easy Pete's
+hair/sideburn and skin/beard differential still fails; patch 0011 is not a
+whole-head parity claim.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 
@@ -92,9 +99,12 @@ engine behavior is genuinely configurable. Engine patches should use record
 provenance, content format, or explicit runtime policy instead of brittle path
 guesses when possible.
 
-Patch 0001 contains dormant downstream VR work inherited from the source fork,
-but the promoted runtime evidence is flat `openmw.exe` only. Do not launch or
-test `openmw_vr.exe` as part of the flat compatibility gate.
+Patch 0001 contains dormant downstream VR work inherited from the unpublished
+local source-fork delta, but the promoted runtime evidence is flat `openmw.exe`
+only. It does not apply to official OpenMW `master`. The exact dependency and
+queue boundary is recorded in `../../docs/openmw-base-overlay-boundary.md` and
+`../../catalog/openmw-base-lock.json`. Do not launch or test `openmw_vr.exe` as
+part of the flat compatibility gate.
 
 See `docs/fallout-flat-overlay-validation-20260710.md` for the exact retail
 oracle evidence, unit/sanitizer gates, record-load manifests, quest/save
@@ -104,8 +114,10 @@ through 0006. The reproducible xNVSE oracle overlay lives separately under
 FaceGen proof boundary remains the Easy Pete slice. Patch 0008 proves authored
 greeting/topic voice in both FNV and FO3 plus Easy Pete's four retail quest
 variable writes. Patch 0009 proves retail LIP channel delivery in FNV and FO3.
-Patch 0010 proves scheduled settled-chair loading for Easy Pete; enter/stand
-transitions and arbitrary runtime furniture activation remain open. Broader
+Patch 0010 proves scheduled settled-chair loading for Easy Pete. Patch 0011
+matches the measured enter-to-seat slice and retail headgear basis, while the
+actual retail release trigger, arbitrary runtime furniture activation, and
+full face/hair/material parity remain open. Broader
 CTDA/RunOn coverage, compiled bytecode, multi-line voice queues, and service
 menus remain explicit follow-on gates rather than implied compatibility claims.
 

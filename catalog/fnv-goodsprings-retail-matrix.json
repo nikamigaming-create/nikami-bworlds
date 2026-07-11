@@ -1,0 +1,4028 @@
+{
+  "schema": "nikami-fnv-goodsprings-retail-matrix/v1",
+  "source": {
+    "file": "FalloutNV.esm",
+    "sha256": "50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1",
+    "recordCount": 465016,
+    "placementCount": 314269
+  },
+  "scope": {
+    "description": "Core Goodsprings named cast, all four settler variants, all six Ghost Town Gunfight Powder Gangers, Victor, and Cheyenne.",
+    "humanoidCount": 17,
+    "totalTargetCount": 19,
+    "excludedForLaterCreatureMatrix": [
+      "Goodsprings young bighorners",
+      "nearby ravens",
+      "tutorial geckos",
+      "nearby mantises/scorpion/bloatflies"
+    ]
+  },
+  "statusVocabulary": [
+    "pending",
+    "captured",
+    "failing",
+    "passed"
+  ],
+  "targets": [
+    {
+      "id": "easy-pete",
+      "category": "named-humanoid",
+      "reference": {
+        "form": "0x104c80",
+        "openmwForm": "FormId:0x104c80",
+        "type": "ACHR",
+        "editorId": "EasyPeteRef",
+        "name": ""
+      },
+      "referenceEditorId": "EasyPeteRef",
+      "base": {
+        "form": "0x104c7f",
+        "openmwForm": "FormId:0x104c7f",
+        "type": "NPC_",
+        "editorId": "GSEasyPete",
+        "name": "Easy Pete",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -67844.8671875,
+          3333.97021484375,
+          8391.5048828125
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          1.5000004768371582
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c7f",
+            "openmwForm": "FormId:0x104c7f",
+            "type": "NPC_",
+            "editorId": "GSEasyPete",
+            "name": "Easy Pete",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x987de",
+            "openmwForm": "FormId:0x987de",
+            "type": "RACE",
+            "editorId": "AfricanAmericanOldAged",
+            "name": "Caucasian Old"
+          },
+          "hair": {
+            "form": "0x987d9",
+            "openmwForm": "FormId:0x987d9",
+            "type": "HAIR",
+            "editorId": "HairAfricanAmericanBaseOld",
+            "name": "HairAfricanAmericanBaseOld",
+            "models": [
+              "Characters\\Hair\\HairBaseOld.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0x9f923",
+              "openmwForm": "FormId:0x9f923",
+              "type": "HDPT",
+              "editorId": "BeardFullOld",
+              "name": "Old Beard",
+              "models": [
+                "Characters\\Hair\\BeardFullOld.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.7653399705886841,
+          "hairColorRgba": [
+            192,
+            192,
+            192,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "ea3d191ea707b2905056f3aa43e0b4f37d383c58cc6f4595abfb8258f15ab5bf"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "cac24427033e8bae9e9db752728e834b426ef310e4562f958ad7d69bf59c2fed"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 0
+        },
+        "templateChain": [],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c7f",
+            "openmwForm": "FormId:0x104c7f",
+            "type": "NPC_",
+            "editorId": "GSEasyPete",
+            "name": "Easy Pete",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x987de",
+            "openmwForm": "FormId:0x987de",
+            "type": "RACE",
+            "editorId": "AfricanAmericanOldAged",
+            "name": "Caucasian Old"
+          },
+          "hair": {
+            "form": "0x987d9",
+            "openmwForm": "FormId:0x987d9",
+            "type": "HAIR",
+            "editorId": "HairAfricanAmericanBaseOld",
+            "name": "HairAfricanAmericanBaseOld",
+            "models": [
+              "Characters\\Hair\\HairBaseOld.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0x9f923",
+              "openmwForm": "FormId:0x9f923",
+              "type": "HDPT",
+              "editorId": "BeardFullOld",
+              "name": "Old Beard",
+              "models": [
+                "Characters\\Hair\\BeardFullOld.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.7653399705886841,
+          "hairColorRgba": [
+            192,
+            192,
+            192,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "ea3d191ea707b2905056f3aa43e0b4f37d383c58cc6f4595abfb8258f15ab5bf"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "cac24427033e8bae9e9db752728e834b426ef310e4562f958ad7d69bf59c2fed"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 0
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "sunny-smiles",
+      "category": "named-humanoid",
+      "reference": {
+        "form": "0x104e85",
+        "openmwForm": "FormId:0x104e85",
+        "type": "ACHR",
+        "editorId": "SunnyRef",
+        "name": ""
+      },
+      "referenceEditorId": "SunnyRef",
+      "base": {
+        "form": "0x104e84",
+        "openmwForm": "FormId:0x104e84",
+        "type": "NPC_",
+        "editorId": "GSSunnySmiles",
+        "name": "Sunny Smiles",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x106185",
+        "openmwForm": "FormId:0x106185",
+        "editorId": "GSProspectorSaloonInterior",
+        "name": "Prospector Saloon",
+        "isExterior": false
+      },
+      "authoredPlacement": {
+        "position": [
+          230.90342712402344,
+          -492.70526123046875,
+          3456.0
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          1.5708025693893433
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104e84",
+            "openmwForm": "FormId:0x104e84",
+            "type": "NPC_",
+            "editorId": "GSSunnySmiles",
+            "name": "Sunny Smiles",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e5",
+            "openmwForm": "FormId:0x38e5",
+            "type": "RACE",
+            "editorId": "Hispanic",
+            "name": "Hispanic"
+          },
+          "hair": {
+            "form": "0x32d37",
+            "openmwForm": "FormId:0x32d37",
+            "type": "HAIR",
+            "editorId": "HairBun",
+            "name": "Wendy the Welder",
+            "models": [
+              "Characters\\Hair\\HairBun.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb6de4",
+              "openmwForm": "FormId:0xb6de4",
+              "type": "HDPT",
+              "editorId": "EyebrowF",
+              "name": "EyebrowF",
+              "models": [
+                "Characters\\Hair\\EyebrowF.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.8399999737739563,
+          "hairColorRgba": [
+            66,
+            28,
+            15,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "1426643f53e7926bb6a0df9f827d67630593b2929bad519cce00a59cf33370b8"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "9b1d8edce668b321a1d71654aaa424791de9b169f5a399f8ec9b4f4d2e444b28"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 17
+        },
+        "templateChain": [],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104e84",
+            "openmwForm": "FormId:0x104e84",
+            "type": "NPC_",
+            "editorId": "GSSunnySmiles",
+            "name": "Sunny Smiles",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e5",
+            "openmwForm": "FormId:0x38e5",
+            "type": "RACE",
+            "editorId": "Hispanic",
+            "name": "Hispanic"
+          },
+          "hair": {
+            "form": "0x32d37",
+            "openmwForm": "FormId:0x32d37",
+            "type": "HAIR",
+            "editorId": "HairBun",
+            "name": "Wendy the Welder",
+            "models": [
+              "Characters\\Hair\\HairBun.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb6de4",
+              "openmwForm": "FormId:0xb6de4",
+              "type": "HDPT",
+              "editorId": "EyebrowF",
+              "name": "EyebrowF",
+              "models": [
+                "Characters\\Hair\\EyebrowF.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.8399999737739563,
+          "hairColorRgba": [
+            66,
+            28,
+            15,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "1426643f53e7926bb6a0df9f827d67630593b2929bad519cce00a59cf33370b8"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "9b1d8edce668b321a1d71654aaa424791de9b169f5a399f8ec9b4f4d2e444b28"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 17
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "trudy",
+      "category": "named-humanoid",
+      "reference": {
+        "form": "0x104c6d",
+        "openmwForm": "FormId:0x104c6d",
+        "type": "ACHR",
+        "editorId": "TrudyRef",
+        "name": ""
+      },
+      "referenceEditorId": "TrudyRef",
+      "base": {
+        "form": "0x104c6c",
+        "openmwForm": "FormId:0x104c6c",
+        "type": "NPC_",
+        "editorId": "GSTrudy",
+        "name": "Trudy",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x106185",
+        "openmwForm": "FormId:0x106185",
+        "editorId": "GSProspectorSaloonInterior",
+        "name": "Prospector Saloon",
+        "isExterior": false
+      },
+      "authoredPlacement": {
+        "position": [
+          -336.84130859375,
+          -171.03536987304688,
+          3456.0
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          3.195590019226074
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c6c",
+            "openmwForm": "FormId:0x104c6c",
+            "type": "NPC_",
+            "editorId": "GSTrudy",
+            "name": "Trudy",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0x5dc6c",
+            "openmwForm": "FormId:0x5dc6c",
+            "type": "HAIR",
+            "editorId": "HairMessy02F",
+            "name": "Blast Back",
+            "models": [
+              "Characters\\Hair\\HairMessy02F.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4252",
+            "openmwForm": "FormId:0x4252",
+            "type": "EYES",
+            "editorId": "EyeGreen",
+            "name": "Green"
+          },
+          "headParts": [
+            {
+              "form": "0xb6de4",
+              "openmwForm": "FormId:0xb6de4",
+              "type": "HDPT",
+              "editorId": "EyebrowF",
+              "name": "EyebrowF",
+              "models": [
+                "Characters\\Hair\\EyebrowF.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.14219999313354492,
+          "hairColorRgba": [
+            28,
+            0,
+            0,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "226f0bfd6c8b7bd94ef99112afb32906b6fa334c08fa02a01ddd55b1bda7519e"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "eeef3437d9945890dd18bb680e27903d69ea8e263ef5c0a73e83ddda78d3a71f"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 1
+        },
+        "templateChain": [],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c6c",
+            "openmwForm": "FormId:0x104c6c",
+            "type": "NPC_",
+            "editorId": "GSTrudy",
+            "name": "Trudy",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0x5dc6c",
+            "openmwForm": "FormId:0x5dc6c",
+            "type": "HAIR",
+            "editorId": "HairMessy02F",
+            "name": "Blast Back",
+            "models": [
+              "Characters\\Hair\\HairMessy02F.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4252",
+            "openmwForm": "FormId:0x4252",
+            "type": "EYES",
+            "editorId": "EyeGreen",
+            "name": "Green"
+          },
+          "headParts": [
+            {
+              "form": "0xb6de4",
+              "openmwForm": "FormId:0xb6de4",
+              "type": "HDPT",
+              "editorId": "EyebrowF",
+              "name": "EyebrowF",
+              "models": [
+                "Characters\\Hair\\EyebrowF.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.14219999313354492,
+          "hairColorRgba": [
+            28,
+            0,
+            0,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "226f0bfd6c8b7bd94ef99112afb32906b6fa334c08fa02a01ddd55b1bda7519e"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "eeef3437d9945890dd18bb680e27903d69ea8e263ef5c0a73e83ddda78d3a71f"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 1
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "chet",
+      "category": "named-humanoid",
+      "reference": {
+        "form": "0x104c79",
+        "openmwForm": "FormId:0x104c79",
+        "type": "ACHR",
+        "editorId": "GSChetRef",
+        "name": ""
+      },
+      "referenceEditorId": "GSChetRef",
+      "base": {
+        "form": "0x104c78",
+        "openmwForm": "FormId:0x104c78",
+        "type": "NPC_",
+        "editorId": "GSChet",
+        "name": "Chet",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x1057f1",
+        "openmwForm": "FormId:0x1057f1",
+        "editorId": "GSGeneralStore",
+        "name": "Goodsprings General Store",
+        "isExterior": false
+      },
+      "authoredPlacement": {
+        "position": [
+          -594.739013671875,
+          538.4024658203125,
+          544.2752075195312
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          1.5831924676895142
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c78",
+            "openmwForm": "FormId:0x104c78",
+            "type": "NPC_",
+            "editorId": "GSChet",
+            "name": "Chet",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e5",
+            "openmwForm": "FormId:0x38e5",
+            "type": "RACE",
+            "editorId": "Hispanic",
+            "name": "Hispanic"
+          },
+          "hair": {
+            "form": "0x2ddee",
+            "openmwForm": "FormId:0x2ddee",
+            "type": "HAIR",
+            "editorId": "HairWavy",
+            "name": "Smooth Wave",
+            "models": [
+              "Characters\\Hair\\HairWavy.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            },
+            {
+              "form": "0x2f21f",
+              "openmwForm": "FormId:0x2f21f",
+              "type": "HDPT",
+              "editorId": "BeardThin",
+              "name": "Rough Beard",
+              "models": [
+                "Characters\\Hair\\BeardThin.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.4673883616924286,
+          "hairColorRgba": [
+            28,
+            18,
+            9,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "c925e962c12436601a5bbd0a6e50c10e1d123c8aa3c12d087f1ab579c6b08637"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "5ef857bab10f2bfdcfd5afd6653436f3b4a713ca1c4640b1b6756f062aca431c"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "templateChain": [],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c78",
+            "openmwForm": "FormId:0x104c78",
+            "type": "NPC_",
+            "editorId": "GSChet",
+            "name": "Chet",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e5",
+            "openmwForm": "FormId:0x38e5",
+            "type": "RACE",
+            "editorId": "Hispanic",
+            "name": "Hispanic"
+          },
+          "hair": {
+            "form": "0x2ddee",
+            "openmwForm": "FormId:0x2ddee",
+            "type": "HAIR",
+            "editorId": "HairWavy",
+            "name": "Smooth Wave",
+            "models": [
+              "Characters\\Hair\\HairWavy.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            },
+            {
+              "form": "0x2f21f",
+              "openmwForm": "FormId:0x2f21f",
+              "type": "HDPT",
+              "editorId": "BeardThin",
+              "name": "Rough Beard",
+              "models": [
+                "Characters\\Hair\\BeardThin.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.4673883616924286,
+          "hairColorRgba": [
+            28,
+            18,
+            9,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "c925e962c12436601a5bbd0a6e50c10e1d123c8aa3c12d087f1ab579c6b08637"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "5ef857bab10f2bfdcfd5afd6653436f3b4a713ca1c4640b1b6756f062aca431c"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "ringo",
+      "category": "named-humanoid",
+      "reference": {
+        "form": "0x104c7d",
+        "openmwForm": "FormId:0x104c7d",
+        "type": "ACHR",
+        "editorId": "RingoRef",
+        "name": ""
+      },
+      "referenceEditorId": "RingoRef",
+      "base": {
+        "form": "0x104c7c",
+        "openmwForm": "FormId:0x104c7c",
+        "type": "NPC_",
+        "editorId": "GSRingo",
+        "name": "Ringo",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x109038",
+        "openmwForm": "FormId:0x109038",
+        "editorId": "GSGasStation",
+        "name": "Goodsprings Gas Station",
+        "isExterior": false
+      },
+      "authoredPlacement": {
+        "position": [
+          529.2794189453125,
+          -5650.2490234375,
+          7552.576171875
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          3.156200408935547
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c7c",
+            "openmwForm": "FormId:0x104c7c",
+            "type": "NPC_",
+            "editorId": "GSRingo",
+            "name": "Ringo",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0x2ddee",
+            "openmwForm": "FormId:0x2ddee",
+            "type": "HAIR",
+            "editorId": "HairWavy",
+            "name": "Smooth Wave",
+            "models": [
+              "Characters\\Hair\\HairWavy.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4253",
+            "openmwForm": "FormId:0x4253",
+            "type": "EYES",
+            "editorId": "EyeBlue",
+            "name": "Blue"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.0,
+          "hairColorRgba": [
+            40,
+            20,
+            0,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "69b91e54e1df7a9d7a61223120a4ebcdefbfd1ec83f2fef59d61170151c1c3ad"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "21c1e3cbb2fc14dd3095eed2aab185a97f47139951679ab223728396b768013b"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "templateChain": [],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c7c",
+            "openmwForm": "FormId:0x104c7c",
+            "type": "NPC_",
+            "editorId": "GSRingo",
+            "name": "Ringo",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0x2ddee",
+            "openmwForm": "FormId:0x2ddee",
+            "type": "HAIR",
+            "editorId": "HairWavy",
+            "name": "Smooth Wave",
+            "models": [
+              "Characters\\Hair\\HairWavy.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4253",
+            "openmwForm": "FormId:0x4253",
+            "type": "EYES",
+            "editorId": "EyeBlue",
+            "name": "Blue"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.0,
+          "hairColorRgba": [
+            40,
+            20,
+            0,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "69b91e54e1df7a9d7a61223120a4ebcdefbfd1ec83f2fef59d61170151c1c3ad"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "21c1e3cbb2fc14dd3095eed2aab185a97f47139951679ab223728396b768013b"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "doc-mitchell",
+      "category": "named-humanoid",
+      "reference": {
+        "form": "0x104c0f",
+        "openmwForm": "FormId:0x104c0f",
+        "type": "ACHR",
+        "editorId": "DocMitchellREF",
+        "name": ""
+      },
+      "referenceEditorId": "DocMitchellREF",
+      "base": {
+        "form": "0x104c0c",
+        "openmwForm": "FormId:0x104c0c",
+        "type": "NPC_",
+        "editorId": "DocMitchell",
+        "name": "Doc Mitchell",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x103df9",
+        "openmwForm": "FormId:0x103df9",
+        "editorId": "GSDocMitchellHouse",
+        "name": "Doc Mitchell's House",
+        "isExterior": false
+      },
+      "authoredPlacement": {
+        "position": [
+          2288.755859375,
+          2244.410400390625,
+          7360.0
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          0.3999999761581421
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c0c",
+            "openmwForm": "FormId:0x104c0c",
+            "type": "NPC_",
+            "editorId": "DocMitchell",
+            "name": "Doc Mitchell",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x42c3",
+            "openmwForm": "FormId:0x42c3",
+            "type": "RACE",
+            "editorId": "CaucasianOld",
+            "name": "Caucasian Old"
+          },
+          "hair": {
+            "form": "0x2a185",
+            "openmwForm": "FormId:0x2a185",
+            "type": "HAIR",
+            "editorId": "HairBalding",
+            "name": "Balding",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4253",
+            "openmwForm": "FormId:0x4253",
+            "type": "EYES",
+            "editorId": "EyeBlue",
+            "name": "Blue"
+          },
+          "headParts": [
+            {
+              "form": "0x66fcf",
+              "openmwForm": "FormId:0x66fcf",
+              "type": "HDPT",
+              "editorId": "BeardMustacheCurly",
+              "name": "Gunslinger",
+              "models": [
+                "Characters\\Hair\\BeardMustacheCurly.nif"
+              ]
+            },
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.28619998693466187,
+          "hairColorRgba": [
+            191,
+            183,
+            183,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "60acd78e026d3a4e7fabdbe394a1d56902c719fc043b8f7f0b93b22be5525fe4"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "b15ba0177b16a27897ebc39066cd15ae95d00b2ce925bb60463ef8e690a53551"
+            }
+          },
+          "baseTemplate": {
+            "form": "0xa060f",
+            "openmwForm": "FormId:0xa060f",
+            "type": "NPC_",
+            "editorId": "DocAATEMPLATE",
+            "name": "",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 0
+        },
+        "templateChain": [
+          {
+            "form": "0xa060f",
+            "openmwForm": "FormId:0xa060f",
+            "type": "NPC_",
+            "editorId": "DocAATEMPLATE",
+            "name": "",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          }
+        ],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c0c",
+            "openmwForm": "FormId:0x104c0c",
+            "type": "NPC_",
+            "editorId": "DocMitchell",
+            "name": "Doc Mitchell",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x42c3",
+            "openmwForm": "FormId:0x42c3",
+            "type": "RACE",
+            "editorId": "CaucasianOld",
+            "name": "Caucasian Old"
+          },
+          "hair": {
+            "form": "0x2a185",
+            "openmwForm": "FormId:0x2a185",
+            "type": "HAIR",
+            "editorId": "HairBalding",
+            "name": "Balding",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4253",
+            "openmwForm": "FormId:0x4253",
+            "type": "EYES",
+            "editorId": "EyeBlue",
+            "name": "Blue"
+          },
+          "headParts": [
+            {
+              "form": "0x66fcf",
+              "openmwForm": "FormId:0x66fcf",
+              "type": "HDPT",
+              "editorId": "BeardMustacheCurly",
+              "name": "Gunslinger",
+              "models": [
+                "Characters\\Hair\\BeardMustacheCurly.nif"
+              ]
+            },
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.28619998693466187,
+          "hairColorRgba": [
+            191,
+            183,
+            183,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "60acd78e026d3a4e7fabdbe394a1d56902c719fc043b8f7f0b93b22be5525fe4"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "b15ba0177b16a27897ebc39066cd15ae95d00b2ce925bb60463ef8e690a53551"
+            }
+          },
+          "baseTemplate": {
+            "form": "0xa060f",
+            "openmwForm": "FormId:0xa060f",
+            "type": "NPC_",
+            "editorId": "DocAATEMPLATE",
+            "name": "",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 0
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "joe-cobb",
+      "category": "named-humanoid",
+      "reference": {
+        "form": "0x104c68",
+        "openmwForm": "FormId:0x104c68",
+        "type": "ACHR",
+        "editorId": "GSJoeCobbRef",
+        "name": ""
+      },
+      "referenceEditorId": "GSJoeCobbRef",
+      "base": {
+        "form": "0x104c67",
+        "openmwForm": "FormId:0x104c67",
+        "type": "NPC_",
+        "editorId": "GSJoeCobb",
+        "name": "Joe Cobb",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x106185",
+        "openmwForm": "FormId:0x106185",
+        "editorId": "GSProspectorSaloonInterior",
+        "name": "Prospector Saloon",
+        "isExterior": false
+      },
+      "authoredPlacement": {
+        "position": [
+          -341.3602294921875,
+          -257.5697326660156,
+          3456.575927734375
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          0.16378168761730194
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c67",
+            "openmwForm": "FormId:0x104c67",
+            "type": "NPC_",
+            "editorId": "GSJoeCobb",
+            "name": "Joe Cobb",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x424a",
+            "openmwForm": "FormId:0x424a",
+            "type": "RACE",
+            "editorId": "AfricanAmerican",
+            "name": "African American"
+          },
+          "hair": {
+            "form": "0x306be",
+            "openmwForm": "FormId:0x306be",
+            "type": "HAIR",
+            "editorId": "HairAfricanAmericanBase",
+            "name": "Buzz Cut",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            },
+            {
+              "form": "0xbcbf0",
+              "openmwForm": "FormId:0xbcbf0",
+              "type": "HDPT",
+              "editorId": "BeardGoateeCircle",
+              "name": "Chin Scruff",
+              "models": [
+                "Characters\\Hair\\BeardGoatee.nif"
+              ]
+            }
+          ],
+          "hairLength": 0.7900000214576721,
+          "hairColorRgba": [
+            40,
+            27,
+            13,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "960d65d1319d774eade31240c97138a7728d931091a43c180a69b755d934954f"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "b368f1a27d138487f588dfa7de60f1b324d721dbc059126d2fe7aceb6e4c0fef"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "templateChain": [],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c67",
+            "openmwForm": "FormId:0x104c67",
+            "type": "NPC_",
+            "editorId": "GSJoeCobb",
+            "name": "Joe Cobb",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x424a",
+            "openmwForm": "FormId:0x424a",
+            "type": "RACE",
+            "editorId": "AfricanAmerican",
+            "name": "African American"
+          },
+          "hair": {
+            "form": "0x306be",
+            "openmwForm": "FormId:0x306be",
+            "type": "HAIR",
+            "editorId": "HairAfricanAmericanBase",
+            "name": "Buzz Cut",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            },
+            {
+              "form": "0xbcbf0",
+              "openmwForm": "FormId:0xbcbf0",
+              "type": "HDPT",
+              "editorId": "BeardGoateeCircle",
+              "name": "Chin Scruff",
+              "models": [
+                "Characters\\Hair\\BeardGoatee.nif"
+              ]
+            }
+          ],
+          "hairLength": 0.7900000214576721,
+          "hairColorRgba": [
+            40,
+            27,
+            13,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "960d65d1319d774eade31240c97138a7728d931091a43c180a69b755d934954f"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "b368f1a27d138487f588dfa7de60f1b324d721dbc059126d2fe7aceb6e4c0fef"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-settler-01",
+      "category": "settler-humanoid",
+      "reference": {
+        "form": "0x104f03",
+        "openmwForm": "FormId:0x104f03",
+        "type": "ACHR",
+        "editorId": "GoodspringsSettler01Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GoodspringsSettler01Ref",
+      "base": {
+        "form": "0x104f02",
+        "openmwForm": "FormId:0x104f02",
+        "type": "NPC_",
+        "editorId": "GSSettlerAAM",
+        "name": "Goodsprings Settler",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -70618.3828125,
+          -1062.3892822265625,
+          8169.03466796875
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          3.100005626678467
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x424a",
+            "openmwForm": "FormId:0x424a",
+            "type": "RACE",
+            "editorId": "AfricanAmerican",
+            "name": "African American"
+          },
+          "hair": {
+            "form": "0x306be",
+            "openmwForm": "FormId:0x306be",
+            "type": "HAIR",
+            "editorId": "HairAfricanAmericanBase",
+            "name": "Buzz Cut",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0x2f21f",
+              "openmwForm": "FormId:0x2f21f",
+              "type": "HDPT",
+              "editorId": "BeardThin",
+              "name": "Rough Beard",
+              "models": [
+                "Characters\\Hair\\BeardThin.NIF"
+              ]
+            },
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.6600000262260437,
+          "hairColorRgba": [
+            34,
+            22,
+            11,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "dd729c619a6e778bb769fab88a99baec97c2ca4b837a3700c2d0f3e3170aa51d"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "9826949ed9c31a8d95b5b112d73165a3029e2fd6b310ff552c58c051f05fa259"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "templateChain": [],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x424a",
+            "openmwForm": "FormId:0x424a",
+            "type": "RACE",
+            "editorId": "AfricanAmerican",
+            "name": "African American"
+          },
+          "hair": {
+            "form": "0x306be",
+            "openmwForm": "FormId:0x306be",
+            "type": "HAIR",
+            "editorId": "HairAfricanAmericanBase",
+            "name": "Buzz Cut",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0x2f21f",
+              "openmwForm": "FormId:0x2f21f",
+              "type": "HDPT",
+              "editorId": "BeardThin",
+              "name": "Rough Beard",
+              "models": [
+                "Characters\\Hair\\BeardThin.NIF"
+              ]
+            },
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.6600000262260437,
+          "hairColorRgba": [
+            34,
+            22,
+            11,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "dd729c619a6e778bb769fab88a99baec97c2ca4b837a3700c2d0f3e3170aa51d"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "9826949ed9c31a8d95b5b112d73165a3029e2fd6b310ff552c58c051f05fa259"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-settler-02",
+      "category": "settler-humanoid",
+      "reference": {
+        "form": "0x104f06",
+        "openmwForm": "FormId:0x104f06",
+        "type": "ACHR",
+        "editorId": "GoodspringsSettler02Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GoodspringsSettler02Ref",
+      "base": {
+        "form": "0x104f05",
+        "openmwForm": "FormId:0x104f05",
+        "type": "NPC_",
+        "editorId": "GSSettlerCF",
+        "name": "Goodsprings Settler",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -71432.6953125,
+          3584.443115234375,
+          8352.0
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          2.90000057220459
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104f05",
+            "openmwForm": "FormId:0x104f05",
+            "type": "NPC_",
+            "editorId": "GSSettlerCF",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0x5dc76",
+            "openmwForm": "FormId:0x5dc76",
+            "type": "HAIR",
+            "editorId": "HairCurlyF",
+            "name": "Pretty Puff",
+            "models": [
+              "Characters\\Hair\\HairCurlyF.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4253",
+            "openmwForm": "FormId:0x4253",
+            "type": "EYES",
+            "editorId": "EyeBlue",
+            "name": "Blue"
+          },
+          "headParts": [
+            {
+              "form": "0xb6de4",
+              "openmwForm": "FormId:0xb6de4",
+              "type": "HDPT",
+              "editorId": "EyebrowF",
+              "name": "EyebrowF",
+              "models": [
+                "Characters\\Hair\\EyebrowF.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.25025084614753723,
+          "hairColorRgba": [
+            255,
+            255,
+            215,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "a8e0037b1d6bbb9ef672809535b42d9c0557b66a10e50507098205140a760ceb"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "45ad0786f02b7c5cef780f08b59267877b4ddf7e462b1807abe01094e0574669"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 17
+        },
+        "templateChain": [
+          {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          }
+        ],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104f05",
+            "openmwForm": "FormId:0x104f05",
+            "type": "NPC_",
+            "editorId": "GSSettlerCF",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0x5dc76",
+            "openmwForm": "FormId:0x5dc76",
+            "type": "HAIR",
+            "editorId": "HairCurlyF",
+            "name": "Pretty Puff",
+            "models": [
+              "Characters\\Hair\\HairCurlyF.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4253",
+            "openmwForm": "FormId:0x4253",
+            "type": "EYES",
+            "editorId": "EyeBlue",
+            "name": "Blue"
+          },
+          "headParts": [
+            {
+              "form": "0xb6de4",
+              "openmwForm": "FormId:0xb6de4",
+              "type": "HDPT",
+              "editorId": "EyebrowF",
+              "name": "EyebrowF",
+              "models": [
+                "Characters\\Hair\\EyebrowF.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.25025084614753723,
+          "hairColorRgba": [
+            255,
+            255,
+            215,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "a8e0037b1d6bbb9ef672809535b42d9c0557b66a10e50507098205140a760ceb"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "45ad0786f02b7c5cef780f08b59267877b4ddf7e462b1807abe01094e0574669"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 17
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-settler-03",
+      "category": "settler-humanoid",
+      "reference": {
+        "form": "0x104f0a",
+        "openmwForm": "FormId:0x104f0a",
+        "type": "ACHR",
+        "editorId": "GoodspringsSettler03Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GoodspringsSettler03Ref",
+      "base": {
+        "form": "0x104f07",
+        "openmwForm": "FormId:0x104f07",
+        "type": "NPC_",
+        "editorId": "GSSettlerAM",
+        "name": "Goodsprings Settler",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -71492.375,
+          4000.531494140625,
+          8352.0
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          1.600000023841858
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104f07",
+            "openmwForm": "FormId:0x104f07",
+            "type": "NPC_",
+            "editorId": "GSSettlerAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e6",
+            "openmwForm": "FormId:0x38e6",
+            "type": "RACE",
+            "editorId": "Asian",
+            "name": "Asian"
+          },
+          "hair": {
+            "form": "0xa9d6f",
+            "openmwForm": "FormId:0xa9d6f",
+            "type": "HAIR",
+            "editorId": "HairMessy01",
+            "name": "The Unsettler",
+            "models": [
+              "Characters\\Hair\\HairMessy01.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.6600000262260437,
+          "hairColorRgba": [
+            19,
+            13,
+            6,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "4fdab9608448ce22a41dc679b333c668b36156726ebcd9e71d3fe008508944cf"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "86345cd735a658bd732e876c4782111d0bc7b0070c137b270f8aeb3db62850cf"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "templateChain": [
+          {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          }
+        ],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104f07",
+            "openmwForm": "FormId:0x104f07",
+            "type": "NPC_",
+            "editorId": "GSSettlerAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e6",
+            "openmwForm": "FormId:0x38e6",
+            "type": "RACE",
+            "editorId": "Asian",
+            "name": "Asian"
+          },
+          "hair": {
+            "form": "0xa9d6f",
+            "openmwForm": "FormId:0xa9d6f",
+            "type": "HAIR",
+            "editorId": "HairMessy01",
+            "name": "The Unsettler",
+            "models": [
+              "Characters\\Hair\\HairMessy01.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.6600000262260437,
+          "hairColorRgba": [
+            19,
+            13,
+            6,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "4fdab9608448ce22a41dc679b333c668b36156726ebcd9e71d3fe008508944cf"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "86345cd735a658bd732e876c4782111d0bc7b0070c137b270f8aeb3db62850cf"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-settler-04",
+      "category": "settler-humanoid",
+      "reference": {
+        "form": "0x104f08",
+        "openmwForm": "FormId:0x104f08",
+        "type": "ACHR",
+        "editorId": "GoodspringsSettler04Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GoodspringsSettler04Ref",
+      "base": {
+        "form": "0x104f09",
+        "openmwForm": "FormId:0x104f09",
+        "type": "NPC_",
+        "editorId": "GSSettlerCM",
+        "name": "Goodsprings Settler",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x106185",
+        "openmwForm": "FormId:0x106185",
+        "editorId": "GSProspectorSaloonInterior",
+        "name": "Prospector Saloon",
+        "isExterior": false
+      },
+      "authoredPlacement": {
+        "position": [
+          -345.56915283203125,
+          -90.91041564941406,
+          3456.0
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          1.5831916332244873
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104f09",
+            "openmwForm": "FormId:0x104f09",
+            "type": "NPC_",
+            "editorId": "GSSettlerCM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0x2a185",
+            "openmwForm": "FormId:0x2a185",
+            "type": "HAIR",
+            "editorId": "HairBalding",
+            "name": "Balding",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4255",
+            "openmwForm": "FormId:0x4255",
+            "type": "EYES",
+            "editorId": "EyeDefault",
+            "name": "Hazel"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            },
+            {
+              "form": "0xbcc00",
+              "openmwForm": "FormId:0xbcc00",
+              "type": "HDPT",
+              "editorId": "BeardMix6b",
+              "name": "Grizzled Samurai"
+            }
+          ],
+          "hairLength": 0.699999988079071,
+          "hairColorRgba": [
+            50,
+            35,
+            16,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "3fdb3d260963903ce16be197cd7ffd278ad1a3c340448e926704ccf31bc2766f"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "d7a7aeea9ca41b9746ad5ee871646912f690957a9f9a60c59e53e65721ef3fe1"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "templateChain": [
+          {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          }
+        ],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104f09",
+            "openmwForm": "FormId:0x104f09",
+            "type": "NPC_",
+            "editorId": "GSSettlerCM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0x2a185",
+            "openmwForm": "FormId:0x2a185",
+            "type": "HAIR",
+            "editorId": "HairBalding",
+            "name": "Balding",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4255",
+            "openmwForm": "FormId:0x4255",
+            "type": "EYES",
+            "editorId": "EyeDefault",
+            "name": "Hazel"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            },
+            {
+              "form": "0xbcc00",
+              "openmwForm": "FormId:0xbcc00",
+              "type": "HDPT",
+              "editorId": "BeardMix6b",
+              "name": "Grizzled Samurai"
+            }
+          ],
+          "hairLength": 0.699999988079071,
+          "hairColorRgba": [
+            50,
+            35,
+            16,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "3fdb3d260963903ce16be197cd7ffd278ad1a3c340448e926704ccf31bc2766f"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "d7a7aeea9ca41b9746ad5ee871646912f690957a9f9a60c59e53e65721ef3fe1"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104f02",
+            "openmwForm": "FormId:0x104f02",
+            "type": "NPC_",
+            "editorId": "GSSettlerAAM",
+            "name": "Goodsprings Settler",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 16
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-powder-ganger-01",
+      "category": "quest-combatant-humanoid",
+      "reference": {
+        "form": "0x104c70",
+        "openmwForm": "FormId:0x104c70",
+        "type": "ACHR",
+        "editorId": "GSPG01Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GSPG01Ref",
+      "base": {
+        "form": "0x104c6a",
+        "openmwForm": "FormId:0x104c6a",
+        "type": "NPC_",
+        "editorId": "GSPGAAM",
+        "name": "Powder Ganger",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -66991.796875,
+          -1981.421142578125,
+          8146.669921875
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          0.014604161493480206
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x424a",
+            "openmwForm": "FormId:0x424a",
+            "type": "RACE",
+            "editorId": "AfricanAmerican",
+            "name": "African American"
+          },
+          "hair": {
+            "form": "0x2bfdb",
+            "openmwForm": "FormId:0x2bfdb",
+            "type": "HAIR",
+            "editorId": "HairBase",
+            "name": "Buzz Saw",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4255",
+            "openmwForm": "FormId:0x4255",
+            "type": "EYES",
+            "editorId": "EyeDefault",
+            "name": "Hazel"
+          },
+          "headParts": [],
+          "hairLength": 0.2412029653787613,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "0c9458e9187279d546655208e4a53958078a1c3a412af50d2e95ba4813e7d9cd"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "4f839bafdd6cc769de8c290004edd6ae584ae76e897f3673e6a34c229e4f7f3d"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "templateChain": [],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x424a",
+            "openmwForm": "FormId:0x424a",
+            "type": "RACE",
+            "editorId": "AfricanAmerican",
+            "name": "African American"
+          },
+          "hair": {
+            "form": "0x2bfdb",
+            "openmwForm": "FormId:0x2bfdb",
+            "type": "HAIR",
+            "editorId": "HairBase",
+            "name": "Buzz Saw",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4255",
+            "openmwForm": "FormId:0x4255",
+            "type": "EYES",
+            "editorId": "EyeDefault",
+            "name": "Hazel"
+          },
+          "headParts": [],
+          "hairLength": 0.2412029653787613,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "0c9458e9187279d546655208e4a53958078a1c3a412af50d2e95ba4813e7d9cd"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "4f839bafdd6cc769de8c290004edd6ae584ae76e897f3673e6a34c229e4f7f3d"
+            }
+          },
+          "baseTemplate": null,
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-powder-ganger-02",
+      "category": "quest-combatant-humanoid",
+      "reference": {
+        "form": "0x104c77",
+        "openmwForm": "FormId:0x104c77",
+        "type": "ACHR",
+        "editorId": "GSPG02Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GSPG02Ref",
+      "base": {
+        "form": "0x104c76",
+        "openmwForm": "FormId:0x104c76",
+        "type": "NPC_",
+        "editorId": "GSPGAAM2",
+        "name": "Powder Ganger",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -66066.0390625,
+          -1778.5634765625,
+          8367.5078125
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          5.739382266998291
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c76",
+            "openmwForm": "FormId:0x104c76",
+            "type": "NPC_",
+            "editorId": "GSPGAAM2",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x424a",
+            "openmwForm": "FormId:0x424a",
+            "type": "RACE",
+            "editorId": "AfricanAmerican",
+            "name": "African American"
+          },
+          "hair": {
+            "form": "0x306be",
+            "openmwForm": "FormId:0x306be",
+            "type": "HAIR",
+            "editorId": "HairAfricanAmericanBase",
+            "name": "Buzz Cut",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            },
+            {
+              "form": "0x9f921",
+              "openmwForm": "FormId:0x9f921",
+              "type": "HDPT",
+              "editorId": "BeardMustacheThin",
+              "name": "Swashbuckler",
+              "models": [
+                "Characters\\Hair\\BeardMustache.nif"
+              ]
+            },
+            {
+              "form": "0xb22bf",
+              "openmwForm": "FormId:0xb22bf",
+              "type": "HDPT",
+              "editorId": "BeardGoateeThin",
+              "name": "Machievellian",
+              "models": [
+                "Characters\\Hair\\BeardGoatee.nif"
+              ]
+            }
+          ],
+          "hairLength": 0.32741761207580566,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "f177a91d09248bc80be00e4d90d24ad7149824f5b33c8df18d46b8a7a9fa9c7d"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "1718954ceff793d8efa97235c99ac5e70635364fae9e2050a62d156432243b29"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "templateChain": [
+          {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          }
+        ],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c76",
+            "openmwForm": "FormId:0x104c76",
+            "type": "NPC_",
+            "editorId": "GSPGAAM2",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x424a",
+            "openmwForm": "FormId:0x424a",
+            "type": "RACE",
+            "editorId": "AfricanAmerican",
+            "name": "African American"
+          },
+          "hair": {
+            "form": "0x306be",
+            "openmwForm": "FormId:0x306be",
+            "type": "HAIR",
+            "editorId": "HairAfricanAmericanBase",
+            "name": "Buzz Cut",
+            "models": [
+              "Characters\\Hair\\HairBase.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb5bea",
+              "openmwForm": "FormId:0xb5bea",
+              "type": "HDPT",
+              "editorId": "EyebrowM",
+              "name": "EyebrowM",
+              "models": [
+                "Characters\\Hair\\EyebrowM.NIF"
+              ]
+            },
+            {
+              "form": "0x9f921",
+              "openmwForm": "FormId:0x9f921",
+              "type": "HDPT",
+              "editorId": "BeardMustacheThin",
+              "name": "Swashbuckler",
+              "models": [
+                "Characters\\Hair\\BeardMustache.nif"
+              ]
+            },
+            {
+              "form": "0xb22bf",
+              "openmwForm": "FormId:0xb22bf",
+              "type": "HDPT",
+              "editorId": "BeardGoateeThin",
+              "name": "Machievellian",
+              "models": [
+                "Characters\\Hair\\BeardGoatee.nif"
+              ]
+            }
+          ],
+          "hairLength": 0.32741761207580566,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "f177a91d09248bc80be00e4d90d24ad7149824f5b33c8df18d46b8a7a9fa9c7d"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "1718954ceff793d8efa97235c99ac5e70635364fae9e2050a62d156432243b29"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-powder-ganger-03",
+      "category": "quest-combatant-humanoid",
+      "reference": {
+        "form": "0x104c75",
+        "openmwForm": "FormId:0x104c75",
+        "type": "ACHR",
+        "editorId": "GSPG03Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GSPG03Ref",
+      "base": {
+        "form": "0x104c74",
+        "openmwForm": "FormId:0x104c74",
+        "type": "NPC_",
+        "editorId": "GSPGHM",
+        "name": "Powder Ganger",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -65904.734375,
+          -886.118408203125,
+          8344.3369140625
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          5.4393815994262695
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c74",
+            "openmwForm": "FormId:0x104c74",
+            "type": "NPC_",
+            "editorId": "GSPGHM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e5",
+            "openmwForm": "FormId:0x38e5",
+            "type": "RACE",
+            "editorId": "Hispanic",
+            "name": "Hispanic"
+          },
+          "hair": {
+            "form": "0x33183",
+            "openmwForm": "FormId:0x33183",
+            "type": "HAIR",
+            "editorId": "HairSpikey",
+            "name": "Shaggy Suave",
+            "models": [
+              "Characters\\Hair\\HairSpikey.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0x9f921",
+              "openmwForm": "FormId:0x9f921",
+              "type": "HDPT",
+              "editorId": "BeardMustacheThin",
+              "name": "Swashbuckler",
+              "models": [
+                "Characters\\Hair\\BeardMustache.nif"
+              ]
+            }
+          ],
+          "hairLength": 0.2428474724292755,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "7d01ca8a359af9857c935ecbe6baa47e8d1b51d066048c7b75aa8342bf5f981d"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "861cbc657ecfa1e4854e1756fdded2d0cf34764e09281059a044bfb90780b5ed"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "templateChain": [
+          {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          }
+        ],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c74",
+            "openmwForm": "FormId:0x104c74",
+            "type": "NPC_",
+            "editorId": "GSPGHM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e5",
+            "openmwForm": "FormId:0x38e5",
+            "type": "RACE",
+            "editorId": "Hispanic",
+            "name": "Hispanic"
+          },
+          "hair": {
+            "form": "0x33183",
+            "openmwForm": "FormId:0x33183",
+            "type": "HAIR",
+            "editorId": "HairSpikey",
+            "name": "Shaggy Suave",
+            "models": [
+              "Characters\\Hair\\HairSpikey.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0x9f921",
+              "openmwForm": "FormId:0x9f921",
+              "type": "HDPT",
+              "editorId": "BeardMustacheThin",
+              "name": "Swashbuckler",
+              "models": [
+                "Characters\\Hair\\BeardMustache.nif"
+              ]
+            }
+          ],
+          "hairLength": 0.2428474724292755,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "7d01ca8a359af9857c935ecbe6baa47e8d1b51d066048c7b75aa8342bf5f981d"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "861cbc657ecfa1e4854e1756fdded2d0cf34764e09281059a044bfb90780b5ed"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-powder-ganger-04",
+      "category": "quest-combatant-humanoid",
+      "reference": {
+        "form": "0x104df2",
+        "openmwForm": "FormId:0x104df2",
+        "type": "ACHR",
+        "editorId": "GSPG04Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GSPG04Ref",
+      "base": {
+        "form": "0x104df1",
+        "openmwForm": "FormId:0x104df1",
+        "type": "NPC_",
+        "editorId": "GSPGHM2",
+        "name": "Powder Ganger",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -66475.46875,
+          -2619.53759765625,
+          8108.6865234375
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          5.83938455581665
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104df1",
+            "openmwForm": "FormId:0x104df1",
+            "type": "NPC_",
+            "editorId": "GSPGHM2",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e5",
+            "openmwForm": "FormId:0x38e5",
+            "type": "RACE",
+            "editorId": "Hispanic",
+            "name": "Hispanic"
+          },
+          "hair": {
+            "form": "0x6fc19",
+            "openmwForm": "FormId:0x6fc19",
+            "type": "HAIR",
+            "editorId": "HairRaiderMid",
+            "name": "Terrorsaur",
+            "models": [
+              "Characters\\Hair\\HairRaiderMid.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb22bf",
+              "openmwForm": "FormId:0xb22bf",
+              "type": "HDPT",
+              "editorId": "BeardGoateeThin",
+              "name": "Machievellian",
+              "models": [
+                "Characters\\Hair\\BeardGoatee.nif"
+              ]
+            }
+          ],
+          "hairLength": 0.17579999566078186,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "fe7c34823308aac24dd688274844a528e1ea117a411a9eb77c54b2ecc97ece45"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "fe3a27fb75671d2c097b9f757284700ebc1977e96593ef8cd68f30da0b0646ec"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "templateChain": [
+          {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          }
+        ],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104df1",
+            "openmwForm": "FormId:0x104df1",
+            "type": "NPC_",
+            "editorId": "GSPGHM2",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x38e5",
+            "openmwForm": "FormId:0x38e5",
+            "type": "RACE",
+            "editorId": "Hispanic",
+            "name": "Hispanic"
+          },
+          "hair": {
+            "form": "0x6fc19",
+            "openmwForm": "FormId:0x6fc19",
+            "type": "HAIR",
+            "editorId": "HairRaiderMid",
+            "name": "Terrorsaur",
+            "models": [
+              "Characters\\Hair\\HairRaiderMid.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4256",
+            "openmwForm": "FormId:0x4256",
+            "type": "EYES",
+            "editorId": "EyeDarkBrown",
+            "name": "Dark Brown"
+          },
+          "headParts": [
+            {
+              "form": "0xb22bf",
+              "openmwForm": "FormId:0xb22bf",
+              "type": "HDPT",
+              "editorId": "BeardGoateeThin",
+              "name": "Machievellian",
+              "models": [
+                "Characters\\Hair\\BeardGoatee.nif"
+              ]
+            }
+          ],
+          "hairLength": 0.17579999566078186,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "fe7c34823308aac24dd688274844a528e1ea117a411a9eb77c54b2ecc97ece45"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "fe3a27fb75671d2c097b9f757284700ebc1977e96593ef8cd68f30da0b0646ec"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-powder-ganger-05",
+      "category": "quest-combatant-humanoid",
+      "reference": {
+        "form": "0x104c72",
+        "openmwForm": "FormId:0x104c72",
+        "type": "ACHR",
+        "editorId": "GSPG05Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GSPG05Ref",
+      "base": {
+        "form": "0x104c71",
+        "openmwForm": "FormId:0x104c71",
+        "type": "NPC_",
+        "editorId": "GSPGCM2",
+        "name": "Powder Ganger",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -65306.375,
+          -2088.550537109375,
+          8384.0
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          5.639382839202881
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c71",
+            "openmwForm": "FormId:0x104c71",
+            "type": "NPC_",
+            "editorId": "GSPGCM2",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0xab5b8",
+            "openmwForm": "FormId:0xab5b8",
+            "type": "HAIR",
+            "editorId": "HairMessy03",
+            "name": "Bedraggled",
+            "models": [
+              "Characters\\Hair\\HairMessy03.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4255",
+            "openmwForm": "FormId:0x4255",
+            "type": "EYES",
+            "editorId": "EyeDefault",
+            "name": "Hazel"
+          },
+          "headParts": [],
+          "hairLength": 0.03999999910593033,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "e7b47d3a4bc1bdf1fa55bfbb3cde095780be0bf27d3b234d8cf3933ec15def41"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "50e4258869df260946f307d8840c0cc0feddc0ac2496cf2f00d054597601c6e3"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "templateChain": [
+          {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          }
+        ],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c71",
+            "openmwForm": "FormId:0x104c71",
+            "type": "NPC_",
+            "editorId": "GSPGCM2",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0xab5b8",
+            "openmwForm": "FormId:0xab5b8",
+            "type": "HAIR",
+            "editorId": "HairMessy03",
+            "name": "Bedraggled",
+            "models": [
+              "Characters\\Hair\\HairMessy03.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4255",
+            "openmwForm": "FormId:0x4255",
+            "type": "EYES",
+            "editorId": "EyeDefault",
+            "name": "Hazel"
+          },
+          "headParts": [],
+          "hairLength": 0.03999999910593033,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "e7b47d3a4bc1bdf1fa55bfbb3cde095780be0bf27d3b234d8cf3933ec15def41"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "50e4258869df260946f307d8840c0cc0feddc0ac2496cf2f00d054597601c6e3"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "goodsprings-powder-ganger-06",
+      "category": "quest-combatant-humanoid",
+      "reference": {
+        "form": "0x104c73",
+        "openmwForm": "FormId:0x104c73",
+        "type": "ACHR",
+        "editorId": "GSPG06Ref",
+        "name": ""
+      },
+      "referenceEditorId": "GSPG06Ref",
+      "base": {
+        "form": "0x104c6f",
+        "openmwForm": "FormId:0x104c6f",
+        "type": "NPC_",
+        "editorId": "GSPGCM",
+        "name": "Powder Ganger",
+        "models": [
+          "Characters\\_Male\\Skeleton.NIF"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -65387.06640625,
+          -1493.936767578125,
+          8389.3828125
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          5.339382171630859
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "authored": {
+          "record": {
+            "form": "0x104c6f",
+            "openmwForm": "FormId:0x104c6f",
+            "type": "NPC_",
+            "editorId": "GSPGCM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0xa9d6f",
+            "openmwForm": "FormId:0xa9d6f",
+            "type": "HAIR",
+            "editorId": "HairMessy01",
+            "name": "The Unsettler",
+            "models": [
+              "Characters\\Hair\\HairMessy01.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4255",
+            "openmwForm": "FormId:0x4255",
+            "type": "EYES",
+            "editorId": "EyeDefault",
+            "name": "Hazel"
+          },
+          "headParts": [
+            {
+              "form": "0x2f21f",
+              "openmwForm": "FormId:0x2f21f",
+              "type": "HDPT",
+              "editorId": "BeardThin",
+              "name": "Rough Beard",
+              "models": [
+                "Characters\\Hair\\BeardThin.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.03999999910593033,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "e7b47d3a4bc1bdf1fa55bfbb3cde095780be0bf27d3b234d8cf3933ec15def41"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "50e4258869df260946f307d8840c0cc0feddc0ac2496cf2f00d054597601c6e3"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "templateChain": [
+          {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          }
+        ],
+        "effectiveTraits": {
+          "record": {
+            "form": "0x104c6f",
+            "openmwForm": "FormId:0x104c6f",
+            "type": "NPC_",
+            "editorId": "GSPGCM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "race": {
+            "form": "0x19",
+            "openmwForm": "FormId:0x19",
+            "type": "RACE",
+            "editorId": "Caucasian",
+            "name": "Caucasian"
+          },
+          "hair": {
+            "form": "0xa9d6f",
+            "openmwForm": "FormId:0xa9d6f",
+            "type": "HAIR",
+            "editorId": "HairMessy01",
+            "name": "The Unsettler",
+            "models": [
+              "Characters\\Hair\\HairMessy01.NIF"
+            ]
+          },
+          "eyes": {
+            "form": "0x4255",
+            "openmwForm": "FormId:0x4255",
+            "type": "EYES",
+            "editorId": "EyeDefault",
+            "name": "Hazel"
+          },
+          "headParts": [
+            {
+              "form": "0x2f21f",
+              "openmwForm": "FormId:0x2f21f",
+              "type": "HDPT",
+              "editorId": "BeardThin",
+              "name": "Rough Beard",
+              "models": [
+                "Characters\\Hair\\BeardThin.NIF"
+              ]
+            }
+          ],
+          "hairLength": 0.03999999910593033,
+          "hairColorRgba": [
+            24,
+            16,
+            7,
+            0
+          ],
+          "faceGenFingerprints": {
+            "FGGS": {
+              "bytes": 200,
+              "sha256": "e7b47d3a4bc1bdf1fa55bfbb3cde095780be0bf27d3b234d8cf3933ec15def41"
+            },
+            "FGGA": {
+              "bytes": 120,
+              "sha256": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+            },
+            "FGTS": {
+              "bytes": 200,
+              "sha256": "50e4258869df260946f307d8840c0cc0feddc0ac2496cf2f00d054597601c6e3"
+            }
+          },
+          "baseTemplate": {
+            "form": "0x104c6a",
+            "openmwForm": "FormId:0x104c6a",
+            "type": "NPC_",
+            "editorId": "GSPGAAM",
+            "name": "Powder Ganger",
+            "models": [
+              "Characters\\_Male\\Skeleton.NIF"
+            ]
+          },
+          "templateFlags": 255,
+          "actorFlags": 528
+        },
+        "runtimeTraitsStatus": "must-match-xnvse-capture"
+      }
+    },
+    {
+      "id": "victor",
+      "category": "named-robot",
+      "reference": {
+        "form": "0x1073e8",
+        "openmwForm": "FormId:0x1073e8",
+        "type": "ACRE",
+        "editorId": "GSVictorRef",
+        "name": ""
+      },
+      "referenceEditorId": "GSVictorRef",
+      "base": {
+        "form": "0x103dfd",
+        "openmwForm": "FormId:0x103dfd",
+        "type": "CREA",
+        "editorId": "Victor",
+        "name": "Victor",
+        "models": [
+          "creatures\\NVSecuritron\\Skeleton.nif"
+        ]
+      },
+      "cell": {
+        "form": "0x846ea",
+        "openmwForm": "FormId:0x846ea",
+        "editorId": "",
+        "name": "",
+        "isExterior": true
+      },
+      "authoredPlacement": {
+        "position": [
+          -72314.5,
+          -5998.9951171875,
+          8312.0
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          6.258487701416016e-07
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "modelRecords": [
+          "creatures\\NVSecuritron\\Skeleton.nif"
+        ],
+        "runtimeTraitsStatus": "scene-graph-and-material-capture-required"
+      }
+    },
+    {
+      "id": "cheyenne",
+      "category": "named-creature",
+      "reference": {
+        "form": "0x10588e",
+        "openmwForm": "FormId:0x10588e",
+        "type": "ACRE",
+        "editorId": "CheyenneREF",
+        "name": ""
+      },
+      "referenceEditorId": "CheyenneREF",
+      "base": {
+        "form": "0x10588d",
+        "openmwForm": "FormId:0x10588d",
+        "type": "CREA",
+        "editorId": "GSCheyenne",
+        "name": "Cheyenne",
+        "models": [
+          "Creatures\\Dog\\Skeleton.nif"
+        ]
+      },
+      "cell": {
+        "form": "0x106185",
+        "openmwForm": "FormId:0x106185",
+        "editorId": "GSProspectorSaloonInterior",
+        "name": "Prospector Saloon",
+        "isExterior": false
+      },
+      "authoredPlacement": {
+        "position": [
+          153.3638916015625,
+          -464.0283508300781,
+          3456.0
+        ],
+        "rotationRadians": [
+          0.0,
+          -0.0,
+          3.1000096797943115
+        ]
+      },
+      "captureContract": {
+        "retail": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "openmw": [
+          "frontPortrait",
+          "leftProfile",
+          "rightProfile",
+          "fullBodyIdle"
+        ],
+        "sameRecordAndStateRequired": true,
+        "sameLightingRequired": true,
+        "telemetryRequired": true,
+        "humanVisualVerdictRequired": true
+      },
+      "appearance": {
+        "modelRecords": [
+          "Creatures\\Dog\\Skeleton.nif"
+        ],
+        "runtimeTraitsStatus": "scene-graph-and-material-capture-required"
+      }
+    }
+  ]
+}

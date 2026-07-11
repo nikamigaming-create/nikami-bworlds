@@ -28,8 +28,8 @@ it is not shipped in, linked into, or required by the OpenMW runtime.
 | OpenMW working checkout | `D:\Modlists\fnv\openmw-source` | `codex/bethesda-baked-flat-overlay-snapshot` |
 | OpenMW clean queue base | external checkout commit `c30c830d8e` | patches apply in `patches/openmw/series` order |
 | FNV/xNVSE working checkout | configured by the retail runner | xNVSE base `175bb28` |
-| Retail oracle queue | `patches/xnvse` | `0001` through `0005` |
-| OpenMW queue | `patches/openmw` | currently promoted through `0010` |
+| Retail oracle queue | `patches/xnvse` | `0001` through `0007` |
+| OpenMW queue | `patches/openmw` | promoted queue through `0011` |
 | Retail captures | `run/retail-oracle` | immutable evidence; add a new version instead of overwriting |
 | OpenMW proof captures | under `run/`, plus the configured OpenMW proof directory | never promote on image statistics alone |
 
@@ -44,12 +44,15 @@ Promoted OpenMW commits before the active furniture change:
 - `0d7383112e` — retail compressed LIP decoding and condition expansion.
 - `f508102307` — active FURN marker selection and settled chair state.
 
-Promoted overlay commit: `13669c2` (`Add Fallout lip and furniture overlay
-patches`). The clean OpenMW queue `0001` through `0010` applied from
-`c30c830d8e`, and the focused component suite passed 1295/1295 at that
-checkpoint.
+The clean OpenMW queue through `0010` applied from `c30c830d8e`, and the focused
+component suite passed 1295/1295 at that checkpoint. Commit `20dab7436f`
+exports patch `0011` for retail furniture entry/root sampling and measured head
+attachments. The cumulative `0001` through `0011` replay produced Git tree
+`39ffd8c2b8f49fae16c2f2416b2d4eb3452f9b32`, exactly matching the clean OpenMW
+branch. Release `openmw.exe` and `components-tests.exe` rebuilt successfully,
+and `NifOsgControllerTest.shouldUseClampedBSplineEndpoints` passed.
 
-The active, **unpromoted** furniture work touches:
+The patch `0011` source surface is:
 
 ```text
 apps/openmw/mwclass/esm4npc.cpp
@@ -61,8 +64,15 @@ apps/openmw/mwworld/scene.cpp
 components/nifosg/controller.cpp
 ```
 
-Do not discard those changes on reboot. Inspect `git diff` and continue from
-the retail comparisons below.
+The OpenMW worktree is clean. The retail hat position is improved, but missing
+hair/sideburn geometry and the wrong OpenMW skin/beard result remain explicit
+failures; do not promote whole-head parity from the hat result.
+
+Read `docs/openmw-base-overlay-boundary.md` before changing the dependency base.
+The current `c30c830d8e` base is 98 unpublished commits ahead of
+`origin/openmw-vr`; it is not official OpenMW `master` and must not be described
+as reproducible from a published remote until that delta becomes an explicit
+queue or pinned source dependency.
 
 ## Retail/OpenMW side-by-side method
 

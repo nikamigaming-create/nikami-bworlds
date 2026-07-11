@@ -42,7 +42,8 @@ param(
     [string]$ScreenshotDirectory = "",
     [switch]$PortraitCamera,
     [ValidateRange(32, 1000)]
-    [float]$PortraitDistance = 110
+    [float]$PortraitDistance = 110,
+    [switch]$RequireAppearanceTelemetry
 )
 
 Set-StrictMode -Version Latest
@@ -464,6 +465,10 @@ if ($PortraitCamera) {
         }
     }
 }
+$appearanceEvents = @($events | Where-Object { $_.event -in @("npc-appearance", "target-appearance") })
+if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne 1) {
+    throw "Expected exactly one target appearance event, got $($appearanceEvents.Count)."
+}
 
 [pscustomobject][ordered]@{
     schema = "nikami-fnv-retail-oracle-run/v1"
@@ -486,6 +491,7 @@ if ($PortraitCamera) {
     portraitProofCrops = @($portraitProofCrops)
     portraitCamera = [bool]$PortraitCamera
     portraitDistance = $PortraitDistance
+    appearanceTelemetry = @($appearanceEvents)
     setStageQuestForm = $SetStageQuestForm
     setStageIndex = $SetStageIndex
     captureAnimation = [bool]$CaptureAnimation
