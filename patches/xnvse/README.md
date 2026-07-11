@@ -80,6 +80,13 @@ supplies `HDRParam=(1.4,0,0,0)`,
 Non-finite values in unused registers are serialized as JSON `null`; the
 runner parses the complete event without faults. The hook only observes state
 and always forwards the original D3D9 draw call.
+Patch 0011 adds the active exterior worldspace `IMGS` FormID and all 33 runtime
+traits to the same event. Easy Pete's fixture resolves `0x0008809D` and proves
+the base values that patch 0010's final shader registers derive from, including
+cinematic `(1.1,0.2,1.1,1.0)`, tint
+`(0.984313726,0.568627477,0,0.330000013)`, HDR target LUM `1.4`, sunlight
+dimmer `1.1`, and skin dimmer `0.55`. The maintained evidence is
+`run/retail-oracle/fnv-easy-pete-seated-image-space-v5.jsonl`.
 
 For the complete side-by-side capture discipline, current worktree checkpoint,
 and rules for extending this oracle without changing retail behavior, read

@@ -1,0 +1,51 @@
+From 6cb350b4176cd71e55dc4050615c6e6720598fd6 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Sat, 11 Jul 2026 01:28:34 -0700
+Subject: [PATCH] Capture retail base image-space traits
+
+---
+ nvse_retail_oracle/main.cpp | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index c96ff8d..462ea6a 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -1934,6 +1934,10 @@ namespace
+             const float transition = *reinterpret_cast<const float*>(sky + 0xF4);
+             const UInt32 skyMode = *reinterpret_cast<const UInt32*>(sky + 0xF8);
+             const UInt32 flags = *reinterpret_cast<const UInt32*>(sky + 0x118);
++            const PlayerCharacter* player = *reinterpret_cast<PlayerCharacter* const*>(0x011DEA3C);
++            const TESObjectCELL* cell = player != nullptr ? player->parentCell : nullptr;
++            const TESWorldSpace* world = cell != nullptr ? cell->worldSpace : nullptr;
++            const TESImageSpace* baseImageSpace = world != nullptr ? world->imageSpace : nullptr;
+             gRenderEnvironmentLogged = true;
+             gOutput << std::setprecision(9)
+                     << "{\"schema\":" << sSchemaJson << ",\"event\":\"render-environment\""
+@@ -1956,6 +1960,23 @@ namespace
+             gOutput << ",\"transitionFadeOut\":";
+             writeImageSpaceInstance(*reinterpret_cast<const UInt8* const*>(sky + 0x128));
+             gOutput << '}'
++                    << ",\"baseImageSpace\":";
++            if (baseImageSpace != nullptr)
++            {
++                gOutput << "{\"form\":" << baseImageSpace->refID << ",\"traits\":[";
++                const float* traits = reinterpret_cast<const float*>(
++                    reinterpret_cast<const UInt8*>(baseImageSpace) + 0x18);
++                for (unsigned int trait = 0; trait < 33; ++trait)
++                {
++                    if (trait != 0)
++                        gOutput << ',';
++                    gOutput << traits[trait];
++                }
++                gOutput << "]}";
++            }
++            else
++                gOutput << "null";
++            gOutput
+                     << ",\"sunAmbient\":[" << ambient[0] << ',' << ambient[1] << ',' << ambient[2] << ']'
+                     << ",\"sunDirectional\":[" << directional[0] << ',' << directional[1] << ','
+                     << directional[2] << ']'
+-- 
+2.53.0.windows.1
+

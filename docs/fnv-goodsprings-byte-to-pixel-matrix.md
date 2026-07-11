@@ -152,3 +152,14 @@ active. At the retail D3D9 draw, package 013's 748-byte
 `Fade=(0,0,0,0)`. These values are the implementation contract for the next
 OpenMW image-space patch. They explicitly reject a hand-tuned global orange
 filter.
+
+Patch 0011 then records the active base `IMGS` instead of leaving the shader
+constants as unexplained magic numbers. Easy Pete's exterior uses `0x0008809D`:
+base cinematic `(saturation=1.1, averageLum=0.2, contrast=1.1,
+brightness=1.0)`, tint `(0.984313726,0.568627477,0)` at strength
+`0.330000013`, target LUM `1.4`, sunlight dimmer `1.1`, and skin dimmer `0.55`.
+The weather IMAD's first static keys multiply brightness by `1.3`, sunlight by
+`1.1`, and skin by `0.35`. Its tint is `(1,0.737254918,0.050980393)` at
+`0.392156869`. Strength-weighting the base and modifier tint colors produces
+the measured runtime RGB `(0.992831886,0.660198152,0.0276841652)` exactly.
+These byte-to-runtime identities are the implementation tests for OpenMW.
