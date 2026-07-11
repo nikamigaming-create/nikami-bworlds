@@ -28,7 +28,7 @@ it is not shipped in, linked into, or required by the OpenMW runtime.
 | OpenMW working checkout | `D:\Modlists\fnv\openmw-source` | `codex/bethesda-baked-flat-overlay-snapshot` |
 | OpenMW clean queue base | external checkout commit `c30c830d8e` | patches apply in `patches/openmw/series` order |
 | FNV/xNVSE working checkout | configured by the retail runner | xNVSE base `175bb28` |
-| Retail oracle queue | `patches/xnvse` | `0001` through `0004` |
+| Retail oracle queue | `patches/xnvse` | `0001` through `0005` |
 | OpenMW queue | `patches/openmw` | currently promoted through `0010` |
 | Retail captures | `run/retail-oracle` | immutable evidence; add a new version instead of overwriting |
 | OpenMW proof captures | under `run/`, plus the configured OpenMW proof directory | never promote on image statistics alone |
@@ -119,10 +119,41 @@ For every new probe:
 6. Export the oracle change as the next patch in `patches/xnvse/series` and
    document the new fields in `patches/xnvse/README.md`.
 
-The next required retail probes are the complete chair exit lifecycle and the
-world transforms/parents of Easy Pete's equipped cowboy hat and face nodes
-during standing, enter, seated idle, and exit. Those measurements will decide
-the general attachment rule; a hand-tuned hat offset is not acceptable.
+The seated-idle hat/face hierarchy is now retail-proven. The next required
+retail probes are the actual chair-release trigger and the same node hierarchy
+during standing, enter, and exit. Those measurements decide the general
+attachment rule; a hand-tuned hat offset is not acceptable.
+
+### Background collector and checkpoints
+
+Do not drive the retail UI with mouse/keyboard automation. `-BackgroundDataMode`
+keeps the game minimized, closes pause menus through the in-process console,
+and streams JSONL from the xNVSE main-loop callback. Observer approach uses
+bounded engine `SetPos` steps through declared world-space waypoints; it does
+not depend on window focus or `HoldKey`.
+
+The full Easy Pete lifecycle is intentionally a one-time checkpoint producer:
+
+```powershell
+.\scripts\Invoke-FNVEasyPeteFurnitureOracle.ps1 `
+  -OutputPath run\retail-oracle\fnv-easy-pete-background-v5.jsonl
+```
+
+It walks the observer down the road, waits for a declared furniture state,
+saves `NikamiOracleEasyPeteSeated`, copies the `.fos`/`.nvse` pair to
+`run/retail-oracle/checkpoints`, and removes the created files from the normal
+FNV save directory. The generic runner's `-SaveFixture` option temporarily
+installs such a checkpoint under a PID-qualified name and removes it in
+`finally`. A fresh 30-frame furniture query completed in 12.5 seconds in
+`fnv-easy-pete-checkpoint-fast-v2.jsonl`; a four-frame full scene-graph and
+animation query completed in 13.1 seconds in
+`fnv-easy-pete-checkpoint-animation-v2.jsonl`.
+
+Checkpoint reload is not authoritative for the actor reference position. The
+live lifecycle settled at `(-67966.9297,3447.80786,8387.31055)`, while the
+reloaded checkpoint reconstructed at `(-67968.75,3450.40674,8387.31055)`.
+Use the live lifecycle for world-placement comparison and checkpoints for
+state, hierarchy, equipment, face, bone, controller, and animation probes.
 
 ## Recreate the xNVSE retail oracle
 
@@ -160,6 +191,9 @@ Furniture evidence already captured:
 ```text
 run/retail-oracle/fnv-easy-pete-sit-state-v3.jsonl
 run/retail-oracle/fnv-easy-pete-sit-animation-v1.jsonl
+run/retail-oracle/fnv-easy-pete-background-v5.jsonl
+run/retail-oracle/fnv-easy-pete-checkpoint-fast-v2.jsonl
+run/retail-oracle/fnv-easy-pete-checkpoint-animation-v2.jsonl
 ```
 
 Easy Pete's retail facts from those files:
@@ -177,6 +211,10 @@ Easy Pete's retail facts from those files:
 | Settled position | `(-67966.9297, 3447.80762, 8387.31055)` |
 | Settled yaw | `1.61941481` radians |
 | Persistent idle | `dynamicidle_chairsit.kf`, `13.333334` seconds |
+| Seated head parent | `Bip01 Neck1 -> Bip01 Head` |
+| Seated hat parent | `Bip01 Head -> Hair  (001083E0) -> cowboyhat2:0` |
+| Seated biped face controls | `Bip01 Head -> BSFaceGenNiNodeBiped -> mouth/eyes` |
+| Seated skinned face | `Scene Root -> BSFaceGenNiNodeSkinned -> FaceGenFace` |
 
 The retail result is not the chair model origin. Any implementation that snaps
 to the FURN reference origin is wrong.
@@ -264,20 +302,23 @@ That position differs from the xNVSE retail capture by about `0.03` world
 units and proves the marker-to-seat rule for this actor/marker/animation. It
 does not prove other marker directions, exit, fast-forward, or headgear.
 
-An accelerated-world-time flat run in
-`easy_pete_20260710_181841.log` proves that the schedule becomes inactive,
-`chairforwardexit` plays, and the package reaches `state=complete`. Its current
-endpoint is about another 55 units behind the seat (`x=-68022.3`), not the
-entry side. Therefore lifecycle completion passes while spatial exit parity
-still fails. Do not reverse or suppress the curve from visual intuition; first
-capture retail actor/root transforms throughout exit.
+An accelerated-world-time OpenMW run in `easy_pete_20260710_181841.log`
+previously made the schedule inactive, played `chairforwardexit`, and completed
+at the wrong endpoint (`x=-68022.3`). Retail capture v14 accepted both
+`Set GameHour To 19` and `00104C80.EvaluatePackage` but kept Easy Pete seated,
+with the same chair claim, for more than 1,600 frames. That falsifies the
+assumption that expiry of this package window is itself the retail release
+trigger. Do not promote the OpenMW schedule-driven exit. Keep the actor seated
+until the actual retail release event is identified and captured.
 
-The spatial exit and headgear/face gates still fail. The older image
+The spatial exit and OpenMW headgear/face gates still fail. The older image
 `easy_pete_20260710_165942_shot03.png` remains useful failure evidence for the
 pre-fix chair placement and detached hat; never reuse it as a success image.
 The latest attachment audit still reports `mouth-not-front`, `eye-not-front`,
 and `facehair-not-front`, while the loose headgear check incorrectly accepts
-the cowboy hat. Treat that acceptance as an audit defect, not proof.
+the cowboy hat. Retail animation v2 explicitly records the parent chain
+`Bip01 Head -> Hair (001083E0) -> cowboyhat2:0`; use that hierarchy to replace
+the loose-frame guess, then compare standing, enter, seated, and exit frames.
 
 ## Guess/evidence gate
 

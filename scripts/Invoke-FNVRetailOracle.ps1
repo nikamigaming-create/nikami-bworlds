@@ -3,6 +3,7 @@ param(
     [string]$PluginDll = "external\xnvse\nvse_retail_oracle\build\nvse_retail_oracle.dll",
     [string]$OutputPath = "run\retail-oracle\fnv-goodsprings-behavior.jsonl",
     [string]$SaveName = "Save 222     Goodsprings  00 01 36",
+    [string]$SaveFixture = "",
     [string[]]$QuestForm = @("0x00102037", "0x00104C1C", "0x0010A214", "0x0015D912"),
     [string[]]$GlobalForm = @("0x35", "0x36", "0x37", "0x38", "0x39", "0x3A"),
     [string[]]$Command = @(),
@@ -16,6 +17,10 @@ param(
     [int]$TimeoutSeconds = 55,
     [int]$SampleEvery = 1,
     [string]$TargetForm = "0",
+    [string]$ObserverApproachForm = "0",
+    [float]$ObserverApproachStopDistance = 1400,
+    [float]$ObserverApproachStepDistance = 64,
+    [string[]]$ObserverWaypoint = @(),
     [string]$EquipForm = "0",
     [string]$PlayGroup = "",
     [string]$DriveCommand = "",
@@ -26,6 +31,12 @@ param(
     [ValidateSet(-1, 0, 1)]
     [int]$FootIkToggleEnabled = -1,
     [switch]$FurnitureOnly,
+    [string[]]$FurnitureSettledCommand = @(),
+    [switch]$ExitAfterFurnitureRelease,
+    [int]$ExitAfterFurnitureSettledSamples = 0,
+    [int]$FurnitureReleaseSamples = 3,
+    [switch]$BackgroundDataMode,
+    [switch]$VisibleGame,
     [switch]$CaptureAnimation
 )
 
@@ -60,16 +71,22 @@ if ($BeforeFrame -lt 1 -or $CommandFrame -le $BeforeFrame -or $AfterFrame -le $C
 if ($MaxFrames -lt $AfterFrame) {
     throw "MaxFrames must be greater than or equal to AfterFrame."
 }
-if ($TimeoutSeconds -lt 10 -or $TimeoutSeconds -gt 120) {
-    throw "TimeoutSeconds must be between 10 and 120."
+if ($TimeoutSeconds -lt 10 -or $TimeoutSeconds -gt 300) {
+    throw "TimeoutSeconds must be between 10 and 300."
 }
 if ($SampleEvery -lt 1) {
     throw "SampleEvery must be positive."
 }
-foreach ($form in @($TargetForm, $EquipForm)) {
+foreach ($form in @($TargetForm, $ObserverApproachForm, $EquipForm)) {
     if ($form -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$') {
         throw "Expected a decimal or 0x-prefixed FormID, got: $form"
     }
+}
+if ($ObserverApproachStopDistance -lt 64) {
+    throw "ObserverApproachStopDistance must be at least 64 world units."
+}
+if ($ObserverApproachStepDistance -lt 1 -or $ObserverApproachStepDistance -gt 256) {
+    throw "ObserverApproachStepDistance must be between 1 and 256 world units."
 }
 if ($PlayGroup -notmatch '^[A-Za-z0-9_]*$') {
     throw "PlayGroup may contain only ASCII letters, digits, and underscores."
@@ -90,9 +107,30 @@ if ($FootIkToggleFrame -lt 0 -or ($FootIkToggleFrame -gt 0 -and
 if (($FootIkToggleFrame -eq 0) -ne ($FootIkToggleEnabled -eq -1)) {
     throw "FootIkToggleFrame and FootIkToggleEnabled must be specified together."
 }
-foreach ($entry in @($Command) + @($ActorCommand)) {
+if ($ExitAfterFurnitureRelease -and (-not $FurnitureOnly -or $TargetForm -match '^(0[xX]0+|0+)$')) {
+    throw "ExitAfterFurnitureRelease requires FurnitureOnly and a nonzero TargetForm."
+}
+if ($FurnitureReleaseSamples -lt 1) {
+    throw "FurnitureReleaseSamples must be positive."
+}
+if ($ExitAfterFurnitureSettledSamples -lt 0) {
+    throw "ExitAfterFurnitureSettledSamples cannot be negative."
+}
+if ($ExitAfterFurnitureSettledSamples -gt 0 -and
+    (-not $FurnitureOnly -or $TargetForm -match '^(0[xX]0+|0+)$')) {
+    throw "ExitAfterFurnitureSettledSamples requires FurnitureOnly and a nonzero TargetForm."
+}
+if ($ExitAfterFurnitureRelease -and $ExitAfterFurnitureSettledSamples -gt 0) {
+    throw "Choose one furniture completion condition: settled samples or release."
+}
+foreach ($entry in @($Command) + @($ActorCommand) + @($FurnitureSettledCommand)) {
     if ($entry -match '[|\r\n]') {
         throw "Retail oracle commands cannot contain pipe or newline characters: $entry"
+    }
+}
+foreach ($waypoint in @($ObserverWaypoint)) {
+    if ($waypoint -notmatch '^-?[0-9]+(?:\.[0-9]+)?,-?[0-9]+(?:\.[0-9]+)?$') {
+        throw "ObserverWaypoint must be an X,Y numeric pair: $waypoint"
     }
 }
 if ($DriveCommand -match '[|\r\n]') {
@@ -107,6 +145,30 @@ $output = Resolve-AbsolutePath $OutputPath
 $pluginDirectory = Join-Path $gameRootPath "Data\NVSE\Plugins"
 $installedPlugin = Join-Path $pluginDirectory "nvse_retail_oracle.dll"
 $backupPlugin = "$installedPlugin.nikami-backup-$PID"
+$fixtureDestinations = @()
+$resolvedSaveFixture = $null
+$fixtureSaveName = $null
+
+if (-not [string]::IsNullOrWhiteSpace($SaveFixture)) {
+    $resolvedSaveFixture = Resolve-AbsolutePath $SaveFixture
+    if (-not (Test-Path -LiteralPath $resolvedSaveFixture -PathType Leaf) -or
+        [System.IO.Path]::GetExtension($resolvedSaveFixture) -ine '.fos') {
+        throw "SaveFixture must name an existing .fos file: $resolvedSaveFixture"
+    }
+    $saveDirectory = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\FalloutNV\Saves'
+    $fixtureSaveName = "NikamiOracleFixture-$PID"
+    foreach ($extension in @('.fos', '.nvse')) {
+        $source = [System.IO.Path]::ChangeExtension($resolvedSaveFixture, $extension)
+        if (Test-Path -LiteralPath $source -PathType Leaf) {
+            $destination = Join-Path $saveDirectory ($fixtureSaveName + $extension)
+            if (Test-Path -LiteralPath $destination) {
+                throw "Refusing to overwrite stale retail-oracle fixture: $destination"
+            }
+            $fixtureDestinations += [pscustomobject]@{ Source = $source; Destination = $destination }
+        }
+    }
+    $SaveName = $fixtureSaveName
+}
 
 foreach ($required in @($loader, $gameExe, $sourcePlugin)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -128,10 +190,19 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_SAMPLE_EVERY = [string]$SampleEvery
     NIKAMI_ORACLE_MAX_FRAMES = [string]$MaxFrames
     NIKAMI_ORACLE_TARGET_FORM = $TargetForm
+    NIKAMI_ORACLE_OBSERVER_APPROACH_FORM = $ObserverApproachForm
+    NIKAMI_ORACLE_OBSERVER_APPROACH_STOP_DISTANCE = [string]$ObserverApproachStopDistance
+    NIKAMI_ORACLE_OBSERVER_APPROACH_STEP_DISTANCE = [string]$ObserverApproachStepDistance
+    NIKAMI_ORACLE_OBSERVER_WAYPOINTS = (@($ObserverWaypoint) -join ";")
     NIKAMI_ORACLE_EQUIP_FORM = $EquipForm
     NIKAMI_ORACLE_ALL_HIGH_ACTORS = if ($CaptureAnimation) { "1" } else { "0" }
     NIKAMI_ORACLE_CAPTURE_ANIMATION = if ($CaptureAnimation) { "1" } else { "0" }
     NIKAMI_ORACLE_FURNITURE_ONLY = if ($FurnitureOnly) { "1" } else { "0" }
+    NIKAMI_ORACLE_FURNITURE_SETTLED_COMMANDS = (@($FurnitureSettledCommand) -join "|")
+    NIKAMI_ORACLE_EXIT_AFTER_FURNITURE_RELEASE = if ($ExitAfterFurnitureRelease) { "1" } else { "0" }
+    NIKAMI_ORACLE_EXIT_AFTER_FURNITURE_SETTLED_SAMPLES = [string]$ExitAfterFurnitureSettledSamples
+    NIKAMI_ORACLE_FURNITURE_RELEASE_SAMPLES = [string]$FurnitureReleaseSamples
+    NIKAMI_ORACLE_CLOSE_MENUS = if ($BackgroundDataMode) { "1" } else { "0" }
     NIKAMI_ORACLE_SAVE = $SaveName
     NIKAMI_ORACLE_PLAY_GROUP = $PlayGroup
     NIKAMI_ORACLE_DRIVE_COMMAND = $DriveCommand
@@ -156,6 +227,9 @@ $gameProcess = $null
 $hadInstalledPlugin = Test-Path -LiteralPath $installedPlugin -PathType Leaf
 
 try {
+    foreach ($fixture in $fixtureDestinations) {
+        Copy-Item -LiteralPath $fixture.Source -Destination $fixture.Destination
+    }
     if ($hadInstalledPlugin) {
         if (Test-Path -LiteralPath $backupPlugin) {
             throw "Refusing to overwrite stale oracle backup: $backupPlugin"
@@ -170,7 +244,15 @@ try {
     }
 
     $startedAt = Get-Date
-    $launcherProcess = Start-Process -FilePath $loader -WorkingDirectory $gameRootPath -WindowStyle Hidden -PassThru
+    $launchArguments = @{
+        FilePath = $loader
+        WorkingDirectory = $gameRootPath
+        PassThru = $true
+    }
+    if (-not $VisibleGame) {
+        $launchArguments.WindowStyle = 'Hidden'
+    }
+    $launcherProcess = Start-Process @launchArguments
     $launchDeadline = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $launchDeadline -and $null -eq $gameProcess) {
         $gameProcess = Get-Process -Name "FalloutNV" -ErrorAction SilentlyContinue |
@@ -184,10 +266,42 @@ try {
         throw "nvse_loader did not start FalloutNV within 20 seconds (loader PID $($launcherProcess.Id))."
     }
 
+    if ($BackgroundDataMode) {
+        if (-not ('Nikami.NativeWindow' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace Nikami {
+    public static class NativeWindow {
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+        public static void MinimizeBackground(IntPtr hWnd) {
+            ShowWindowAsync(hWnd, 6);
+        }
+    }
+}
+'@
+        }
+        $windowDeadline = (Get-Date).AddSeconds(15)
+        do {
+            $gameProcess.Refresh()
+            if ($gameProcess.MainWindowHandle -ne [IntPtr]::Zero) {
+                [Nikami.NativeWindow]::MinimizeBackground($gameProcess.MainWindowHandle)
+                break
+            }
+            Start-Sleep -Milliseconds 100
+        } while ((Get-Date) -lt $windowDeadline -and -not $gameProcess.HasExited)
+    }
+
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while (-not $gameProcess.HasExited -and (Get-Date) -lt $deadline) {
-        $gameProcess.WaitForExit(1000) | Out-Null
+        $gameProcess.WaitForExit(250) | Out-Null
         $gameProcess.Refresh()
+        if ($BackgroundDataMode -and -not $gameProcess.HasExited -and
+            $null -ne $gameProcess.MainWindowHandle -and
+            $gameProcess.MainWindowHandle -ne [IntPtr]::Zero) {
+            [Nikami.NativeWindow]::MinimizeBackground($gameProcess.MainWindowHandle)
+        }
     }
     if (-not $gameProcess.HasExited) {
         Stop-Process -Id $gameProcess.Id -Force
@@ -212,6 +326,11 @@ finally {
     }
     if ($hadInstalledPlugin -and (Test-Path -LiteralPath $backupPlugin)) {
         Move-Item -LiteralPath $backupPlugin -Destination $installedPlugin
+    }
+    foreach ($fixture in $fixtureDestinations) {
+        if (Test-Path -LiteralPath $fixture.Destination) {
+            Remove-FileWithRetry -Path $fixture.Destination
+        }
     }
 }
 
@@ -239,16 +358,27 @@ if ($complete.Count -ne 1) {
     output = $output
     bytes = (Get-Item -LiteralPath $output).Length
     save = $SaveName
+    saveFixture = $resolvedSaveFixture
     quests = @($QuestForm)
     globals = @($GlobalForm)
     commands = @($Command)
     actorCommands = @($ActorCommand)
+    furnitureSettledCommands = @($FurnitureSettledCommand)
+    exitAfterFurnitureRelease = [bool]$ExitAfterFurnitureRelease
+    exitAfterFurnitureSettledSamples = $ExitAfterFurnitureSettledSamples
+    furnitureReleaseSamples = $FurnitureReleaseSamples
+    backgroundDataMode = [bool]$BackgroundDataMode
+    visibleGame = [bool]$VisibleGame
     setStageQuestForm = $SetStageQuestForm
     setStageIndex = $SetStageIndex
     captureAnimation = [bool]$CaptureAnimation
     furnitureOnly = [bool]$FurnitureOnly
     sampleEvery = $SampleEvery
     targetForm = $TargetForm
+    observerApproachForm = $ObserverApproachForm
+    observerApproachStopDistance = $ObserverApproachStopDistance
+    observerApproachStepDistance = $ObserverApproachStepDistance
+    observerWaypoints = @($ObserverWaypoint)
     equipForm = $EquipForm
     playGroup = $PlayGroup
     driveCommand = $DriveCommand

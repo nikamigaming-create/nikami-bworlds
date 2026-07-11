@@ -34,8 +34,11 @@ blend telemetry. Patch 0003 records the exact retail distance quotient, the
 temporary `AnimData` sequence gate, and every call to the original bone-LOD
 writer. Patch 0004 records the retail `sitSleepState`, claimed furniture
 reference, marker index, and cached marker transform, with a furniture-only
-mode for long AI/package captures. The capture runner restores the pre-existing
-retail DLL after each run.
+mode for long AI/package captures. Patch 0005 adds focus-independent
+background collection, engine-driven observer waypoints, event-bounded
+furniture completion, reusable save fixtures, and explicit scene-node parent
+names. The capture runner restores the pre-existing retail DLL, temporary save
+fixtures, and process environment after each run.
 
 For the complete side-by-side capture discipline, current worktree checkpoint,
 and rules for extending this oracle without changing retail behavior, read

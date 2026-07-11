@@ -1,0 +1,541 @@
+From d933264de2986043d349d3a09e79c509437eb5f0 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 19:35:51 -0700
+Subject: [PATCH] Make retail oracle background and event driven
+
+---
+ nvse_retail_oracle/main.cpp | 371 ++++++++++++++++++++++++++++++++++--
+ 1 file changed, 359 insertions(+), 12 deletions(-)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index 837c2fd..5cb9cd1 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -18,6 +18,12 @@
+ 
+ namespace
+ {
++    struct ObserverWaypoint
++    {
++        float x = 0.f;
++        float y = 0.f;
++    };
++
+     PluginHandle gPluginHandle = kPluginHandle_Invalid;
+     NVSEMessagingInterface* gMessaging = nullptr;
+     NVSEConsoleInterface* gConsole = nullptr;
+@@ -29,9 +35,27 @@ namespace
+     unsigned int gMaxFrames = 3600;
+     UInt32 gTargetForm = 0;
+     UInt32 gEquipForm = 0;
++    UInt32 gObserverApproachForm = 0;
++    float gObserverApproachStopDistance = 1400.f;
++    float gObserverApproachStepDistance = 64.f;
++    bool gObserverApproachStarted = false;
++    bool gObserverApproachComplete = false;
++    bool gObserverApproachWaitingLogged = false;
++    std::vector<ObserverWaypoint> gObserverWaypoints;
++    std::size_t gObserverWaypointIndex = 0;
+     bool gAllHighActors = true;
+     bool gCaptureAnimation = true;
+     bool gFurnitureOnly = false;
++    bool gExitAfterFurnitureRelease = false;
++    unsigned int gExitAfterFurnitureSettledSamples = 0;
++    bool gFurnitureClaimObserved = false;
++    bool gFurnitureLifecycleComplete = false;
++    bool gFurnitureSettledCommandsRun = false;
++    unsigned int gFurnitureSettledStableSamples = 0;
++    unsigned int gFurnitureReleaseSamples = 3;
++    unsigned int gFurnitureReleaseStableSamples = 0;
++    bool gCloseMenusDuringCapture = false;
++    bool gCloseMenusLogged = false;
+     bool gLoadRequested = false;
+     bool gWorldReady = false;
+     bool gPrepareRequested = false;
+@@ -46,6 +70,7 @@ namespace
+     std::vector<UInt32> gGlobalForms;
+     std::vector<std::string> gBehaviorCommands;
+     std::vector<std::string> gActorCommands;
++    std::vector<std::string> gFurnitureSettledCommands;
+     unsigned int gBehaviorBeforeFrame = 60;
+     unsigned int gBehaviorCommandFrame = 90;
+     unsigned int gBehaviorAfterFrame = 150;
+@@ -65,8 +90,8 @@ namespace
+     bool gHighProcessBoneLodPathHooked = false;
+     Actor* gDrivenActor = nullptr;
+ 
+-    constexpr const char* sSchema = "nikami-retail-oracle/v3";
+-    constexpr const char* sSchemaJson = "\"nikami-retail-oracle/v3\"";
++    constexpr const char* sSchema = "nikami-retail-oracle/v4";
++    constexpr const char* sSchemaJson = "\"nikami-retail-oracle/v4\"";
+     constexpr std::size_t sNiAVObjectLocalTransformOffset = 0x34;
+     constexpr std::size_t sNiAVObjectWorldTransformOffset = 0x68;
+ 
+@@ -436,6 +461,17 @@ namespace
+         return end != value ? static_cast<unsigned int>(parsed) : fallback;
+     }
+ 
++    float envFloat(const char* name, float fallback)
++    {
++        char value[64] = {};
++        const DWORD length = GetEnvironmentVariableA(name, value, static_cast<DWORD>(std::size(value)));
++        if (length == 0 || length >= std::size(value))
++            return fallback;
++        char* end = nullptr;
++        const float parsed = std::strtof(value, &end);
++        return end != value && std::isfinite(parsed) ? parsed : fallback;
++    }
++
+     std::string envString(const char* name)
+     {
+         char value[4096] = {};
+@@ -487,6 +523,35 @@ namespace
+         return result;
+     }
+ 
++    std::vector<ObserverWaypoint> envObserverWaypoints(const char* name)
++    {
++        std::vector<ObserverWaypoint> result;
++        const std::string value = envString(name);
++        std::size_t offset = 0;
++        while (offset < value.size())
++        {
++            const std::size_t separator = value.find(';', offset);
++            const std::string token = value.substr(offset,
++                separator == std::string::npos ? std::string::npos : separator - offset);
++            const std::size_t comma = token.find(',');
++            if (comma != std::string::npos)
++            {
++                const std::string xText = token.substr(0, comma);
++                const std::string yText = token.substr(comma + 1);
++                char* xEnd = nullptr;
++                char* yEnd = nullptr;
++                const float x = std::strtof(xText.c_str(), &xEnd);
++                const float y = std::strtof(yText.c_str(), &yEnd);
++                if (xEnd != xText.c_str() && yEnd != yText.c_str() && std::isfinite(x) && std::isfinite(y))
++                    result.push_back({ x, y });
++            }
++            if (separator == std::string::npos)
++                break;
++            offset = separator + 1;
++        }
++        return result;
++    }
++
+     unsigned int handGripIndex(UInt8 value)
+     {
+         if (value == TESObjectWEAP::eHandGrip_Default)
+@@ -852,6 +917,8 @@ namespace
+                 out << ',';
+             first = false;
+             out << "{\"name\":" << jsonString(object->m_pcName) << ",\"depth\":" << depth
++                << ",\"parentName\":"
++                << jsonString(object->m_parent != nullptr ? object->m_parent->m_pcName : nullptr)
+                 << ",\"runtimeFlags\":" << object->unk0030
+                 << ",\"transform\":";
+             writeTransform(out, *object);
+@@ -1209,12 +1276,131 @@ namespace
+         out << '}';
+     }
+ 
++    void observeFurnitureLifecycle(
++        Actor* actor, UInt32 actorSitSleepState, UInt8 processSitSleepState, UInt32 usedFurnitureRefForm)
++    {
++        const bool furnitureSettled = usedFurnitureRefForm != 0
++            && (actorSitSleepState == 4 || processSitSleepState == 4);
++        if (furnitureSettled)
++        {
++            gFurnitureClaimObserved = true;
++            gFurnitureReleaseStableSamples = 0;
++            ++gFurnitureSettledStableSamples;
++            if (!gFurnitureSettledCommandsRun && !gFurnitureSettledCommands.empty())
++            {
++                gFurnitureSettledCommandsRun = true;
++                gOutput << "{\"schema\":" << sSchemaJson
++                        << ",\"event\":\"furniture-settled-commands\""
++                        << ",\"frame\":" << gFrame
++                        << ",\"refForm\":" << actor->refID << ",\"commands\":[";
++                for (std::size_t i = 0; i < gFurnitureSettledCommands.size(); ++i)
++                {
++                    if (i != 0)
++                        gOutput << ',';
++                    const bool accepted = gConsole != nullptr
++                        && gConsole->RunScriptLine2(gFurnitureSettledCommands[i].c_str(), nullptr, true);
++                    gOutput << "{\"text\":" << jsonString(gFurnitureSettledCommands[i].c_str())
++                            << ",\"accepted\":" << (accepted ? "true" : "false") << '}';
++                }
++                gOutput << "]}\n";
++            }
++        }
++        else if (gFurnitureClaimObserved && usedFurnitureRefForm == 0
++            && actorSitSleepState == 0 && processSitSleepState == 0)
++        {
++            gFurnitureSettledStableSamples = 0;
++            ++gFurnitureReleaseStableSamples;
++            if (gFurnitureReleaseStableSamples >= gFurnitureReleaseSamples)
++                gFurnitureLifecycleComplete = true;
++        }
++        else
++        {
++            gFurnitureSettledStableSamples = 0;
++            gFurnitureReleaseStableSamples = 0;
++        }
++    }
++
++    void writeFurnitureActor(Actor* actor)
++    {
++        __try
++        {
++            BaseProcess* process = actor->baseProcess;
++            const bool middleHigh = process != nullptr && process->processLevel <= 1;
++            UInt8 processSitSleepState = 0;
++            UInt32 actorSitSleepState = 0;
++            TESObjectREFR* usedFurniture = nullptr;
++            UInt8 furnitureMarkerIndex = 0xff;
++            OracleFurnitureMark furnitureMark = {};
++            UInt32 usedFurnitureRefForm = 0;
++            UInt32 usedFurnitureBaseForm = 0;
++            bool hasFurnitureProcessState = false;
++            bool hasFurnitureMark = false;
++            safeRead(reinterpret_cast<const UInt8*>(actor) + 0x1AC, actorSitSleepState);
++            if (middleHigh)
++            {
++                const UInt8* processBytes = reinterpret_cast<const UInt8*>(process);
++                hasFurnitureProcessState = safeRead(processBytes + 0x13D, processSitSleepState)
++                    && safeRead(processBytes + 0x140, usedFurniture)
++                    && safeRead(processBytes + 0x144, furnitureMarkerIndex);
++                hasFurnitureMark = safeRead(processBytes + 0x148, furnitureMark);
++                if (usedFurniture != nullptr)
++                {
++                    safeRead(reinterpret_cast<const UInt8*>(usedFurniture) + 0x0C, usedFurnitureRefForm);
++                    TESForm* usedFurnitureBase = nullptr;
++                    if (safeRead(reinterpret_cast<const UInt8*>(usedFurniture) + 0x20, usedFurnitureBase)
++                        && usedFurnitureBase != nullptr)
++                        safeRead(reinterpret_cast<const UInt8*>(usedFurnitureBase) + 0x0C, usedFurnitureBaseForm);
++                }
++            }
++
++            observeFurnitureLifecycle(actor, actorSitSleepState, processSitSleepState, usedFurnitureRefForm);
++            gOutput << std::setprecision(9)
++                    << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-frame\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"refForm\":" << actor->refID
++                    << ",\"baseForm\":" << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
++                    << ",\"position\":[" << actor->posX << ',' << actor->posY << ',' << actor->posZ << ']'
++                    << ",\"rotation\":[" << actor->rotX << ',' << actor->rotY << ',' << actor->rotZ << ']'
++                    << ",\"processLevel\":" << (process != nullptr ? process->processLevel : 0xff)
++                    << ",\"furnitureState\":{\"available\":"
++                    << (hasFurnitureProcessState ? "true" : "false")
++                    << ",\"actorSitSleepState\":" << actorSitSleepState
++                    << ",\"processSitSleepState\":" << static_cast<unsigned int>(processSitSleepState)
++                    << ",\"usedFurnitureRefForm\":" << usedFurnitureRefForm
++                    << ",\"usedFurnitureBaseForm\":" << usedFurnitureBaseForm
++                    << ",\"markerIndex\":" << static_cast<unsigned int>(furnitureMarkerIndex)
++                    << ",\"marker\":";
++            if (hasFurnitureMark)
++            {
++                gOutput << "{\"position\":[" << furnitureMark.position.x << ',' << furnitureMark.position.y << ','
++                        << furnitureMark.position.z << ']'
++                        << ",\"rotationRaw\":" << furnitureMark.rotation
++                        << ",\"rotationRadians\":" << static_cast<float>(furnitureMark.rotation) / 1000.f
++                        << ",\"type\":" << static_cast<unsigned int>(furnitureMark.type)
++                        << ",\"unknown0F\":" << static_cast<unsigned int>(furnitureMark.unknown0F) << '}';
++            }
++            else
++                gOutput << "null";
++            gOutput << "}}\n";
++        }
++        __except (EXCEPTION_EXECUTE_HANDLER)
++        {
++            gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"furniture-capture-fault\""
++                    << ",\"frame\":" << gFrame << ",\"refForm\":" << actor->refID << "}\n";
++        }
++    }
++
+     void writeActor(Actor* actor)
+     {
+         if (actor == nullptr || actor->baseProcess == nullptr)
+             return;
+         if (gTargetForm != 0 && actor->refID != gTargetForm && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm))
+             return;
++        if (gFurnitureOnly)
++        {
++            writeFurnitureActor(actor);
++            return;
++        }
+ 
+         __try
+         {
+@@ -1262,6 +1448,7 @@ namespace
+                         safeRead(reinterpret_cast<const UInt8*>(usedFurnitureBase) + 0x0C, usedFurnitureBaseForm);
+                 }
+             }
++            observeFurnitureLifecycle(actor, actorSitSleepState, processSitSleepState, usedFurnitureRefForm);
+             if (hasCameraPos)
+             {
+                 const float dx = actor->posX - cameraPos.x;
+@@ -1346,11 +1533,6 @@ namespace
+             else
+                 gOutput << "null";
+             gOutput << '}';
+-            if (gFurnitureOnly)
+-            {
+-                gOutput << "}\n";
+-                return;
+-            }
+             gOutput << ",\"highProcessBoneLodState\":";
+             if (hp != nullptr)
+             {
+@@ -1616,7 +1798,8 @@ namespace
+             TESForm* target = lookupForm(gTargetForm);
+             Actor* targetActor
+                 = target != nullptr && target->IsActor_Runtime() ? static_cast<Actor*>(target) : nullptr;
+-            if (targetActor != nullptr && targetActor->baseProcess != nullptr && targetActor->GetNiNode() != nullptr)
++            if (targetActor != nullptr && targetActor->baseProcess != nullptr
++                && (gFurnitureOnly || targetActor->GetNiNode() != nullptr))
+                 return targetActor;
+         }
+ 
+@@ -1626,7 +1809,8 @@ namespace
+         for (auto* node = manager->highActors.Head(); node != nullptr; node = node->next)
+         {
+             Actor* actor = node->data;
+-            if (actor == nullptr || actor == player || actor->baseProcess == nullptr || actor->GetNiNode() == nullptr)
++            if (actor == nullptr || actor == player || actor->baseProcess == nullptr
++                || (!gFurnitureOnly && actor->GetNiNode() == nullptr))
+                 continue;
+             if (gTargetForm != 0 && actor->refID != gTargetForm
+                 && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm))
+@@ -1648,6 +1832,122 @@ namespace
+         return nullptr;
+     }
+ 
++    void driveObserverApproach()
++    {
++        if (gObserverApproachForm == 0 || gObserverApproachComplete || gConsole == nullptr)
++            return;
++        PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
++        TESForm* targetForm = lookupForm(gObserverApproachForm);
++        TESObjectREFR* target = targetForm != nullptr && targetForm->GetIsReference()
++            ? static_cast<TESObjectREFR*>(targetForm)
++            : nullptr;
++        if (player == nullptr || target == nullptr)
++        {
++            if (!gObserverApproachWaitingLogged)
++            {
++                gObserverApproachWaitingLogged = true;
++                gOutput << "{\"schema\":" << sSchemaJson
++                        << ",\"event\":\"observer-approach-waiting\""
++                        << ",\"frame\":" << gFrame
++                        << ",\"targetForm\":" << gObserverApproachForm << "}\n";
++                gOutput.flush();
++            }
++            return;
++        }
++
++        const float finalDx = target->posX - player->posX;
++        const float finalDy = target->posY - player->posY;
++        const float distance = std::sqrt(finalDx * finalDx + finalDy * finalDy);
++        if (distance <= gObserverApproachStopDistance)
++        {
++            gObserverApproachComplete = true;
++            gOutput << "{\"schema\":" << sSchemaJson
++                    << ",\"event\":\"observer-approach-complete\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"targetForm\":" << gObserverApproachForm
++                    << ",\"distance\":" << distance
++                    << ",\"playerPosition\":[" << player->posX << ',' << player->posY << ',' << player->posZ
++                    << "]}\n";
++            gOutput.flush();
++            return;
++        }
++
++        while (gObserverWaypointIndex < gObserverWaypoints.size())
++        {
++            const ObserverWaypoint& waypoint = gObserverWaypoints[gObserverWaypointIndex];
++            const float waypointDx = waypoint.x - player->posX;
++            const float waypointDy = waypoint.y - player->posY;
++            if (std::sqrt(waypointDx * waypointDx + waypointDy * waypointDy) > 180.f)
++                break;
++            gOutput << "{\"schema\":" << sSchemaJson
++                    << ",\"event\":\"observer-waypoint-complete\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"waypointIndex\":" << gObserverWaypointIndex
++                    << ",\"playerPosition\":[" << player->posX << ',' << player->posY << ',' << player->posZ
++                    << "]}\n";
++            ++gObserverWaypointIndex;
++        }
++
++        float steeringX = target->posX;
++        float steeringY = target->posY;
++        if (gObserverWaypointIndex < gObserverWaypoints.size())
++        {
++            steeringX = gObserverWaypoints[gObserverWaypointIndex].x;
++            steeringY = gObserverWaypoints[gObserverWaypointIndex].y;
++        }
++        const float dx = steeringX - player->posX;
++        const float dy = steeringY - player->posY;
++
++        if (!gObserverApproachStarted)
++        {
++            gObserverApproachStarted = true;
++            gOutput << "{\"schema\":" << sSchemaJson
++                    << ",\"event\":\"observer-approach-start\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"targetForm\":" << gObserverApproachForm
++                    << ",\"distance\":" << distance << "}\n";
++        }
++        const float steeringDistance = std::sqrt(dx * dx + dy * dy);
++        if (steeringDistance > 0.001f)
++        {
++            const float step = (std::min)(gObserverApproachStepDistance, steeringDistance);
++            const float nextX = player->posX + dx * step / steeringDistance;
++            const float nextY = player->posY + dy * step / steeringDistance;
++            char commandX[96] = {};
++            char commandY[96] = {};
++            char commandYaw[96] = {};
++            const float yawDegrees = std::atan2(dx, dy) * 180.f / 3.14159265358979323846f;
++            sprintf_s(commandX, "SetPos X %.6f", nextX);
++            sprintf_s(commandY, "SetPos Y %.6f", nextY);
++            sprintf_s(commandYaw, "SetAngle Z %.6f", yawDegrees);
++            const bool acceptedX = gConsole->RunScriptLine2(commandX, player, true);
++            const bool acceptedY = gConsole->RunScriptLine2(commandY, player, true);
++            const bool acceptedYaw = gConsole->RunScriptLine2(commandYaw, player, true);
++            if ((!acceptedX || !acceptedY || !acceptedYaw) && gWorldLoopFrame % 60 == 0)
++            {
++                gOutput << "{\"schema\":" << sSchemaJson
++                        << ",\"event\":\"observer-approach-command-rejected\""
++                        << ",\"frame\":" << gFrame
++                        << ",\"setX\":" << (acceptedX ? "true" : "false")
++                        << ",\"setY\":" << (acceptedY ? "true" : "false")
++                        << ",\"setYaw\":" << (acceptedYaw ? "true" : "false") << "}\n";
++            }
++        }
++        if (gWorldLoopFrame % 60 == 0)
++        {
++            gOutput << "{\"schema\":" << sSchemaJson
++                    << ",\"event\":\"observer-approach-progress\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"targetForm\":" << gObserverApproachForm
++                    << ",\"distance\":" << distance
++                    << ",\"waypointIndex\":" << gObserverWaypointIndex
++                    << ",\"steeringTarget\":[" << steeringX << ',' << steeringY << ']'
++                    << ",\"playerPosition\":[" << player->posX << ',' << player->posY << ',' << player->posZ
++                    << "]}\n";
++            gOutput.flush();
++        }
++    }
++
+     void requestLoad()
+     {
+         if (gLoadRequested || gSaveName.empty() || gConsole == nullptr)
+@@ -1879,9 +2179,11 @@ namespace
+             return;
+         }
+ 
+-        if (gCaptureAnimation)
++        if (gCaptureAnimation || gFurnitureOnly)
+         {
+             std::set<Actor*> captured;
++            if (gFurnitureOnly && gDrivenActor == nullptr)
++                gDrivenActor = findDriveActor();
+             if (gDrivenActor != nullptr)
+             {
+                 captured.insert(gDrivenActor);
+@@ -1894,7 +2196,7 @@ namespace
+                 writeActor(player);
+             }
+ 
+-            if (gAllHighActors)
++            if (gCaptureAnimation && gAllHighActors)
+             {
+                 ActorProcessManager* manager = reinterpret_cast<ActorProcessManager*>(0x011E0E80);
+                 for (auto* node = manager->highActors.Head(); node != nullptr; node = node->next)
+@@ -1906,6 +2208,25 @@ namespace
+             }
+         }
+         gOutput.flush();
++        if (gExitAfterFurnitureRelease && gFurnitureLifecycleComplete)
++        {
++            gOutput << "{\"schema\":" << sSchemaJson
++                    << ",\"event\":\"furniture-lifecycle-complete\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"releaseStableSamples\":" << gFurnitureReleaseStableSamples << "}\n";
++            finishCapture();
++            return;
++        }
++        if (gExitAfterFurnitureSettledSamples > 0
++            && gFurnitureSettledStableSamples >= gExitAfterFurnitureSettledSamples)
++        {
++            gOutput << "{\"schema\":" << sSchemaJson
++                    << ",\"event\":\"furniture-settled-complete\""
++                    << ",\"frame\":" << gFrame
++                    << ",\"settledStableSamples\":" << gFurnitureSettledStableSamples << "}\n";
++            finishCapture();
++            return;
++        }
+         if (gFrame >= gMaxFrames)
+             finishCapture();
+     }
+@@ -1923,6 +2244,20 @@ namespace
+             if (gWorldReady)
+             {
+                 ++gWorldLoopFrame;
++                if (gCloseMenusDuringCapture && gConsole != nullptr && gWorldLoopFrame % 15 == 1)
++                {
++                    const bool accepted = gConsole->RunScriptLine2("CloseAllMenus", nullptr, true);
++                    if (!gCloseMenusLogged)
++                    {
++                        gCloseMenusLogged = true;
++                        gOutput << "{\"schema\":" << sSchemaJson
++                                << ",\"event\":\"background-game-mode\""
++                                << ",\"frame\":" << gFrame
++                                << ",\"closeAllMenusAccepted\":" << (accepted ? "true" : "false") << "}\n";
++                        gOutput.flush();
++                    }
++                }
++                driveObserverApproach();
+                 if (gCaptureAnimation && !gPrepareRequested && gWorldLoopFrame >= gPrepareActorFrame)
+                     prepareActor();
+                 if (gCaptureAnimation && !gEquipRequested && gWorldLoopFrame >= gEquipActorFrame)
+@@ -1967,7 +2302,7 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Query(const NVSEInterface* nvse
+ {
+     info->infoVersion = PluginInfo::kInfoVersion;
+     info->name = "NikamiRetailOracle";
+-    info->version = 3;
++    info->version = 4;
+     return nvse != nullptr && !nvse->isEditor && !nvse->isNogore
+         && nvse->runtimeVersion >= RUNTIME_VERSION_1_4_0_525;
+ }
+@@ -1986,9 +2321,20 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
+     gMaxFrames = (std::max)(1u, envUInt("NIKAMI_ORACLE_MAX_FRAMES", 3600));
+     gTargetForm = envUInt("NIKAMI_ORACLE_TARGET_FORM", 0);
+     gEquipForm = envUInt("NIKAMI_ORACLE_EQUIP_FORM", 0);
++    gObserverApproachForm = envUInt("NIKAMI_ORACLE_OBSERVER_APPROACH_FORM", 0);
++    gObserverWaypoints = envObserverWaypoints("NIKAMI_ORACLE_OBSERVER_WAYPOINTS");
++    gObserverApproachStopDistance
++        = (std::max)(64.f, envFloat("NIKAMI_ORACLE_OBSERVER_APPROACH_STOP_DISTANCE", 1400.f));
++    gObserverApproachStepDistance
++        = (std::max)(1.f, envFloat("NIKAMI_ORACLE_OBSERVER_APPROACH_STEP_DISTANCE", 64.f));
+     gAllHighActors = envUInt("NIKAMI_ORACLE_ALL_HIGH_ACTORS", 1) != 0;
+     gCaptureAnimation = envUInt("NIKAMI_ORACLE_CAPTURE_ANIMATION", 1) != 0;
+     gFurnitureOnly = envUInt("NIKAMI_ORACLE_FURNITURE_ONLY", 0) != 0;
++    gExitAfterFurnitureRelease = envUInt("NIKAMI_ORACLE_EXIT_AFTER_FURNITURE_RELEASE", 0) != 0;
++    gExitAfterFurnitureSettledSamples
++        = envUInt("NIKAMI_ORACLE_EXIT_AFTER_FURNITURE_SETTLED_SAMPLES", 0);
++    gFurnitureReleaseSamples = (std::max)(1u, envUInt("NIKAMI_ORACLE_FURNITURE_RELEASE_SAMPLES", 3));
++    gCloseMenusDuringCapture = envUInt("NIKAMI_ORACLE_CLOSE_MENUS", 0) != 0;
+     gSaveName = envString("NIKAMI_ORACLE_SAVE");
+     gPlayGroup = envString("NIKAMI_ORACLE_PLAY_GROUP");
+     gDriveCommand = envString("NIKAMI_ORACLE_DRIVE_COMMAND");
+@@ -1996,6 +2342,7 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
+     gGlobalForms = envUIntList("NIKAMI_ORACLE_GLOBAL_FORMS");
+     gBehaviorCommands = envCommandList("NIKAMI_ORACLE_COMMANDS");
+     gActorCommands = envCommandList("NIKAMI_ORACLE_ACTOR_COMMANDS");
++    gFurnitureSettledCommands = envCommandList("NIKAMI_ORACLE_FURNITURE_SETTLED_COMMANDS");
+     gBehaviorBeforeFrame = envUInt("NIKAMI_ORACLE_BEFORE_FRAME", 60);
+     gBehaviorCommandFrame = envUInt("NIKAMI_ORACLE_COMMAND_FRAME", 90);
+     gBehaviorAfterFrame = envUInt("NIKAMI_ORACLE_AFTER_FRAME", 150);
+-- 
+2.53.0.windows.1
+
