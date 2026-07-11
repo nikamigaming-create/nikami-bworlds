@@ -1,0 +1,305 @@
+From d3a91d5b5b2dfa725bae34b819a212e23daf603b Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Sat, 11 Jul 2026 01:17:24 -0700
+Subject: [PATCH] Capture retail weather image-space constants
+
+---
+ nvse_retail_oracle/main.cpp | 240 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 240 insertions(+)
+
+diff --git a/nvse_retail_oracle/main.cpp b/nvse_retail_oracle/main.cpp
+index fe89a63..c96ff8d 100644
+--- a/nvse_retail_oracle/main.cpp
++++ b/nvse_retail_oracle/main.cpp
+@@ -4,6 +4,7 @@
+ #include "nvse/NiObjects.h"
+ 
+ #include <Windows.h>
++#include <d3d9.h>
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -90,6 +91,7 @@ namespace
+     bool gPortraitCameraLogged = false;
+     bool gAppearanceLogged = false;
+     bool gRenderEnvironmentLogged = false;
++    bool gImageSpaceShaderHookLogged = false;
+     float gPortraitDistance = 110.f;
+     unsigned int gBehaviorBeforeFrame = 60;
+     unsigned int gBehaviorCommandFrame = 90;
+@@ -110,6 +112,31 @@ namespace
+     bool gHighProcessBoneLodPathHooked = false;
+     Actor* gDrivenActor = nullptr;
+ 
++    using DrawPrimitiveFn = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT, UINT);
++    using DrawIndexedPrimitiveFn = HRESULT(STDMETHODCALLTYPE*)(
++        IDirect3DDevice9*, D3DPRIMITIVETYPE, INT, UINT, UINT, UINT, UINT);
++    using DrawPrimitiveUpFn
++        = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT, const void*, UINT);
++    using DrawIndexedPrimitiveUpFn = HRESULT(STDMETHODCALLTYPE*)(
++        IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT, UINT, UINT, const void*, D3DFORMAT, const void*, UINT);
++    DrawPrimitiveFn gOriginalDrawPrimitive = nullptr;
++    DrawIndexedPrimitiveFn gOriginalDrawIndexedPrimitive = nullptr;
++    DrawPrimitiveUpFn gOriginalDrawPrimitiveUp = nullptr;
++    DrawIndexedPrimitiveUpFn gOriginalDrawIndexedPrimitiveUp = nullptr;
++    bool gImageSpaceShaderHooked = false;
++
++    struct ImageSpaceShaderCapture
++    {
++        volatile LONG ready = 0;
++        UInt32 frame = 0;
++        UInt32 byteCount = 0;
++        UInt32 hash = 0;
++        bool hdrBlend = false;
++        bool alphaMask = false;
++        HRESULT constantsResult = E_FAIL;
++        float constants[24][4] = {};
++    } gImageSpaceShaderCapture;
++
+     constexpr const char* sSchema = "nikami-retail-oracle/v4";
+     constexpr const char* sSchemaJson = "\"nikami-retail-oracle/v4\"";
+     constexpr std::size_t sNiAVObjectLocalTransformOffset = 0x34;
+@@ -117,6 +144,183 @@ namespace
+ 
+     static_assert(sizeof(NiTransform) == 0x34);
+ 
++    bool containsAscii(const UInt8* bytes, std::size_t byteCount, const char* needle)
++    {
++        const std::size_t needleLength = std::strlen(needle);
++        if (bytes == nullptr || needleLength == 0 || byteCount < needleLength)
++            return false;
++        for (std::size_t i = 0; i + needleLength <= byteCount; ++i)
++        {
++            if (std::memcmp(bytes + i, needle, needleLength) == 0)
++                return true;
++        }
++        return false;
++    }
++
++    UInt32 fnv1a32(const UInt8* bytes, std::size_t byteCount)
++    {
++        UInt32 hash = 2166136261u;
++        for (std::size_t i = 0; i < byteCount; ++i)
++        {
++            hash ^= bytes[i];
++            hash *= 16777619u;
++        }
++        return hash;
++    }
++
++    void captureImageSpaceShaderConstants(IDirect3DDevice9* device)
++    {
++        if (gWorldReady && gFrame > 0 && gImageSpaceShaderCapture.ready == 0 && device != nullptr)
++        {
++            IDirect3DPixelShader9* shader = nullptr;
++            if (SUCCEEDED(device->GetPixelShader(&shader)) && shader != nullptr)
++            {
++                UINT byteCount = 0;
++                if (SUCCEEDED(shader->GetFunction(nullptr, &byteCount)) && byteCount > 0 && byteCount <= 4096)
++                {
++                    UInt8 bytes[4096] = {};
++                    UINT actualByteCount = byteCount;
++                    if (SUCCEEDED(shader->GetFunction(bytes, &actualByteCount)))
++                    {
++                        const bool cinematic = containsAscii(bytes, actualByteCount, "Cinematic")
++                            && containsAscii(bytes, actualByteCount, "Tint")
++                            && containsAscii(bytes, actualByteCount, "Fade");
++                        const bool hdrBlend = containsAscii(bytes, actualByteCount, "HDRParam")
++                            && containsAscii(bytes, actualByteCount, "DestBlend");
++                        if (cinematic
++                            && InterlockedCompareExchange(&gImageSpaceShaderCapture.ready, -1, 0) == 0)
++                        {
++                            gImageSpaceShaderCapture.frame = gFrame;
++                            gImageSpaceShaderCapture.byteCount = actualByteCount;
++                            gImageSpaceShaderCapture.hash = fnv1a32(bytes, actualByteCount);
++                            gImageSpaceShaderCapture.hdrBlend = hdrBlend;
++                            gImageSpaceShaderCapture.alphaMask = containsAscii(bytes, actualByteCount, "UseAlphaMask");
++                            gImageSpaceShaderCapture.constantsResult = device->GetPixelShaderConstantF(
++                                0, &gImageSpaceShaderCapture.constants[0][0], 24);
++                            MemoryBarrier();
++                            InterlockedExchange(&gImageSpaceShaderCapture.ready, 1);
++                        }
++                    }
++                }
++                shader->Release();
++            }
++        }
++    }
++
++    HRESULT STDMETHODCALLTYPE imageSpaceDrawPrimitiveHook(
++        IDirect3DDevice9* device, D3DPRIMITIVETYPE primitiveType, UINT startVertex, UINT primitiveCount)
++    {
++        captureImageSpaceShaderConstants(device);
++        return gOriginalDrawPrimitive(device, primitiveType, startVertex, primitiveCount);
++    }
++
++    HRESULT STDMETHODCALLTYPE imageSpaceDrawIndexedPrimitiveHook(IDirect3DDevice9* device,
++        D3DPRIMITIVETYPE primitiveType, INT baseVertexIndex, UINT minimumVertexIndex, UINT vertexCount,
++        UINT startIndex, UINT primitiveCount)
++    {
++        captureImageSpaceShaderConstants(device);
++        return gOriginalDrawIndexedPrimitive(device, primitiveType, baseVertexIndex, minimumVertexIndex,
++            vertexCount, startIndex, primitiveCount);
++    }
++
++    HRESULT STDMETHODCALLTYPE imageSpaceDrawPrimitiveUpHook(IDirect3DDevice9* device,
++        D3DPRIMITIVETYPE primitiveType, UINT primitiveCount, const void* vertexData, UINT vertexStride)
++    {
++        captureImageSpaceShaderConstants(device);
++        return gOriginalDrawPrimitiveUp(device, primitiveType, primitiveCount, vertexData, vertexStride);
++    }
++
++    HRESULT STDMETHODCALLTYPE imageSpaceDrawIndexedPrimitiveUpHook(IDirect3DDevice9* device,
++        D3DPRIMITIVETYPE primitiveType, UINT minimumVertexIndex, UINT vertexCount, UINT primitiveCount,
++        const void* indexData, D3DFORMAT indexFormat, const void* vertexData, UINT vertexStride)
++    {
++        captureImageSpaceShaderConstants(device);
++        return gOriginalDrawIndexedPrimitiveUp(device, primitiveType, minimumVertexIndex, vertexCount,
++            primitiveCount, indexData, indexFormat, vertexData, vertexStride);
++    }
++
++    bool hookD3DDeviceMethod(void** vtable, std::size_t index, void* hook, void** original)
++    {
++        if (vtable[index] == hook)
++            return *original != nullptr;
++        DWORD oldProtect = 0;
++        if (VirtualProtect(&vtable[index], sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProtect) == FALSE)
++            return false;
++        *original = vtable[index];
++        vtable[index] = hook;
++        FlushInstructionCache(GetCurrentProcess(), &vtable[index], sizeof(void*));
++        DWORD restoredProtect = 0;
++        VirtualProtect(&vtable[index], sizeof(void*), oldProtect, &restoredProtect);
++        return true;
++    }
++
++    bool hookImageSpaceDrawPrimitive()
++    {
++        if (gImageSpaceShaderHooked)
++            return true;
++        UInt8* renderer = *reinterpret_cast<UInt8**>(0x011F4748);
++        if (renderer == nullptr)
++            return false;
++        IDirect3DDevice9* device = *reinterpret_cast<IDirect3DDevice9**>(renderer + 0x288);
++        if (device == nullptr)
++            return false;
++        void** vtable = *reinterpret_cast<void***>(device);
++        if (vtable == nullptr)
++            return false;
++        const bool drawPrimitive = hookD3DDeviceMethod(vtable, 81,
++            reinterpret_cast<void*>(imageSpaceDrawPrimitiveHook),
++            reinterpret_cast<void**>(&gOriginalDrawPrimitive));
++        const bool drawIndexedPrimitive = hookD3DDeviceMethod(vtable, 82,
++            reinterpret_cast<void*>(imageSpaceDrawIndexedPrimitiveHook),
++            reinterpret_cast<void**>(&gOriginalDrawIndexedPrimitive));
++        const bool drawPrimitiveUp = hookD3DDeviceMethod(vtable, 83,
++            reinterpret_cast<void*>(imageSpaceDrawPrimitiveUpHook),
++            reinterpret_cast<void**>(&gOriginalDrawPrimitiveUp));
++        const bool drawIndexedPrimitiveUp = hookD3DDeviceMethod(vtable, 84,
++            reinterpret_cast<void*>(imageSpaceDrawIndexedPrimitiveUpHook),
++            reinterpret_cast<void**>(&gOriginalDrawIndexedPrimitiveUp));
++        gImageSpaceShaderHooked
++            = drawPrimitive && drawIndexedPrimitive && drawPrimitiveUp && drawIndexedPrimitiveUp;
++        return gImageSpaceShaderHooked;
++    }
++
++    void writeImageSpaceShaderCapture()
++    {
++        if (InterlockedCompareExchange(&gImageSpaceShaderCapture.ready, 0, 0) != 1 || !gOutput.is_open())
++            return;
++        MemoryBarrier();
++        gOutput << std::setprecision(9)
++                << "{\"schema\":" << sSchemaJson << ",\"event\":\"image-space-shader-constants\""
++                << ",\"frame\":" << gImageSpaceShaderCapture.frame
++                << ",\"byteCount\":" << gImageSpaceShaderCapture.byteCount
++                << ",\"fnv1a32\":" << gImageSpaceShaderCapture.hash
++                << ",\"path\":\"" << (gImageSpaceShaderCapture.hdrBlend
++                        ? (gImageSpaceShaderCapture.alphaMask ? "hdr-cinematic-alpha-mask" : "hdr-cinematic")
++                        : "cinematic") << '"'
++                << ",\"getConstantsResult\":" << static_cast<long>(gImageSpaceShaderCapture.constantsResult)
++                << ",\"registers\":[";
++        for (unsigned int reg = 0; reg < 24; ++reg)
++        {
++            if (reg != 0)
++                gOutput << ',';
++            gOutput << '[';
++            for (unsigned int component = 0; component < 4; ++component)
++            {
++                if (component != 0)
++                    gOutput << ',';
++                const float value = gImageSpaceShaderCapture.constants[reg][component];
++                if (std::isfinite(value))
++                    gOutput << value;
++                else
++                    gOutput << "null";
++            }
++            gOutput << ']';
++        }
++        gOutput << "]}\n";
++        gOutput.flush();
++        InterlockedExchange(&gImageSpaceShaderCapture.ready, 2);
++    }
++
+     void __cdecl recordBoneLodWriterCall(HighProcess* process, Actor* actor)
+     {
+         if (!gCaptureAnimation || !gOutput.is_open() || process == nullptr || actor == nullptr
+@@ -1685,6 +1889,25 @@ namespace
+         return formsMap != nullptr && *formsMap != nullptr ? (*formsMap)->Lookup(formId) : nullptr;
+     }
+ 
++    void writeImageSpaceInstance(const UInt8* instance)
++    {
++        if (instance == nullptr)
++        {
++            gOutput << "null";
++            return;
++        }
++        const TESForm* imageSpace = *reinterpret_cast<TESForm* const*>(instance + 0x1C);
++        const TESForm* previousImageSpace = *reinterpret_cast<TESForm* const*>(instance + 0x20);
++        gOutput << "{\"form\":" << (imageSpace != nullptr ? imageSpace->refID : 0)
++                << ",\"previousForm\":" << (previousImageSpace != nullptr ? previousImageSpace->refID : 0)
++                << ",\"hidden\":" << (*reinterpret_cast<const UInt8*>(instance + 0x08) != 0 ? "true" : "false")
++                << ",\"percent\":" << *reinterpret_cast<const float*>(instance + 0x0C)
++                << ",\"age\":" << *reinterpret_cast<const float*>(instance + 0x14)
++                << ",\"flags\":" << *reinterpret_cast<const UInt32*>(instance + 0x18)
++                << ",\"lastStrength\":" << *reinterpret_cast<const float*>(instance + 0x24)
++                << ",\"transitionTime\":" << *reinterpret_cast<const float*>(instance + 0x2C) << '}';
++    }
++
+     void captureRetailRenderEnvironment()
+     {
+         if (gRenderEnvironmentLogged)
+@@ -1724,6 +1947,15 @@ namespace
+                     << ",\"weatherPercent\":" << transition
+                     << ",\"skyMode\":" << skyMode
+                     << ",\"flags\":" << flags
++                    << ",\"weatherImageSpace\":{\"currentFadeIn\":";
++            writeImageSpaceInstance(*reinterpret_cast<const UInt8* const*>(sky + 0x11C));
++            gOutput << ",\"currentFadeOut\":";
++            writeImageSpaceInstance(*reinterpret_cast<const UInt8* const*>(sky + 0x120));
++            gOutput << ",\"transitionFadeIn\":";
++            writeImageSpaceInstance(*reinterpret_cast<const UInt8* const*>(sky + 0x124));
++            gOutput << ",\"transitionFadeOut\":";
++            writeImageSpaceInstance(*reinterpret_cast<const UInt8* const*>(sky + 0x128));
++            gOutput << '}'
+                     << ",\"sunAmbient\":[" << ambient[0] << ',' << ambient[1] << ',' << ambient[2] << ']'
+                     << ",\"sunDirectional\":[" << directional[0] << ',' << directional[1] << ','
+                     << directional[2] << ']'
+@@ -2712,6 +2944,14 @@ namespace
+         {
+             ++gGameLoopFrame;
+             openOutput();
++            if (hookImageSpaceDrawPrimitive() && !gImageSpaceShaderHookLogged)
++            {
++                gImageSpaceShaderHookLogged = true;
++                gOutput << "{\"schema\":" << sSchemaJson
++                        << ",\"event\":\"image-space-shader-hook\",\"installed\":true}\n";
++                gOutput.flush();
++            }
++            writeImageSpaceShaderCapture();
+             if (!gSaveName.empty() && !gLoadRequested && gGameLoopFrame >= 30)
+                 requestLoad();
+             if (gWorldReady)
+-- 
+2.53.0.windows.1
+

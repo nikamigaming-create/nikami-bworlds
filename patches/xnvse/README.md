@@ -66,6 +66,20 @@ fixture event is
 current weather `0x001237D7`, no transition, `GameHour=14.4118919`, ambient
 `(0.369318515,0.4469423,0.578699231)`, and directional/fog light
 `(1,0.890196145,0.666666687)`.
+Patch 0010 records the four Sky-owned weather IMAD instances and hooks the
+retail D3D9 fullscreen draw calls read-only to identify the actual cinematic
+shader by its embedded constant table. It then records the pixel-shader
+constants at the draw that consumes them. The hidden/background Easy Pete run
+`run/retail-oracle/fnv-easy-pete-seated-image-space-v4.jsonl` proves weather
+`0x001237D7` uses `NVWastelandIS` (`0x000CEE18`) in both current time slots at
+weights `0.401982009` and `0.598017991`, with no transition modifier. Retail
+selects the 748-byte `hdr-cinematic` pixel shader (`FNV-1a 0x0A008802`) and
+supplies `HDRParam=(1.4,0,0,0)`,
+`Cinematic=(1.1,0.2,1.1,1.3)`,
+`Tint=(0.992831886,0.660198152,0.0276841652,0.392156869)`, and zero Fade.
+Non-finite values in unused registers are serialized as JSON `null`; the
+runner parses the complete event without faults. The hook only observes state
+and always forwards the original D3D9 draw call.
 
 For the complete side-by-side capture discipline, current worktree checkpoint,
 and rules for extending this oracle without changing retail behavior, read

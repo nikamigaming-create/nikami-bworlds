@@ -139,3 +139,16 @@ ambient `(0.369318515,0.4469423,0.578699231)`, and warm directional/fog light
 at the proof hour. The frame remains less orange/contrasty than retail, which
 isolates the next missing layer to the linked day/high-noon image-space
 modifier `0x000CEE18`; it is no longer evidence for retuning Pete's diffuse.
+
+That layer is now runtime-measured rather than guessed. xNVSE patch 0010's
+hidden run `fnv-easy-pete-seated-image-space-v4.jsonl` reports that both active
+Sky time slots reference `0x000CEE18`, at weights `0.401982009` and
+`0.598017991`; because the linked high-noon/day records are identical, the
+authored modifier contributes full combined strength. No transition IMAD is
+active. At the retail D3D9 draw, package 013's 748-byte
+`ISHDRBLENDINSHADERCIN.pso` path has FNV-1a hash `0x0A008802` and constants
+`HDRParam=(1.4,0,0,0)`, `Cinematic=(1.1,0.2,1.1,1.3)`,
+`Tint=(0.992831886,0.660198152,0.0276841652,0.392156869)`, and
+`Fade=(0,0,0,0)`. These values are the implementation contract for the next
+OpenMW image-space patch. They explicitly reject a hand-tuned global orange
+filter.

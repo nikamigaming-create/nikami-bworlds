@@ -227,6 +227,25 @@ Run only through `scripts/Invoke-FNVRetailOracle.ps1`. The runner temporarily
 installs the oracle DLL and restores the previous retail DLL and environment in
 `finally`. Never leave the oracle installed in the normal mod list.
 
+To audit the exact retail fullscreen shader selected by patch 0010, read the
+active package number from `RendererInfo.txt` and keep all extracted bytecode in
+ignored quarantine storage. For the current FNV fixture the active package is
+013:
+
+```powershell
+python .\scripts\inspect_fallout_shader_package.py `
+  --package 'D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data\Shaders\shaderpackage013.sdp' `
+  --name ISHDRBLENDINSHADERCIN.pso `
+  --output-dir .\run\retail-oracle\shaderpackage013-audit-v1 `
+  --fxc 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\fxc.exe'
+```
+
+The script validates the whole SDP boundary, hashes the selected bytecode, and
+uses Microsoft's SDK disassembler. It must report 100 vertex entries, 1,007
+total entries, a 748-byte selected shader, and FNV-1a `0x0A008802`, matching the
+runtime hook. Do not commit the extracted `.pso`; only the hashes, constants,
+and derived formula belong in the public evidence ledger.
+
 Furniture evidence already captured:
 
 ```text
