@@ -1,6 +1,7 @@
 param(
     [string]$MatrixPath = "catalog/fnv-goodsprings-retail-matrix.json",
-    [string]$PluginDll = "run/worktrees/xnvse-oracle/nvse_retail_oracle/build/nvse_retail_oracle.dll",
+    [string]$RuntimeRoot = "local/xnvse-retail-oracle",
+    [string]$PluginDll = "local/xnvse-retail-oracle/plugins/nvse_retail_oracle.dll",
     [string]$SaveFixture = "run/retail-oracle/checkpoints/NikamiOracleEasyPeteSeated.fos",
     [string]$RunId = ("fnv-goodsprings-appearance-" + (Get-Date -Format "yyyyMMdd-HHmmss")),
     [string]$OutputRoot = "run/retail-oracle",
@@ -9,12 +10,13 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 
 function Resolve-AbsolutePath([string]$Path) {
     if ([System.IO.Path]::IsPathRooted($Path)) {
         return [System.IO.Path]::GetFullPath($Path)
     }
-    return [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Path))
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Path))
 }
 
 $matrixFile = Resolve-AbsolutePath $MatrixPath
@@ -56,13 +58,16 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
     $jsonl = Join-Path $outputDirectory "$groupLabel.jsonl"
     $screens = Join-Path $outputDirectory "$groupLabel-screens"
     $forms = @($targets | ForEach-Object { [string]$_.reference.form })
+    $baseForms = @($targets | ForEach-Object { [string]$_.base.form })
     $enableParents = @($targets | ForEach-Object { [string]$_.authoredPlacement.enableParent } |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
     $runnerArguments = @{
+        RuntimeRoot = Resolve-AbsolutePath $RuntimeRoot
         PluginDll = Resolve-AbsolutePath $PluginDll
         OutputPath = $jsonl
         ScreenshotDirectory = $screens
         BatchTargetForm = $forms
+        BatchExpectedBaseForm = $baseForms
         BatchEnableParentForm = $enableParents
         BatchMoveToTargets = $true
         BatchSettleFrames = 90
@@ -87,6 +92,7 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
         cell = $group.Name
         targets = @($targets.id)
         output = $jsonl
+        runManifest = $run.runManifest
         screenshots = @($run.screenshots)
         proofCrops = @($run.portraitProofCrops)
     }) | Out-Null

@@ -23,8 +23,20 @@ Build the Win32 Release plugin:
   .\nvse_retail_oracle\nvse_retail_oracle.vcxproj /p:Configuration=Release /p:Platform=Win32 /m
 ```
 
-Use `scripts/Invoke-FNVRetailOracle.ps1` to install the DLL only for the bounded
-capture and restore the retail Data directory afterward. The current oracle
+Use `scripts/Invoke-FNVRetailOracle.ps1` with a repo-local isolated runtime
+containing `nvse_loader.exe`, `nvse_steam_loader.dll`, `nvse_1_4.dll`, and
+`plugins/nvse_retail_oracle.dll`. Its `oracle-runtime-manifest.json` must use
+schema `nikami-xnvse-isolated-runtime/v1`, match the xNVSE `replayedTree` in
+`catalog/oracle-overlay-lock.json`, and declare the SHA-256 of all four files.
+The runner copies the plugin only into a unique per-run directory and sets
+`NIKAMI_NVSE_PLUGIN_DIR`, `NIKAMI_NVSE_STEAM_LOADER`, and
+`NIKAMI_NVSE_CORE_DLL`; it never writes to retail `Data\NVSE\Plugins`. Root
+`d3d9.dll` and `dinput8.dll` isolation is enabled by default. Validate without
+launching with `-DryRun`. Passing captures are checked for exact runtime,
+save/load, reference/base, frame, batch-stage, and screenshot identity, then
+bound to an adjacent immutable `.manifest.json` containing SHA-256 provenance;
+run `scripts/Test-FNVRetailOracleEvidence.ps1` for the synthetic contract. The
+current oracle
 also records final local/world bone transforms, sequence controlled blocks,
 per-target blend arrays and priorities, cached interpolator channels, retail
 Foot IK status, `NiBSBoneLODController` state, camera distance, and the live
@@ -40,8 +52,9 @@ furniture completion, reusable save fixtures, and explicit scene-node parent
 names. Patch 0006 adds in-process retail screenshots and a portrait camera that
 resolves `Bip01 Head` recursively and follows its rendered face-forward axis;
 this avoids actor-root/profile framing errors during seated idles. The capture
-runner restores the pre-existing retail DLL, screenshots, temporary save
-fixtures, and process environment after each run. Raw BMP frames are retained
+runner removes its ephemeral plugin directory and restores root hook DLLs,
+screenshots, temporary save fixtures, and process environment after each run.
+Raw BMP frames are retained
 beside derived `-proof-crop.png` images; the crop never replaces source pixels.
 Patch 0007 records the effective runtime NPC race, sex, hair, eyes, HCLR bytes,
 head-part models, race face model/texture slots, and FaceGen channel shapes.

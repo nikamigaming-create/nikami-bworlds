@@ -1,6 +1,7 @@
 param(
     [string]$GameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
-    [string]$PluginDll = "external\xnvse\nvse_retail_oracle\build\nvse_retail_oracle.dll",
+    [string]$RuntimeRoot = "local\xnvse-retail-oracle",
+    [string]$PluginDll = "local\xnvse-retail-oracle\plugins\nvse_retail_oracle.dll",
     [string]$OutputPath = "run\retail-oracle\fnv-goodsprings-behavior.jsonl",
     [string]$SaveName = "Save 222     Goodsprings  00 01 36",
     [string]$SaveFixture = "",
@@ -17,6 +18,7 @@ param(
     [int]$TimeoutSeconds = 55,
     [int]$SampleEvery = 1,
     [string]$TargetForm = "0",
+    [string]$ExpectedTargetBaseForm = "0",
     [string]$ObserverApproachForm = "0",
     [float]$ObserverApproachStopDistance = 1400,
     [float]$ObserverApproachStepDistance = 64,
@@ -38,6 +40,9 @@ param(
     [switch]$BackgroundDataMode,
     [switch]$VisibleGame,
     [switch]$IsolateFromFNVXR,
+    [switch]$AllowRootHookDlls,
+    [Alias("ValidateOnly", "NoLaunch")]
+    [switch]$DryRun,
     [switch]$CaptureSession,
     [string]$SessionTargetForm = "0",
     [switch]$CaptureAnimation,
@@ -48,6 +53,7 @@ param(
     [float]$PortraitDistance = 110,
     [switch]$RequireAppearanceTelemetry,
     [string[]]$BatchTargetForm = @(),
+    [string[]]$BatchExpectedBaseForm = @(),
     [ValidateRange(1, 600)]
     [int]$BatchSettleFrames = 20,
     [ValidateRange(1, 60)]
@@ -59,12 +65,28 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$evidenceHelperPath = Join-Path $PSScriptRoot 'FNVRetailOracleEvidence.ps1'
+if (-not (Test-Path -LiteralPath $evidenceHelperPath -PathType Leaf)) {
+    throw "Missing retail-oracle evidence helper: $evidenceHelperPath"
+}
+. $evidenceHelperPath
 
 function Resolve-AbsolutePath([string]$Path) {
     if ([System.IO.Path]::IsPathRooted($Path)) {
         return [System.IO.Path]::GetFullPath($Path)
     }
-    return [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Path))
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Path))
+}
+
+function Test-PathWithinRoot([string]$Path, [string]$Root, [switch]$AllowRoot) {
+    $absolutePath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    $absoluteRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+    if ($absolutePath.Equals($absoluteRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [bool]$AllowRoot
+    }
+    $rootPrefix = $absoluteRoot + [System.IO.Path]::DirectorySeparatorChar
+    return $absolutePath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 function Remove-FileWithRetry([string]$Path, [int]$TimeoutMilliseconds = 5000) {
@@ -82,6 +104,45 @@ function Remove-FileWithRetry([string]$Path, [int]$TimeoutMilliseconds = 5000) {
     throw "Timed out removing file: $Path"
 }
 
+function Get-ManifestRuntimeFile(
+    [object]$Manifest,
+    [string]$Key,
+    [string]$ExpectedRelativePath,
+    [string]$RuntimeRootPath
+) {
+    if ($null -eq $Manifest.files -or
+        -not ($Manifest.files.PSObject.Properties.Name -contains $Key)) {
+        throw "Isolated xNVSE runtime manifest is missing files.$Key."
+    }
+    $entry = $Manifest.files.$Key
+    if ($null -eq $entry -or
+        -not ($entry.PSObject.Properties.Name -contains 'path') -or
+        -not ($entry.PSObject.Properties.Name -contains 'sha256')) {
+        throw "Isolated xNVSE runtime manifest files.$Key must declare path and sha256."
+    }
+    $declaredRelativePath = ([string]$entry.path).Replace('/', '\')
+    if (-not $declaredRelativePath.Equals(
+        $ExpectedRelativePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Isolated xNVSE runtime manifest files.$Key must use path '$ExpectedRelativePath'."
+    }
+    $absolutePath = [System.IO.Path]::GetFullPath((Join-Path $RuntimeRootPath $declaredRelativePath))
+    if (-not (Test-PathWithinRoot -Path $absolutePath -Root $RuntimeRootPath)) {
+        throw "Isolated xNVSE runtime file escapes RuntimeRoot: $absolutePath"
+    }
+    if (-not (Test-Path -LiteralPath $absolutePath -PathType Leaf)) {
+        throw "Missing isolated xNVSE runtime file: $absolutePath"
+    }
+    $declaredHash = ([string]$entry.sha256).ToLowerInvariant()
+    if ($declaredHash -notmatch '^[0-9a-f]{64}$') {
+        throw "Isolated xNVSE runtime manifest files.$Key has an invalid SHA-256."
+    }
+    $actualHash = (Get-FileHash -LiteralPath $absolutePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -ne $declaredHash) {
+        throw "Isolated xNVSE runtime hash mismatch for files.$Key ($absolutePath)."
+    }
+    return $absolutePath
+}
+
 if ($BeforeFrame -lt 1 -or $CommandFrame -le $BeforeFrame -or $AfterFrame -le $CommandFrame) {
     throw "Expected 0 < BeforeFrame < CommandFrame < AfterFrame."
 }
@@ -94,10 +155,12 @@ if ($TimeoutSeconds -lt 10 -or $TimeoutSeconds -gt 300) {
 if ($SampleEvery -lt 1) {
     throw "SampleEvery must be positive."
 }
-foreach ($form in @($TargetForm, $ObserverApproachForm, $EquipForm, $SessionTargetForm)) {
+foreach ($form in @($TargetForm, $ExpectedTargetBaseForm, $ObserverApproachForm, $EquipForm, $SessionTargetForm)) {
     if ($form -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$') {
         throw "Expected a decimal or 0x-prefixed FormID, got: $form"
     }
+    try { ConvertTo-FNVFormId $form | Out-Null }
+    catch { throw "Expected a 32-bit decimal or 0x-prefixed FormID, got: $form" }
 }
 if ($ObserverApproachStopDistance -lt 64) {
     throw "ObserverApproachStopDistance must be at least 64 world units."
@@ -153,9 +216,14 @@ foreach ($waypoint in @($ObserverWaypoint)) {
 if ($DriveCommand -match '[|\r\n]') {
     throw "Retail oracle drive command cannot contain pipe or newline characters: $DriveCommand"
 }
+$requestedScreenshotFrames = @($ScreenshotFrame)
 $ScreenshotFrame = @($ScreenshotFrame | Sort-Object -Unique)
-$BatchTargetForm = @($BatchTargetForm | Select-Object -Unique)
-$BatchEnableParentForm = @($BatchEnableParentForm | Select-Object -Unique)
+if ($ScreenshotFrame.Count -ne $requestedScreenshotFrames.Count) {
+    throw "ScreenshotFrame contains duplicate frame identities."
+}
+$BatchTargetForm = @($BatchTargetForm)
+$BatchExpectedBaseForm = @($BatchExpectedBaseForm)
+$BatchEnableParentForm = @($BatchEnableParentForm)
 foreach ($frame in $ScreenshotFrame) {
     if ($frame -lt 1 -or $frame -gt $MaxFrames) {
         throw "ScreenshotFrame must be between 1 and MaxFrames: $frame"
@@ -164,18 +232,57 @@ foreach ($frame in $ScreenshotFrame) {
 if ($PortraitCamera -and $TargetForm -match '^(0[xX]0+|0+)$') {
     throw "PortraitCamera requires a nonzero TargetForm."
 }
+if ($ExpectedTargetBaseForm -notmatch '^(0[xX]0+|0+)$' -and
+    $TargetForm -match '^(0[xX]0+|0+)$') {
+    throw "ExpectedTargetBaseForm requires a nonzero TargetForm."
+}
 foreach ($form in $BatchTargetForm) {
     if ($form -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$' -or $form -match '^(0[xX]0+|0+)$') {
         throw "BatchTargetForm requires nonzero decimal or 0x-prefixed FormIDs, got: $form"
     }
+    try { ConvertTo-FNVFormId $form | Out-Null }
+    catch { throw "BatchTargetForm requires 32-bit FormIDs, got: $form" }
+}
+$canonicalBatchTargets = @($BatchTargetForm | ForEach-Object { ConvertTo-FNVFormId $_ })
+if (@($canonicalBatchTargets | Select-Object -Unique).Count -ne $canonicalBatchTargets.Count) {
+    throw "BatchTargetForm contains duplicate target identities."
+}
+foreach ($form in $BatchExpectedBaseForm) {
+    if ($form -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$') {
+        throw "BatchExpectedBaseForm requires decimal or 0x-prefixed FormIDs, got: $form"
+    }
+    try { ConvertTo-FNVFormId $form | Out-Null }
+    catch { throw "BatchExpectedBaseForm requires 32-bit FormIDs, got: $form" }
+}
+if ($BatchExpectedBaseForm.Count -ne 0 -and
+    $BatchExpectedBaseForm.Count -ne $BatchTargetForm.Count) {
+    throw "BatchExpectedBaseForm count must be zero or equal BatchTargetForm count."
 }
 foreach ($form in $BatchEnableParentForm) {
     if ($form -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$' -or $form -match '^(0[xX]0+|0+)$') {
         throw "BatchEnableParentForm requires nonzero decimal or 0x-prefixed FormIDs, got: $form"
     }
+    try { ConvertTo-FNVFormId $form | Out-Null }
+    catch { throw "BatchEnableParentForm requires 32-bit FormIDs, got: $form" }
+}
+$canonicalParentForms = @($BatchEnableParentForm | ForEach-Object { ConvertTo-FNVFormId $_ })
+if (@($canonicalParentForms | Select-Object -Unique).Count -ne $canonicalParentForms.Count) {
+    throw "BatchEnableParentForm contains duplicate parent identities."
 }
 if ($BatchTargetForm.Count -gt 0 -and $ScreenshotFrame.Count -gt 0) {
     throw "BatchTargetForm owns its screenshot schedule; do not also pass ScreenshotFrame."
+}
+if ($BatchTargetForm.Count -gt 0 -and
+    ($TargetForm -notmatch '^(0[xX]0+|0+)$' -or $ExpectedTargetBaseForm -notmatch '^(0[xX]0+|0+)$')) {
+    throw "BatchTargetForm cannot be combined with single TargetForm/base identities."
+}
+if ($BatchTargetForm.Count -eq 0 -and
+    ($BatchMoveToTargets -or $BatchEnableTargets -or $BatchEnableParentForm.Count -gt 0)) {
+    throw "Batch movement, enablement, and parent identities require BatchTargetForm."
+}
+if ($RequireAppearanceTelemetry -and $BatchTargetForm.Count -eq 0 -and
+    $TargetForm -match '^(0[xX]0+|0+)$') {
+    throw "RequireAppearanceTelemetry requires TargetForm or BatchTargetForm."
 }
 $expectedScreenshotCount = $ScreenshotFrame.Count + $BatchTargetForm.Count
 if ($expectedScreenshotCount -gt 0 -and [string]::IsNullOrWhiteSpace($ScreenshotDirectory)) {
@@ -183,14 +290,73 @@ if ($expectedScreenshotCount -gt 0 -and [string]::IsNullOrWhiteSpace($Screenshot
 }
 
 $gameRootPath = Resolve-AbsolutePath $GameRoot
-$loader = Join-Path $gameRootPath "nvse_loader.exe"
-$gameExe = Join-Path $gameRootPath "FalloutNV.exe"
-$sourcePlugin = Resolve-AbsolutePath $PluginDll
+$runtimeRootPath = Resolve-AbsolutePath $RuntimeRoot
 $output = Resolve-AbsolutePath $OutputPath
-$pluginDirectory = Join-Path $gameRootPath "Data\NVSE\Plugins"
-$installedPlugin = Join-Path $pluginDirectory "nvse_retail_oracle.dll"
-$backupPlugin = "$installedPlugin.nikami-backup-$PID"
-$screenshotBackupDirectory = Join-Path $gameRootPath ".nikami-screenshot-backup-$PID"
+$runManifest = $output + '.manifest.json'
+if (-not (Test-Path -LiteralPath $runtimeRootPath -PathType Container)) {
+    throw "Missing repo-local isolated xNVSE RuntimeRoot: $runtimeRootPath"
+}
+if (-not (Test-PathWithinRoot -Path $runtimeRootPath -Root $repoRoot)) {
+    throw "RuntimeRoot must be a directory inside the nikami-worlds repository: $runtimeRootPath"
+}
+if (Test-PathWithinRoot -Path $gameRootPath -Root 'D:\code\fnvvr' -AllowRoot) {
+    throw "The flat retail oracle must not use the excluded fnvvr tree: $gameRootPath"
+}
+if ((Test-PathWithinRoot -Path $runtimeRootPath -Root $gameRootPath -AllowRoot) -or
+    (Test-PathWithinRoot -Path $gameRootPath -Root $runtimeRootPath -AllowRoot)) {
+    throw "RuntimeRoot and GameRoot must be disjoint."
+}
+
+$overlayLockPath = Join-Path $repoRoot 'catalog\oracle-overlay-lock.json'
+if (-not (Test-Path -LiteralPath $overlayLockPath -PathType Leaf)) {
+    throw "Missing oracle overlay lock: $overlayLockPath"
+}
+$overlayLock = Get-Content -LiteralPath $overlayLockPath -Raw | ConvertFrom-Json
+if ($null -eq $overlayLock.overlays -or $null -eq $overlayLock.overlays.xnvse -or
+    -not ($overlayLock.overlays.xnvse.PSObject.Properties.Name -contains 'replayedTree')) {
+    throw "Oracle overlay lock does not declare overlays.xnvse.replayedTree."
+}
+$expectedReplayedTree = ([string]$overlayLock.overlays.xnvse.replayedTree).ToLowerInvariant()
+if ($expectedReplayedTree -notmatch '^[0-9a-f]{40}$') {
+    throw "Oracle overlay lock contains an invalid xNVSE replayedTree."
+}
+
+$runtimeManifestPath = Join-Path $runtimeRootPath 'oracle-runtime-manifest.json'
+if (-not (Test-Path -LiteralPath $runtimeManifestPath -PathType Leaf)) {
+    throw "Missing isolated xNVSE runtime manifest: $runtimeManifestPath"
+}
+$runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json
+if ([string]$runtimeManifest.schema -ne 'nikami-xnvse-isolated-runtime/v1') {
+    throw "Unexpected isolated xNVSE runtime manifest schema: $($runtimeManifest.schema)"
+}
+if ($null -eq $runtimeManifest.overlay -or [string]$runtimeManifest.overlay.name -ne 'xnvse') {
+    throw "Isolated xNVSE runtime manifest must declare overlay.name=xnvse."
+}
+$runtimeReplayedTree = ([string]$runtimeManifest.overlay.replayedTree).ToLowerInvariant()
+if ($runtimeReplayedTree -ne $expectedReplayedTree) {
+    throw "Isolated xNVSE runtime replayedTree '$runtimeReplayedTree' does not match catalog lock '$expectedReplayedTree'."
+}
+
+$loader = Get-ManifestRuntimeFile -Manifest $runtimeManifest -Key 'loader' `
+    -ExpectedRelativePath 'nvse_loader.exe' -RuntimeRootPath $runtimeRootPath
+$steamLoader = Get-ManifestRuntimeFile -Manifest $runtimeManifest -Key 'steamLoader' `
+    -ExpectedRelativePath 'nvse_steam_loader.dll' -RuntimeRootPath $runtimeRootPath
+$coreDll = Get-ManifestRuntimeFile -Manifest $runtimeManifest -Key 'core' `
+    -ExpectedRelativePath 'nvse_1_4.dll' -RuntimeRootPath $runtimeRootPath
+$manifestPlugin = Get-ManifestRuntimeFile -Manifest $runtimeManifest -Key 'plugin' `
+    -ExpectedRelativePath 'plugins\nvse_retail_oracle.dll' -RuntimeRootPath $runtimeRootPath
+$sourcePlugin = Resolve-AbsolutePath $PluginDll
+if (-not $sourcePlugin.Equals($manifestPlugin, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "PluginDll must be the manifest-verified RuntimeRoot plugin: $manifestPlugin"
+}
+
+$gameExe = Join-Path $gameRootPath 'FalloutNV.exe'
+$runToken = "$PID-$([Guid]::NewGuid().ToString('N'))"
+$ephemeralRunRoot = Join-Path $runtimeRootPath ".runs\$runToken"
+$isolatedPluginDirectory = Join-Path $ephemeralRunRoot 'plugins'
+$installedPlugin = Join-Path $isolatedPluginDirectory 'nvse_retail_oracle.dll'
+$rootHookBackupDirectory = Join-Path $ephemeralRunRoot 'root-hooks'
+$screenshotBackupDirectory = Join-Path $gameRootPath ".nikami-screenshot-backup-$runToken"
 $screenshotOutputDirectory = if ([string]::IsNullOrWhiteSpace($ScreenshotDirectory)) {
     $null
 } else {
@@ -199,10 +365,24 @@ $screenshotOutputDirectory = if ([string]::IsNullOrWhiteSpace($ScreenshotDirecto
 $capturedScreenshots = @()
 $portraitProofCrops = @()
 $fixtureDestinations = @()
-$fnvxrBackups = @()
-$fnvxrBackupDirectory = Join-Path (Split-Path -Parent $output) ".fnvxr-isolation-$PID"
+$rootHookBackups = @()
 $resolvedSaveFixture = $null
 $fixtureSaveName = $null
+$legacyIsolationSpecified = $PSBoundParameters.ContainsKey('IsolateFromFNVXR')
+if ($AllowRootHookDlls -and $legacyIsolationSpecified -and [bool]$IsolateFromFNVXR) {
+    throw "AllowRootHookDlls conflicts with IsolateFromFNVXR."
+}
+$isolateRootHookDlls = if ($AllowRootHookDlls) {
+    $false
+} elseif ($legacyIsolationSpecified) {
+    [bool]$IsolateFromFNVXR
+} else {
+    $true
+}
+$rootHookCandidates = @(
+    (Join-Path $gameRootPath 'd3d9.dll'),
+    (Join-Path $gameRootPath 'dinput8.dll')
+)
 
 if (-not [string]::IsNullOrWhiteSpace($SaveFixture)) {
     $resolvedSaveFixture = Resolve-AbsolutePath $SaveFixture
@@ -225,22 +405,16 @@ if (-not [string]::IsNullOrWhiteSpace($SaveFixture)) {
     $SaveName = $fixtureSaveName
 }
 
-foreach ($required in @($loader, $gameExe, $sourcePlugin)) {
+foreach ($required in @($gameExe, $sourcePlugin)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Missing required retail-oracle file: $required"
     }
 }
-if (Get-Process -Name "FalloutNV" -ErrorAction SilentlyContinue) {
-    throw "FalloutNV is already running. Close it before starting an isolated oracle capture."
-}
-
-New-Item -ItemType Directory -Force -Path $pluginDirectory | Out-Null
-New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
-if (Test-Path -LiteralPath $output) {
-    Remove-Item -LiteralPath $output -Force
-}
 
 $environment = [ordered]@{
+    NIKAMI_NVSE_PLUGIN_DIR = $isolatedPluginDirectory
+    NIKAMI_NVSE_STEAM_LOADER = $steamLoader
+    NIKAMI_NVSE_CORE_DLL = $coreDll
     NIKAMI_ORACLE_OUTPUT = $output
     NIKAMI_ORACLE_SAMPLE_EVERY = [string]$SampleEvery
     NIKAMI_ORACLE_MAX_FRAMES = [string]$MaxFrames
@@ -288,27 +462,118 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_PORTRAIT_DISTANCE = [string]$PortraitDistance
     NIKAMI_ORACLE_EXIT_WHEN_DONE = "1"
 }
+$plannedRootHookMoves = if ($isolateRootHookDlls) {
+    @($rootHookCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+} else {
+    @()
+}
+$loaderArgumentList = @('-altdll', $coreDll)
+if ($DryRun) {
+    [pscustomobject][ordered]@{
+        schema = 'nikami-fnv-retail-oracle-validation/v1'
+        status = 'validated-no-launch'
+        overlayLock = $overlayLockPath
+        replayedTree = $expectedReplayedTree
+        runtimeRoot = $runtimeRootPath
+        runtimeManifest = $runtimeManifestPath
+        loader = $loader
+        steamLoader = $steamLoader
+        coreDll = $coreDll
+        pluginSource = $sourcePlugin
+        ephemeralRunRoot = $ephemeralRunRoot
+        isolatedPluginDirectory = $isolatedPluginDirectory
+        retailPluginDirectoryUsed = $false
+        rootHookIsolation = $isolateRootHookDlls
+        rootHookDlls = @($plannedRootHookMoves)
+        launch = [pscustomobject][ordered]@{
+            filePath = $loader
+            workingDirectory = $gameRootPath
+            argumentList = @($loaderArgumentList)
+            hidden = -not [bool]$VisibleGame
+        }
+        isolationEnvironment = [pscustomobject][ordered]@{
+            NIKAMI_NVSE_PLUGIN_DIR = $environment.NIKAMI_NVSE_PLUGIN_DIR
+            NIKAMI_NVSE_STEAM_LOADER = $environment.NIKAMI_NVSE_STEAM_LOADER
+            NIKAMI_NVSE_CORE_DLL = $environment.NIKAMI_NVSE_CORE_DLL
+        }
+        output = $output
+        runManifest = $runManifest
+        wouldOverwrite = [pscustomobject][ordered]@{
+            output = Test-Path -LiteralPath $output
+            runManifest = Test-Path -LiteralPath $runManifest
+        }
+        expectedTargetBaseForm = $ExpectedTargetBaseForm
+        batchExpectedBaseForms = @($BatchExpectedBaseForm)
+    }
+    return
+}
+
+if (Get-Process -Name 'FalloutNV' -ErrorAction SilentlyContinue) {
+    throw 'FalloutNV is already running. Close it before starting an isolated oracle capture.'
+}
+
+if (Test-Path -LiteralPath $output) {
+    throw "Refusing to overwrite existing retail-oracle output: $output"
+}
+if (Test-Path -LiteralPath $runManifest) {
+    throw "Refusing to overwrite existing retail-oracle run manifest: $runManifest"
+}
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
+
+$runtimeEvidence = @(
+    Get-FNVFileEvidence $overlayLockPath 'oracle-overlay-lock'
+    Get-FNVFileEvidence $runtimeManifestPath 'isolated-runtime-manifest'
+    Get-FNVFileEvidence $loader 'isolated-nvse-loader'
+    Get-FNVFileEvidence $steamLoader 'isolated-nvse-steam-loader'
+    Get-FNVFileEvidence $coreDll 'isolated-nvse-core'
+    Get-FNVFileEvidence $sourcePlugin 'retail-oracle-plugin'
+    Get-FNVFileEvidence $gameExe 'retail-game-executable'
+    Get-FNVFileEvidence $PSCommandPath 'retail-oracle-runner'
+    Get-FNVFileEvidence $evidenceHelperPath 'retail-oracle-evidence-helper'
+)
+$saveFixtureEvidence = @()
+if ($null -ne $resolvedSaveFixture) {
+    foreach ($extension in @('.fos', '.nvse')) {
+        $fixtureSource = [System.IO.Path]::ChangeExtension($resolvedSaveFixture, $extension)
+        if (Test-Path -LiteralPath $fixtureSource -PathType Leaf) {
+            $saveFixtureEvidence += Get-FNVFileEvidence $fixtureSource "save-fixture$extension"
+        }
+    }
+}
+$rootHookEvidence = @(
+    $rootHookCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object {
+        $kind = if ($isolateRootHookDlls) { 'isolated-root-hook' } else { 'allowed-root-hook' }
+        Get-FNVFileEvidence $_ $kind
+    }
+)
+
 $previousEnvironment = @{}
+$environmentNamesSet = New-Object System.Collections.Generic.List[string]
+$cleanupFailures = New-Object System.Collections.Generic.List[string]
 $gameProcess = $null
-$hadInstalledPlugin = Test-Path -LiteralPath $installedPlugin -PathType Leaf
+$launcherProcess = $null
+$runFailure = $null
+$preserveEphemeralRunRoot = $false
 
 try {
-    if ($IsolateFromFNVXR) {
-        if (Test-Path -LiteralPath $fnvxrBackupDirectory) {
-            throw "Refusing to overwrite stale FNVXR isolation directory: $fnvxrBackupDirectory"
-        }
-        New-Item -ItemType Directory -Path $fnvxrBackupDirectory | Out-Null
-        $fnvxrCandidates = @(
-            (Join-Path $gameRootPath 'd3d9.dll'),
-            (Join-Path $gameRootPath 'dinput8.dll'),
-            (Join-Path $pluginDirectory 'nvse_fnvxr.dll')
-        )
-        foreach ($candidate in $fnvxrCandidates) {
-            if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
-            $backupName = (($candidate.Substring($gameRootPath.Length).TrimStart('\', '/') -replace '[\\/]', '__'))
-            $backupPath = Join-Path $fnvxrBackupDirectory $backupName
+    if (Test-Path -LiteralPath $ephemeralRunRoot) {
+        throw "Refusing to reuse an isolated xNVSE run directory: $ephemeralRunRoot"
+    }
+    New-Item -ItemType Directory -Path $isolatedPluginDirectory -Force | Out-Null
+    Copy-Item -LiteralPath $sourcePlugin -Destination $installedPlugin
+    $pluginEntries = @(Get-ChildItem -LiteralPath $isolatedPluginDirectory -Force)
+    if ($pluginEntries.Count -ne 1 -or $pluginEntries[0].PSIsContainer -or
+        -not $pluginEntries[0].FullName.Equals($installedPlugin, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Ephemeral xNVSE plugin directory must contain only nvse_retail_oracle.dll: $isolatedPluginDirectory"
+    }
+
+    if ($isolateRootHookDlls -and $plannedRootHookMoves.Count -gt 0) {
+        New-Item -ItemType Directory -Path $rootHookBackupDirectory | Out-Null
+        foreach ($candidate in $plannedRootHookMoves) {
+            $backupPath = Join-Path $rootHookBackupDirectory ([System.IO.Path]::GetFileName($candidate))
+            $entry = [pscustomobject]@{ Original = $candidate; Backup = $backupPath }
+            $rootHookBackups += $entry
             Move-Item -LiteralPath $candidate -Destination $backupPath
-            $fnvxrBackups += [pscustomobject]@{ Original = $candidate; Backup = $backupPath }
         }
     }
     if ($expectedScreenshotCount -gt 0) {
@@ -327,23 +592,18 @@ try {
     foreach ($fixture in $fixtureDestinations) {
         Copy-Item -LiteralPath $fixture.Source -Destination $fixture.Destination
     }
-    if ($hadInstalledPlugin) {
-        if (Test-Path -LiteralPath $backupPlugin) {
-            throw "Refusing to overwrite stale oracle backup: $backupPlugin"
-        }
-        Move-Item -LiteralPath $installedPlugin -Destination $backupPlugin
-    }
-    Copy-Item -LiteralPath $sourcePlugin -Destination $installedPlugin
 
     foreach ($name in $environment.Keys) {
-        $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
-        [Environment]::SetEnvironmentVariable($name, $environment[$name], "Process")
+        $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        [Environment]::SetEnvironmentVariable($name, $environment[$name], 'Process')
+        $environmentNamesSet.Add($name) | Out-Null
     }
 
     $startedAt = Get-Date
     $launchArguments = @{
         FilePath = $loader
         WorkingDirectory = $gameRootPath
+        ArgumentList = @('-altdll', ('"{0}"' -f $coreDll))
         PassThru = $true
     }
     if (-not $VisibleGame) {
@@ -352,7 +612,7 @@ try {
     $launcherProcess = Start-Process @launchArguments
     $launchDeadline = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $launchDeadline -and $null -eq $gameProcess) {
-        $gameProcess = Get-Process -Name "FalloutNV" -ErrorAction SilentlyContinue |
+        $gameProcess = Get-Process -Name 'FalloutNV' -ErrorAction SilentlyContinue |
             Where-Object { $_.StartTime -ge $startedAt.AddSeconds(-2) } |
             Select-Object -First 1
         if ($null -eq $gameProcess) {
@@ -360,45 +620,13 @@ try {
         }
     }
     if ($null -eq $gameProcess) {
-        throw "nvse_loader did not start FalloutNV within 20 seconds (loader PID $($launcherProcess.Id))."
-    }
-
-    if ($BackgroundDataMode) {
-        if (-not ('Nikami.NativeWindow' -as [type])) {
-            Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-namespace Nikami {
-    public static class NativeWindow {
-        [DllImport("user32.dll")]
-        public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
-        public static void MinimizeBackground(IntPtr hWnd) {
-            ShowWindowAsync(hWnd, 6);
-        }
-    }
-}
-'@
-        }
-        $windowDeadline = (Get-Date).AddSeconds(15)
-        do {
-            $gameProcess.Refresh()
-            if ($gameProcess.MainWindowHandle -ne [IntPtr]::Zero) {
-                [Nikami.NativeWindow]::MinimizeBackground($gameProcess.MainWindowHandle)
-                break
-            }
-            Start-Sleep -Milliseconds 100
-        } while ((Get-Date) -lt $windowDeadline -and -not $gameProcess.HasExited)
+        throw "Isolated nvse_loader did not start FalloutNV within 20 seconds (loader PID $($launcherProcess.Id))."
     }
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while (-not $gameProcess.HasExited -and (Get-Date) -lt $deadline) {
         $gameProcess.WaitForExit(250) | Out-Null
         $gameProcess.Refresh()
-        if ($BackgroundDataMode -and -not $gameProcess.HasExited -and
-            $null -ne $gameProcess.MainWindowHandle -and
-            $gameProcess.MainWindowHandle -ne [IntPtr]::Zero) {
-            [Nikami.NativeWindow]::MinimizeBackground($gameProcess.MainWindowHandle)
-        }
     }
     if (-not $gameProcess.HasExited) {
         Stop-Process -Id $gameProcess.Id -Force
@@ -411,57 +639,102 @@ namespace Nikami {
         throw "FalloutNV oracle process exited with code $exitCode."
     }
 }
+catch {
+    $runFailure = $_
+}
 finally {
-    if ($null -ne $gameProcess -and -not $gameProcess.HasExited) {
-        Stop-Process -Id $gameProcess.Id -Force -ErrorAction SilentlyContinue
+    try {
+        if ($null -ne $gameProcess -and -not $gameProcess.HasExited) {
+            Stop-Process -Id $gameProcess.Id -Force -ErrorAction Stop
+            $gameProcess.WaitForExit()
+        }
+    } catch { $cleanupFailures.Add("Failed to stop FalloutNV: $($_.Exception.Message)") | Out-Null }
+    try {
+        if ($null -ne $launcherProcess -and -not $launcherProcess.HasExited) {
+            Stop-Process -Id $launcherProcess.Id -Force -ErrorAction Stop
+        }
+    } catch { $cleanupFailures.Add("Failed to stop isolated nvse_loader: $($_.Exception.Message)") | Out-Null }
+
+    foreach ($name in $environmentNamesSet) {
+        try {
+            [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+        } catch { $cleanupFailures.Add("Failed to restore process environment ${name}: $($_.Exception.Message)") | Out-Null }
     }
-    foreach ($name in $environment.Keys) {
-        [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], "Process")
-    }
-    if (Test-Path -LiteralPath $installedPlugin) {
-        Remove-FileWithRetry -Path $installedPlugin
-    }
-    if ($hadInstalledPlugin -and (Test-Path -LiteralPath $backupPlugin)) {
-        Move-Item -LiteralPath $backupPlugin -Destination $installedPlugin
-    }
-    foreach ($entry in $fnvxrBackups) {
+
+    foreach ($entry in $rootHookBackups) {
+        if (-not (Test-Path -LiteralPath $entry.Backup -PathType Leaf)) { continue }
         if (Test-Path -LiteralPath $entry.Original) {
-            throw "Refusing to overwrite an FNVXR file while restoring retail isolation: $($entry.Original)"
+            $preserveEphemeralRunRoot = $true
+            $cleanupFailures.Add("Refusing to overwrite root hook DLL while restoring $($entry.Original); backup retained at $($entry.Backup).") | Out-Null
+            continue
         }
-        if (Test-Path -LiteralPath $entry.Backup) {
+        try {
             Move-Item -LiteralPath $entry.Backup -Destination $entry.Original
+        } catch {
+            $preserveEphemeralRunRoot = $true
+            $cleanupFailures.Add("Failed to restore root hook DLL $($entry.Original): $($_.Exception.Message)") | Out-Null
         }
     }
-    if (Test-Path -LiteralPath $fnvxrBackupDirectory) {
-        Remove-Item -LiteralPath $fnvxrBackupDirectory -Force
-    }
+
     foreach ($fixture in $fixtureDestinations) {
-        if (Test-Path -LiteralPath $fixture.Destination) {
-            Remove-FileWithRetry -Path $fixture.Destination
-        }
+        if (-not (Test-Path -LiteralPath $fixture.Destination)) { continue }
+        try { Remove-FileWithRetry -Path $fixture.Destination }
+        catch { $cleanupFailures.Add("Failed to remove save fixture $($fixture.Destination): $($_.Exception.Message)") | Out-Null }
     }
+
     if ($expectedScreenshotCount -gt 0) {
-        $newScreenshots = @(Get-ChildItem -LiteralPath $gameRootPath -Filter 'ScreenShot*.bmp' -File |
-            Sort-Object LastWriteTime, Name)
-        for ($index = 0; $index -lt $newScreenshots.Count; $index++) {
-            $frameLabel = if ($index -lt $ScreenshotFrame.Count) {
-                '{0:D6}' -f $ScreenshotFrame[$index]
-            } elseif (($index - $ScreenshotFrame.Count) -lt $BatchTargetForm.Count) {
-                'target-' + (($BatchTargetForm[$index - $ScreenshotFrame.Count] -replace '^0[xX]', '').ToLowerInvariant())
-            } else {
-                'extra-{0:D3}' -f ($index - $expectedScreenshotCount + 1)
+        try {
+            $newScreenshots = @(Get-ChildItem -LiteralPath $gameRootPath -Filter 'ScreenShot*.bmp' -File |
+                Sort-Object @{
+                    Expression = {
+                        if ($_.BaseName -match '^ScreenShot([0-9]+)$') { [int64]$Matches[1] }
+                        else { [int64]::MaxValue }
+                    }
+                }, Name)
+            for ($index = 0; $index -lt $newScreenshots.Count; $index++) {
+                $frameLabel = if ($index -lt $ScreenshotFrame.Count) {
+                    '{0:D6}' -f $ScreenshotFrame[$index]
+                } elseif (($index - $ScreenshotFrame.Count) -lt $BatchTargetForm.Count) {
+                    'target-' + ((Format-FNVFormId $BatchTargetForm[$index - $ScreenshotFrame.Count]) `
+                        -replace '^0[xX]', '').ToLowerInvariant()
+                } else {
+                    'extra-{0:D3}' -f ($index - $expectedScreenshotCount + 1)
+                }
+                $capturePath = Join-Path $screenshotOutputDirectory "frame-$frameLabel.bmp"
+                Move-Item -LiteralPath $newScreenshots[$index].FullName -Destination $capturePath
+                $capturedScreenshots += $capturePath
             }
-            $capturePath = Join-Path $screenshotOutputDirectory "frame-$frameLabel.bmp"
-            Move-Item -LiteralPath $newScreenshots[$index].FullName -Destination $capturePath
-            $capturedScreenshots += $capturePath
-        }
+        } catch { $cleanupFailures.Add("Failed to collect retail screenshots: $($_.Exception.Message)") | Out-Null }
         if (Test-Path -LiteralPath $screenshotBackupDirectory) {
-            foreach ($originalScreenshot in @(Get-ChildItem -LiteralPath $screenshotBackupDirectory -File)) {
-                Move-Item -LiteralPath $originalScreenshot.FullName -Destination $gameRootPath
-            }
-            Remove-Item -LiteralPath $screenshotBackupDirectory -Force
+            try {
+                foreach ($originalScreenshot in @(Get-ChildItem -LiteralPath $screenshotBackupDirectory -File)) {
+                    $restorePath = Join-Path $gameRootPath $originalScreenshot.Name
+                    if (Test-Path -LiteralPath $restorePath) {
+                        throw "Refusing to overwrite screenshot while restoring: $restorePath"
+                    }
+                    Move-Item -LiteralPath $originalScreenshot.FullName -Destination $restorePath
+                }
+                Remove-Item -LiteralPath $screenshotBackupDirectory -Force
+            } catch { $cleanupFailures.Add("Failed to restore pre-existing screenshots: $($_.Exception.Message)") | Out-Null }
         }
     }
+
+    if (-not $preserveEphemeralRunRoot -and (Test-Path -LiteralPath $ephemeralRunRoot)) {
+        try {
+            if (-not (Test-PathWithinRoot -Path $ephemeralRunRoot -Root $runtimeRootPath)) {
+                throw "Ephemeral run directory escaped RuntimeRoot: $ephemeralRunRoot"
+            }
+            Remove-Item -LiteralPath $ephemeralRunRoot -Recurse -Force
+        } catch { $cleanupFailures.Add("Failed to remove ephemeral xNVSE run directory: $($_.Exception.Message)") | Out-Null }
+    }
+}
+
+if ($cleanupFailures.Count -gt 0) {
+    $failurePrefix = if ($null -ne $runFailure) { "$($runFailure.Exception.Message) " } else { '' }
+    throw ($failurePrefix + 'Cleanup failure(s): ' + ($cleanupFailures -join ' | '))
+}
+if ($null -ne $runFailure) {
+    throw $runFailure
 }
 
 if (-not (Test-Path -LiteralPath $output -PathType Leaf)) {
@@ -469,26 +742,33 @@ if (-not (Test-Path -LiteralPath $output -PathType Leaf)) {
 }
 
 $events = @(Get-Content -LiteralPath $output | ForEach-Object { $_ | ConvertFrom-Json })
-$faults = @($events | Where-Object { $_.event -match 'fault' })
+$eventValidation = Assert-FNVRetailOracleEvidence `
+    -Events $events `
+    -SaveName $SaveName `
+    -TargetForm $TargetForm `
+    -ExpectedTargetBaseForm $ExpectedTargetBaseForm `
+    -BatchTargetForm $BatchTargetForm `
+    -BatchExpectedBaseForm $BatchExpectedBaseForm `
+    -ScreenshotFrame $ScreenshotFrame `
+    -BeforeFrame $BeforeFrame `
+    -CommandFrame $CommandFrame `
+    -AfterFrame $AfterFrame `
+    -MaxFrames $MaxFrames `
+    -BatchSettleFrames $BatchSettleFrames `
+    -BatchAdvanceFrames $BatchAdvanceFrames `
+    -BatchMoveToTargets ([bool]$BatchMoveToTargets) `
+    -BatchEnableTargets ([bool]$BatchEnableTargets) `
+    -BatchEnableParentForm $BatchEnableParentForm `
+    -PortraitCamera ([bool]$PortraitCamera) `
+    -RequireAppearanceTelemetry ([bool]$RequireAppearanceTelemetry) `
+    -BackgroundDataMode ([bool]$BackgroundDataMode)
+
 $snapshots = @($events | Where-Object { $_.event -eq "behavior-snapshot" })
-$complete = @($events | Where-Object { $_.event -eq "capture-complete" })
-if ($faults.Count -gt 0) {
-    throw "Retail oracle reported $($faults.Count) capture fault(s)."
-}
-if (@($snapshots | Where-Object { $_.label -eq "before" }).Count -ne 1 -or
-    @($snapshots | Where-Object { $_.label -eq "after" }).Count -ne 1) {
-    throw "Retail oracle did not produce exactly one before and one after behavior snapshot."
-}
-if ($complete.Count -ne 1) {
-    throw "Retail oracle did not report capture completion."
-}
-$screenshotRequests = @($events | Where-Object {
-    $_.event -in @("screenshot-request", "batch-screenshot-request") -and $_.accepted
-})
-if ($expectedScreenshotCount -gt 0 -and
-    ($screenshotRequests.Count -ne $expectedScreenshotCount -or $capturedScreenshots.Count -ne $expectedScreenshotCount)) {
-    throw "Expected $expectedScreenshotCount accepted screenshot(s), got $($screenshotRequests.Count) request(s) and $($capturedScreenshots.Count) file(s)."
-}
+$appearanceEvents = @($events | Where-Object { $_.event -in @("npc-appearance", "target-appearance") })
+$expectedScreenshotNames = @(Get-FNVExpectedScreenshotNames `
+    -Frame $ScreenshotFrame -BatchTargetForm $BatchTargetForm)
+$screenshotEvidence = @(Assert-FNVRetailScreenshotFiles `
+    -Path $capturedScreenshots -ExpectedName $expectedScreenshotNames)
 $expectedPortraitEvents = if ($BatchTargetForm.Count -gt 0) { $BatchTargetForm.Count } elseif ($PortraitCamera) { 1 } else { 0 }
 if ($expectedPortraitEvents -gt 0) {
     $portraitEvents = @($events | Where-Object { $_.event -eq "portrait-camera-set" })
@@ -536,16 +816,92 @@ if ($expectedPortraitEvents -gt 0) {
         }
     }
 }
-$appearanceEvents = @($events | Where-Object { $_.event -in @("npc-appearance", "target-appearance") })
-$expectedAppearanceEvents = if ($BatchTargetForm.Count -gt 0) { $BatchTargetForm.Count } else { 1 }
-if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne $expectedAppearanceEvents) {
-    throw "Expected $expectedAppearanceEvents target appearance event(s), got $($appearanceEvents.Count)."
+
+foreach ($preLaunchEvidence in @($runtimeEvidence) + @($saveFixtureEvidence) + @($rootHookEvidence)) {
+    $currentEvidence = Get-FNVFileEvidence $preLaunchEvidence.path $preLaunchEvidence.kind
+    if ($currentEvidence.bytes -ne $preLaunchEvidence.bytes -or
+        $currentEvidence.sha256 -ne $preLaunchEvidence.sha256) {
+        throw "Provenance artifact changed during retail capture: $($preLaunchEvidence.path)"
+    }
 }
+$captureEvidence = Get-FNVFileEvidence $output 'oracle-jsonl'
+$proofCropEvidence = @($portraitProofCrops | ForEach-Object {
+    Get-FNVFileEvidence $_ 'portrait-proof-crop'
+})
+$eventCounts = @($events | Group-Object event | Sort-Object Name | ForEach-Object {
+    [pscustomobject][ordered]@{ event = $_.Name; count = $_.Count }
+})
+$finishedAt = Get-Date
+$manifestDocument = [ordered]@{
+    schema = 'nikami-fnv-retail-oracle-run-manifest/v1'
+    status = 'passed'
+    generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    run = [ordered]@{
+        save = $SaveName
+        saveFixture = $resolvedSaveFixture
+        startedAtUtc = $startedAt.ToUniversalTime().ToString('o')
+        finishedAtUtc = $finishedAt.ToUniversalTime().ToString('o')
+        gameExitCode = $exitCode
+        gameRoot = $gameRootPath
+        loader = $loader
+        loaderArguments = @($loaderArgumentList)
+        workingDirectory = $gameRootPath
+        hidden = -not [bool]$VisibleGame
+    }
+    isolation = [ordered]@{
+        runtimeRoot = $runtimeRootPath
+        ephemeralRunRoot = $ephemeralRunRoot
+        isolatedPluginDirectory = $isolatedPluginDirectory
+        retailPluginDirectoryUsed = $false
+        rootHookIsolation = $isolateRootHookDlls
+        rootHookDlls = @($rootHookEvidence)
+        environment = [pscustomobject]$environment
+    }
+    expectedIdentity = [ordered]@{
+        eventSchema = 'nikami-retail-oracle/v4'
+        runtime = 'FalloutNV-1.4.0.525'
+        targetForm = Format-FNVFormId $TargetForm
+        targetBaseForm = Format-FNVFormId $ExpectedTargetBaseForm
+        batchTargetForms = @($BatchTargetForm | ForEach-Object { Format-FNVFormId $_ })
+        batchBaseForms = @($BatchExpectedBaseForm | ForEach-Object { Format-FNVFormId $_ })
+        batchEnableParentForms = @($BatchEnableParentForm | ForEach-Object { Format-FNVFormId $_ })
+        screenshotFiles = @($expectedScreenshotNames)
+        beforeFrame = $BeforeFrame
+        commandFrame = $CommandFrame
+        afterFrame = $AfterFrame
+        maxFrames = $MaxFrames
+        batchSettleFrames = $BatchSettleFrames
+        batchAdvanceFrames = $BatchAdvanceFrames
+    }
+    overlay = [ordered]@{
+        upstream = [string]$overlayLock.overlays.xnvse.upstream
+        baseCommit = [string]$overlayLock.overlays.xnvse.baseCommit
+        series = [string]$overlayLock.overlays.xnvse.series
+        patchCount = [int]$overlayLock.overlays.xnvse.patchCount
+        replayedTree = $expectedReplayedTree
+    }
+    provenance = [ordered]@{
+        runtime = @($runtimeEvidence)
+        saveFixture = @($saveFixtureEvidence)
+    }
+    evidence = [ordered]@{
+        capture = $captureEvidence
+        screenshots = @($screenshotEvidence)
+        portraitProofCrops = @($proofCropEvidence)
+        eventCounts = @($eventCounts)
+    }
+    validation = $eventValidation
+}
+$writtenRunManifest = Write-FNVImmutableJsonManifest $runManifest $manifestDocument
+$runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manifest'
 
 [pscustomobject][ordered]@{
-    schema = "nikami-fnv-retail-oracle-run/v1"
+    schema = "nikami-fnv-retail-oracle-run/v2"
     output = $output
     bytes = (Get-Item -LiteralPath $output).Length
+    runManifest = $writtenRunManifest
+    runManifestSha256 = $runManifestEvidence.sha256
+    validation = $eventValidation
     save = $SaveName
     saveFixture = $resolvedSaveFixture
     quests = @($QuestForm)
@@ -558,9 +914,16 @@ if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne $expectedAppear
     furnitureReleaseSamples = $FurnitureReleaseSamples
     backgroundDataMode = [bool]$BackgroundDataMode
     visibleGame = [bool]$VisibleGame
-    isolatedFromFNVXR = [bool]$IsolateFromFNVXR
+    runtimeRoot = $runtimeRootPath
+    runtimeManifest = $runtimeManifestPath
+    replayedTree = $expectedReplayedTree
+    isolatedPluginDirectory = $isolatedPluginDirectory
+    retailPluginDirectoryUsed = $false
+    isolatedFromFNVXR = $isolateRootHookDlls
+    allowedRootHookDlls = -not $isolateRootHookDlls
     screenshotFrames = @($ScreenshotFrame)
     batchTargetForms = @($BatchTargetForm)
+    batchExpectedBaseForms = @($BatchExpectedBaseForm)
     batchSettleFrames = $BatchSettleFrames
     batchAdvanceFrames = $BatchAdvanceFrames
     batchMoveToTargets = [bool]$BatchMoveToTargets
@@ -579,6 +942,7 @@ if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne $expectedAppear
     furnitureOnly = [bool]$FurnitureOnly
     sampleEvery = $SampleEvery
     targetForm = $TargetForm
+    expectedTargetBaseForm = $ExpectedTargetBaseForm
     observerApproachForm = $ObserverApproachForm
     observerApproachStopDistance = $ObserverApproachStopDistance
     observerApproachStepDistance = $ObserverApproachStepDistance
@@ -593,5 +957,5 @@ if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne $expectedAppear
     footIkToggleEnabled = $FootIkToggleEnabled
     before = @($snapshots | Where-Object { $_.label -eq "before" } | Select-Object -First 1)
     after = @($snapshots | Where-Object { $_.label -eq "after" } | Select-Object -First 1)
-    status = "captured"
+    status = "captured-validated"
 }

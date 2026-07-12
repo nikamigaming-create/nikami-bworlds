@@ -1,5 +1,6 @@
 param(
-    [string]$PluginDll = "run\worktrees\xnvse-oracle\nvse_retail_oracle\build\nvse_retail_oracle.dll",
+    [string]$RuntimeRoot = "local\xnvse-retail-oracle",
+    [string]$PluginDll = "local\xnvse-retail-oracle\plugins\nvse_retail_oracle.dll",
     [string]$OutputPath = "run\retail-oracle\fnv-easy-pete-furniture-lifecycle.jsonl",
     [int]$TimeoutSeconds = 110,
     [switch]$VisibleGame
@@ -11,10 +12,12 @@ $ErrorActionPreference = "Stop"
 $runner = Join-Path $PSScriptRoot "Invoke-FNVRetailOracle.ps1"
 try {
     & $runner `
+        -RuntimeRoot $RuntimeRoot `
         -PluginDll $PluginDll `
         -OutputPath $OutputPath `
         -SaveName "Save 222     Goodsprings  00 01 36" `
         -TargetForm "0x00104C80" `
+        -ExpectedTargetBaseForm "0x00104C7F" `
         -ObserverApproachForm "0x0010634A" `
         -ObserverApproachStopDistance 1400 `
         -ObserverApproachStepDistance 64 `
@@ -28,6 +31,7 @@ try {
         -MaxFrames 4000 `
         -TimeoutSeconds $TimeoutSeconds `
         -SampleEvery 10 `
+        -RequireAppearanceTelemetry `
         -FurnitureOnly `
         -BackgroundDataMode `
         -VisibleGame:$VisibleGame
