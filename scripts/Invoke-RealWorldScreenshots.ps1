@@ -1450,7 +1450,7 @@ foreach ($id in $WorldId) {
         Write-Host "Capture: OpenMW native screenshot action (F12)."
     }
     if ($BackgroundWindow) {
-        Write-Host "Presentation: launch minimized and do not request foreground focus."
+        Write-Host "Presentation: launch hidden and do not request foreground focus."
     }
     $presentationPolicy = Resolve-CatalogPresentationPolicy -StartsCatalog $startsCatalog -Spec $catalogStartSpec -World $world -ShowGuiOverride ([bool]$ShowGui)
 
@@ -1569,6 +1569,10 @@ foreach ($id in $WorldId) {
 
     $process = $null
     $processStartedAt = $null
+    $knownNativeScreenshots = @{}
+    Get-NativeScreenshotFiles -Directory $nativeScreensDir | ForEach-Object {
+        $knownNativeScreenshots[$_.FullName] = $true
+    }
     try {
         $processStartedAt = Get-Date
         $startParameters = @{
@@ -1578,7 +1582,10 @@ foreach ($id in $WorldId) {
             PassThru = $true
         }
         if ($BackgroundWindow) {
-            $startParameters.WindowStyle = "Minimized"
+            # A minimized OpenGL surface can yield valid PNG files containing
+            # only black pixels. Hidden windows continue rendering native
+            # engine screenshots without foreground focus or OS input.
+            $startParameters.WindowStyle = "Hidden"
         }
         $process = Start-Process @startParameters
         $manifest.status = "started"
@@ -1586,24 +1593,26 @@ foreach ($id in $WorldId) {
         Write-Host "Started PID $($process.Id)."
 
         $window = Wait-ForMainWindow -Process $process -TimeoutSeconds ([Math]::Min(20, [Math]::Max(3, $effectiveRunSeconds)))
-        if ($window -eq [IntPtr]::Zero) {
+        if ($window -eq [IntPtr]::Zero -and (-not $BackgroundWindow -or $process.HasExited)) {
             $manifest.status = if ($process.HasExited) { "exited-before-window" } else { "no-window" }
         }
         else {
-            if ($manifest.windowFocus.required) {
+            if ($window -eq [IntPtr]::Zero) {
+                Write-Host "Hidden render surface has no discoverable window handle; native scheduled capture will continue without focus."
+            }
+            elseif ($manifest.windowFocus.required) {
                 Focus-GameWindow -Process $process -Window $window
                 $manifest.windowFocus.used = $true
             }
             else {
                 Write-Host "Leaving the game window in the background; scheduled native capture needs no input focus."
             }
-            $knownNativeScreenshots = @{}
-            Get-NativeScreenshotFiles -Directory $nativeScreensDir | ForEach-Object {
-                $knownNativeScreenshots[$_.FullName] = $true
-            }
             $startedAt = Get-Date
 
             if ($effectiveInputEvents.Count -gt 0) {
+                if ($window -eq [IntPtr]::Zero) {
+                    throw "Hidden background capture cannot apply input events without a window handle."
+                }
                 Write-Host "Applying real input events: $($effectiveInputEvents -join ', ')"
                 Invoke-GameInputEvents -Process $process -Window $window -Events $effectiveInputEvents
             }
@@ -1621,7 +1630,7 @@ foreach ($id in $WorldId) {
                     break
                 }
 
-                $requestedAt = if ($engineScreenshotEnabled) { $startedAt } else { Get-Date }
+                $requestedAt = if ($engineScreenshotEnabled) { $processStartedAt } else { Get-Date }
                 $captureAttempt = [ordered]@{
                     captureSecond = [int]$captureSecond
                     requestedAt = $requestedAt.ToString("o")
@@ -1636,6 +1645,9 @@ foreach ($id in $WorldId) {
                     message = $null
                 }
                 if (-not $engineScreenshotEnabled) {
+                    if ($window -eq [IntPtr]::Zero) {
+                        throw "Hidden background capture requires scheduled native engine screenshots."
+                    }
                     Invoke-NativeScreenshotAction -Process $process -Window $window
                 }
                 $expectedScreenshotsForAttempt = 1

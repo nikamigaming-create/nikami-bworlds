@@ -37,6 +37,15 @@ if ($failures.Count -eq 0) {
         }
     }
 
+    foreach ($fragment in @('WindowStyle = "Hidden"', '$requestedAt = if ($engineScreenshotEnabled) { $processStartedAt }')) {
+        if (-not $harnessSource.Contains($fragment)) {
+            $failures.Add("Screenshot harness is missing hidden native-capture behavior: $fragment")
+        }
+    }
+    if ($harnessSource.Contains('WindowStyle = "Minimized"')) {
+        $failures.Add("Screenshot harness must not minimize the OpenGL render surface during background capture.")
+    }
+
     if ($contract.schemaVersion -ne 1) {
         $failures.Add("Unexpected proof harness UI schema version: $($contract.schemaVersion)")
     }
