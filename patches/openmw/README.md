@@ -16,9 +16,12 @@ Copy-Item config/paths.example.json local/paths.json
 .\scripts\Apply-OpenMWPatches.ps1
 ```
 
-Patch files listed in `series` are applied in order. Patch 0001 is the world
-viewer snapshot exported from downstream commit `01f8b0935f` against OpenMW VR
-base `c30c830d8e`. Patch 0002 is the focused FO3/FNV actor animation,
+Patch files listed in `series` are applied in order from locked lab base
+`9acf88c34b`. A clean cumulative replay of patches 0001-0023 produces tree
+`82b7b3083932ccef1b6b401187bd56de1d1c06ed`, exactly matching lab checkpoint
+`a77bf86556`; run `scripts/Test-OpenMWOverlayReplay.ps1` to repeat that proof in
+a disposable worktree. Patch 0001 is the world viewer snapshot exported from
+downstream commit `01f8b0935f`. Patch 0002 is the focused FO3/FNV actor animation,
 attachment, FormID-script, and weapon-selector correction exported from commit
 `d6c36c6b7e`. Patch 0003 is the bounded behavior-record, quest-condition,
 global, VM-command, and save-state foundation exported from downstream commit
@@ -119,12 +122,50 @@ textures, speed rows, color rows, opacity, and weather transitions. It is
 exported from downstream commit `81bf5e768a` and retains the explicit limitation
 that Bethesda sky/weather parity requires world-specific native visual review.
 Patch 0019 is the exact compile-ready seven-world safety checkpoint exported
-from downstream commit `debec4d9f2`. It preserves the current ESM4 record,
+from downstream commit `8a1ad31b2b`. It preserves the current ESM4 record,
 interaction, movement/camera, actor assembly, material/mesh, weather/sky,
 background capture, and VR hand/pointer work together with the Starfield
 external mesh and face-bone path. It is intentionally a broad recovery patch
 that will be split into subsystem topics after clean replay; it does not claim
 that every world has reached retail visual or gameplay parity.
+Patch 0020 restores the supported non-VR component boundary by supplying the
+flat null backend needed by app-side VR abstractions while omitting the OpenXR
+runtime loader and VR executable. It is the exact export of lab commit
+`08c0109664`. Patch
+0022 completes its independently reproducible header dependency; evaluate the
+flat build boundary with both patches applied. This is a build-boundary fix,
+not a flat-gameplay parity claim.
+Patch 0021 discovers both ESM3 and ESM4 teleport doors during exterior cell
+preload, exposes preload state for deterministic integration evidence, and
+records opt-in request/completion telemetry. It is the exact export of lab
+commit `5d2f49cf00`. The FNV driven subsystem run at
+`run/fnv-interaction-audit/door-preload-after-0023-isolated-v2/20260712-144855`
+proves that authored door `0x110636f` requested and completed destination
+`0x1106185` before activation and completed the interior/return path. The FO3
+control at `run/fo3-interaction-audit/door-preload-control-0023-isolated-v2/20260712-144925`
+and Morrowind control at
+`run/playable-session-baseline/morrowind-control-0023-isolated` pass on the same
+binary. All three runs use isolated writable config/user-data, and the FNV/FO3
+logs contain no cell-preloader capacity warning with the bounded 128-entry
+cache. Same-frame retail transition latency remains unmeasured, so this patch
+does not claim timing or hitch parity.
+Patch 0022 makes the flat header boundary reproducible by populating the pinned
+OpenXR SDK source for type headers while building and linking its loader only
+when `BUILD_OPENMW_VR=ON`. It is the exact export of lab commit `9c97e46c17`.
+With `BUILD_OPENMW_VR=OFF` and an empty `OPENMW_CXX_FLAGS`, the focused test
+binary and `openmw.exe` build successfully; the executable imports no OpenXR
+library and the generated project contains neither `openmw_vr` nor
+`openxr_loader`.
+Patch 0023 removes the FNV inventory preview's implicit
+`OutfitRepublican02` mutation and gives world and preview proxies one explicit
+equipment policy: generic ESM4 override, legacy Fallout override, or the
+Courier outfit only under an explicit proof bootstrap. It is the exact export
+of lab commit `a77bf86556`. Three focused policy tests pass. The normal
+Goodsprings run at
+`run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2`
+uses the retail `Player` record and reports zero player-equipment override
+lines; this passes session integrity only. Authored starting inventory,
+equipment UI, HUD and Pip-Boy parity remain failing or unproven.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 

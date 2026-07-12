@@ -1,0 +1,259 @@
+From a77bf86556b0c9cd895c9610fa44f00be3d6a6da Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Sun, 12 Jul 2026 14:44:32 -0700
+Subject: [PATCH] Stop implicit Fallout preview equipment
+
+---
+ apps/openmw/mwrender/characterpreview.cpp     | 46 ++++++++++++-------
+ apps/openmw/mwrender/playervisualpolicy.hpp   | 36 +++++++++++++++
+ apps/openmw/mwrender/renderingmanager.cpp     | 28 +++++------
+ apps/openmw_tests/CMakeLists.txt              |  2 +
+ .../mwrender/testplayervisualpolicy.cpp       | 30 ++++++++++++
+ 5 files changed, 109 insertions(+), 33 deletions(-)
+ create mode 100644 apps/openmw/mwrender/playervisualpolicy.hpp
+ create mode 100644 apps/openmw_tests/mwrender/testplayervisualpolicy.cpp
+
+diff --git a/apps/openmw/mwrender/characterpreview.cpp b/apps/openmw/mwrender/characterpreview.cpp
+index d2bf584a41..8439156809 100644
+--- a/apps/openmw/mwrender/characterpreview.cpp
++++ b/apps/openmw/mwrender/characterpreview.cpp
+@@ -61,6 +61,7 @@
+ #include "animation.hpp"
+ #include "esm4npcanimation.hpp"
+ #include "npcanimation.hpp"
++#include "playervisualpolicy.hpp"
+ #include "util.hpp"
+ #include "vismask.hpp"
+ 
+@@ -129,26 +130,37 @@ namespace MWRender
+             return isFalloutContentLoaded();
+         }
+ 
+-        void applyFalloutInventoryPlayerProxyProofOutfit(const MWWorld::Ptr& visualPtr)
++        void applyFalloutInventoryPlayerProxyConfiguredEquipment(const MWWorld::Ptr& visualPtr)
+         {
+-            const char* outfitEnv = std::getenv("OPENMW_FNV_PLAYER_OUTFIT");
+-            const std::string_view outfitEditorId
+-                = outfitEnv != nullptr && *outfitEnv != '\0' ? std::string_view(outfitEnv) : "OutfitRepublican02";
+-            const ESM4::Armor* armor = findFalloutInventoryArmorByEditorId(outfitEditorId);
+-            if (armor == nullptr)
+-            {
+-                Log(Debug::Warning) << "FNV/ESM4 proof: inventory player proxy outfit "
+-                                    << outfitEditorId << " not found";
++            const ESM4PlayerVisualEquipmentPolicy policy = resolveESM4PlayerVisualEquipmentPolicy(
++                std::getenv("OPENMW_ESM4_PLAYER_OUTFIT"), std::getenv("OPENMW_FNV_PLAYER_OUTFIT"),
++                std::getenv("OPENMW_ESM4_PLAYER_HEADGEAR"), std::getenv("OPENMW_FNV_PLAYER_HEADGEAR"),
++                std::getenv("OPENMW_FNV_BOOTSTRAP_LEVEL1_COURIER") != nullptr);
++            if (policy.mOutfit.empty() && policy.mHeadgear.empty())
+                 return;
+-            }
+ 
+             visualPtr.getRefData().setCustomData(nullptr);
+-            const bool added = MWClass::ESM4Npc::addEquippedArmor(visualPtr, armor);
+-            Log(Debug::Info) << "FNV/ESM4 proof: inventory player proxy outfit "
+-                             << armor->mEditorId << " model="
+-                             << MWClass::ESM4Npc::chooseEquipmentModel(
+-                                    armor, MWClass::ESM4Npc::isFemale(visualPtr))
+-                             << " added=" << added;
++            const auto addArmor = [&](std::string_view editorId, std::string_view role) {
++                if (editorId.empty())
++                    return;
++                const ESM4::Armor* armor = findFalloutInventoryArmorByEditorId(editorId);
++                if (armor == nullptr)
++                {
++                    Log(Debug::Warning) << "ESM4 player visual: inventory proxy " << role << " "
++                                        << editorId << " not found";
++                    return;
++                }
++
++                const bool added = MWClass::ESM4Npc::addEquippedArmorReplacingSlots(visualPtr, armor);
++                Log(Debug::Info) << "ESM4 player visual: inventory proxy " << role << " "
++                                 << armor->mEditorId << " model="
++                                 << MWClass::ESM4Npc::chooseEquipmentModel(
++                                        armor, MWClass::ESM4Npc::isFemale(visualPtr))
++                                 << " added=" << added;
++            };
++
++            addArmor(policy.mOutfit, "outfit");
++            addArmor(policy.mHeadgear, "headgear");
+         }
+ 
+         std::string trimFalloutPreviewText(const char* value)
+@@ -954,7 +966,7 @@ namespace MWRender
+                 mFalloutPreviewRef = std::make_unique<MWWorld::LiveCellRef<ESM4::Npc>>(proxyRef, falloutPlayerVisual);
+                 MWWorld::Ptr visualPtr(mFalloutPreviewRef.get(), nullptr);
+                 visualPtr.getRefData().setCustomData(std::unique_ptr<MWWorld::CustomData>());
+-                applyFalloutInventoryPlayerProxyProofOutfit(visualPtr);
++                applyFalloutInventoryPlayerProxyConfiguredEquipment(visualPtr);
+ 
+                 Log(Debug::Info) << "FNV/ESM4 proof: using Fallout inventory player visual proxy "
+                                  << falloutPlayerVisual->mEditorId << " (" << ESM::RefId(falloutPlayerVisual->mId)
+diff --git a/apps/openmw/mwrender/playervisualpolicy.hpp b/apps/openmw/mwrender/playervisualpolicy.hpp
+new file mode 100644
+index 0000000000..02d4bb29e1
+--- /dev/null
++++ b/apps/openmw/mwrender/playervisualpolicy.hpp
+@@ -0,0 +1,36 @@
++#ifndef OPENMW_MWRENDER_PLAYERVISUALPOLICY_H
++#define OPENMW_MWRENDER_PLAYERVISUALPOLICY_H
++
++#include <string_view>
++
++namespace MWRender
++{
++    struct ESM4PlayerVisualEquipmentPolicy
++    {
++        std::string_view mOutfit;
++        std::string_view mHeadgear;
++    };
++
++    inline ESM4PlayerVisualEquipmentPolicy resolveESM4PlayerVisualEquipmentPolicy(const char* esm4Outfit,
++        const char* legacyFalloutOutfit, const char* esm4Headgear, const char* legacyFalloutHeadgear,
++        bool useLevelOneCourierProofDefault)
++    {
++        const auto nonEmpty = [](const char* value) {
++            return value != nullptr && *value != '\0' ? std::string_view(value) : std::string_view{};
++        };
++
++        std::string_view outfit = nonEmpty(esm4Outfit);
++        if (outfit.empty())
++            outfit = nonEmpty(legacyFalloutOutfit);
++        if (outfit.empty() && useLevelOneCourierProofDefault)
++            outfit = "OutfitRepublican02";
++
++        std::string_view headgear = nonEmpty(esm4Headgear);
++        if (headgear.empty())
++            headgear = nonEmpty(legacyFalloutHeadgear);
++
++        return { outfit, headgear };
++    }
++}
++
++#endif
+diff --git a/apps/openmw/mwrender/renderingmanager.cpp b/apps/openmw/mwrender/renderingmanager.cpp
+index ddfe347a51..2e697ee02f 100644
+--- a/apps/openmw/mwrender/renderingmanager.cpp
++++ b/apps/openmw/mwrender/renderingmanager.cpp
+@@ -88,6 +88,7 @@
+ #include "../mwclass/esm4npc.hpp"
+ 
+ #include "actorspaths.hpp"
++#include "playervisualpolicy.hpp"
+ #include "camera.hpp"
+ #include "esm4npcanimation.hpp"
+ #include "effectmanager.hpp"
+@@ -200,15 +201,13 @@ namespace MWRender
+             return nullptr;
+         }
+ 
+-        void applyFalloutPlayerProxyProofOutfit(const MWWorld::Ptr& visualPtr, const char* context)
++        void applyFalloutPlayerProxyConfiguredEquipment(const MWWorld::Ptr& visualPtr, const char* context)
+         {
+-            const char* outfitEnv = std::getenv("OPENMW_ESM4_PLAYER_OUTFIT");
+-            if (outfitEnv == nullptr || *outfitEnv == '\0')
+-                outfitEnv = std::getenv("OPENMW_FNV_PLAYER_OUTFIT");
+-            const bool useProofDefault = std::getenv("OPENMW_FNV_BOOTSTRAP_LEVEL1_COURIER") != nullptr;
+-            const char* headgearEnv = std::getenv("OPENMW_ESM4_PLAYER_HEADGEAR");
+-            if ((outfitEnv == nullptr || *outfitEnv == '\0') && !useProofDefault
+-                && (headgearEnv == nullptr || *headgearEnv == '\0'))
++            const ESM4PlayerVisualEquipmentPolicy policy = resolveESM4PlayerVisualEquipmentPolicy(
++                std::getenv("OPENMW_ESM4_PLAYER_OUTFIT"), std::getenv("OPENMW_FNV_PLAYER_OUTFIT"),
++                std::getenv("OPENMW_ESM4_PLAYER_HEADGEAR"), std::getenv("OPENMW_FNV_PLAYER_HEADGEAR"),
++                std::getenv("OPENMW_FNV_BOOTSTRAP_LEVEL1_COURIER") != nullptr);
++            if (policy.mOutfit.empty() && policy.mHeadgear.empty())
+                 return;
+ 
+             const auto addArmor = [&](std::string_view editorId, std::string_view role) {
+@@ -236,11 +235,8 @@ namespace MWRender
+                                  << (clothingBefore - clothingAfter);
+             };
+ 
+-            addArmor(outfitEnv != nullptr && *outfitEnv != '\0' ? std::string_view(outfitEnv)
+-                                                                  : std::string_view("OutfitRepublican02"),
+-                "outfit");
+-            if (headgearEnv != nullptr && *headgearEnv != '\0')
+-                addArmor(headgearEnv, "headgear");
++            addArmor(policy.mOutfit, "outfit");
++            addArmor(policy.mHeadgear, "headgear");
+         }
+ 
+         uint32_t getFalloutActorCoveredBodySlots(const MWWorld::Ptr& ptr)
+@@ -497,7 +493,7 @@ namespace MWRender
+             MWWorld::LiveCellRef<ESM4::Npc> liveVisualRef(visualRef, visualRecord);
+             liveVisualRef.mData.setPosition(player.getRefData().getPosition());
+             MWWorld::Ptr visualPtr(&liveVisualRef, player.getCell());
+-            applyFalloutPlayerProxyProofOutfit(visualPtr, "vr-hands-attach");
++            applyFalloutPlayerProxyConfiguredEquipment(visualPtr, "vr-hands-attach");
+             std::vector<MWVR::VRAnimation::FalloutVrHandSurface> surfaces
+                 = collectFalloutVrHandSurfaces(visualPtr, "fallout-visual-record", false);
+             const bool rightPipBoyCalibration = [] {
+@@ -551,7 +547,7 @@ namespace MWRender
+             MWWorld::LiveCellRef<ESM4::Npc> liveVisualRef(visualRef, visualRecord);
+             liveVisualRef.mData.setPosition(player.getRefData().getPosition());
+             MWWorld::Ptr visualPtr(&liveVisualRef, player.getCell());
+-            applyFalloutPlayerProxyProofOutfit(visualPtr, "vr-hands-diagnostic");
++            applyFalloutPlayerProxyConfiguredEquipment(visualPtr, "vr-hands-diagnostic");
+             logFalloutVrHandSourceCandidates(visualPtr, "fallout-visual-record");
+         }
+     }
+@@ -2068,7 +2064,7 @@ namespace MWRender
+             mFalloutPlayerVisualRef = std::make_unique<MWWorld::LiveCellRef<ESM4::Npc>>(proxyRef, falloutPlayerVisual);
+             mFalloutPlayerVisualRef->mData.setPosition(player.getRefData().getPosition());
+             MWWorld::Ptr visualPtr(mFalloutPlayerVisualRef.get(), player.getCell());
+-            applyFalloutPlayerProxyProofOutfit(visualPtr, "world");
++            applyFalloutPlayerProxyConfiguredEquipment(visualPtr, "world");
+ 
+             Log(Debug::Info) << "ESM4 diag: using native player visual proxy "
+                              << falloutPlayerVisual->mEditorId << " (" << ESM::RefId(falloutPlayerVisual->mId)
+diff --git a/apps/openmw_tests/CMakeLists.txt b/apps/openmw_tests/CMakeLists.txt
+index 171da00845..cf1dd682cb 100644
+--- a/apps/openmw_tests/CMakeLists.txt
++++ b/apps/openmw_tests/CMakeLists.txt
+@@ -18,6 +18,8 @@ file(GLOB UNITTEST_SRC_FILES
+ 
+     mwgui/tooltips.cpp
+ 
++    mwrender/testplayervisualpolicy.cpp
++
+     mwscript/testscripts.cpp
+ )
+ 
+diff --git a/apps/openmw_tests/mwrender/testplayervisualpolicy.cpp b/apps/openmw_tests/mwrender/testplayervisualpolicy.cpp
+new file mode 100644
+index 0000000000..723965f678
+--- /dev/null
++++ b/apps/openmw_tests/mwrender/testplayervisualpolicy.cpp
+@@ -0,0 +1,30 @@
++#include <gtest/gtest.h>
++
++#include "apps/openmw/mwrender/playervisualpolicy.hpp"
++
++namespace MWRender
++{
++    TEST(MWRenderPlayerVisualPolicyTest, normalSessionDoesNotInjectProofEquipment)
++    {
++        const ESM4PlayerVisualEquipmentPolicy policy
++            = resolveESM4PlayerVisualEquipmentPolicy(nullptr, nullptr, nullptr, nullptr, false);
++        EXPECT_TRUE(policy.mOutfit.empty());
++        EXPECT_TRUE(policy.mHeadgear.empty());
++    }
++
++    TEST(MWRenderPlayerVisualPolicyTest, explicitEquipmentUsesGenericNamesBeforeLegacyNames)
++    {
++        const ESM4PlayerVisualEquipmentPolicy policy = resolveESM4PlayerVisualEquipmentPolicy(
++            "GenericOutfit", "LegacyOutfit", "GenericHeadgear", "LegacyHeadgear", true);
++        EXPECT_EQ(policy.mOutfit, "GenericOutfit");
++        EXPECT_EQ(policy.mHeadgear, "GenericHeadgear");
++    }
++
++    TEST(MWRenderPlayerVisualPolicyTest, explicitProofBootstrapSelectsCourierDefault)
++    {
++        const ESM4PlayerVisualEquipmentPolicy policy
++            = resolveESM4PlayerVisualEquipmentPolicy("", "", nullptr, "LegacyHeadgear", true);
++        EXPECT_EQ(policy.mOutfit, "OutfitRepublican02");
++        EXPECT_EQ(policy.mHeadgear, "LegacyHeadgear");
++    }
++}
+-- 
+2.53.0.windows.1
+

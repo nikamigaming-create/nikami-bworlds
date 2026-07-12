@@ -125,7 +125,10 @@ Patch SHA-256:
 - 0005: `40FA5D12D3CD71CCE4F24C597EF3F22C16ED25036794DCBDF824AD7E996E00F8`
 
 The ordered 0001 through 0005 queue was cumulatively apply-checked from clean
-OpenMW base `c30c830d8e` with `scripts/Apply-OpenMWPatches.ps1 -Check`.
+OpenMW base `9acf88c34b` with `scripts/Test-OpenMWOverlayReplay.ps1`.
+The complete 23-patch replay produces tree `82b7b3083932ccef1b6b401187bd56de1d1c06ed`,
+exactly matching lab checkpoint `a77bf86556`; the current lab checkout is never
+used as the patch target.
 
 ### Retail xNVSE oracle
 
@@ -138,8 +141,22 @@ The isolated oracle is an overlay against xNVSE commit `175bb28`:
 
 The xNVSE patch passed `git apply --check --whitespace=error` on a detached clean
 `175bb28` worktree and built Win32 Release with 0 warnings and 0 errors. The
-runner temporarily installs only the oracle DLL, restores any prior DLL and all
-process environment values in `finally`, and removes no retail data.
+runner now requires a manifest-verified repo-local xNVSE runtime and copies the
+oracle only into a unique ephemeral plugin directory selected through the
+patched loader environment. It never installs or swaps a DLL in retail
+`Data\NVSE\Plugins`; process environment and temporarily isolated root hook
+DLLs are restored in `finally`.
+
+Authoritative captures now pass a schema-v4 identity gate before promotion. The
+gate requires the exact retail runtime, requested save, accepted load, target
+reference/base pair, configured before/command/after frames, ordered screenshot
+frames, and every batch target index/FormID/stage/timing tuple. Each passing
+JSONL receives an adjacent immutable `.manifest.json` sidecar containing the
+validated identity summary plus SHA-256 provenance for the overlay lock,
+isolated runtime, oracle DLL, retail executable, runner, fixture, raw frames,
+and derived crops. A failed gate writes no passing manifest. The synthetic
+contracts are `scripts/Test-FNVRetailOracleEvidence.ps1` and
+`scripts/Test-FNVRetailOracleIsolation.ps1`; neither launches retail.
 
 In retail FNV 1.4.0.525, direct native `SetStage` on VCG02 stage 5 returned true.
 The exact observed delta was:

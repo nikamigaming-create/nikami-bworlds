@@ -220,6 +220,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $contractPath = Join-Path $repoRoot "catalog/playable-session-baselines.json"
 $startsPath = Join-Path $repoRoot "catalog/flat-world-proof-starts.json"
 $playableConfigTemplate = Join-Path $repoRoot "config/playable-baseline"
+$doorPreloadConfig = Join-Path $repoRoot "config/door-preload"
 $starfieldMaterialMap = Join-Path $repoRoot "config/proofs/starfield-new-atlantis-material-map.tsv"
 $starfieldTextureCacheScript = Join-Path $repoRoot "scripts/initialize_starfield_texture_cache.py"
 if (-not (Test-Path -LiteralPath $contractPath)) {
@@ -230,6 +231,9 @@ if (-not (Test-Path -LiteralPath $startsPath)) {
 }
 if (-not (Test-Path -LiteralPath (Join-Path $playableConfigTemplate "settings.cfg"))) {
     throw "Missing bounded playable-session settings: $playableConfigTemplate"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $doorPreloadConfig "settings.cfg"))) {
+    throw "Missing authored door-preload settings: $doorPreloadConfig"
 }
 
 $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json
@@ -297,6 +301,7 @@ foreach ($id in $requested) {
     }
     $profileId = [string](Get-OptionalProperty $world "profileId")
     $startSourceId = [string](Get-OptionalProperty $world "startSourceId")
+    $normalSession = [bool](Get-OptionalProperty $world "normalSession" $false)
     $startSpec = Get-OptionalProperty $starts.worlds $startSourceId
     if ($null -eq $startSpec) {
         throw "Missing start catalog entry '$startSourceId' for '$id'."
@@ -361,6 +366,31 @@ foreach ($id in $requested) {
             Add-EnvironmentValue $environment ([string]$property.Name) $property.Value
         }
     }
+    if ($normalSession) {
+        # The normal-session contract may use an explicit authored-world start
+        # anchor for repeatability, but it must not alter actors, player
+        # identity/outfit, water, weather, image space, or loading presentation.
+        foreach ($name in @(
+            "OPENMW_ESM4_PLAYER_NPC",
+            "OPENMW_FNV_PLAYER_NPC",
+            "OPENMW_ESM4_PLAYER_OUTFIT",
+            "OPENMW_FNV_PLAYER_OUTFIT",
+            "OPENMW_ESM4_PLAYER_HEADGEAR",
+            "OPENMW_FNV_PLAYER_HEADGEAR",
+            "OPENMW_FNV_PROOF_WEATHER_ID",
+            "OPENMW_FNV_PROOF_IMAGE_SPACE_ID",
+            "OPENMW_FNV_PROCEDURE_HOUR",
+            "OPENMW_FNV_BOOTSTRAP_HOUR",
+            "OPENMW_FNV_BOOTSTRAP_LEVEL1_COURIER",
+            "OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI"
+        )) {
+            $environment.Remove($name)
+        }
+        $environment["OPENMW_WORLD_VIEWER_START_DRY"] = "0"
+        $environment["OPENMW_WORLD_VIEWER_TELEMETRY"] = "0"
+        $environment["OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY"] = "0"
+        $environment["OPENMW_PLAYABLE_SESSION_NEUTRALIZE_ACTOR"] = "0"
+    }
     if ($id -eq "starfield") {
         if (-not (Test-Path -LiteralPath $starfieldMaterialMap)) {
             throw "Missing Starfield authored material bridge: $starfieldMaterialMap"
@@ -376,6 +406,32 @@ foreach ($id in $requested) {
     foreach ($entry in $EnvironmentOverride.GetEnumerator()) {
         Add-EnvironmentValue $environment ([string]$entry.Key) $entry.Value
     }
+    if ($normalSession) {
+        $forbiddenNormalSessionNames = @(
+            "OPENMW_ESM4_PLAYER_NPC",
+            "OPENMW_FNV_PLAYER_NPC",
+            "OPENMW_ESM4_PLAYER_OUTFIT",
+            "OPENMW_FNV_PLAYER_OUTFIT",
+            "OPENMW_ESM4_PLAYER_HEADGEAR",
+            "OPENMW_FNV_PLAYER_HEADGEAR",
+            "OPENMW_FNV_PROOF_WEATHER_ID",
+            "OPENMW_FNV_PROOF_IMAGE_SPACE_ID",
+            "OPENMW_FNV_PROCEDURE_HOUR",
+            "OPENMW_FNV_BOOTSTRAP_HOUR",
+            "OPENMW_FNV_BOOTSTRAP_LEVEL1_COURIER",
+            "OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI"
+        )
+        $forbiddenNormalSessionValues = @($forbiddenNormalSessionNames | Where-Object {
+            $environment.Contains($_)
+        })
+        if ($forbiddenNormalSessionValues.Count -gt 0) {
+            throw "Normal session '$id' contains forbidden proof/player override(s): $($forbiddenNormalSessionValues -join ', ')"
+        }
+        if ([string]$environment["OPENMW_WORLD_VIEWER_START_DRY"] -ne "0" -or
+            [string]$environment["OPENMW_PLAYABLE_SESSION_NEUTRALIZE_ACTOR"] -ne "0") {
+            throw "Normal session '$id' must use normal water and unmodified actor behavior."
+        }
+    }
     $effectiveStarfieldMaterialMap = $starfieldMaterialMap
     if ($id -eq "starfield") {
         $effectiveStarfieldMaterialMap = [string]$environment["OPENMW_WORLD_VIEWER_STARFIELD_MATERIAL_MAP"]
@@ -385,23 +441,28 @@ foreach ($id in $requested) {
     }
 
     $worldOutput = Join-Path $OutputRoot $id
-    $sessionConfigDirectory = $playableConfigTemplate
+    $sessionConfigDirectory = Join-Path $worldOutput "session-config"
+    $sessionUserData = Join-Path $worldOutput "user-data"
     if (-not $DryRun) {
         New-Item -ItemType Directory -Path $worldOutput -Force | Out-Null
-        $sessionConfigDirectory = Join-Path $worldOutput "session-config"
-        New-Item -ItemType Directory -Path $sessionConfigDirectory -Force | Out-Null
-        Copy-Item -LiteralPath (Join-Path $playableConfigTemplate "settings.cfg") `
-            -Destination (Join-Path $sessionConfigDirectory "settings.cfg") -Force
+        New-Item -ItemType Directory -Path $sessionConfigDirectory,$sessionUserData -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $sessionConfigDirectory "openmw.cfg") `
+            -Value ('user-data="{0}"' -f ($sessionUserData -replace '\\', '/')) -Encoding utf8
     }
 
     $argsList = @(
         "--replace", "config",
         "--config", $profileDirectory,
-        "--config", $sessionConfigDirectory,
+        "--config", $playableConfigTemplate,
         "--resources", $resourcesRoot,
         "--skip-menu",
         "--start", $startCell
     )
+    if ($normalSession) {
+        $argsList += @("--config", $doorPreloadConfig)
+    }
+    $argsList += @("--config", $sessionConfigDirectory)
+    $argsList += @("--user-data", $sessionUserData)
     if ($id -ne "morrowind") {
         $argsList += @(
             "--data", $morrowindUiDataPath,
@@ -438,8 +499,7 @@ foreach ($id in $requested) {
 
     $stdoutPath = Join-Path $worldOutput "stdout.log"
     $stderrPath = Join-Path $worldOutput "stderr.log"
-    $profileUserData = Get-ProfileUserDataPath $profileDirectory
-    $screenshotDirectory = Join-Path $profileUserData "screenshots"
+    $screenshotDirectory = Join-Path $sessionUserData "screenshots"
     $beforeScreenshots = @{}
     if (Test-Path -LiteralPath $screenshotDirectory) {
         foreach ($file in Get-ChildItem -LiteralPath $screenshotDirectory -File) {
@@ -587,6 +647,27 @@ foreach ($id in $requested) {
     $badPoseLines = @($logLines | Where-Object {
         $_ -match "RigGeometry .* pose sanity .* verdict=BAD"
     })
+    $nativePlayerRecordLines = @($logLines | Where-Object {
+        $_ -match 'using native player visual proxy Player \(FormId:'
+    } | Select-Object -Last 1)
+    $playerOverrideLines = @($logLines | Where-Object {
+        $_ -match 'using native player visual proxy (?!Player \()[^ ]+' -or
+        $_ -match 'player proxy (?:outfit|headgear)' -or
+        $_ -match 'inventory proxy (?:outfit|headgear)' -or
+        $_ -match 'level-1 Courier visual outfit'
+    })
+    $actorNeutralizationLines = @($logLines | Where-Object {
+        $_ -match 'Playable session: (?:enabled safe-start hostility guard|suppressed false safe-start combat package)'
+    })
+    $normalWaterLines = @($logLines | Where-Object {
+        $_ -match 'World viewer: pinned explicit start anchor .* dry=0(?:\s|$)'
+    } | Select-Object -Last 1)
+    $normalSessionRuntimePass = -not $normalSession -or (
+        $nativePlayerRecordLines.Count -gt 0 -and
+        $playerOverrideLines.Count -eq 0 -and
+        $actorNeutralizationLines.Count -eq 0 -and
+        $normalWaterLines.Count -gt 0
+    )
     $playerHeadLines = @($logLines | Where-Object {
         $_ -match 'attachment bounds .*headhuman\.nif for "Player"'
     })
@@ -676,7 +757,8 @@ foreach ($id in $requested) {
             $playerHeadLines.Count -gt 0 -and $null -ne $playerHeadOffset -and $playerHeadOffset -le 42
         )
     }
-    $visualTelemetryPass = $locomotionPass -and $playerHeadPass -and $badPoseLines.Count -eq 0
+    $visualTelemetryPass = $locomotionPass -and $playerHeadPass -and $badPoseLines.Count -eq 0 -and
+        $normalSessionRuntimePass
     $visualTelemetryStatus = if ($visualTelemetryPass) { "pass" } else { "fail" }
 
     $status = "pass"
@@ -699,7 +781,7 @@ foreach ($id in $requested) {
         $reason = "one or more level, movement, camera, or actor-stability checks failed"
     } elseif (-not $visualTelemetryPass) {
         $status = "fail"
-        $reason = "actor render telemetry failed (locomotion=$locomotionPass head=$playerHeadPass badPoses=$($badPoseLines.Count))"
+        $reason = "actor/session telemetry failed (locomotion=$locomotionPass head=$playerHeadPass badPoses=$($badPoseLines.Count) normalSession=$normalSessionRuntimePass)"
     } elseif (-not $capturePass) {
         $status = "fail"
         $reason = "telemetry passed but only $($copiedScreenshots.Count) of $expectedScreenshotCount native captures were written"
@@ -720,20 +802,28 @@ foreach ($id in $requested) {
         dataSource = [string](Get-OptionalProperty $world "dataSource")
         uiFallback = if ($id -eq "morrowind") { "native Morrowind assets" } else { "Morrowind.bsa OpenMW UI assets" }
         startCell = $startCell
+        normalSession = $normalSession
+        nativePlayerRecord = if ($normalSession) { "Player" } else { $null }
         actorLabel = [string](Get-OptionalProperty $world "actorLabel" "nearest loaded actor")
         actorTarget = Get-OptionalProperty $world "actor"
-        actorNeutralized = [bool](Get-OptionalProperty $world "neutralizeActor" (Get-OptionalProperty $defaults "neutralizeActor" $true))
-        dryStart = if ($null -ne (Get-OptionalProperty $world "anchor")) {
-            [bool](Get-OptionalProperty (Get-OptionalProperty $world "anchor") "dry" $false)
-        } else {
-            [bool](Get-OptionalProperty (Get-OptionalProperty $startSpec "anchor") "dry" $false)
-        }
+        actorNeutralized = [string]$environment["OPENMW_PLAYABLE_SESSION_NEUTRALIZE_ACTOR"] -ne "0"
+        dryStart = $environment.Contains("OPENMW_WORLD_VIEWER_START_DRY") -and
+            [string]$environment["OPENMW_WORLD_VIEWER_START_DRY"] -ne "0"
         status = $status
         reason = $reason
         telemetryStatus = $engineResult
         visualTelemetryStatus = $visualTelemetryStatus
         nativePixelStatus = if ($pixelProofPass) { "pass" } else { "fail" }
         visualPromotionReady = $visualPromotionReady
+        knownAcceptanceBlockers = @(Get-OptionalProperty $world "knownAcceptanceBlockers" @())
+        normalSessionRuntimePass = $normalSessionRuntimePass
+        normalSessionRuntimeEvidence = [pscustomobject][ordered]@{
+            nativePlayerRecordLines = $nativePlayerRecordLines.Count
+            playerOverrideLines = $playerOverrideLines.Count
+            actorNeutralizationLines = $actorNeutralizationLines.Count
+            normalWaterLines = $normalWaterLines.Count
+        }
+        effectiveEnvironment = [pscustomobject]$environment
         fatalError = $fatalLogText
         timedOut = $timedOut
         fatalDetectedDuringRun = $fatalDetectedDuringRun
@@ -796,7 +886,7 @@ if ($DryRun) {
 
 $overallStatus = if (@($results | Where-Object { $_.status -ne "pass" }).Count -eq 0) { "pass" } else { "fail" }
 $ledger = [pscustomobject][ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     generatedAt = (Get-Date).ToString("o")
     runtimeMode = "flat"
     foregroundInputUsed = $false

@@ -75,8 +75,10 @@ $startup = Resolve-RepoPath $StartupScript
 $preDoor = Resolve-RepoPath $PreDoorScript
 $outputBase = Resolve-RepoPath $OutputRoot
 $baselineConfig = Resolve-RepoPath "config/playable-baseline"
+$doorPreloadConfig = Resolve-RepoPath "config/door-preload"
 $profileConfig = Join-Path $profile "openmw.cfg"
-foreach ($requiredFile in @($exe, $profileConfig, $startup, $preDoor, (Join-Path $baselineConfig "settings.cfg"))) {
+foreach ($requiredFile in @($exe, $profileConfig, $startup, $preDoor, (Join-Path $baselineConfig "settings.cfg"),
+    (Join-Path $doorPreloadConfig "settings.cfg"))) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) { throw "Missing FO3 audit file: $requiredFile" }
 }
 if (-not (Test-Path -LiteralPath $resources -PathType Container)) { throw "Missing resources: $resources" }
@@ -93,10 +95,13 @@ $morrowindData = [IO.Path]::GetFullPath($morrowindData)
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $output = Join-Path $outputBase $stamp
 New-Item -ItemType Directory -Path $output -Force | Out-Null
-$userDataValue = Get-ProfileValue $profileConfig "user-data"
-$userData = if ([string]::IsNullOrWhiteSpace($userDataValue)) { Join-Path $profile "userdata" } else { [IO.Path]::GetFullPath($userDataValue) }
-$screenshotDirectory = Join-Path $userData "screenshots"
-$profileLog = Join-Path $profile "openmw.log"
+$sessionConfig = Join-Path $output "session-config"
+$sessionUserData = Join-Path $output "user-data"
+New-Item -ItemType Directory -Path $sessionConfig,$sessionUserData -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $sessionConfig "openmw.cfg") `
+    -Value ('user-data="{0}"' -f ($sessionUserData -replace '\\', '/')) -Encoding utf8
+$screenshotDirectory = Join-Path $sessionUserData "screenshots"
+$profileLog = Join-Path $sessionConfig "openmw.log"
 $beforeScreenshots = @{}
 if (Test-Path -LiteralPath $screenshotDirectory) {
     foreach ($file in Get-ChildItem -LiteralPath $screenshotDirectory -File) { $beforeScreenshots[$file.FullName] = $true }
@@ -106,6 +111,9 @@ $arguments = @(
     "--replace", "config",
     "--config", $profile,
     "--config", $baselineConfig,
+    "--config", $doorPreloadConfig,
+    "--config", $sessionConfig,
+    "--user-data", $sessionUserData,
     "--resources", $resources,
     "--data", $morrowindData,
     "--fallback-archive", "Morrowind.bsa",
@@ -151,6 +159,7 @@ $environment = [ordered]@{
     OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI = "1"
     OPENMW_WORLD_VIEWER_TELEMETRY = "0"
     OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY = "0"
+    OPENMW_WORLD_VIEWER_DOOR_PRELOAD_TELEMETRY = "1"
     OPENMW_DEBUG_LEVEL = "INFO"
 }
 
@@ -222,7 +231,17 @@ if ($null -ne $resultMatch) {
 }
 $pixelMeasurements = @($copiedScreenshots | ForEach-Object { Measure-NativeScreenshotScene $_ })
 $pixelPass = $copiedScreenshots.Count -eq 5 -and @($pixelMeasurements | Where-Object { -not $_.pass }).Count -eq 0
-$passed = -not $timedOut -and $exitCode -eq 0 -and $null -ne $resultMatch -and $resultMatch.Groups["result"].Value -eq "pass" -and $pixelPass
+$doorPreloadRequested = [Regex]::Match($logText,
+    'Teleport door preload telemetry: phase=requested format=esm4 door=FormId:0x1003a23 destCell=FormId:0x1003a35')
+$doorPreloadComplete = [Regex]::Match($logText,
+    'Teleport door preload telemetry: phase=complete format=esm4 door=FormId:0x1003a23 destCell=FormId:0x1003a35')
+$doorActivation = [Regex]::Match($logText,
+    'Authored interaction audit: label=fallout3-megaton-moriartys activate=exterior-door')
+$doorPreloadPass = $doorPreloadRequested.Success -and $doorPreloadComplete.Success -and
+    $doorActivation.Success -and $doorPreloadRequested.Index -lt $doorPreloadComplete.Index -and
+    $doorPreloadComplete.Index -lt $doorActivation.Index
+$passed = -not $timedOut -and $exitCode -eq 0 -and $null -ne $resultMatch -and
+    $resultMatch.Groups["result"].Value -eq "pass" -and $pixelPass -and $doorPreloadPass
 $manifest = [ordered]@{
     schema = "nikami-fo3-interaction-audit/v1"
     status = if ($passed) { "pass" } else { "fail" }
@@ -254,6 +273,16 @@ $manifest = [ordered]@{
     expectedScreenshotCount = 5
     screenshotCount = $copiedScreenshots.Count
     nativePixelStatus = if ($pixelPass) { "pass" } else { "fail" }
+    doorPreload = [ordered]@{
+        status = if ($doorPreloadPass) { "pass" } else { "fail" }
+        sourceFormat = "esm4"
+        sourceDoor = "FormId:0x1003a23"
+        destinationCell = "FormId:0x1003a35"
+        requestedBeforeComplete = $doorPreloadRequested.Success -and $doorPreloadComplete.Success -and
+            $doorPreloadRequested.Index -lt $doorPreloadComplete.Index
+        completeBeforeActivation = $doorPreloadComplete.Success -and $doorActivation.Success -and
+            $doorPreloadComplete.Index -lt $doorActivation.Index
+    }
     screenshotSceneMeasurements = $pixelMeasurements
     screenshots = @($copiedScreenshots | ForEach-Object { $_ -replace "\\", "/" })
     outputDirectory = $output -replace "\\", "/"

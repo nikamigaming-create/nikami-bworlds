@@ -1,0 +1,341 @@
+From 5d2f49cf009d8bbdfebc840dddc27980524de939 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Sun, 12 Jul 2026 14:09:16 -0700
+Subject: [PATCH] Preload ESM4 teleport door destinations
+
+---
+ apps/openmw/engine.cpp                        | 18 ++---
+ apps/openmw/mwworld/cellpreloader.cpp         | 10 +++
+ apps/openmw/mwworld/cellpreloader.hpp         |  9 +++
+ apps/openmw/mwworld/cellvisitors.hpp          | 12 ++++
+ apps/openmw/mwworld/scene.cpp                 | 69 +++++++++++++++----
+ apps/openmw/mwworld/scene.hpp                 |  3 +
+ apps/openmw_tests/CMakeLists.txt              |  1 +
+ .../openmw_tests/mwworld/testcellvisitors.cpp | 64 +++++++++++++++++
+ 8 files changed, 166 insertions(+), 20 deletions(-)
+ create mode 100644 apps/openmw_tests/mwworld/testcellvisitors.cpp
+
+diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
+index e0fa7bfd05..413044d27e 100644
+--- a/apps/openmw/engine.cpp
++++ b/apps/openmw/engine.cpp
+@@ -4633,6 +4633,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+     executeProofTimedScript(proofTimedScript2Frame, "OPENMW_PROOF_TIMED_SCRIPT_2", proofTimedScript2Executed);
+ 
+     const bool fnvInteractionRequested = proofEnvEnabled("OPENMW_FNV_INTERACTION_AUDIT");
++    const bool fnvInteractionDoorOnly = proofEnvEnabled("OPENMW_FNV_INTERACTION_DOOR_ONLY");
+     if (fnvInteractionRequested && fnvInteractionPhase >= 0 && proofRunning && mWorld != nullptr
+         && mWindowManager != nullptr)
+     {
+@@ -4797,7 +4798,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+                 aimInteractionCameraAt(fnvInteractionActor, "outside-easy-pete-settled",
+                     readProofFloat("OPENMW_FNV_INTERACTION_ACTOR_AIM_Z", 96.f));
+                 queueInteractionCapture("outside-easy-pete-settled");
+-                advanceInteraction(std::getenv("OPENMW_FNV_INTERACTION_DOOR_ONLY") != nullptr ? 3 : 8);
++                advanceInteraction(fnvInteractionDoorOnly ? 3 : 8);
+             }
+         }
+         else if (fnvInteractionPhase == 8 && phaseFrames >= 8)
+@@ -4859,7 +4860,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+         }
+         else if (fnvInteractionPhase == 3)
+         {
+-            if (!fnvInteractionQuestCaptureQueued && phaseFrames >= 10)
++            if (!fnvInteractionDoorOnly && !fnvInteractionQuestCaptureQueued && phaseFrames >= 10)
+             {
+                 fnvInteractionQuestCaptureQueued = true;
+                 queueInteractionCapture("quest-notification");
+@@ -5018,12 +5019,13 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+         }
+         else if (fnvInteractionPhase == 7 && phaseFrames >= 8)
+         {
+-            const bool pass = fnvInteractionActorPass && fnvInteractionDialoguePass
+-                && fnvInteractionQuestPass && fnvInteractionDoorInPass
+-                && fnvInteractionInteriorActorsPass && fnvInteractionRadioPass
+-                && fnvInteractionDoorOutPass;
+-            finishInteraction(pass, pass ? "complete authored interaction circuit"
+-                                         : "one or more authored interaction gates failed");
++            const bool pass = fnvInteractionActorPass && fnvInteractionDoorInPass
++                && fnvInteractionInteriorActorsPass && fnvInteractionRadioPass && fnvInteractionDoorOutPass
++                && (fnvInteractionDoorOnly || (fnvInteractionDialoguePass && fnvInteractionQuestPass));
++            finishInteraction(pass,
++                pass ? (fnvInteractionDoorOnly ? "complete authored door circuit"
++                                               : "complete authored interaction circuit")
++                     : "one or more authored interaction gates failed");
+         }
+     }
+ 
+diff --git a/apps/openmw/mwworld/cellpreloader.cpp b/apps/openmw/mwworld/cellpreloader.cpp
+index 5540982f26..579159c375 100644
+--- a/apps/openmw/mwworld/cellpreloader.cpp
++++ b/apps/openmw/mwworld/cellpreloader.cpp
+@@ -288,6 +288,16 @@ namespace MWWorld
+         ++mAdded;
+     }
+ 
++    CellPreloader::PreloadState CellPreloader::getPreloadState(const CellStore& cell) const
++    {
++        const auto found = mPreloadCells.find(&cell);
++        if (found == mPreloadCells.end())
++            return PreloadState::NotRequested;
++        if (found->second.mWorkItem != nullptr && found->second.mWorkItem->isDone())
++            return PreloadState::Complete;
++        return PreloadState::Pending;
++    }
++
+     void CellPreloader::notifyLoaded(CellStore* cell)
+     {
+         PreloadMap::iterator found = mPreloadCells.find(cell);
+diff --git a/apps/openmw/mwworld/cellpreloader.hpp b/apps/openmw/mwworld/cellpreloader.hpp
+index 405ba96a2e..0ac81656f3 100644
+--- a/apps/openmw/mwworld/cellpreloader.hpp
++++ b/apps/openmw/mwworld/cellpreloader.hpp
+@@ -45,6 +45,13 @@ namespace MWWorld
+     class CellPreloader
+     {
+     public:
++        enum class PreloadState
++        {
++            NotRequested,
++            Pending,
++            Complete
++        };
++
+         CellPreloader(Resource::ResourceSystem* resourceSystem, Resource::BulletShapeManager* bulletShapeManager,
+             Terrain::World* terrain, MWRender::LandManager* landManager);
+         ~CellPreloader();
+@@ -76,6 +83,8 @@ namespace MWWorld
+ 
+         std::size_t getCacheSize() const { return mPreloadCells.size(); }
+ 
++        PreloadState getPreloadState(const MWWorld::CellStore& cell) const;
++
+         void setWorkQueue(osg::ref_ptr<SceneUtil::WorkQueue> workQueue);
+ 
+         void setTerrainPreloadPositions(std::span<const PositionCellGrid> positions);
+diff --git a/apps/openmw/mwworld/cellvisitors.hpp b/apps/openmw/mwworld/cellvisitors.hpp
+index f4d606d02d..46e10c578b 100644
+--- a/apps/openmw/mwworld/cellvisitors.hpp
++++ b/apps/openmw/mwworld/cellvisitors.hpp
+@@ -4,10 +4,22 @@
+ #include <string>
+ #include <vector>
+ 
++#include <components/sceneutil/positionattitudetransform.hpp>
++
+ #include "ptr.hpp"
+ 
+ namespace MWWorld
+ {
++    template <class DoorRange, class Visitor>
++    void forEachTeleportDoor(const DoorRange& doors, Visitor&& visitor)
++    {
++        for (const auto& door : doors)
++        {
++            if (door.mRef.getTeleport())
++                visitor(door);
++        }
++    }
++
+     struct ListAndResetObjectsVisitor
+     {
+         std::vector<MWWorld::Ptr> mObjects;
+diff --git a/apps/openmw/mwworld/scene.cpp b/apps/openmw/mwworld/scene.cpp
+index a73e49a861..6b85aee1b2 100644
+--- a/apps/openmw/mwworld/scene.cpp
++++ b/apps/openmw/mwworld/scene.cpp
+@@ -1141,6 +1141,8 @@ namespace MWWorld
+         mLowestPoint = std::numeric_limits<float>::max();
+ 
+         mPreloader->clear();
++        mTeleportDoorPreloadRequestsLogged.clear();
++        mTeleportDoorPreloadCompletionsLogged.clear();
+     }
+ 
+     osg::Vec4i Scene::gridCenterToBounds(const osg::Vec2i& centerCell) const
+@@ -1790,23 +1792,44 @@ namespace MWWorld
+ 
+     void Scene::preloadTeleportDoorDestinations(const osg::Vec3f& playerPos, const osg::Vec3f& predictedPos)
+     {
+-        std::vector<MWWorld::ConstPtr> teleportDoors;
++        struct TeleportDoorCandidate
++        {
++            MWWorld::ConstPtr mDoor;
++            std::string_view mFormat;
++        };
++
++        std::vector<TeleportDoorCandidate> teleportDoors;
+         for (const MWWorld::CellStore* cellStore : mActiveCells)
+         {
+-            typedef MWWorld::CellRefList<ESM::Door>::List DoorList;
+-            const DoorList& doors = cellStore->getReadOnlyDoors().mList;
+-            for (auto& door : doors)
++            const auto appendTeleportDoors = [&](const auto& doors, std::string_view format) {
++                forEachTeleportDoor(doors.mList, [&](const auto& door) {
++                    teleportDoors.push_back({ MWWorld::ConstPtr(&door, cellStore), format });
++                });
++            };
++            appendTeleportDoors(cellStore->getReadOnlyDoors(), "esm3");
++            appendTeleportDoors(cellStore->getReadOnlyEsm4Doors(), "esm4");
++        }
++
++        const bool telemetryEnabled = [] {
++            const char* value = std::getenv("OPENMW_WORLD_VIEWER_DOOR_PRELOAD_TELEMETRY");
++            return value != nullptr && *value != '\0' && std::string_view(value) != "0";
++        }();
++        const auto preloadStateName = [](CellPreloader::PreloadState state) {
++            switch (state)
+             {
+-                if (!door.mRef.getTeleport())
+-                {
+-                    continue;
+-                }
+-                teleportDoors.emplace_back(&door, cellStore);
++                case CellPreloader::PreloadState::NotRequested:
++                    return "not-requested";
++                case CellPreloader::PreloadState::Pending:
++                    return "pending";
++                case CellPreloader::PreloadState::Complete:
++                    return "complete";
+             }
+-        }
++            return "unknown";
++        };
+ 
+-        for (const MWWorld::ConstPtr& door : teleportDoors)
++        for (const TeleportDoorCandidate& candidate : teleportDoors)
+         {
++            const MWWorld::ConstPtr& door = candidate.mDoor;
+             float sqrDistToPlayer = (playerPos - door.getRefData().getPosition().asVec3()).length2();
+             sqrDistToPlayer
+                 = std::min(sqrDistToPlayer, (predictedPos - door.getRefData().getPosition().asVec3()).length2());
+@@ -1815,7 +1838,29 @@ namespace MWWorld
+             {
+                 try
+                 {
+-                    preloadCellWithSurroundings(mWorld.getWorldModel().getCell(door.getCellRef().getDestCell()));
++                    MWWorld::CellStore& destination = mWorld.getWorldModel().getCell(door.getCellRef().getDestCell());
++                    const CellPreloader::PreloadState stateBefore = mPreloader->getPreloadState(destination);
++                    preloadCellWithSurroundings(destination);
++                    const CellPreloader::PreloadState stateAfter = mPreloader->getPreloadState(destination);
++                    const ESM::RefNum doorId = door.getCellRef().getRefNum();
++
++                    if (telemetryEnabled && mTeleportDoorPreloadRequestsLogged.insert(doorId).second)
++                    {
++                        Log(Debug::Info) << "Teleport door preload telemetry: phase=requested format="
++                                         << candidate.mFormat << " door=" << ESM::RefId(doorId).toDebugString()
++                                         << " destCell=" << door.getCellRef().getDestCell().toDebugString()
++                                         << " distance=" << std::sqrt(sqrDistToPlayer)
++                                         << " stateBefore=" << preloadStateName(stateBefore)
++                                         << " stateAfter=" << preloadStateName(stateAfter);
++                    }
++                    if (telemetryEnabled && stateAfter == CellPreloader::PreloadState::Complete
++                        && mTeleportDoorPreloadCompletionsLogged.insert(doorId).second)
++                    {
++                        Log(Debug::Info) << "Teleport door preload telemetry: phase=complete format="
++                                         << candidate.mFormat << " door=" << ESM::RefId(doorId).toDebugString()
++                                         << " destCell=" << door.getCellRef().getDestCell().toDebugString()
++                                         << " distance=" << std::sqrt(sqrDistToPlayer);
++                    }
+                 }
+                 catch (const std::exception& e)
+                 {
+diff --git a/apps/openmw/mwworld/scene.hpp b/apps/openmw/mwworld/scene.hpp
+index 1fa7779e51..231c1b1f59 100644
+--- a/apps/openmw/mwworld/scene.hpp
++++ b/apps/openmw/mwworld/scene.hpp
+@@ -112,6 +112,9 @@ namespace MWWorld
+ 
+         std::vector<osg::ref_ptr<SceneUtil::WorkItem>> mWorkItems;
+ 
++        std::set<ESM::RefNum> mTeleportDoorPreloadRequestsLogged;
++        std::set<ESM::RefNum> mTeleportDoorPreloadCompletionsLogged;
++
+         std::optional<ChangeCellGridRequest> mChangeCellGridRequest;
+ 
+         void insertCell(CellStore& cell, Loading::Listener* loadingListener,
+diff --git a/apps/openmw_tests/CMakeLists.txt b/apps/openmw_tests/CMakeLists.txt
+index 681bf58fff..171da00845 100644
+--- a/apps/openmw_tests/CMakeLists.txt
++++ b/apps/openmw_tests/CMakeLists.txt
+@@ -11,6 +11,7 @@ file(GLOB UNITTEST_SRC_FILES
+     mwworld/testduration.cpp
+     mwworld/testtimestamp.cpp
+     mwworld/testptr.cpp
++    mwworld/testcellvisitors.cpp
+     mwworld/testweather.cpp
+ 
+     mwdialogue/testkeywordsearch.cpp
+diff --git a/apps/openmw_tests/mwworld/testcellvisitors.cpp b/apps/openmw_tests/mwworld/testcellvisitors.cpp
+new file mode 100644
+index 0000000000..b22d3af663
+--- /dev/null
++++ b/apps/openmw_tests/mwworld/testcellvisitors.cpp
+@@ -0,0 +1,64 @@
++#include <gmock/gmock.h>
++#include <gtest/gtest.h>
++
++#include <array>
++#include <vector>
++
++#include <components/esm3/cellref.hpp>
++#include <components/esm4/loadrefr.hpp>
++
++#include "apps/openmw/mwworld/cellref.hpp"
++#include "apps/openmw/mwworld/cellvisitors.hpp"
++
++namespace MWWorld
++{
++    namespace
++    {
++        using testing::ElementsAre;
++
++        struct TestDoor
++        {
++            CellRef mRef;
++        };
++
++        TestDoor makeEsm3Door(ESM::FormId id, bool teleport)
++        {
++            ESM::CellRef ref;
++            ref.blank();
++            ref.mRefNum = id;
++            ref.mTeleport = teleport;
++            return TestDoor{ CellRef(ref) };
++        }
++
++        TestDoor makeEsm4Door(ESM::FormId id, bool teleport)
++        {
++            ESM4::Reference ref{};
++            ref.mId = id;
++            if (teleport)
++                ref.mDoor.destDoor = ESM::FormId{ .mIndex = 0x42, .mContentFile = 0 };
++            return TestDoor{ CellRef(ref) };
++        }
++
++        TEST(MWWorldCellVisitorsTest, findsTeleportDoorsInEsm3AndEsm4Ranges)
++        {
++            const ESM::FormId esm3TeleportId{ .mIndex = 1, .mContentFile = 0 };
++            const ESM::FormId esm4TeleportId{ .mIndex = 2, .mContentFile = 0 };
++            const std::array esm3Doors{
++                makeEsm3Door(esm3TeleportId, true),
++                makeEsm3Door(ESM::FormId{ .mIndex = 3, .mContentFile = 0 }, false),
++            };
++            const std::array esm4Doors{
++                makeEsm4Door(esm4TeleportId, true),
++                makeEsm4Door(ESM::FormId{ .mIndex = 4, .mContentFile = 0 }, false),
++            };
++
++            std::vector<ESM::RefNum> teleportDoorIds;
++            const auto collectDoor = [&](const auto& door) { teleportDoorIds.push_back(door.mRef.getRefNum()); };
++
++            forEachTeleportDoor(esm3Doors, collectDoor);
++            forEachTeleportDoor(esm4Doors, collectDoor);
++
++            EXPECT_THAT(teleportDoorIds, ElementsAre(esm3TeleportId, esm4TeleportId));
++        }
++    }
++}
+-- 
+2.53.0.windows.1
+

@@ -84,9 +84,11 @@ $profile = Resolve-RepoPath $ProfileDirectory
 $startup = Resolve-RepoPath $StartupScript
 $outputBase = Resolve-RepoPath $OutputRoot
 $baselineConfig = Resolve-RepoPath "config/playable-baseline"
+$doorPreloadConfig = Resolve-RepoPath "config/door-preload"
 $profileConfig = Join-Path $profile "openmw.cfg"
 
-foreach ($requiredFile in @($exe, $profileConfig, $startup, (Join-Path $baselineConfig "settings.cfg"))) {
+foreach ($requiredFile in @($exe, $profileConfig, $startup, (Join-Path $baselineConfig "settings.cfg"),
+    (Join-Path $doorPreloadConfig "settings.cfg"))) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
         throw "Missing required interaction-audit file: $requiredFile"
     }
@@ -111,15 +113,14 @@ $morrowindData = [IO.Path]::GetFullPath($morrowindData)
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $output = Join-Path $outputBase $stamp
 New-Item -ItemType Directory -Path $output -Force | Out-Null
+$sessionConfig = Join-Path $output "session-config"
+$sessionUserData = Join-Path $output "user-data"
+New-Item -ItemType Directory -Path $sessionConfig,$sessionUserData -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $sessionConfig "openmw.cfg") `
+    -Value ('user-data="{0}"' -f ($sessionUserData -replace '\\', '/')) -Encoding utf8
 
-$userDataValue = Get-ProfileValue $profileConfig "user-data"
-$userData = if ([string]::IsNullOrWhiteSpace($userDataValue)) {
-    Join-Path $profile "userdata"
-} else {
-    [IO.Path]::GetFullPath($userDataValue)
-}
-$screenshotDirectory = Join-Path $userData "screenshots"
-$profileLog = Join-Path $profile "openmw.log"
+$screenshotDirectory = Join-Path $sessionUserData "screenshots"
+$profileLog = Join-Path $sessionConfig "openmw.log"
 $beforeScreenshots = @{}
 if (Test-Path -LiteralPath $screenshotDirectory) {
     foreach ($file in Get-ChildItem -LiteralPath $screenshotDirectory -File) {
@@ -131,6 +132,9 @@ $arguments = @(
     "--replace", "config",
     "--config", $profile,
     "--config", $baselineConfig,
+    "--config", $doorPreloadConfig,
+    "--config", $sessionConfig,
+    "--user-data", $sessionUserData,
     "--resources", $resources,
     "--data", $morrowindData,
     "--fallback-archive", "Morrowind.bsa",
@@ -169,6 +173,7 @@ $environment = [ordered]@{
     OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI = "1"
     OPENMW_WORLD_VIEWER_TELEMETRY = "0"
     OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY = "0"
+    OPENMW_WORLD_VIEWER_DOOR_PRELOAD_TELEMETRY = "1"
     OPENMW_DEBUG_LEVEL = "INFO"
 }
 if ($DoorOnly) {
@@ -269,13 +274,23 @@ $expectedScreenshotCount = if ($DoorOnly) { 4 } else { 6 }
 $pixelMeasurements = @($copiedScreenshots | ForEach-Object { Measure-NativeScreenshotScene $_ })
 $pixelPass = $copiedScreenshots.Count -eq $expectedScreenshotCount `
     -and @($pixelMeasurements | Where-Object { -not $_.pass }).Count -eq 0
+$doorPreloadRequested = [Regex]::Match($logText,
+    'Teleport door preload telemetry: phase=requested format=esm4 door=FormId:0x110636f destCell=FormId:0x1106185')
+$doorPreloadComplete = [Regex]::Match($logText,
+    'Teleport door preload telemetry: phase=complete format=esm4 door=FormId:0x110636f destCell=FormId:0x1106185')
+$doorActivation = [Regex]::Match($logText,
+    'FNV interaction audit: activate label=prospector-saloon-front-door')
+$doorPreloadPass = $doorPreloadRequested.Success -and $doorPreloadComplete.Success -and
+    $doorActivation.Success -and $doorPreloadRequested.Index -lt $doorPreloadComplete.Index -and
+    $doorPreloadComplete.Index -lt $doorActivation.Index
 $passed = -not $timedOut -and $exitCode -eq 0 -and $null -ne $resultMatch `
-    -and $resultMatch.Groups["result"].Value -eq "pass" -and $pixelPass
+    -and $resultMatch.Groups["result"].Value -eq "pass" -and $pixelPass -and $doorPreloadPass
 $manifest = [ordered]@{
     schema = "nikami-fnv-interaction-audit/v1"
     status = if ($passed) { "pass" } else { "fail" }
     backgroundOnly = $true
     foregroundInputUsed = $false
+    evidenceClass = "driven-subsystem-harness"
     soundEnabled = $true
     executable = $exe -replace "\\", "/"
     executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
@@ -307,6 +322,16 @@ $manifest = [ordered]@{
     expectedScreenshotCount = $expectedScreenshotCount
     screenshotCount = $copiedScreenshots.Count
     nativePixelStatus = if ($pixelPass) { "pass" } else { "fail" }
+    doorPreload = [ordered]@{
+        status = if ($doorPreloadPass) { "pass" } else { "fail" }
+        sourceFormat = "esm4"
+        sourceDoor = "FormId:0x110636f"
+        destinationCell = "FormId:0x1106185"
+        requestedBeforeComplete = $doorPreloadRequested.Success -and $doorPreloadComplete.Success -and
+            $doorPreloadRequested.Index -lt $doorPreloadComplete.Index
+        completeBeforeActivation = $doorPreloadComplete.Success -and $doorActivation.Success -and
+            $doorPreloadComplete.Index -lt $doorActivation.Index
+    }
     screenshotSceneMeasurements = $pixelMeasurements
     screenshots = @($copiedScreenshots | ForEach-Object { $_ -replace "\\", "/" })
     outputDirectory = $output -replace "\\", "/"

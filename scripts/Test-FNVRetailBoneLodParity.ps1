@@ -73,9 +73,9 @@ foreach ($frame in $equationFrames) {
     $inputs = $frame.boneLodInputs
     $expected = ([double]$frame.cameraDistance / [double]$inputs.actorScale) * [double]$inputs.distanceConstant `
         * [double]$inputs.cameraLodAdjust / ([double]$inputs.distanceMultiplier * [double]$inputs.actorFadeMultiplier)
-    $error = [Math]::Abs($expected - [double]$inputs.quotient)
-    $maximumQuotientError = [Math]::Max($maximumQuotientError, $error)
-    if ($error -gt $Tolerance) { $failures.Add("Frame $($frame.frame) quotient error $error exceeds $Tolerance") }
+    $quotientError = [Math]::Abs($expected - [double]$inputs.quotient)
+    $maximumQuotientError = [Math]::Max($maximumQuotientError, $quotientError)
+    if ($quotientError -gt $Tolerance) { $failures.Add("Frame $($frame.frame) quotient error $quotientError exceeds $Tolerance") }
     if ([int][Math]::Floor($expected) -ne [int]$inputs.predictedLod) {
         $failures.Add("Frame $($frame.frame) predicted LOD does not equal floor(retail quotient)")
     }

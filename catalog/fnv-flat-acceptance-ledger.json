@@ -1,0 +1,193 @@
+{
+  "schema": "nikami-fnv-flat-acceptance-ledger/v1",
+  "asOf": "2026-07-12",
+  "scope": "Complete retail Fallout: New Vegas data in flat OpenMW, beginning with a normal level-one Goodsprings session and ending with the retail intro and Doc Mitchell character creation.",
+  "overallStatus": "fail",
+  "vrGate": "blocked",
+  "greenRule": "Every subsystem must be pass on the same promoted OpenMW queue with natural authored state, current FNV/FO3/Morrowind controls, native background captures, exact provenance, and no staged references, substitute player, actor neutralization, dry cell, forced proof weather/image-space, diagnostic chatter, or unresolved visual review.",
+  "promotedRuntime": {
+    "labCommit": "a77bf86556b0c9cd895c9610fa44f00be3d6a6da",
+    "labTree": "82b7b3083932ccef1b6b401187bd56de1d1c06ed",
+    "patchCount": 23,
+    "runtimeBinarySha256": "F039E318933D19D7393B9789C2488C5F911481B94AD6564F8EC803F4EF53BED8"
+  },
+  "normalSessionBaseline": {
+    "status": "fail",
+    "run": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2",
+    "runtimeBinarySha256": "F039E318933D19D7393B9789C2488C5F911481B94AD6564F8EC803F4EF53BED8",
+    "facts": {
+      "retailPlayerRecord": true,
+      "level": 1,
+      "authoredGoodspringsExterior": "FormId:0x10daebb",
+      "authoredEasyPeteReference": "FormId:0x1104c80",
+      "actorNeutralized": false,
+      "dryStart": false,
+      "forcedWeather": false,
+      "forcedImageSpace": false,
+      "foregroundInputUsed": false,
+      "implicitPlayerEquipmentOverrides": 0,
+      "isolatedWritableConfigAndUserData": true,
+      "movementTelemetry": "pass",
+      "cameraTelemetry": "pass",
+      "nativeCaptureCount": 3
+    },
+    "failure": "Session integrity now passes without implicit player equipment, but native visual review, authored inventory/equipment behavior and the retail HUD/Pip-Boy remain failing or unproven.",
+    "evidence": [
+      {
+        "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/result.json",
+        "sha256": "861A4CD81143571E9F9B01D8510195B679FA02020503780C2094BC1B8CEB2B38"
+      },
+      {
+        "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/stdout.log",
+        "sha256": "CE7C44F63C767090D9A9F28C0D521C62C655032AB34D47466F90518466F12983"
+      },
+      {
+        "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/fallout_new_vegas-01.png",
+        "sha256": "E289451B73B162F733D5CCE8A3D792E9472E07300A4EDA56DBD08AB3C6194056"
+      },
+      {
+        "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/fallout_new_vegas-02.png",
+        "sha256": "0C995C323EE3D196C0DC9CB1F58D91CBAC2B4D2ED484B749EB147278C805DB89"
+      },
+      {
+        "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/fallout_new_vegas-03.png",
+        "sha256": "417DE2C65E96BF75490593C3FB0EB79B9FB842421B37735993672F834E0CC888"
+      }
+    ],
+    "visualReview": [
+      "fail: the authored vertex-alpha shadow plane in NV_ProspectorSaloon-Neon.NIF renders opaque black instead of blending over the Prospector Saloon facade",
+      "fail: the native Player body/equipment presentation is incomplete and not a retail level-one Courier",
+      "fail: the displayed HUD is the shared OpenMW fallback rather than the retail FNV HUD/Pip-Boy presentation",
+      "fail: sky, clouds, lighting and final color remain visibly non-retail and lack a same-frame oracle match",
+      "unproven: duplicate/invisible actor and object absence has not been exhaustively enumerated"
+    ]
+  },
+  "subsystems": [
+    {
+      "id": "session-integrity",
+      "status": "pass",
+      "reason": "Patch 0023 keeps the native retail Player proxy but applies no outfit or headgear without an explicit override or proof bootstrap; the isolated normal run reports zero override lines.",
+      "evidence": [
+        {
+          "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/result.json",
+          "sha256": "861A4CD81143571E9F9B01D8510195B679FA02020503780C2094BC1B8CEB2B38"
+        },
+        {
+          "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/stdout.log",
+          "sha256": "CE7C44F63C767090D9A9F28C0D521C62C655032AB34D47466F90518466F12983"
+        }
+      ]
+    },
+    {
+      "id": "level-movement-camera-scale-first-third-person",
+      "status": "unproven",
+      "reason": "Level-one movement and camera machine gates pass, but scale and retail timing are not yet same-slice differential proven."
+    },
+    {
+      "id": "neighboring-exterior-cell-streaming",
+      "status": "unproven",
+      "reason": "Radius-one cells load in the smoke run; traversal across boundaries and hitch timing are not yet measured against retail."
+    },
+    {
+      "id": "interior-doors-and-transition-preload",
+      "status": "unproven",
+      "reason": "Patch 0021 proves the authored Goodsprings door destination completes preload before activation and proves interior return under isolated writable state with no cache-capacity warning, with FO3 and Morrowind controls; same-frame retail transition latency and hitch parity remain unmeasured.",
+      "evidence": [
+        {
+          "path": "run/fnv-interaction-audit/door-preload-after-0023-isolated-v2/20260712-144855/manifest.json",
+          "sha256": "CE5267CC830A0B7490690BBB6275095934DCBB1D7CBF41D397EDB528A514541E"
+        },
+        {
+          "path": "run/fnv-interaction-audit/door-preload-after-0023-isolated-v2/20260712-144855/stdout.log",
+          "sha256": "F0B6BF2D66FF8378F806535EE2E8D3A18AF276596C4C235800DB11B0DF0A28B1"
+        }
+      ]
+    },
+    {
+      "id": "natural-npcs-easy-pete-and-identity",
+      "status": "unproven",
+      "reason": "The authored Easy Pete reference resolves naturally without neutralization; exhaustive duplicate/invisible identity and schedule coverage is incomplete."
+    },
+    {
+      "id": "bodies-heads-faces-hair-eyes-teeth-mouth-hands-clothing-weapons-skin-materials",
+      "status": "fail",
+      "reason": "Easy Pete skin/beard/hair/sideburn parity and the normal Player equipment/body presentation fail."
+    },
+    {
+      "id": "idle-walk-turn-furniture-nearby-actor-behavior",
+      "status": "unproven",
+      "reason": "Bounded Easy Pete furniture evidence exists, but the natural-session timing and arbitrary activation path are not proven."
+    },
+    {
+      "id": "terrain-sky-clouds-weather-lighting-image-space",
+      "status": "fail",
+      "reason": "The natural session removes forced proof IDs and exposes visibly non-retail sky, lighting, final color and a black facade material."
+    },
+    {
+      "id": "sound-music-ambience",
+      "status": "unproven",
+      "reason": "No same-slice retail/OpenMW sound event, asset, mix or timing ledger exists."
+    },
+    {
+      "id": "activation-dialogue-voice-lip-result-scripts-quests",
+      "status": "unproven",
+      "reason": "A bounded driven audit exists; natural quest progression and exhaustive retail dialogue/result coverage do not."
+    },
+    {
+      "id": "inventory-hud-pip-boy-equipment",
+      "status": "fail",
+      "reason": "The implicit proof outfit is removed, but authored starting inventory/equipment and inventory interactions are not acceptance-proven, and the native capture still uses fallback HUD presentation."
+    },
+    {
+      "id": "retail-intro-doc-mitchell-character-creation",
+      "status": "unproven",
+      "reason": "Benny shooting, Doc Mitchell wake-up, SPECIAL, skills, traits, appearance, controls and completion are not implemented as an acceptance path."
+    },
+    {
+      "id": "byte-color-bit-and-timing-differentials",
+      "status": "unproven",
+      "reason": "The oracle runner is isolated, but exhaustive per-record, per-draw, pixel and timing coverage is not yet present."
+    },
+    {
+      "id": "fallout3-control",
+      "status": "pass",
+      "reason": "The isolated FO3 interaction control passes all actor, dialogue, door, interior, radio and return gates on the patch-0023 binary with no preloader-capacity warning.",
+      "evidence": [
+        {
+          "path": "run/fo3-interaction-audit/door-preload-control-0023-isolated-v2/20260712-144925/manifest.json",
+          "sha256": "25F8113ACA93A5CEE5D871AE0100CC9CC8D66660B4226E255AE60B80DABC5A78"
+        },
+        {
+          "path": "run/fo3-interaction-audit/door-preload-control-0023-isolated-v2/20260712-144925/stdout.log",
+          "sha256": "3F8D9175185E9464DA9942EE5671C1E4881B9CD14246336C4B79A3105616F1C2"
+        }
+      ]
+    },
+    {
+      "id": "morrowind-regression",
+      "status": "pass",
+      "reason": "The isolated Morrowind normal-session control passes movement, camera, authored Fargoth and three native captures on the patch-0023 binary.",
+      "evidence": [
+        {
+          "path": "run/playable-session-baseline/morrowind-control-0023-isolated/ledger.json",
+          "sha256": "BF7DCD033E6156701B6835A5A83BE7E682C067912B2132E39B03678A2E487254"
+        }
+      ]
+    },
+    {
+      "id": "openmw-queue-replay",
+      "status": "pass",
+      "reason": "Patches 0001-0023 replay from 9acf88c34b to exact checkpoint tree 82b7b3083932ccef1b6b401187bd56de1d1c06ed.",
+      "evidence": [
+        {
+          "path": "patches/openmw/0022-Make-flat-OpenXR-headers-reproducible.patch",
+          "sha256": "65E209AA1DB70D7CC57BC4D37F98658EF6E730C6851D9BD49172C657B36CF20E"
+        },
+        {
+          "path": "patches/openmw/0023-Stop-implicit-Fallout-preview-equipment.patch",
+          "sha256": "949FFEDC1F43FA81A66FCB31B87E0B3160DE5513F3FE03583B3BFCBD4A158393"
+        }
+      ]
+    }
+  ]
+}

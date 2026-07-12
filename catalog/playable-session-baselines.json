@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "asOf": "2026-07-11",
-  "purpose": "Flat-runtime, level-one playable-session contract. Morrowind is the control; newer games use the same engine-native movement, camera, actor-stability, telemetry, and screenshot path.",
+  "asOf": "2026-07-12",
+  "purpose": "Flat-runtime, level-one playable-session contract. Normal-session worlds use native player records, authored actors and cells, world-clock package selection, normal water, and no proof weather, image-space, outfit, staging, or hostility overrides.",
   "runtimeMode": "flat",
   "controlWorld": "morrowind",
   "order": [
@@ -80,19 +80,24 @@
       "startSourceId": "fallout_new_vegas",
       "dataSource": "Fallout: New Vegas flat install",
       "settleFrames": 600,
+      "normalSession": true,
+      "neutralizeActor": false,
+      "dryStart": false,
+      "visualPromotionReady": false,
       "actor": "FormId:0x1104c80",
       "actorLabel": "Easy Pete",
       "environment": {
-        "OPENMW_FNV_BOOTSTRAP_HOUR": "14.45",
-        "OPENMW_FNV_PROCEDURE_HOUR": "14.45",
-        "OPENMW_FNV_PROOF_WEATHER_ID": "FormId:0x11237d7",
-        "OPENMW_FNV_PROOF_IMAGE_SPACE_ID": "FormId:0x108809d",
-        "OPENMW_ESM4_PLAYER_NPC": "GSSettlerAM",
-        "OPENMW_ESM4_PLAYER_OUTFIT": "OutfitRepublican02",
+        "OPENMW_PLAYABLE_START_HOUR": "14.45",
         "OPENMW_PLAYABLE_SESSION_FORWARD": "-1",
         "OPENMW_PLAYABLE_SESSION_STRAFE": "0"
       },
-      "notes": "Flat OpenMW runtime. Afternoon package time gives Easy Pete time to reach his Goodsprings idle/furniture state before measurement."
+      "knownAcceptanceBlockers": [
+        "Easy Pete skin, beard, hair and sideburn color/material parity is failing",
+        "Goodsprings native visual review contains unresolved material and lighting differences",
+        "door preload readiness passes, but same-frame retail transition latency and hitch parity are unproven",
+        "activation, dialogue, quest, inventory and Pip-Boy are not exercised by this movement slice"
+      ],
+      "notes": "Normal flat Goodsprings acceptance probe. The real FalloutNV.esm Player record and authored Easy Pete reference run at a controlled world hour; no actor neutralization, substitute player, proof outfit, dry cell, staged actor, forced weather, or forced image space is allowed."
     },
     "oblivion": {
       "label": "Oblivion - Imperial City Waterfront",

@@ -24,12 +24,12 @@ it is not shipped in, linked into, or required by the OpenMW runtime.
 
 | Purpose | Path | Expected branch/base |
 |---|---|---|
-| Overlay repository | `D:\code\nikami-worlds` | `codex/bethesda-flat-overlay` |
-| OpenMW working checkout | `D:\Modlists\fnv\openmw-source` | `codex/bethesda-baked-flat-overlay-snapshot` |
-| OpenMW clean queue base | external checkout commit `c30c830d8e` | patches apply in `patches/openmw/series` order |
+| Overlay repository | `D:\code\nikami-worlds` | `main` |
+| OpenMW working checkout | `D:\code\nikami-openmw-lab` | `main` |
+| OpenMW clean queue base | lab commit `9acf88c34b` (tree `3fc970d982fa`) | patches apply in `patches/openmw/series` order only in a disposable worktree |
 | FNV/xNVSE working checkout | configured by the retail runner | xNVSE base `175bb28` |
 | Retail oracle queue | `patches/xnvse` | `0001` through `0012` |
-| OpenMW queue | `patches/openmw` | promoted queue through `0011` |
+| OpenMW queue | `patches/openmw` | promoted queue through `0023`; add one replayable topic per lab commit |
 | Retail captures | `run/retail-oracle` | immutable evidence; add a new version instead of overwriting |
 | OpenMW proof captures | under `run/`, plus the configured OpenMW proof directory | never promote on image statistics alone |
 
@@ -37,14 +37,35 @@ The external OpenMW and xNVSE checkouts are build/debug state. The reviewable,
 replayable source of truth is the patch queue in this repository. Never vendor
 either external source tree here.
 
-## Current checkpoint (2026-07-10)
+## Active acceptance truth (2026-07-12)
+
+`catalog/fnv-flat-acceptance-ledger.json` is the machine-readable flat gate.
+It remains `fail`, and VR remains blocked. The current promoted runtime is lab
+commit `a77bf86556` / tree `82b7b3083932ccef1b6b401187bd56de1d1c06ed`,
+replayed exactly by patches 0001-0023. The normal level-one Goodsprings run at
+`run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2`
+passes natural Player/Easy Pete identity, movement, camera, capture, writable
+state isolation and no-implicit-equipment gates. It is not a visual or gameplay
+acceptance pass.
+
+The authored Goodsprings door destination completes preload before activation
+and round-trips under the driven subsystem harness, with current FO3 and
+Morrowind controls. Retail-equivalent transition latency remains unproven. The
+most concrete visual blocker is `Plane01:0` in
+`architecture\Goodsprings\NV_ProspectorSaloon-Neon.NIF`: its authored vertex
+alpha is currently rendered as an opaque black rectangle. Inventory/Pip-Boy,
+natural quest progression, the retail intro and Doc Mitchell character
+creation remain failing or unproven. Do not begin VR from this checkpoint.
+
+## Historical checkpoint (2026-07-10)
 
 Promoted OpenMW commits before the active furniture change:
 
 - `0d7383112e` — retail compressed LIP decoding and condition expansion.
 - `f508102307` — active FURN marker selection and settled chair state.
 
-The clean OpenMW queue through `0010` applied from `c30c830d8e`, and the focused
+At that historical checkpoint, the OpenMW queue through `0010` applied from the
+then-recorded base, and the focused
 component suite passed 1295/1295 at that checkpoint. Commit `20dab7436f`
 exports patch `0011` for retail furniture entry/root sampling and measured head
 attachments. The cumulative `0001` through `0011` replay produced Git tree
@@ -64,15 +85,15 @@ apps/openmw/mwworld/scene.cpp
 components/nifosg/controller.cpp
 ```
 
-The OpenMW worktree is clean. The retail hat position is improved, but missing
+The OpenMW worktree was clean at that checkpoint. The retail hat position was improved, but missing
 hair/sideburn geometry and the wrong OpenMW skin/beard result remain explicit
 failures; do not promote whole-head parity from the hat result.
 
 Read `docs/openmw-base-overlay-boundary.md` before changing the dependency base.
-The current `c30c830d8e` base is 98 unpublished commits ahead of
-`origin/openmw-vr`; it is not official OpenMW `master` and must not be described
-as reproducible from a published remote until that delta becomes an explicit
-queue or pinned source dependency.
+The current locked base is published lab commit `9acf88c34b`. It includes the
+historical local delta and is not official OpenMW `master`; the exact 23-patch
+replay is reproducible through `scripts/Test-OpenMWOverlayReplay.ps1` and must
+not be replaced with the unavailable older base identifier.
 
 ## Retail/OpenMW side-by-side method
 
@@ -179,12 +200,13 @@ Easy Pete checkpoint example:
 
 ```powershell
 .\scripts\Invoke-FNVRetailOracle.ps1 `
-  -PluginDll D:\path\to\xnvse\nvse_retail_oracle\build\nvse_retail_oracle.dll `
+  -RuntimeRoot local\xnvse-retail-oracle `
   -OutputPath run\retail-oracle\fnv-easy-pete-portrait-camera-v5.jsonl `
   -ScreenshotDirectory run\retail-oracle\fnv-easy-pete-portrait-camera-v5-screens `
   -ScreenshotFrame 30 -PortraitCamera -PortraitDistance 70 `
   -SaveFixture run\retail-oracle\checkpoints\NikamiOracleEasyPeteSeated.fos `
-  -TargetForm 0x00104C80 -BeforeFrame 10 -CommandFrame 20 -AfterFrame 30 `
+  -TargetForm 0x00104C80 -ExpectedTargetBaseForm 0x00104C7F `
+  -BeforeFrame 10 -CommandFrame 20 -AfterFrame 30 `
   -MaxFrames 40 -SampleEvery 1 -BackgroundDataMode
 ```
 
@@ -223,9 +245,16 @@ Build the Win32 Release oracle:
   /p:Configuration=Release /p:Platform=Win32 /m
 ```
 
-Run only through `scripts/Invoke-FNVRetailOracle.ps1`. The runner temporarily
-installs the oracle DLL and restores the previous retail DLL and environment in
-`finally`. Never leave the oracle installed in the normal mod list.
+Run only through `scripts/Invoke-FNVRetailOracle.ps1`. The runner requires the
+repo-local `local/xnvse-retail-oracle` runtime, validates its hashes and
+`replayedTree` manifest against `catalog/oracle-overlay-lock.json`, and selects
+a per-run plugin directory through `NIKAMI_NVSE_PLUGIN_DIR`. It never writes to
+retail `Data\NVSE\Plugins`. Use `-DryRun` to validate the complete launch plan
+without creating the ephemeral directory or starting retail. A successful
+capture is not authoritative until the runner validates exact start/load,
+reference/base, frame, batch-stage, and screenshot identities and writes the
+adjacent immutable `<capture>.manifest.json` hash/provenance sidecar. Existing
+JSONL or manifest paths are never overwritten.
 
 To audit the exact retail fullscreen shader selected by patch 0010, read the
 active package number from `RendererInfo.txt` and keep all extracted bytecode in
@@ -253,10 +282,10 @@ the sunlight multiplier, and runs the final cinematic/tint/fade shader in the
 flat post-processor. Verify the byte contracts before launching:
 
 ```powershell
-cmake --build D:\Modlists\fnv\openmw-source\MSVC2022_64 `
+cmake --build D:\code\nikami-openmw-lab\MSVC2022_64 `
   --config Release --target components-tests -- /m:4
 
-& D:\Modlists\fnv\openmw-source\MSVC2022_64\Release\components-tests.exe `
+& D:\code\nikami-openmw-lab\MSVC2022_64\Release\components-tests.exe `
   --gtest_filter=Esm4ImageSpaceTest.*:Esm4WeatherTest.*
 ```
 
@@ -373,20 +402,17 @@ fix and must receive a focused component test before promotion.
 Build only the flat executable:
 
 ```powershell
-Set-Location D:\Modlists\fnv\openmw-source
+Set-Location D:\code\nikami-openmw-lab
 cmake --build MSVC2022_64 --config Release --target openmw -- /m
 ```
 
 Run Easy Pete's scheduled package with the real data:
 
 ```powershell
-Set-Location D:\Modlists\fnv
-.\tools\run_fnv_visual_proof.ps1 `
-  -TargetId easy_pete `
-  -Mode screenshot `
-  -PoseMode AnimatedSeatedDialogueProof `
-  -UseActorFacing -UseActorRenderBounds -StaticActorCamera `
-  -NoSayAudio -ProofHour 14 -SkinningMode current
+Set-Location D:\code\nikami-worlds
+.\scripts\Invoke-RealWorldScreenshots.ps1 `
+  -WorldId fallout_new_vegas -Mode flat -SkipMenu `
+  -StartSlice goodsprings-easy-pete-actor-tracked-portrait
 ```
 
 `OPENMW_FNV_FURNITURE_ENTRY_MARKER_PLACEMENT=1` is a diagnostic shortcut that
@@ -456,8 +482,8 @@ these classifications:
 Search the overlay diff for likely assumptions before each promotion:
 
 ```powershell
-Set-Location D:\Modlists\fnv\openmw-source
-git diff c30c830d8e -- '*.cpp' '*.hpp' | `
+Set-Location D:\code\nikami-openmw-lab
+git diff 9acf88c34b -- '*.cpp' '*.hpp' | `
   Select-String -Pattern 'fallback|heuristic|assum|guess|approx|default|FIXME|TODO|0\.[0-9]+f|[0-9]+\.f'
 ```
 
@@ -467,10 +493,10 @@ merely because the source code does not call it a guess.
 
 ## Patch promotion and replay
 
-Before exporting `0011`:
+Before exporting the next OpenMW topic:
 
 ```powershell
-Set-Location D:\Modlists\fnv\openmw-source
+Set-Location D:\code\nikami-openmw-lab
 git diff --check
 git status --short
 cmake --build MSVC2022_64 --config Release --target components-tests openmw-tests openmw -- /m
@@ -482,22 +508,23 @@ proofs. Review the frames manually. A clean process exit does not waive a
 visual or telemetry failure.
 
 Commit the source change as one reviewable topic, export it with
-`git format-patch`, add `0011` to `patches/openmw/series`, and replay the full
-queue from a detached clean worktree at `c30c830d8e`:
+`git format-patch`, add the next numbered patch to `patches/openmw/series`, and
+replay the full queue from the locked base in a disposable worktree:
 
 ```powershell
 Set-Location D:\code\nikami-worlds
-.\scripts\Apply-OpenMWPatches.ps1 -OpenMWSource D:\path\to\clean-openmw -Check
+.\scripts\Test-OpenMWOverlayReplay.ps1 -OpenMWSource D:\code\nikami-openmw-lab
 ```
 
-Only after replay, build, tests, FNV proof, FO3 proof, and manual frame review
-pass should the queue documentation say `0011` is promoted.
+Only after replay, build, tests, FNV proof, FO3 proof, Morrowind regression, and
+manual frame review pass should the queue documentation say the topic is
+promoted.
 
 ## Five-minute reboot checklist
 
 1. Read this file and `docs/fallout-compatibility-evidence-ledger.md`.
-2. Run `git status --short` in all three worktrees; do not erase unrelated user
-   changes in `D:\Modlists\fnv`.
+2. Run `git status --short` in both approved repositories; do not use the old
+   `D:\Modlists` or `D:\code\vulkanOpenMW` source trees.
 3. Confirm the OpenMW branch and inspect the seven active files listed above.
 4. Inspect the latest retail furniture JSONL and the latest OpenMW furniture
    log side by side.
@@ -507,8 +534,8 @@ Useful cold-start commands:
 
 ```powershell
 git -C D:\code\nikami-worlds status --short --branch
-git -C D:\Modlists\fnv\openmw-source status --short --branch
-git -C D:\Modlists\fnv\openmw-source diff --check
+git -C D:\code\nikami-openmw-lab status --short --branch
+git -C D:\code\nikami-openmw-lab diff --check
 Get-Content D:\code\nikami-worlds\patches\openmw\series
 Get-Content D:\code\nikami-worlds\patches\xnvse\series
 ```

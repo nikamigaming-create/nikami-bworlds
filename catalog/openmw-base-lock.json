@@ -1,16 +1,25 @@
 {
   "schema": "nikami-openmw-base-lock/v1",
   "verifiedAt": "2026-07-12",
-  "workingCheckout": "D:\\Modlists\\fnv\\openmw-source",
-  "overlayRepositoryBranch": "codex/bethesda-flat-overlay",
-  "workingBranch": "codex/bethesda-baked-flat-overlay-snapshot",
-  "queueBase": "c30c830d8e0b173e17eee17fc63cc059c559a5ba",
+  "workingCheckout": "D:\\code\\nikami-openmw-lab",
+  "overlayRepositoryBranch": "main",
+  "workingBranch": "main",
+  "queueBase": "9acf88c34bdae7e7241104e0035cb5af9e1bac9d",
+  "queueBaseTree": "3fc970d982fa1220461eb243225191351a0f8267",
   "overlayRepository": "https://github.com/nikamigaming-create/nikami-bworlds.git",
   "compositeCheckpoint": {
     "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
-    "branch": "codex/bethesda-baked-flat-overlay-snapshot",
-    "commit": "8a1ad31b2bfd7f3d9b387df0ba216c46ec6a8c96",
-    "tree": "051b40b45c8b819c29fc8203a0cdd649205443a7"
+    "branch": "main",
+    "commit": "a77bf86556b0c9cd895c9610fa44f00be3d6a6da",
+    "tree": "82b7b3083932ccef1b6b401187bd56de1d1c06ed"
+  },
+  "replayVerification": {
+    "series": "patches/openmw/series",
+    "patchCount": 23,
+    "base": "9acf88c34bdae7e7241104e0035cb5af9e1bac9d",
+    "replayedTree": "82b7b3083932ccef1b6b401187bd56de1d1c06ed",
+    "matchesCompositeCheckpoint": true,
+    "method": "cumulative git apply in a disposable detached worktree, followed by git add -A and git write-tree"
   },
   "remotes": {
     "official": {
@@ -26,14 +35,14 @@
   },
   "unpublishedBaseDelta": {
     "commitCountAheadOfOriginOpenmwVr": 98,
-    "status": "published-in-nikami-openmw-lab-composite-history",
-    "reachableFrom": "codex/bethesda-baked-flat-overlay-snapshot",
-    "constraint": "patches/openmw currently require queueBase and do not apply to official master"
+    "status": "published-in-nikami-openmw-lab-base-history",
+    "reachableFrom": "main",
+    "constraint": "patches/openmw require the locked queueBase and do not apply to official master"
   },
   "layers": [
     "official-openmw-moving-reference",
     "openmw-vr-fork-and-unpublished-98-commit-base-delta",
-    "flat-bethesda-overlay-patches-0001-through-0019",
+    "flat-bethesda-overlay-patches-0001-through-0023",
     "future-vr-integration-after-flat-parity"
   ]
 }
