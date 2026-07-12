@@ -1,0 +1,4 @@
+LIBRARY "nikami_oblivion_oracle"
+EXPORTS
+OBSEPlugin_Query
+OBSEPlugin_Load

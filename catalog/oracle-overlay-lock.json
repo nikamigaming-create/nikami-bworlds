@@ -3,7 +3,7 @@
   "verifiedAt": "2026-07-12",
   "policy": {
     "repository": "https://github.com/nikamigaming-create/nikami-bworlds",
-    "format": "source-only patch queues",
+    "format": "direct Nikami source, complete changed-file overrides, and pinned patch queues",
     "excluded": [
       "Bethesda game data and assets",
       "compiled DLLs and executables",
@@ -16,6 +16,15 @@
     "xnvse": {
       "upstream": "https://github.com/xNVSE/NVSE.git",
       "baseCommit": "175bb2891c517d42ad5c206086f654960fa2e9b9",
+      "directSource": [
+        "oracles/xnvse/nvse_retail_oracle"
+      ],
+      "upstreamOverrides": [
+        "upstream-overrides/xnvse/nvse/nvse/PluginManager.cpp",
+        "upstream-overrides/xnvse/nvse/nvse_loader/main.cpp",
+        "upstream-overrides/xnvse/nvse/steam_loader/PluginPreload.h",
+        "upstream-overrides/xnvse/nvse/steam_loader/main.cpp"
+      ],
       "series": "patches/xnvse/series",
       "patchCount": 12,
       "replayedTree": "ea4ad6b0c2818b001f11be27cafdaa04d57620cc"
@@ -23,6 +32,13 @@
     "xobse": {
       "upstream": "https://github.com/llde/xOBSE.git",
       "baseCommit": "5078a1dcd2d115bf1f900cfe698b6334cae61707",
+      "directSource": [
+        "oracles/xobse/nikami_oblivion_hidden",
+        "oracles/xobse/nikami_oblivion_oracle"
+      ],
+      "upstreamOverrides": [
+        "upstream-overrides/xobse/obse/loader/main.cpp"
+      ],
       "series": "patches/xobse/series",
       "patchCount": 1,
       "replayedTree": "5a800c44b0a62b4ad0d3ef2c6c1de103ea38212c"
@@ -30,6 +46,10 @@
     "sfse": {
       "upstream": "https://github.com/ianpatt/sfse.git",
       "baseCommit": "48535cc4306ab345252bf740c20a1c6194929b0e",
+      "directSource": [
+        "oracles/sfse/nikami_starfield_oracle"
+      ],
+      "upstreamOverrides": [],
       "series": "patches/sfse/series",
       "patchCount": 1,
       "replayedTree": "ac025c24918138284ad49d046c3e1a381a506664"

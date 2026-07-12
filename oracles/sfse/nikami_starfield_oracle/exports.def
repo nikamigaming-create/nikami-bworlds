@@ -1,0 +1,4 @@
+LIBRARY nikami_starfield_oracle
+EXPORTS
+    SFSEPlugin_Load
+    SFSEPlugin_Version DATA

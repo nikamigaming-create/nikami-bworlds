@@ -1,0 +1,1129 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Read-only native telemetry oracle for Nikami Worlds. This plugin is deliberately pinned to Starfield 1.16.244.
+
+#include "sfse/PluginAPI.h"
+#include "sfse/GameData.h"
+#include "sfse/GameForms.h"
+#include "sfse/GameReferences.h"
+#include "sfse/NiObject.h"
+#include "sfse/NiRTTI.h"
+#include "sfse_common/Relocation.h"
+#include "sfse_common/sfse_version.h"
+
+#include <Windows.h>
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <cstdlib>
+#include <fstream>
+#include <iomanip>
+#include <limits>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <unordered_set>
+#include <vector>
+
+RelocAddr<BSStringPool::Entry::GetEntryT> BSStringPool::Entry::GetEntry(0x028CBA80);
+RelocAddr<BSStringPool::Entry::GetEntryWT> BSStringPool::Entry::GetEntryW(0x028CC000);
+RelocAddr<BSStringPool::Entry::ReleaseT> BSStringPool::Entry::Release(0x028CAEA0);
+
+namespace
+{
+    constexpr const char* kSchema = "nikami-starfield-retail-oracle/v1";
+    constexpr std::uintptr_t kLookupFormByNumericIdOffset = 0x005DE3B0;
+    constexpr std::uintptr_t kMaterialDatabaseOffset = 0x05E7CFC8;
+
+    PluginHandle gPluginHandle = kPluginHandle_Invalid;
+    const SFSETaskInterface* gTasks = nullptr;
+    std::ofstream gOutput;
+    std::string gOutputPath;
+    std::vector<std::uint32_t> gTargetForms;
+    unsigned int gFrame = 0;
+    unsigned int gReadyFrame = 0;
+    unsigned int gSettleFrames = 120;
+    unsigned int gMaxFrames = 1200;
+    bool gComplete = false;
+    bool gMaterialDatabaseCaptured = false;
+    unsigned int gMaterialDatabaseMatches = 0;
+    unsigned int gShaderScanRows = 0;
+    std::unordered_set<const void*> gScannedRenderObjects;
+
+    RelocPtr<MaterialDatabase> gMaterialDatabase(kMaterialDatabaseOffset);
+
+    using LookupFormByNumericId = TESForm* (*)(std::uint32_t);
+
+    struct ReferenceArrayOverlay
+    {
+        std::uint32_t size;
+        std::uint32_t capacity;
+        NiPointer<TESObjectREFR>* data;
+    };
+    static_assert(sizeof(ReferenceArrayOverlay) == 0x10);
+
+    struct CellReferenceOverlay
+    {
+        unsigned char pad[0x80];
+        ReferenceArrayOverlay references;
+    };
+
+    std::string envString(const char* name)
+    {
+        const char* value = std::getenv(name);
+        return value != nullptr ? value : "";
+    }
+
+    unsigned int envUInt(const char* name, unsigned int fallback)
+    {
+        const std::string value = envString(name);
+        if (value.empty())
+            return fallback;
+        char* end = nullptr;
+        const unsigned long parsed = std::strtoul(value.c_str(), &end, 0);
+        return end != value.c_str() && *end == '\0' ? static_cast<unsigned int>(parsed) : fallback;
+    }
+
+    bool isReadable(const void* address, std::size_t size = 1)
+    {
+        if (address == nullptr || size == 0)
+            return false;
+        MEMORY_BASIC_INFORMATION info{};
+        if (VirtualQuery(address, &info, sizeof(info)) != sizeof(info) || info.State != MEM_COMMIT
+            || (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0)
+            return false;
+        const auto begin = reinterpret_cast<std::uintptr_t>(address);
+        const auto end = begin + size;
+        const auto regionEnd = reinterpret_cast<std::uintptr_t>(info.BaseAddress) + info.RegionSize;
+        return end >= begin && end <= regionEnd;
+    }
+
+    bool isExecutable(const void* address)
+    {
+        MEMORY_BASIC_INFORMATION info{};
+        if (address == nullptr || VirtualQuery(address, &info, sizeof(info)) != sizeof(info))
+            return false;
+        const DWORD protection = info.Protect & 0xFF;
+        return info.State == MEM_COMMIT
+            && (protection == PAGE_EXECUTE || protection == PAGE_EXECUTE_READ
+                || protection == PAGE_EXECUTE_READWRITE || protection == PAGE_EXECUTE_WRITECOPY);
+    }
+
+    std::string jsonString(std::string_view value)
+    {
+        std::ostringstream stream;
+        stream << '"';
+        for (const unsigned char character : value)
+        {
+            switch (character)
+            {
+                case '\\': stream << "\\\\"; break;
+                case '"': stream << "\\\""; break;
+                case '\b': stream << "\\b"; break;
+                case '\f': stream << "\\f"; break;
+                case '\n': stream << "\\n"; break;
+                case '\r': stream << "\\r"; break;
+                case '\t': stream << "\\t"; break;
+                default:
+                    if (character < 0x20)
+                        stream << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                               << static_cast<unsigned int>(character) << std::dec;
+                    else
+                        stream << character;
+            }
+        }
+        stream << '"';
+        return stream.str();
+    }
+
+    std::string safeString(const char* value, std::size_t maximumLength = 512)
+    {
+        MEMORY_BASIC_INFORMATION info{};
+        if (value == nullptr || VirtualQuery(value, &info, sizeof(info)) != sizeof(info)
+            || info.State != MEM_COMMIT || (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0)
+            return {};
+        const auto begin = reinterpret_cast<std::uintptr_t>(value);
+        const auto regionEnd = reinterpret_cast<std::uintptr_t>(info.BaseAddress) + info.RegionSize;
+        const std::size_t readableLength
+            = static_cast<std::size_t>((std::min)(regionEnd - begin, static_cast<std::uintptr_t>(maximumLength)));
+        std::string result;
+        result.reserve(64);
+        for (std::size_t index = 0; index < readableLength; ++index)
+        {
+            const char character = value[index];
+            if (character == '\0')
+                break;
+            result.push_back(character);
+        }
+        return result;
+    }
+
+    std::string lower(std::string value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        return value;
+    }
+
+    std::vector<std::string> splitLowerFilters(const std::string& text)
+    {
+        std::vector<std::string> filters;
+        std::size_t begin = 0;
+        while (begin < text.size())
+        {
+            const std::size_t end = text.find(';', begin);
+            std::string filter = text.substr(begin, end == std::string::npos ? std::string::npos : end - begin);
+            filter = lower(filter);
+            if (!filter.empty())
+                filters.push_back(std::move(filter));
+            if (end == std::string::npos)
+                break;
+            begin = end + 1;
+        }
+        return filters;
+    }
+
+    std::vector<std::string> materialQueryVariants(const std::string& input)
+    {
+        std::vector<std::string> variants;
+        const auto add = [&](std::string value) {
+            if (std::find(variants.begin(), variants.end(), value) == variants.end())
+                variants.push_back(std::move(value));
+        };
+        add(input);
+        std::string forward = input;
+        std::replace(forward.begin(), forward.end(), '\\', '/');
+        add(forward);
+        std::string backward = input;
+        std::replace(backward.begin(), backward.end(), '/', '\\');
+        add(backward);
+        const std::size_t baseCount = variants.size();
+        for (std::size_t index = 0; index < baseCount; ++index)
+        {
+            const std::string base = variants[index];
+            if (base.rfind("materials/", 0) != 0 && base.rfind("materials\\", 0) != 0)
+            {
+                add("materials/" + base);
+                add("materials\\" + base);
+            }
+        }
+        const std::vector<std::string> materialBases = variants;
+        for (const std::string& base : materialBases)
+        {
+            if (base.size() >= 4 && base.compare(base.size() - 4, 4, ".mat") == 0)
+            {
+                for (unsigned int layer = 1; layer <= 8; ++layer)
+                    add(base + "_Material" + std::to_string(layer));
+            }
+        }
+        return variants;
+    }
+
+    unsigned int captureMaterialDatabase()
+    {
+        if (gMaterialDatabaseCaptured)
+            return gMaterialDatabaseMatches;
+        gMaterialDatabaseCaptured = true;
+
+        const std::vector<std::string> filters
+            = splitLowerFilters(envString("NIKAMI_STARFIELD_ORACLE_MATERIAL_FILTERS"));
+        MaterialDatabase* database = gMaterialDatabase.getPtr();
+        const bool catalogMode = envString("NIKAMI_STARFIELD_ORACLE_MATERIAL_CATALOG") == "1";
+        if ((filters.empty() && !catalogMode) || !isReadable(database, sizeof(MaterialDatabase)))
+        {
+            gOutput << "{\"schema\":" << jsonString(kSchema)
+                    << ",\"event\":\"material-database-summary\",\"result\":"
+                    << jsonString(filters.empty() && !catalogMode ? "skipped-no-filters" : "unreadable") << "}\n";
+            return 0;
+        }
+
+        unsigned int queried = 0;
+        unsigned int matched = 0;
+        unsigned int entriesWritten = 0;
+        constexpr unsigned int maxEntriesPerMaterial = 256;
+        for (unsigned int mapIndex = 0; mapIndex < 3; ++mapIndex)
+        {
+            auto& map = database->materialMaps[mapIndex];
+            gOutput << "{\"schema\":" << jsonString(kSchema)
+                    << ",\"event\":\"material-map\",\"map\":" << mapIndex
+                    << ",\"size\":" << map.size() << "}\n";
+        }
+        gOutput.flush();
+
+        if (catalogMode)
+        {
+            for (unsigned int mapIndex = 0; mapIndex < 3; ++mapIndex)
+            {
+                auto& map = database->materialMaps[mapIndex];
+                for (const auto& record : map)
+                {
+                    BGSAVMData* material = record.Value;
+                    if (!isReadable(material, sizeof(BGSAVMData)))
+                        continue;
+                    ++matched;
+                    gOutput << "{\"schema\":" << jsonString(kSchema)
+                            << ",\"event\":\"material-catalog\",\"map\":" << mapIndex
+                            << ",\"key\":" << jsonString(safeString(record.Key.c_str()))
+                            << ",\"editorName\":" << jsonString(safeString(material->editorName.c_str()))
+                            << ",\"name\":" << jsonString(safeString(material->name.c_str()))
+                            << ",\"name2\":" << jsonString(safeString(material->name2.c_str()))
+                            << ",\"type\":" << material->type << "}\n";
+                }
+            }
+            gOutput << "{\"schema\":" << jsonString(kSchema)
+                    << ",\"event\":\"material-database-summary\",\"result\":\"catalogued\",\"matched\":"
+                    << matched << "}\n";
+            gOutput.flush();
+            gMaterialDatabaseMatches = matched;
+            return matched;
+        }
+
+        std::unordered_set<const BGSAVMData*> written;
+        for (const std::string& filter : filters)
+        {
+            bool queryMatched = false;
+            for (const std::string& variant : materialQueryVariants(filter))
+            {
+                BSFixedString key(variant.c_str());
+                for (unsigned int mapIndex = 0; mapIndex < 3; ++mapIndex)
+                {
+                    auto& map = database->materialMaps[mapIndex];
+                    ++queried;
+                    const auto found = map.find(key);
+                    if (found == map.end())
+                        continue;
+                    BGSAVMData* material = found->Value;
+                    if (!isReadable(material, sizeof(BGSAVMData)))
+                        continue;
+                    queryMatched = true;
+                    if (!written.insert(material).second)
+                        continue;
+                    ++matched;
+                    const std::string actualKey = safeString(found->Key.c_str());
+                    const std::string editorName = safeString(material->editorName.c_str());
+                    const std::string name = safeString(material->name.c_str());
+                    const std::string name2 = safeString(material->name2.c_str());
+                    const auto beginAddress = reinterpret_cast<std::uintptr_t>(material->entryBegin);
+                    const auto endAddress = reinterpret_cast<std::uintptr_t>(material->entryEnd);
+                    unsigned int entryCount = 0;
+                    if (endAddress >= beginAddress)
+                    {
+                        const std::uintptr_t byteCount = endAddress - beginAddress;
+                        if (byteCount % sizeof(BGSAVMData::Entry) == 0
+                            && byteCount / sizeof(BGSAVMData::Entry) <= maxEntriesPerMaterial
+                            && isReadable(material->entryBegin, static_cast<std::size_t>(byteCount)))
+                            entryCount = static_cast<unsigned int>(byteCount / sizeof(BGSAVMData::Entry));
+                    }
+                    gOutput << "{\"schema\":" << jsonString(kSchema)
+                            << ",\"event\":\"material\",\"query\":" << jsonString(filter)
+                            << ",\"variant\":" << jsonString(variant) << ",\"map\":" << mapIndex
+                            << ",\"key\":" << jsonString(actualKey)
+                            << ",\"editorName\":" << jsonString(editorName)
+                            << ",\"name\":" << jsonString(name) << ",\"name2\":" << jsonString(name2)
+                            << ",\"type\":" << material->type << ",\"entryCount\":" << entryCount << "}\n";
+                    for (unsigned int entryIndex = 0; entryIndex < entryCount; ++entryIndex)
+                    {
+                        const BGSAVMData::Entry& entry = material->entryBegin[entryIndex];
+                        const std::string entryName = safeString(entry.name.c_str());
+                        const std::string textureOrAvm = safeString(entry.textureOrAVM.c_str());
+                        gOutput << "{\"schema\":" << jsonString(kSchema)
+                                << ",\"event\":\"material-entry\",\"map\":" << mapIndex
+                                << ",\"materialKey\":" << jsonString(actualKey)
+                                << ",\"index\":" << entryIndex << ",\"name\":" << jsonString(entryName)
+                                << ",\"textureOrAVM\":" << jsonString(textureOrAvm)
+                                << ",\"color\":[" << static_cast<unsigned int>(entry.color.r) << ','
+                                << static_cast<unsigned int>(entry.color.g) << ','
+                                << static_cast<unsigned int>(entry.color.b) << ','
+                                << static_cast<unsigned int>(entry.color.a) << "]}\n";
+                        ++entriesWritten;
+                    }
+                }
+            }
+            if (!queryMatched)
+                gOutput << "{\"schema\":" << jsonString(kSchema)
+                        << ",\"event\":\"material-query-miss\",\"query\":" << jsonString(filter) << "}\n";
+        }
+        gOutput << "{\"schema\":" << jsonString(kSchema)
+                << ",\"event\":\"material-database-summary\",\"result\":\"captured\",\"queries\":"
+                << queried << ",\"matched\":" << matched << ",\"entries\":" << entriesWritten << "}\n";
+        gOutput.flush();
+        gMaterialDatabaseMatches = matched;
+        return matched;
+    }
+
+    std::string semanticForName(const std::string& nodeName)
+    {
+        const std::string name = lower(nodeName);
+        const std::pair<const char*, const char*> patterns[] = {
+            { "teeth", "teeth" }, { "tooth", "teeth" }, { "tongue", "tongue" },
+            { "mouth", "mouth" }, { "eye", "eye" }, { "brow", "brow" },
+            { "head", "head" }, { "hair", "hair" },
+            { "beard", "hair" }, { "_ear", "ear" }, { "helmet", "headgear" },
+            { "hat", "headgear" }, { "hand", "hand" }, { "finger", "hand" },
+            { "thumb", "hand" },
+        };
+        for (const auto& [needle, semantic] : patterns)
+            if (name.find(needle) != std::string::npos)
+                return semantic;
+        if (name == "face" || name.find("facegen") != std::string::npos
+            || name.find("face_skin") != std::string::npos || name.find("facemesh") != std::string::npos)
+            return "face";
+        return {};
+    }
+
+    void hideOwnWindows()
+    {
+        if (envString("NIKAMI_STARFIELD_ORACLE_HIDDEN") != "1")
+            return;
+        const DWORD processId = GetCurrentProcessId();
+        EnumWindows([](HWND window, LPARAM parameter) -> BOOL {
+            DWORD owner = 0;
+            GetWindowThreadProcessId(window, &owner);
+            if (owner == static_cast<DWORD>(parameter))
+                ShowWindowAsync(window, SW_HIDE);
+            return TRUE;
+        }, static_cast<LPARAM>(processId));
+    }
+
+    void writeTransform(std::ostream& stream, const NiTransform& transform)
+    {
+        stream << "{\"translate\":[" << transform.translate.x << ',' << transform.translate.y << ','
+               << transform.translate.z << "],\"scale\":" << transform.scale << ",\"rotate\":[";
+        for (int row = 0; row < 3; ++row)
+        {
+            if (row != 0)
+                stream << ',';
+            stream << '[' << transform.rotate.entry[row].pt[0] << ',' << transform.rotate.entry[row].pt[1] << ','
+                   << transform.rotate.entry[row].pt[2] << ']';
+        }
+        stream << "]}";
+    }
+
+    struct RttiCompleteObjectLocator
+    {
+        std::uint32_t signature;
+        std::uint32_t objectOffset;
+        std::uint32_t constructorDisplacement;
+        std::int32_t typeDescriptorRva;
+        std::int32_t classDescriptorRva;
+        std::int32_t selfRva;
+    };
+
+    std::pair<std::uintptr_t, std::size_t> mainModuleRange()
+    {
+        static const auto range = [] {
+            const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+            if (base == 0 || !isReadable(reinterpret_cast<const void*>(base), sizeof(IMAGE_DOS_HEADER)))
+                return std::pair<std::uintptr_t, std::size_t>{};
+            const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+            const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+            if (dos->e_magic != IMAGE_DOS_SIGNATURE || !isReadable(nt, sizeof(*nt))
+                || nt->Signature != IMAGE_NT_SIGNATURE)
+                return std::pair<std::uintptr_t, std::size_t>{};
+            return std::pair<std::uintptr_t, std::size_t>{ base, nt->OptionalHeader.SizeOfImage };
+        }();
+        return range;
+    }
+
+    std::string polymorphicTypeName(const void* object)
+    {
+        if (!isReadable(object, sizeof(void*)))
+            return {};
+        const auto* vtable = *reinterpret_cast<void* const* const*>(object);
+        if (!isReadable(vtable - 1, sizeof(void*)) || !isExecutable(vtable[0]))
+            return {};
+        const auto* locator = reinterpret_cast<const RttiCompleteObjectLocator*>(vtable[-1]);
+        if (!isReadable(locator, sizeof(*locator)) || locator->signature != 1)
+            return {};
+        const auto [base, size] = mainModuleRange();
+        if (base == 0 || static_cast<std::uint32_t>(locator->selfRva) >= size
+            || base + static_cast<std::uint32_t>(locator->selfRva) != reinterpret_cast<std::uintptr_t>(locator)
+            || static_cast<std::uint32_t>(locator->typeDescriptorRva) >= size)
+            return {};
+        const char* mangled = reinterpret_cast<const char*>(
+            base + static_cast<std::uint32_t>(locator->typeDescriptorRva) + 2 * sizeof(void*));
+        return safeString(mangled, 192);
+    }
+
+    bool interestingRenderType(std::string_view type)
+    {
+        return type.find("Shader") != std::string_view::npos
+            || type.find("Material") != std::string_view::npos
+            || type.find("Texture") != std::string_view::npos
+            || type.find("Property") != std::string_view::npos;
+    }
+
+    void captureStringPointers(const void* owner, std::string_view ownerType, std::string_view geometryName,
+        std::uint32_t formId, std::string_view role, std::size_t scanBytes)
+    {
+        const auto* bytes = reinterpret_cast<const unsigned char*>(owner);
+        for (std::size_t offset = 0; offset + sizeof(void*) <= scanBytes && gShaderScanRows < 2048;
+             offset += sizeof(void*))
+        {
+            if (!isReadable(bytes + offset, sizeof(void*)))
+                break;
+            const char* candidate = *reinterpret_cast<const char* const*>(bytes + offset);
+            const std::string value = safeString(candidate, 320);
+            const std::string lowered = lower(value);
+            if (lowered.find("textures/") == std::string::npos
+                && lowered.find("textures\\") == std::string::npos
+                && lowered.find("materials/") == std::string::npos
+                && lowered.find("materials\\") == std::string::npos
+                && lowered.find(".dds") == std::string::npos && lowered.find(".mat") == std::string::npos)
+                continue;
+            ++gShaderScanRows;
+            gOutput << "{\"schema\":" << jsonString(kSchema)
+                    << ",\"event\":\"render-string-pointer\",\"role\":" << jsonString(role)
+                    << ",\"formId\":\"0x" << std::hex << std::setw(8) << std::setfill('0') << formId
+                    << std::dec << "\",\"geometry\":" << jsonString(geometryName)
+                    << ",\"ownerType\":" << jsonString(ownerType) << ",\"offset\":" << offset
+                    << ",\"value\":" << jsonString(value) << "}\n";
+        }
+    }
+
+    void captureRenderObjectPointers(const void* owner, std::string_view ownerType, std::string_view geometryName,
+        std::uint32_t formId, std::string_view role, std::size_t scanBytes, unsigned int nesting)
+    {
+        if (owner == nullptr || nesting > 3 || gShaderScanRows >= 2048
+            || !gScannedRenderObjects.insert(owner).second)
+            return;
+        captureStringPointers(owner, ownerType, geometryName, formId, role, scanBytes);
+        const auto* bytes = reinterpret_cast<const unsigned char*>(owner);
+        for (std::size_t offset = 0; offset + sizeof(void*) <= scanBytes && gShaderScanRows < 2048;
+             offset += sizeof(void*))
+        {
+            if (!isReadable(bytes + offset, sizeof(void*)))
+                break;
+            const void* candidate = *reinterpret_cast<void* const*>(bytes + offset);
+            const std::string type = polymorphicTypeName(candidate);
+            if (!interestingRenderType(type))
+                continue;
+            ++gShaderScanRows;
+            gOutput << "{\"schema\":" << jsonString(kSchema)
+                    << ",\"event\":\"render-object-pointer\",\"role\":" << jsonString(role)
+                    << ",\"formId\":\"0x" << std::hex << std::setw(8) << std::setfill('0') << formId
+                    << std::dec << "\",\"geometry\":" << jsonString(geometryName)
+                    << ",\"ownerType\":" << jsonString(ownerType) << ",\"offset\":" << offset
+                    << ",\"targetType\":" << jsonString(type) << "}\n";
+            captureRenderObjectPointers(candidate, type, geometryName, formId, role,
+                type.find("Texture") != std::string::npos ? 0x100 : 0x280, nesting + 1);
+        }
+    }
+
+    void captureGeometryShaderState(NiAVObject* object, std::string_view objectType,
+        std::uint32_t formId, std::string_view role, std::string_view geometryName)
+    {
+        if (envString("NIKAMI_STARFIELD_ORACLE_SHADER_SCAN") != "1" || object == nullptr
+            || gShaderScanRows >= 2048)
+            return;
+        captureRenderObjectPointers(object, objectType, geometryName, formId, role, 0x300, 0);
+
+        // Starfield 1.16.244 stores a BSResource2::TEntryType<BSLODMaterialInstanceDB> handle at
+        // BSGeometry+0x170. The entry is 0x30 bytes. Dump its six qwords, then inspect the readable
+        // non-link fields for the resolved, non-polymorphic material payload and texture handles.
+        const auto* geometry = reinterpret_cast<const unsigned char*>(object);
+        if (!isReadable(geometry + 0x170, sizeof(void*)))
+            return;
+        const void* entry = *reinterpret_cast<void* const*>(geometry + 0x170);
+        const std::string entryType = polymorphicTypeName(entry);
+        if (entryType.find("BSLODMaterialInstanceDB") == std::string::npos || !isReadable(entry, 0x30))
+            return;
+        const auto* words = reinterpret_cast<const std::uint64_t*>(entry);
+        ++gShaderScanRows;
+        gOutput << "{\"schema\":" << jsonString(kSchema)
+                << ",\"event\":\"material-resource-entry\",\"role\":" << jsonString(role)
+                << ",\"formId\":\"0x" << std::hex << std::setw(8) << std::setfill('0') << formId
+                << std::dec << "\",\"geometry\":" << jsonString(geometryName)
+                << ",\"entryType\":" << jsonString(entryType) << ",\"qwords\":[";
+        for (std::size_t index = 0; index < 6; ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            gOutput << "\"0x" << std::hex << std::setw(16) << std::setfill('0') << words[index]
+                    << std::dec << "\"";
+        }
+        gOutput << "]}\n";
+
+        for (const std::size_t offset : { std::size_t(0x08), std::size_t(0x10), std::size_t(0x20), std::size_t(0x28) })
+        {
+            const void* candidate = *reinterpret_cast<void* const*>(
+                reinterpret_cast<const unsigned char*>(entry) + offset);
+            if (!isReadable(candidate, 0x20))
+                continue;
+            std::ostringstream label;
+            label << entryType << "+0x" << std::hex << offset;
+            const std::string candidateType = polymorphicTypeName(candidate);
+            captureRenderObjectPointers(candidate, candidateType.empty() ? label.str() : candidateType,
+                geometryName, formId, role, 0x600, 1);
+        }
+    }
+
+    struct TreeSummary
+    {
+        unsigned int nodes = 0;
+        unsigned int geometry = 0;
+        unsigned int semantic = 0;
+        unsigned int cycles = 0;
+        unsigned int truncated = 0;
+    };
+
+    void captureNode(NiAVObject* object, std::uint32_t formId, std::string_view role, std::string path,
+        unsigned int depth, std::unordered_set<const NiAVObject*>& visited, TreeSummary& summary)
+    {
+        constexpr unsigned int maxDepth = 96;
+        constexpr unsigned int maxNodes = 256;
+        if (!isReadable(object, sizeof(NiAVObject)))
+            return;
+        if (depth > maxDepth || summary.nodes >= maxNodes)
+        {
+            ++summary.truncated;
+            return;
+        }
+        if (!visited.insert(object).second)
+        {
+            ++summary.cycles;
+            return;
+        }
+
+        const std::string name = safeString(object->m_kName.c_str());
+        const std::string semantic = semanticForName(name);
+        NiNode* node = object->IsNode();
+        const std::string objectType = polymorphicTypeName(object);
+        const bool geometry = node == nullptr && (objectType.find("Geometry") != std::string::npos
+            || objectType.find("TriShape") != std::string::npos);
+        ++summary.nodes;
+        summary.geometry += geometry ? 1u : 0u;
+        summary.semantic += semantic.empty() ? 0u : 1u;
+        if (path.empty())
+            path = name.empty() ? "<root>" : name;
+
+        // The full character tree can contain many attached render branches. The path preserves every ancestor, while
+        // the row stream stays bounded to the root and the composition nodes needed to diagnose detached faces/hands.
+        if (depth == 0 || !semantic.empty())
+        {
+            gOutput << "{\"schema\":" << jsonString(kSchema) << ",\"event\":\"node\",\"role\":"
+                    << jsonString(role) << ",\"formId\":\"0x" << std::hex << std::setw(8) << std::setfill('0')
+                    << formId << std::dec << "\",\"depth\":" << depth << ",\"name\":" << jsonString(name)
+                    << ",\"path\":" << jsonString(path) << ",\"kind\":"
+                    << jsonString(geometry ? "geometry" : (node != nullptr ? "node" : "object"))
+                    << ",\"nativeType\":" << jsonString(objectType)
+                    << ",\"semantic\":" << jsonString(semantic) << ",\"local\":";
+            writeTransform(gOutput, object->m_kLocal);
+            gOutput << ",\"world\":";
+            writeTransform(gOutput, object->m_kWorld);
+            gOutput << ",\"worldBound\":{\"center\":[" << object->m_kWorldBound.m_kCenter.x << ','
+                    << object->m_kWorldBound.m_kCenter.y << ',' << object->m_kWorldBound.m_kCenter.z
+                    << "],\"radius\":" << object->m_kWorldBound.m_fRadius << "}}\n";
+        }
+
+        if (geometry)
+            captureGeometryShaderState(object, objectType, formId, role, name);
+
+        if (node == nullptr || !isReadable(node, sizeof(NiNode)))
+            return;
+        const auto& children = node->m_kChildren;
+        if (!isReadable(children.m_pBase, sizeof(NiPointer<NiAVObject>) * children.m_usSize))
+            return;
+        for (unsigned int index = 0; index < children.m_usSize; ++index)
+        {
+            if (summary.nodes >= maxNodes)
+            {
+                ++summary.truncated;
+                break;
+            }
+            NiAVObject* child = children.m_pBase[index].m_pObject;
+            if (child == nullptr)
+                continue;
+            const std::string childName = isReadable(child, sizeof(NiAVObject))
+                ? safeString(child->m_kName.c_str()) : std::string();
+            const std::string childPath = path + '/' + (childName.empty() ? ("#" + std::to_string(index)) : childName);
+            captureNode(child, formId, role, childPath, depth + 1, visited, summary);
+        }
+    }
+
+    void captureRootComposition(
+        NiAVObject* root, std::uint32_t formId, std::string_view role, TreeSummary& summary)
+    {
+        if (!isReadable(root, sizeof(NiAVObject)))
+            return;
+
+        NiNode* rootNode = root->IsNode();
+        const std::string rootName = safeString(root->m_kName.c_str());
+        ++summary.nodes;
+        gOutput << "{\"schema\":" << jsonString(kSchema)
+                << ",\"event\":\"root-composition\",\"role\":" << jsonString(role)
+                << ",\"formId\":\"0x" << std::hex << std::setw(8) << std::setfill('0') << formId
+                << std::dec << "\",\"name\":" << jsonString(rootName)
+                << ",\"kind\":" << jsonString(rootNode != nullptr ? "node" : "object")
+                << ",\"local\":";
+        writeTransform(gOutput, root->m_kLocal);
+        gOutput << ",\"world\":";
+        writeTransform(gOutput, root->m_kWorld);
+        gOutput << ",\"worldBound\":{\"center\":[" << root->m_kWorldBound.m_kCenter.x << ','
+                << root->m_kWorldBound.m_kCenter.y << ',' << root->m_kWorldBound.m_kCenter.z
+                << "],\"radius\":" << root->m_kWorldBound.m_fRadius << "}}\n";
+
+        if (rootNode == nullptr || !isReadable(rootNode, sizeof(NiNode)))
+            return;
+        const auto& children = rootNode->m_kChildren;
+        constexpr unsigned int maxRootChildren = 192;
+        if (children.m_usSize > maxRootChildren || children.m_usSize > children.m_usMaxSize
+            || !isReadable(children.m_pBase, sizeof(NiPointer<NiAVObject>) * children.m_usSize))
+        {
+            ++summary.truncated;
+            return;
+        }
+
+        for (unsigned int index = 0; index < children.m_usSize; ++index)
+        {
+            NiAVObject* child = children.m_pBase[index].m_pObject;
+            if (!isReadable(child, sizeof(NiAVObject)))
+                continue;
+            NiNode* childNode = child->IsNode();
+            const std::string name = safeString(child->m_kName.c_str());
+            const std::string semantic = semanticForName(name);
+            unsigned int directChildren = 0;
+            if (childNode != nullptr && isReadable(childNode, sizeof(NiNode)))
+            {
+                const auto& nested = childNode->m_kChildren;
+                if (nested.m_usSize <= nested.m_usMaxSize && nested.m_usSize <= 4096)
+                    directChildren = nested.m_usSize;
+            }
+            ++summary.nodes;
+            summary.semantic += semantic.empty() ? 0u : 1u;
+            summary.geometry += childNode == nullptr ? 1u : 0u;
+            gOutput << "{\"schema\":" << jsonString(kSchema)
+                    << ",\"event\":\"root-attachment\",\"role\":" << jsonString(role)
+                    << ",\"formId\":\"0x" << std::hex << std::setw(8) << std::setfill('0') << formId
+                    << std::dec << "\",\"index\":" << index << ",\"name\":" << jsonString(name)
+                    << ",\"kind\":" << jsonString(childNode != nullptr ? "node" : "object")
+                    << ",\"semantic\":" << jsonString(semantic)
+                    << ",\"directChildren\":" << directChildren << ",\"local\":";
+            writeTransform(gOutput, child->m_kLocal);
+            gOutput << ",\"world\":";
+            writeTransform(gOutput, child->m_kWorld);
+            gOutput << ",\"worldBound\":{\"center\":[" << child->m_kWorldBound.m_kCenter.x << ','
+                    << child->m_kWorldBound.m_kCenter.y << ',' << child->m_kWorldBound.m_kCenter.z
+                    << "],\"radius\":" << child->m_kWorldBound.m_fRadius << "}}\n";
+        }
+    }
+
+    NiAVObject* getLoadedRoot(TESObjectREFR* reference)
+    {
+        if (!isReadable(reference, sizeof(TESObjectREFR)))
+            return nullptr;
+        // The oracle executes on Starfield's main thread. Read the guarded pointer without mutating it so telemetry
+        // cannot perturb native reference state or depend on a second relocated lock entry point.
+        auto* loadedSlot = reinterpret_cast<LOADED_REF_DATA**>(&reference->loadedData);
+        if (!isReadable(loadedSlot, sizeof(*loadedSlot)))
+            return nullptr;
+        LOADED_REF_DATA* loaded = *loadedSlot;
+        return isReadable(loaded, sizeof(LOADED_REF_DATA)) ? loaded->data3D.m_pObject : nullptr;
+    }
+
+    Actor* findNearestLoadedActor(TESObjectREFR* player)
+    {
+        if (!isReadable(player, sizeof(TESObjectREFR)) || !isReadable(player->parentCell, sizeof(CellReferenceOverlay)))
+            return nullptr;
+        auto* cell = reinterpret_cast<CellReferenceOverlay*>(player->parentCell);
+        auto& references = cell->references;
+        if (references.size == 0 || references.size > 100000 || references.capacity < references.size
+            || !isReadable(references.data, sizeof(NiPointer<TESObjectREFR>) * references.size))
+            return nullptr;
+
+        Actor* nearest = nullptr;
+        float nearestSquared = std::numeric_limits<float>::max();
+        unsigned int actorCount = 0;
+        unsigned int loadedActorCount = 0;
+        for (unsigned int index = 0; index < references.size; ++index)
+        {
+            TESObjectREFR* reference = references.data[index].m_pObject;
+            if (reference == player || !isReadable(reference, sizeof(TESObjectREFR))
+                || reference->formType != static_cast<std::uint8_t>(FormType::kACHR))
+                continue;
+            ++actorCount;
+            if (getLoadedRoot(reference) == nullptr)
+                continue;
+            ++loadedActorCount;
+            const float dx = reference->data.location.x - player->data.location.x;
+            const float dy = reference->data.location.y - player->data.location.y;
+            const float dz = reference->data.location.z - player->data.location.z;
+            const float squared = dx * dx + dy * dy + dz * dz;
+            if (squared < nearestSquared)
+            {
+                nearestSquared = squared;
+                nearest = static_cast<Actor*>(reference);
+            }
+        }
+        const auto* cellForm = reinterpret_cast<const TESForm*>(player->parentCell);
+        const std::uint32_t cellFormId = isReadable(cellForm, sizeof(TESForm)) ? cellForm->formID : 0;
+        gOutput << "{\"schema\":" << jsonString(kSchema)
+                << ",\"event\":\"cell-actor-scan\",\"cellFormId\":\"0x" << std::hex << std::setw(8)
+                << std::setfill('0') << cellFormId << std::dec << "\",\"references\":" << references.size
+                << ",\"actors\":" << actorCount << ",\"loadedActors\":" << loadedActorCount
+                << ",\"nearestDistance\":"
+                << (nearest != nullptr ? std::sqrt(nearestSquared) : -1.f) << "}\n";
+        return nearest;
+    }
+
+    bool captureReference(TESObjectREFR* reference, std::string_view role)
+    {
+        if (!isReadable(reference, sizeof(TESObjectREFR)))
+            return false;
+        NiAVObject* root = getLoadedRoot(reference);
+        const std::uint32_t formId = reference->formID;
+        const std::uint32_t baseFormId = reference->data.objectReference != nullptr
+            && isReadable(reference->data.objectReference, sizeof(TESForm))
+            ? reference->data.objectReference->formID : 0;
+        gOutput << "{\"schema\":" << jsonString(kSchema) << ",\"event\":\"reference\",\"role\":"
+                << jsonString(role) << ",\"formId\":\"0x" << std::hex << std::setw(8) << std::setfill('0')
+                << formId << "\",\"baseFormId\":\"0x" << std::setw(8) << baseFormId << std::dec
+                << "\",\"position\":[" << reference->data.location.x << ',' << reference->data.location.y << ','
+                << reference->data.location.z << "],\"angle\":[" << reference->data.angle.x << ','
+                << reference->data.angle.y << ',' << reference->data.angle.z << "],\"scaleRaw\":"
+                << reference->scale << ",\"loadedRoot\":" << (root != nullptr ? "true" : "false") << "}\n";
+        if (root == nullptr)
+            return false;
+
+        TreeSummary summary;
+        if (envString("NIKAMI_STARFIELD_ORACLE_FULL_TREE") == "1")
+        {
+            std::unordered_set<const NiAVObject*> visited;
+            captureNode(root, formId, role, {}, 0, visited, summary);
+        }
+        else
+            captureRootComposition(root, formId, role, summary);
+        gOutput << "{\"schema\":" << jsonString(kSchema) << ",\"event\":\"tree-summary\",\"role\":"
+                << jsonString(role) << ",\"formId\":\"0x" << std::hex << std::setw(8) << std::setfill('0')
+                << formId << std::dec << "\",\"nodes\":" << summary.nodes << ",\"geometry\":"
+                << summary.geometry << ",\"semanticNodes\":" << summary.semantic << ",\"cycles\":"
+                << summary.cycles << ",\"truncated\":" << summary.truncated << "}\n";
+        gOutput.flush();
+        return true;
+    }
+
+    bool plausibleTelemetryString(std::string_view value)
+    {
+        if (value.size() < 4 || value.size() > 240)
+            return false;
+        bool alphabetic = false;
+        for (const unsigned char character : value)
+        {
+            if (std::isalpha(character))
+                alphabetic = true;
+            if (character < 0x20 || character > 0x7e)
+                return false;
+        }
+        return alphabetic;
+    }
+
+    bool isNativeFormPointer(const void* candidate, LookupFormByNumericId lookup, TESForm*& form)
+    {
+        form = nullptr;
+        if (!isReadable(candidate, sizeof(TESForm)))
+            return false;
+        auto* value = const_cast<TESForm*>(reinterpret_cast<const TESForm*>(candidate));
+        if (value->formID == 0
+            || value->formType >= static_cast<std::uint8_t>(FormType::kTotal))
+            return false;
+        if (lookup(value->formID) != value)
+            return false;
+        form = value;
+        return true;
+    }
+
+    bool captureNativeForm(TESForm* form, LookupFormByNumericId lookup, std::string_view role)
+    {
+        if (!isReadable(form, sizeof(TESForm)))
+            return false;
+
+        const std::string typeName = polymorphicTypeName(form);
+        const unsigned int requestedBytes = envUInt("NIKAMI_STARFIELD_ORACLE_FORM_SCAN_BYTES", 0x600);
+        const std::size_t scanBytes = (std::min)(static_cast<std::size_t>(0x2000),
+            (std::max)(static_cast<std::size_t>(sizeof(TESForm)), static_cast<std::size_t>(requestedBytes)));
+        gOutput << "{\"schema\":" << jsonString(kSchema)
+                << ",\"event\":\"native-form\",\"role\":" << jsonString(role)
+                << ",\"formId\":\"0x" << std::hex << std::setw(8) << std::setfill('0') << form->formID
+                << std::dec << "\",\"formType\":" << static_cast<unsigned int>(form->formType)
+                << ",\"rtti\":" << jsonString(typeName) << ",\"scanBytes\":" << scanBytes << "}\n";
+
+        const auto* bytes = reinterpret_cast<const unsigned char*>(form);
+        for (std::size_t offset = 0; offset + sizeof(std::uint64_t) <= scanBytes; offset += sizeof(std::uint64_t))
+        {
+            if (!isReadable(bytes + offset, sizeof(std::uint64_t)))
+                break;
+            const std::uint64_t qword = *reinterpret_cast<const std::uint64_t*>(bytes + offset);
+            gOutput << "{\"schema\":" << jsonString(kSchema)
+                    << ",\"event\":\"native-form-qword\",\"formId\":\"0x" << std::hex
+                    << std::setw(8) << std::setfill('0') << form->formID << std::dec << "\",\"offset\":"
+                    << offset << ",\"value\":\"0x" << std::hex << std::setw(16) << std::setfill('0')
+                    << qword << std::dec << "\"}\n";
+
+            const void* candidate = reinterpret_cast<const void*>(static_cast<std::uintptr_t>(qword));
+            TESForm* pointedForm = nullptr;
+            if (isNativeFormPointer(candidate, lookup, pointedForm))
+            {
+                gOutput << "{\"schema\":" << jsonString(kSchema)
+                        << ",\"event\":\"native-form-pointer\",\"ownerFormId\":\"0x" << std::hex
+                        << std::setw(8) << std::setfill('0') << form->formID << std::dec << "\",\"offset\":"
+                        << offset << ",\"targetFormId\":\"0x" << std::hex << std::setw(8)
+                        << std::setfill('0') << pointedForm->formID << std::dec << "\",\"targetFormType\":"
+                        << static_cast<unsigned int>(pointedForm->formType) << ",\"targetRtti\":"
+                        << jsonString(polymorphicTypeName(pointedForm)) << "}\n";
+            }
+
+            const std::string text = safeString(reinterpret_cast<const char*>(candidate), 241);
+            if (plausibleTelemetryString(text))
+            {
+                gOutput << "{\"schema\":" << jsonString(kSchema)
+                        << ",\"event\":\"native-form-string\",\"formId\":\"0x" << std::hex
+                        << std::setw(8) << std::setfill('0') << form->formID << std::dec << "\",\"offset\":"
+                        << offset << ",\"value\":" << jsonString(text) << "}\n";
+            }
+        }
+        gOutput.flush();
+        return true;
+    }
+
+    unsigned int captureLoadedReferencesForBaseForms(TESObjectREFR* player,
+        const std::unordered_set<std::uint32_t>& baseFormIds, unsigned int maximum)
+    {
+        if (!isReadable(player, sizeof(TESObjectREFR)) || !isReadable(player->parentCell, sizeof(CellReferenceOverlay)))
+            return 0;
+        auto* cell = reinterpret_cast<CellReferenceOverlay*>(player->parentCell);
+        auto& references = cell->references;
+        if (references.size == 0 || references.size > 100000 || references.capacity < references.size
+            || !isReadable(references.data, sizeof(NiPointer<TESObjectREFR>) * references.size))
+            return 0;
+
+        unsigned int matched = 0;
+        unsigned int captured = 0;
+        for (unsigned int index = 0; index < references.size; ++index)
+        {
+            TESObjectREFR* reference = references.data[index].m_pObject;
+            if (!isReadable(reference, sizeof(TESObjectREFR)) || reference->data.objectReference == nullptr
+                || !isReadable(reference->data.objectReference, sizeof(TESForm)))
+                continue;
+            const std::uint32_t baseFormId = reference->data.objectReference->formID;
+            if (baseFormIds.find(baseFormId) == baseFormIds.end())
+                continue;
+            ++matched;
+            if (captured < maximum && captureReference(reference, "target-base-instance"))
+                ++captured;
+        }
+        gOutput << "{\"schema\":" << jsonString(kSchema)
+                << ",\"event\":\"target-base-instance-summary\",\"cellReferences\":" << references.size
+                << ",\"matched\":" << matched << ",\"captured\":" << captured << "}\n";
+        gOutput.flush();
+        return captured;
+    }
+
+    std::vector<std::uint32_t> parseFormIds(const std::string& text)
+    {
+        std::vector<std::uint32_t> forms;
+        std::size_t begin = 0;
+        while (begin < text.size())
+        {
+            const std::size_t end = text.find(',', begin);
+            const std::string token = text.substr(begin, end == std::string::npos ? std::string::npos : end - begin);
+            char* parsedEnd = nullptr;
+            const unsigned long value = std::strtoul(token.c_str(), &parsedEnd, 0);
+            if (parsedEnd != token.c_str() && *parsedEnd == '\0' && value != 0)
+                forms.push_back(static_cast<std::uint32_t>(value));
+            if (end == std::string::npos)
+                break;
+            begin = end + 1;
+        }
+        return forms;
+    }
+
+    LookupFormByNumericId lookupFunction()
+    {
+        const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+        auto function = reinterpret_cast<LookupFormByNumericId>(base + kLookupFormByNumericIdOffset);
+        return isExecutable(reinterpret_cast<const void*>(function)) ? function : nullptr;
+    }
+
+    void finish(bool pass, std::string_view reason, unsigned int targetsCaptured)
+    {
+        if (gComplete)
+            return;
+        gComplete = true;
+        gOutput << "{\"schema\":" << jsonString(kSchema) << ",\"event\":\"capture-complete\",\"result\":"
+                << jsonString(pass ? "pass" : "fail") << ",\"reason\":" << jsonString(reason)
+                << ",\"frame\":" << gFrame << ",\"targetsCaptured\":" << targetsCaptured << "}\n";
+        gOutput.flush();
+        gOutput.close();
+        TerminateProcess(GetCurrentProcess(), pass ? 0 : 3);
+    }
+
+    void captureFrame()
+    {
+        if (gComplete)
+            return;
+        hideOwnWindows();
+        ++gFrame;
+
+        LookupFormByNumericId lookup = lookupFunction();
+        if (lookup == nullptr)
+        {
+            finish(false, "SFSE 1.16.244 form lookup entry point was not executable", 0);
+            return;
+        }
+
+        TESForm* playerForm = lookup(0x14);
+        auto* player = playerForm != nullptr && isReadable(playerForm, sizeof(TESForm))
+            && playerForm->formType == static_cast<std::uint8_t>(FormType::kACHR)
+            ? static_cast<Actor*>(playerForm) : nullptr;
+        if (player == nullptr || getLoadedRoot(player) == nullptr)
+        {
+            if (gFrame % 120 == 0)
+            {
+                gOutput << "{\"schema\":" << jsonString(kSchema)
+                        << ",\"event\":\"awaiting-world\",\"frame\":" << gFrame
+                        << ",\"playerResolved\":" << (player != nullptr ? "true" : "false") << "}\n";
+                gOutput.flush();
+            }
+            if (gFrame >= gMaxFrames)
+                finish(false, "native player 3D never became ready", 0);
+            return;
+        }
+
+        if (gReadyFrame == 0)
+            gReadyFrame = gFrame;
+        if (gFrame - gReadyFrame < gSettleFrames)
+            return;
+
+        gOutput << "{\"schema\":" << jsonString(kSchema)
+                << ",\"event\":\"capture-begin\",\"frame\":" << gFrame << "}\n";
+        captureMaterialDatabase();
+        unsigned int targetsCaptured = 0;
+        const bool formScan = envString("NIKAMI_STARFIELD_ORACLE_FORM_SCAN") == "1";
+        std::unordered_set<std::uint32_t> targetBaseForms;
+        for (const std::uint32_t formId : gTargetForms)
+        {
+            TESForm* form = lookup(formId);
+            if (form == nullptr || !isReadable(form, sizeof(TESForm)))
+            {
+                gOutput << "{\"schema\":" << jsonString(kSchema)
+                        << ",\"event\":\"target-unresolved\",\"formId\":\"0x" << std::hex
+                        << std::setw(8) << std::setfill('0') << formId << std::dec << "\"}\n";
+                continue;
+            }
+            if (form->formType == static_cast<std::uint8_t>(FormType::kACHR)
+                || form->formType == static_cast<std::uint8_t>(FormType::kREFR))
+                targetsCaptured += captureReference(static_cast<TESObjectREFR*>(form), "target") ? 1u : 0u;
+            else if (formScan)
+            {
+                targetBaseForms.insert(form->formID);
+                targetsCaptured += captureNativeForm(form, lookup, "target-base") ? 1u : 0u;
+            }
+            else
+            {
+                gOutput << "{\"schema\":" << jsonString(kSchema)
+                        << ",\"event\":\"target-wrong-type\",\"formId\":\"0x" << std::hex
+                        << std::setw(8) << std::setfill('0') << formId << std::dec << "\",\"formType\":"
+                        << static_cast<unsigned int>(form->formType) << "}\n";
+            }
+        }
+        if (formScan && !targetBaseForms.empty())
+            captureLoadedReferencesForBaseForms(player, targetBaseForms,
+                envUInt("NIKAMI_STARFIELD_ORACLE_BASE_INSTANCE_LIMIT", 24));
+        if (!formScan && targetsCaptured == 0)
+        {
+            if (Actor* nearest = findNearestLoadedActor(player))
+                targetsCaptured += captureReference(nearest, "nearby-actor") ? 1u : 0u;
+        }
+        const bool playerCaptured = captureReference(player, "player");
+        finish(playerCaptured && targetsCaptured > 0,
+            playerCaptured && targetsCaptured > 0
+                ? (formScan ? "native player and requested base forms captured"
+                            : "native player and target 3D trees captured")
+                : (formScan ? "player captured but no requested base form resolved"
+                            : "player captured but no requested target had loaded 3D"),
+            targetsCaptured);
+    }
+
+    class PermanentCaptureTask final : public SFSETaskInterface::ITaskDelegate
+    {
+    public:
+        void Run() override { captureFrame(); }
+        void Destroy() override { delete this; }
+    };
+
+    void messageHandler(SFSEMessagingInterface::Message* message)
+    {
+        if (message == nullptr || gComplete)
+            return;
+        if (message->type == SFSEMessagingInterface::kMessage_PostDataLoad
+            || message->type == SFSEMessagingInterface::kMessage_PostPostDataLoad)
+        {
+            if (envString("NIKAMI_STARFIELD_ORACLE_MATERIAL_ONLY") == "1")
+            {
+                const unsigned int matched = captureMaterialDatabase();
+                finish(matched > 0,
+                    matched > 0 ? "native material database entries captured"
+                                : "native material database contained no requested entries",
+                    matched);
+                return;
+            }
+            static bool installed = false;
+            if (!installed && gTasks != nullptr)
+            {
+                installed = true;
+                gTasks->AddTaskPermanent(new PermanentCaptureTask);
+                gOutput << "{\"schema\":" << jsonString(kSchema)
+                        << ",\"event\":\"task-installed\"}\n";
+                gOutput.flush();
+            }
+        }
+    }
+}
+
+extern "C"
+{
+    __declspec(dllexport) SFSEPluginVersionData SFSEPlugin_Version = {
+        SFSEPluginVersionData::kVersion,
+        1,
+        "Nikami Starfield Retail Oracle",
+        "Nikami Worlds",
+        0,
+        SFSEPluginVersionData::kStructureIndependence_1_14_70_Layout,
+        { RUNTIME_VERSION_1_16_244, 0 },
+        0,
+        0,
+        0,
+    };
+
+    __declspec(dllexport) bool SFSEPlugin_Load(const SFSEInterface* sfse)
+    {
+        if (sfse == nullptr || sfse->runtimeVersion != RUNTIME_VERSION_1_16_244)
+            return false;
+        gOutputPath = envString("NIKAMI_STARFIELD_ORACLE_OUTPUT");
+        if (gOutputPath.empty() || envString("NIKAMI_STARFIELD_ORACLE_HIDDEN") != "1")
+            return false;
+
+        gPluginHandle = sfse->GetPluginHandle();
+        auto* messaging = static_cast<SFSEMessagingInterface*>(sfse->QueryInterface(kInterface_Messaging));
+        gTasks = static_cast<SFSETaskInterface*>(sfse->QueryInterface(kInterface_Task));
+        if (messaging == nullptr || gTasks == nullptr)
+            return false;
+
+        gTargetForms = parseFormIds(envString("NIKAMI_STARFIELD_ORACLE_TARGET_FORMS"));
+        if (gTargetForms.empty())
+            gTargetForms.push_back(0x0123337C);
+        gSettleFrames = envUInt("NIKAMI_STARFIELD_ORACLE_SETTLE_FRAMES", 0);
+        gMaxFrames = (std::max)(gSettleFrames + 60, envUInt("NIKAMI_STARFIELD_ORACLE_MAX_FRAMES", 1200));
+
+        gOutput.open(gOutputPath, std::ios::out | std::ios::trunc);
+        if (!gOutput)
+            return false;
+        gOutput << std::setprecision(9);
+        gOutput << "{\"schema\":" << jsonString(kSchema)
+                << ",\"event\":\"plugin-load\",\"runtime\":\"1.16.244.0\",\"lookupOffset\":\"0x005DE3B0\"}\n";
+        gOutput.flush();
+        hideOwnWindows();
+        return messaging->RegisterListener(gPluginHandle, "SFSE", messageHandler);
+    }
+}

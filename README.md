@@ -11,13 +11,14 @@ The goal is to make one shared catalog that both flat OpenMW and OpenMW VR can u
 5. Use the loaded profile as a world walker: search cells, click exterior maps,
    enter coordinates, and teleport there.
 
-This repo intentionally does not vendor third-party engine source. It carries
-reviewable, pinned patch overlays for OpenMW/OpenMW VR and the xNVSE, xOBSE, and
-SFSE retail-oracle harnesses. The complete compile-ready OpenMW composite is
-published separately in `nikami-openmw-lab`; clean upstream checkouts can be
-reconstructed from the queues under `patches/`. Runtime launches use the
-repo-local OpenMW bundle under `local/openmw-fo4guard` so profile tests do not
-silently bind to some other build.
+This repo does not duplicate complete third-party engine trees. Final Nikami
+oracle C/C++ and project files are directly browsable under `oracles/`, and the
+few complete upstream files changed for isolated loading live under
+`upstream-overrides/`. Pinned patches remain under `patches/` as review and
+exact-replay artifacts. The complete compile-ready OpenMW composite is published
+separately in `nikami-openmw-lab`. Runtime launches use the repo-local OpenMW
+bundle under `local/openmw-fo4guard` so profile tests do not silently bind to
+some other build.
 
 If a downstream patch becomes generally useful, split it into a clean branch in
 the external OpenMW checkout and submit a normal upstream PR. Once accepted, drop

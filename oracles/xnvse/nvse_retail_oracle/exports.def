@@ -1,0 +1,4 @@
+LIBRARY "nvse_retail_oracle"
+EXPORTS
+NVSEPlugin_Query
+NVSEPlugin_Load
