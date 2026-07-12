@@ -37,6 +37,9 @@ param(
     [int]$FurnitureReleaseSamples = 3,
     [switch]$BackgroundDataMode,
     [switch]$VisibleGame,
+    [switch]$IsolateFromFNVXR,
+    [switch]$CaptureSession,
+    [string]$SessionTargetForm = "0",
     [switch]$CaptureAnimation,
     [int[]]$ScreenshotFrame = @(),
     [string]$ScreenshotDirectory = "",
@@ -91,7 +94,7 @@ if ($TimeoutSeconds -lt 10 -or $TimeoutSeconds -gt 300) {
 if ($SampleEvery -lt 1) {
     throw "SampleEvery must be positive."
 }
-foreach ($form in @($TargetForm, $ObserverApproachForm, $EquipForm)) {
+foreach ($form in @($TargetForm, $ObserverApproachForm, $EquipForm, $SessionTargetForm)) {
     if ($form -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$') {
         throw "Expected a decimal or 0x-prefixed FormID, got: $form"
     }
@@ -196,6 +199,8 @@ $screenshotOutputDirectory = if ([string]::IsNullOrWhiteSpace($ScreenshotDirecto
 $capturedScreenshots = @()
 $portraitProofCrops = @()
 $fixtureDestinations = @()
+$fnvxrBackups = @()
+$fnvxrBackupDirectory = Join-Path (Split-Path -Parent $output) ".fnvxr-isolation-$PID"
 $resolvedSaveFixture = $null
 $fixtureSaveName = $null
 
@@ -247,6 +252,8 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_EQUIP_FORM = $EquipForm
     NIKAMI_ORACLE_ALL_HIGH_ACTORS = if ($CaptureAnimation) { "1" } else { "0" }
     NIKAMI_ORACLE_CAPTURE_ANIMATION = if ($CaptureAnimation) { "1" } else { "0" }
+    NIKAMI_ORACLE_CAPTURE_SESSION = if ($CaptureSession) { "1" } else { "0" }
+    NIKAMI_ORACLE_SESSION_TARGET_FORM = $SessionTargetForm
     NIKAMI_ORACLE_FURNITURE_ONLY = if ($FurnitureOnly) { "1" } else { "0" }
     NIKAMI_ORACLE_FURNITURE_SETTLED_COMMANDS = (@($FurnitureSettledCommand) -join "|")
     NIKAMI_ORACLE_EXIT_AFTER_FURNITURE_RELEASE = if ($ExitAfterFurnitureRelease) { "1" } else { "0" }
@@ -286,6 +293,24 @@ $gameProcess = $null
 $hadInstalledPlugin = Test-Path -LiteralPath $installedPlugin -PathType Leaf
 
 try {
+    if ($IsolateFromFNVXR) {
+        if (Test-Path -LiteralPath $fnvxrBackupDirectory) {
+            throw "Refusing to overwrite stale FNVXR isolation directory: $fnvxrBackupDirectory"
+        }
+        New-Item -ItemType Directory -Path $fnvxrBackupDirectory | Out-Null
+        $fnvxrCandidates = @(
+            (Join-Path $gameRootPath 'd3d9.dll'),
+            (Join-Path $gameRootPath 'dinput8.dll'),
+            (Join-Path $pluginDirectory 'nvse_fnvxr.dll')
+        )
+        foreach ($candidate in $fnvxrCandidates) {
+            if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+            $backupName = (($candidate.Substring($gameRootPath.Length).TrimStart('\', '/') -replace '[\\/]', '__'))
+            $backupPath = Join-Path $fnvxrBackupDirectory $backupName
+            Move-Item -LiteralPath $candidate -Destination $backupPath
+            $fnvxrBackups += [pscustomobject]@{ Original = $candidate; Backup = $backupPath }
+        }
+    }
     if ($expectedScreenshotCount -gt 0) {
         if (Test-Path -LiteralPath $screenshotBackupDirectory) {
             throw "Refusing to overwrite stale screenshot backup: $screenshotBackupDirectory"
@@ -398,6 +423,17 @@ finally {
     }
     if ($hadInstalledPlugin -and (Test-Path -LiteralPath $backupPlugin)) {
         Move-Item -LiteralPath $backupPlugin -Destination $installedPlugin
+    }
+    foreach ($entry in $fnvxrBackups) {
+        if (Test-Path -LiteralPath $entry.Original) {
+            throw "Refusing to overwrite an FNVXR file while restoring retail isolation: $($entry.Original)"
+        }
+        if (Test-Path -LiteralPath $entry.Backup) {
+            Move-Item -LiteralPath $entry.Backup -Destination $entry.Original
+        }
+    }
+    if (Test-Path -LiteralPath $fnvxrBackupDirectory) {
+        Remove-Item -LiteralPath $fnvxrBackupDirectory -Force
     }
     foreach ($fixture in $fixtureDestinations) {
         if (Test-Path -LiteralPath $fixture.Destination) {
@@ -522,6 +558,7 @@ if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne $expectedAppear
     furnitureReleaseSamples = $FurnitureReleaseSamples
     backgroundDataMode = [bool]$BackgroundDataMode
     visibleGame = [bool]$VisibleGame
+    isolatedFromFNVXR = [bool]$IsolateFromFNVXR
     screenshotFrames = @($ScreenshotFrame)
     batchTargetForms = @($BatchTargetForm)
     batchSettleFrames = $BatchSettleFrames
@@ -537,6 +574,8 @@ if ($RequireAppearanceTelemetry -and $appearanceEvents.Count -ne $expectedAppear
     setStageQuestForm = $SetStageQuestForm
     setStageIndex = $SetStageIndex
     captureAnimation = [bool]$CaptureAnimation
+    captureSession = [bool]$CaptureSession
+    sessionTargetForm = $SessionTargetForm
     furnitureOnly = [bool]$FurnitureOnly
     sampleEvery = $SampleEvery
     targetForm = $TargetForm

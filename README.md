@@ -11,10 +11,13 @@ The goal is to make one shared catalog that both flat OpenMW and OpenMW VR can u
 5. Use the loaded profile as a world walker: search cells, click exterior maps,
    enter coordinates, and teleport there.
 
-This repo intentionally does not vendor OpenMW or OpenMW VR source. Treat those
-trees as downstream dependencies for patch development only. Runtime launches use
-the repo-local OpenMW bundle under `local/openmw-fo4guard` so profile tests do
-not silently bind to some other build.
+This repo intentionally does not vendor third-party engine source. It carries
+reviewable, pinned patch overlays for OpenMW/OpenMW VR and the xNVSE, xOBSE, and
+SFSE retail-oracle harnesses. The complete compile-ready OpenMW composite is
+published separately in `nikami-openmw-lab`; clean upstream checkouts can be
+reconstructed from the queues under `patches/`. Runtime launches use the
+repo-local OpenMW bundle under `local/openmw-fo4guard` so profile tests do not
+silently bind to some other build.
 
 If a downstream patch becomes generally useful, split it into a clean branch in
 the external OpenMW checkout and submit a normal upstream PR. Once accepted, drop
@@ -71,12 +74,25 @@ Flat-test a generated profile with the existing OpenMW binary:
 .\scripts\Start-WorldProfileExisting.ps1 -WorldId fallout_new_vegas -Mode flat -DryRun
 ```
 
+Start a persistent interactive Fallout walkaround with the proven player anchor,
+first-person camera, and weather/cloud bootstrap:
+
+```powershell
+.\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout_new_vegas
+.\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout3
+```
+
 Apply the downstream OpenMW patch layer:
 
 ```powershell
 .\scripts\Apply-OpenMWPatches.ps1 -Check
 .\scripts\Apply-OpenMWPatches.ps1
 ```
+
+Oracle source overlays are pinned in
+`catalog/oracle-overlay-lock.json` and live under `patches/xnvse`,
+`patches/xobse`, and `patches/sfse`. These queues are independent of the
+separate FNV mod stack.
 
 ## Current Feasibility
 

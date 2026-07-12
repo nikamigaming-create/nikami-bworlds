@@ -1,0 +1,2 @@
+player->PositionCell -67730 3100 8392 326 "Goodsprings"
+player->SetAngle x 12

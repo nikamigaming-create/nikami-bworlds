@@ -1,0 +1,108 @@
+From df1835090fd568f81cad8d3d288cf2c72147524b Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Sun, 12 Jul 2026 09:58:13 -0700
+Subject: [PATCH] Isolate xNVSE loading for the Nikami retail oracle
+
+---
+ nvse/nvse/PluginManager.cpp       | 15 +++++++++++++++
+ nvse/nvse_loader/main.cpp         |  8 ++++++++
+ nvse/steam_loader/PluginPreload.h | 13 +++++++++----
+ nvse/steam_loader/main.cpp        |  8 ++++++++
+ 4 files changed, 40 insertions(+), 4 deletions(-)
+
+diff --git a/nvse/nvse/PluginManager.cpp b/nvse/nvse/PluginManager.cpp
+index f9915b7..0d76d56 100644
+--- a/nvse/nvse/PluginManager.cpp
++++ b/nvse/nvse/PluginManager.cpp
+@@ -542,6 +542,21 @@ bool PluginManager::FindPluginDirectory(void)
+ {
+ 	bool	result = false;
+ 
++	// Nikami retail-oracle isolation: let a diagnostic launch opt into a dedicated plugin directory. This keeps
++	// normal gameplay plugins (especially rendering/XR hooks) completely outside the oracle process without moving
++	// or renaming anything in the user's real Data\\NVSE\\Plugins directory.
++	char isolatedPluginDirectory[4096] = {};
++	const DWORD isolatedPluginDirectoryLength = GetEnvironmentVariableA(
++		"NIKAMI_NVSE_PLUGIN_DIR", isolatedPluginDirectory, sizeof(isolatedPluginDirectory));
++	if (isolatedPluginDirectoryLength > 0 && isolatedPluginDirectoryLength < sizeof(isolatedPluginDirectory))
++	{
++		m_pluginDirectory = isolatedPluginDirectory;
++		if (m_pluginDirectory.back() != '\\' && m_pluginDirectory.back() != '/')
++			m_pluginDirectory += '\\';
++		_MESSAGE("using isolated Nikami plugin directory = %s", m_pluginDirectory.c_str());
++		return true;
++	}
++
+ 	// find the path <fallout directory>/data/nvse/
+ 	std::string	falloutDirectory = GetFalloutDirectory();
+ 
+diff --git a/nvse/nvse_loader/main.cpp b/nvse/nvse_loader/main.cpp
+index a268fb1..d8a6a17 100644
+--- a/nvse/nvse_loader/main.cpp
++++ b/nvse/nvse_loader/main.cpp
+@@ -183,6 +183,14 @@ int main(int argc, char ** argv)
+ 				// Plugin preload code + heap hooks are in nvse_steam_loader.dll, so we use it for both Steam and non-Steam
+ 				// Naming is kept intact for legacy reasons
+ 				std::string	steamHookDllPath = std::string(currentWorkingDirectory) + "\\nvse_steam_loader.dll";
++				char isolatedSteamLoaderPath[4096] = {};
++				const DWORD isolatedSteamLoaderPathLength = GetEnvironmentVariableA(
++					"NIKAMI_NVSE_STEAM_LOADER", isolatedSteamLoaderPath, sizeof(isolatedSteamLoaderPath));
++				if (isolatedSteamLoaderPathLength > 0 && isolatedSteamLoaderPathLength < sizeof(isolatedSteamLoaderPath))
++				{
++					steamHookDllPath = isolatedSteamLoaderPath;
++					_MESSAGE("using isolated Nikami steam loader = %s", steamHookDllPath.c_str());
++				}
+ 
+ 				if (InjectDLLThread(&procInfo, steamHookDllPath.c_str(), true))
+ 				{
+diff --git a/nvse/steam_loader/PluginPreload.h b/nvse/steam_loader/PluginPreload.h
+index be7dd57..12d1792 100644
+--- a/nvse/steam_loader/PluginPreload.h
++++ b/nvse/steam_loader/PluginPreload.h
+@@ -8,9 +8,14 @@
+ typedef bool (*_NVSEPlugin_Preload)();
+ 
+ void PreloadPlugins() {
+-	char folderPath[MAX_PATH];
+-	GetCurrentDirectory(MAX_PATH, folderPath);
+-	strcat_s(folderPath, "\\Data\\NVSE\\Plugins");
++	char folderPath[4096] = {};
++	const DWORD isolatedPluginDirectoryLength = GetEnvironmentVariableA(
++		"NIKAMI_NVSE_PLUGIN_DIR", folderPath, sizeof(folderPath));
++	if (isolatedPluginDirectoryLength == 0 || isolatedPluginDirectoryLength >= sizeof(folderPath))
++	{
++		GetCurrentDirectoryA(sizeof(folderPath), folderPath);
++		strcat_s(folderPath, "\\Data\\NVSE\\Plugins");
++	}
+ 
+ 	_MESSAGE("Preloading plugins from %s", folderPath);
+ 
+@@ -70,4 +75,4 @@ void PreloadPlugins() {
+ 		_MESSAGE("Preloading \"%s\"", pluginPath);
+ 		preload();
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/nvse/steam_loader/main.cpp b/nvse/steam_loader/main.cpp
+index 25da6e9..53d09be 100644
+--- a/nvse/steam_loader/main.cpp
++++ b/nvse/steam_loader/main.cpp
+@@ -142,6 +142,14 @@ void InstallHook(void * retaddr)
+ 	std::string	dllPath;
+ 
+ 	g_dllPath = GetCWD() + "\\nvse_" + dllSuffix + ".dll";
++	char isolatedCorePath[4096] = {};
++	const DWORD isolatedCorePathLength = GetEnvironmentVariableA(
++		"NIKAMI_NVSE_CORE_DLL", isolatedCorePath, sizeof(isolatedCorePath));
++	if (isolatedCorePathLength > 0 && isolatedCorePathLength < sizeof(isolatedCorePath))
++	{
++		g_dllPath = isolatedCorePath;
++		_MESSAGE("using isolated Nikami core DLL = %s", g_dllPath.c_str());
++	}
+ 
+ 	_MESSAGE("dll = %s", g_dllPath.c_str());
+ 
+-- 
+2.53.0.windows.1
+

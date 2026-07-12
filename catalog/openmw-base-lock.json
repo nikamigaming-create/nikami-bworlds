@@ -1,10 +1,17 @@
 {
   "schema": "nikami-openmw-base-lock/v1",
-  "verifiedAt": "2026-07-10",
+  "verifiedAt": "2026-07-12",
   "workingCheckout": "D:\\Modlists\\fnv\\openmw-source",
   "overlayRepositoryBranch": "codex/bethesda-flat-overlay",
   "workingBranch": "codex/bethesda-baked-flat-overlay-snapshot",
   "queueBase": "c30c830d8e0b173e17eee17fc63cc059c559a5ba",
+  "overlayRepository": "https://github.com/nikamigaming-create/nikami-bworlds.git",
+  "compositeCheckpoint": {
+    "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
+    "branch": "codex/bethesda-baked-flat-overlay-snapshot",
+    "commit": "8a1ad31b2bfd7f3d9b387df0ba216c46ec6a8c96",
+    "tree": "051b40b45c8b819c29fc8203a0cdd649205443a7"
+  },
   "remotes": {
     "official": {
       "name": "upstream",
@@ -19,13 +26,14 @@
   },
   "unpublishedBaseDelta": {
     "commitCountAheadOfOriginOpenmwVr": 98,
-    "status": "must-be-extracted-or-published",
+    "status": "published-in-nikami-openmw-lab-composite-history",
+    "reachableFrom": "codex/bethesda-baked-flat-overlay-snapshot",
     "constraint": "patches/openmw currently require queueBase and do not apply to official master"
   },
   "layers": [
     "official-openmw-moving-reference",
     "openmw-vr-fork-and-unpublished-98-commit-base-delta",
-    "flat-bethesda-overlay-patches-0001-through-0017",
+    "flat-bethesda-overlay-patches-0001-through-0019",
     "future-vr-integration-after-flat-parity"
   ]
 }

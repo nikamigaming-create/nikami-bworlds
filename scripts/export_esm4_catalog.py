@@ -107,6 +107,19 @@ class ESM4Catalog:
         for name, raw in subrecords(payload):
             if name == "EDID":
                 fields["editorId"] = zstr(raw)
+            elif rtype == "GMST" and name == "DATA" and len(raw) >= 4:
+                setting_id = fields.get("editorId", "")
+                setting_type = setting_id[:1]
+                if setting_type == "f":
+                    fields["settingValue"] = f32(raw, 0)
+                elif setting_type == "i":
+                    fields["settingValue"] = i32(raw, 0)
+                elif setting_type == "b":
+                    fields["settingValue"] = u32(raw, 0) != 0
+                elif setting_type == "u":
+                    fields["settingValue"] = u32(raw, 0)
+                elif setting_type == "s":
+                    fields["settingValue"] = zstr(raw)
             elif name == "FULL":
                 if self.localized and len(raw) == 4:
                     fields["fullNameStringId"] = u32(raw, 0)
@@ -157,10 +170,63 @@ class ESM4Catalog:
                 fields.setdefault("models", []).append(zstr(raw))
             elif rtype in ("HAIR", "EYES", "HDPT") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
                 fields.setdefault("models", []).append(zstr(raw))
+            elif rtype in ("ACTI", "TACT", "DOOR") and name == "MODL":
+                fields.setdefault("models", []).append(zstr(raw))
+            elif rtype == "ACTI" and name == "SCRI" and len(raw) >= 4:
+                fields["script"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "ACTI" and name == "SNAM" and len(raw) >= 4:
+                fields["loopingSound"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "ACTI" and name == "VNAM" and len(raw) >= 4:
+                fields["activationSound"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "ACTI" and name == "INAM" and len(raw) >= 4:
+                fields["radioTemplate"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "ACTI" and name == "RNAM" and len(raw) >= 4:
+                fields["radioStation"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "ACTI" and name == "XATO":
+                fields["activationPrompt"] = zstr(raw)
+            elif rtype == "TACT" and name == "SCRI" and len(raw) >= 4:
+                fields["script"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "TACT" and name == "VNAM" and len(raw) >= 4:
+                fields["voiceType"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "TACT" and name == "SNAM" and len(raw) >= 4:
+                fields["loopingSound"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "TACT" and name == "INAM" and len(raw) >= 4:
+                fields["radioTemplate"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "SOUN" and name == "FNAM":
+                fields["soundFile"] = zstr(raw)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XTEL" and len(raw) >= 28:
+                fields["destDoor"] = form_from_raw(raw, self.mod_index)
+                fields["destPos"] = [f32(raw, 4), f32(raw, 8), f32(raw, 12)]
+                fields["destRot"] = [f32(raw, 16), f32(raw, 20), f32(raw, 24)]
+                fields["teleportFlags"] = u32(raw, 28) if len(raw) >= 32 else 0
+                if len(raw) >= 36:
+                    fields["transitionInterior"] = form_from_raw(raw[32:], self.mod_index)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "CNAM" and len(raw) >= 4:
+                fields["audioLocation"] = form_from_raw(raw, self.mod_index)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XRDO" and len(raw) >= 16:
+                fields["radio"] = {
+                    "rangeRadius": f32(raw, 0),
+                    "broadcastRange": u32(raw, 4),
+                    "staticPercentage": f32(raw, 8),
+                    "posReference": form_hex(form_from_raw(raw[12:], self.mod_index)),
+                }
             elif rtype in ("LVLN", "LVLC") and name == "LVLO" and len(raw) >= 8:
                 fields.setdefault("leveledEntries", []).append(form(u32(raw, 4), self.mod_index))
             elif rtype == "WRLD" and name == "WCTR" and len(raw) >= 4:
                 fields["centerCell"] = [struct.unpack_from("<h", raw, 0)[0], struct.unpack_from("<h", raw, 2)[0]]
+            elif rtype == "CLMT" and name == "TNAM" and len(raw) >= 6:
+                fields["climateTiming"] = {
+                    "sunriseBegin": raw[0],
+                    "sunriseEnd": raw[1],
+                    "sunsetBegin": raw[2],
+                    "sunsetEnd": raw[3],
+                    "volatility": raw[4],
+                    "phaseLength": raw[5],
+                }
+            elif rtype == "CLMT" and name == "FNAM":
+                fields["sunTexture"] = zstr(raw)
+            elif rtype == "CLMT" and name == "GNAM":
+                fields["sunGlareTexture"] = zstr(raw)
         return fields
 
     def record_matches_terms(self, item):
@@ -225,6 +291,14 @@ class ESM4Catalog:
                     record["editorId"] = fields["editorId"]
                 if "fullName" in fields:
                     record["fullName"] = fields["fullName"]
+                if "settingValue" in fields:
+                    record["settingValue"] = fields["settingValue"]
+                if "climateTiming" in fields:
+                    record["climateTiming"] = fields["climateTiming"]
+                if "sunTexture" in fields:
+                    record["sunTexture"] = fields["sunTexture"]
+                if "sunGlareTexture" in fields:
+                    record["sunGlareTexture"] = fields["sunGlareTexture"]
                 if "actorFlags" in fields:
                     record["actorFlags"] = fields["actorFlags"]
                 if "femaleFlag" in fields:
@@ -254,11 +328,39 @@ class ESM4Catalog:
                     record["faceGenFingerprints"] = fields["faceGenFingerprints"]
                 if "models" in fields:
                     record["models"] = fields["models"][:8]
+                for field_name in (
+                    "script",
+                    "loopingSound",
+                    "activationSound",
+                    "radioTemplate",
+                    "radioStation",
+                    "voiceType",
+                ):
+                    if field_name in fields:
+                        record[field_name] = form_hex(fields[field_name])
+                        record["openmw" + field_name[0].upper() + field_name[1:]] = openmw_form_id(fields[field_name])
+                for field_name in ("activationPrompt", "soundFile"):
+                    if field_name in fields:
+                        record[field_name] = fields[field_name]
                 if "leveledEntries" in fields:
                     record["leveledEntries"] = [form_hex(entry) for entry in fields["leveledEntries"][:80] if entry]
                     record["openmwLeveledEntries"] = [
                         openmw_form_id(entry) for entry in fields["leveledEntries"][:80] if entry
                     ]
+                if rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD"):
+                    record["parentCell"] = form_hex(current_cell)
+                    record["openmwParentCell"] = openmw_form_id(current_cell)
+                    record["base"] = form_hex(fields.get("base"))
+                    record["openmwBase"] = openmw_form_id(fields.get("base"))
+                    record["pos"] = fields.get("pos")
+                    record["rot"] = fields.get("rot")
+                    record["destDoor"] = form_hex(fields.get("destDoor"))
+                    record["openmwDestDoor"] = openmw_form_id(fields.get("destDoor"))
+                    record["destPos"] = fields.get("destPos")
+                    record["destRot"] = fields.get("destRot")
+                    record["teleportFlags"] = fields.get("teleportFlags", 0)
+                    record["audioLocation"] = form_hex(fields.get("audioLocation"))
+                    record["radio"] = fields.get("radio")
                 matches = self.record_matches_terms(record)
                 if matches:
                     record["matches"] = matches
@@ -295,6 +397,8 @@ class ESM4Catalog:
                     "actorRefCount": 0,
                     "creatureRefCount": 0,
                     "actorRefs": [],
+                    "teleportRefs": [],
+                    "radioRefs": [],
                 }
                 cell["matches"] = self.record_matches_terms(cell)
                 self.cells[rec_form] = cell
@@ -315,6 +419,16 @@ class ESM4Catalog:
                     "enableParent": form_hex(fields.get("enableParent")),
                     "openmwEnableParent": openmw_form_id(fields.get("enableParent")),
                     "enableParentFlags": fields.get("enableParentFlags", 0),
+                    "destDoor": form_hex(fields.get("destDoor")),
+                    "openmwDestDoor": openmw_form_id(fields.get("destDoor")),
+                    "destPos": fields.get("destPos"),
+                    "destRot": fields.get("destRot"),
+                    "teleportFlags": fields.get("teleportFlags", 0),
+                    "transitionInterior": form_hex(fields.get("transitionInterior")),
+                    "openmwTransitionInterior": openmw_form_id(fields.get("transitionInterior")),
+                    "audioLocation": form_hex(fields.get("audioLocation")),
+                    "openmwAudioLocation": openmw_form_id(fields.get("audioLocation")),
+                    "radio": fields.get("radio"),
                 }
                 self.placements.append(placement)
 
@@ -349,6 +463,52 @@ class ESM4Catalog:
                             "baseFullName": base_record.get("fullName", "") if base_record else "",
                             "pos": placement.get("pos"),
                             "rot": placement.get("rot"),
+                        }
+                    )
+
+            if cell is not None and placement.get("destDoor"):
+                base = placement.get("base")
+                base_record = self.records.get(int(base, 16)) if base else None
+                cell["teleportRefs"].append(
+                    {
+                        "ref": placement["id"],
+                        "openmwRef": placement["openmwId"],
+                        "base": base,
+                        "openmwBase": placement.get("openmwBase"),
+                        "baseEditorId": base_record.get("editorId", "") if base_record else "",
+                        "baseFullName": base_record.get("fullName", "") if base_record else "",
+                        "pos": placement.get("pos"),
+                        "rot": placement.get("rot"),
+                        "destDoor": placement.get("destDoor"),
+                        "openmwDestDoor": placement.get("openmwDestDoor"),
+                        "destPos": placement.get("destPos"),
+                        "destRot": placement.get("destRot"),
+                        "teleportFlags": placement.get("teleportFlags", 0),
+                    }
+                )
+
+            if cell is not None:
+                base = placement.get("base")
+                base_record = self.records.get(int(base, 16)) if base else None
+                if base_record and (
+                    base_record.get("radioStation")
+                    or base_record.get("radioTemplate")
+                    or placement.get("radio")
+                ):
+                    cell["radioRefs"].append(
+                        {
+                            "ref": placement["id"],
+                            "openmwRef": placement["openmwId"],
+                            "base": base,
+                            "openmwBase": placement.get("openmwBase"),
+                            "baseEditorId": base_record.get("editorId", ""),
+                            "baseFullName": base_record.get("fullName", ""),
+                            "pos": placement.get("pos"),
+                            "rot": placement.get("rot"),
+                            "radioStation": base_record.get("radioStation"),
+                            "radioTemplate": base_record.get("radioTemplate"),
+                            "audioLocation": placement.get("audioLocation"),
+                            "radio": placement.get("radio"),
                         }
                     )
 
@@ -392,6 +552,10 @@ class ESM4Catalog:
                 cell["matchedRefs"] = cell["matchedRefs"][:20]
             if len(cell["actorRefs"]) > 20:
                 cell["actorRefs"] = cell["actorRefs"][:20]
+            if len(cell["teleportRefs"]) > 40:
+                cell["teleportRefs"] = cell["teleportRefs"][:40]
+            if len(cell["radioRefs"]) > 40:
+                cell["radioRefs"] = cell["radioRefs"][:40]
 
         cells = sorted(self.cells.values(), key=lambda c: (c["score"], c["matchedRefCount"]), reverse=True)
         top_cells = [cell for cell in cells if cell["score"] > 0][:200]
@@ -401,6 +565,31 @@ class ESM4Catalog:
             reverse=True,
         )[:200]
         worlds = sorted(self.worlds.values(), key=lambda w: w.get("editorId", ""))
+        teleport_refs = []
+        radio_refs = []
+        for cell in self.cells.values():
+            for ref in cell["teleportRefs"]:
+                teleport_refs.append(
+                    {
+                        "cell": cell["id"],
+                        "openmwCell": cell["openmwId"],
+                        "cellEditorId": cell["editorId"],
+                        "cellFullName": cell["fullName"],
+                        "cellIsExterior": cell["isExterior"],
+                        **ref,
+                    }
+                )
+            for ref in cell["radioRefs"]:
+                radio_refs.append(
+                    {
+                        "cell": cell["id"],
+                        "openmwCell": cell["openmwId"],
+                        "cellEditorId": cell["editorId"],
+                        "cellFullName": cell["fullName"],
+                        "cellIsExterior": cell["isExterior"],
+                        **ref,
+                    }
+                )
         return {
             "schemaVersion": 1,
             "source": str(self.path),
@@ -417,6 +606,8 @@ class ESM4Catalog:
             },
             "worlds": worlds,
             "termRecords": term_records[:1000],
+            "teleportRefs": teleport_refs,
+            "radioRefs": radio_refs,
             "topCells": top_cells,
             "topActorCells": top_actor_cells,
         }

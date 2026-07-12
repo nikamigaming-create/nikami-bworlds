@@ -9,3 +9,4 @@
 0009-Capture-retail-render-environment-telemetry.patch
 0010-Capture-retail-weather-image-space-constants.patch
 0011-Capture-retail-base-image-space-traits.patch
+0012-Isolate-xNVSE-loading-for-the-Nikami-retail-oracle.patch

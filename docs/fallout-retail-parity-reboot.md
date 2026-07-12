@@ -28,7 +28,7 @@ it is not shipped in, linked into, or required by the OpenMW runtime.
 | OpenMW working checkout | `D:\Modlists\fnv\openmw-source` | `codex/bethesda-baked-flat-overlay-snapshot` |
 | OpenMW clean queue base | external checkout commit `c30c830d8e` | patches apply in `patches/openmw/series` order |
 | FNV/xNVSE working checkout | configured by the retail runner | xNVSE base `175bb28` |
-| Retail oracle queue | `patches/xnvse` | `0001` through `0008` |
+| Retail oracle queue | `patches/xnvse` | `0001` through `0012` |
 | OpenMW queue | `patches/openmw` | promoted queue through `0011` |
 | Retail captures | `run/retail-oracle` | immutable evidence; add a new version instead of overwriting |
 | OpenMW proof captures | under `run/`, plus the configured OpenMW proof directory | never promote on image statistics alone |
@@ -279,6 +279,27 @@ accepted native frames, and exact live constants `skinDimmer=0.1925`,
 parity: the HDR adaptation/bright-pass/bloom chain, skin-only material dimmer,
 automatic generated-cell world link, remaining time transitions, and FO3
 matrix are still open.
+
+Patch 0018 executes the four authored Fallout cloud layers instead of
+collapsing WTHR to the old Morrowind cloud pair. It consumes DNAM/CNAM/ANAM/
+BNAM, ONAM speeds (`byte / 2550`), and the PNAM time colors, binds them to the
+four live `clouds.nif` objects, and advances independent UV timers. The
+background xNVSE capture
+`run/retail-oracle/fnv-goodsprings-sky-runtime-v3.jsonl` is the runtime source
+of truth: retail exposes `CloudDome:0`, `HorizonLayerClear:1`,
+`HorizonLayerOvercast:1`, and `LowerLayer:0` in that order, with the resolved
+`SkyShaderProperty` texture and color on each object. The first implementation
+produced hard horizontal rings because those retail sky properties do not
+carry a `NiAlphaProperty`; OpenMW enabled blending but retained OpenGL's opaque
+`ONE/ZERO` default. Patch 0018 explicitly uses retail source-alpha blending.
+
+Use `goodsprings-geometry-orbit-burst` as the FNV no-focus gate. Reference run
+`fallout_new_vegas-20260711-030030` contains four native angles with no ring
+banding and logs advancing layer timers. Reference FO3 run
+`fallout3-20260711-030146` contains four clean Megaton exterior angles. This
+proves the current four-layer render/motion subset, not every weather:
+CLMT/REGN selection, precipitation/lightning, the full day/night matrix, and a
+retail pixel differential remain open.
 
 Furniture evidence already captured:
 

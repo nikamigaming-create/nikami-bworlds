@@ -88,6 +88,11 @@ cinematic `(1.1,0.2,1.1,1.0)`, tint
 dimmer `1.1`, and skin dimmer `0.55`. The maintained evidence is
 `run/retail-oracle/fnv-easy-pete-seated-image-space-v5.jsonl`.
 
+Patch 0012 makes the diagnostic launch genuinely isolated. Environment variables
+select a dedicated plugin directory plus the exact steam-loader and core xNVSE
+DLLs used by the bounded oracle run. Normal gameplay plugin directories and the
+separate FNV mod stack are not incorporated into this queue.
+
 For the complete side-by-side capture discipline, current worktree checkpoint,
 and rules for extending this oracle without changing retail behavior, read
 `../../docs/fallout-retail-parity-reboot.md`. Record every new inferred or

@@ -297,6 +297,8 @@ function Convert-StarfieldActorProofTextures([string]$OpenMwCfg, [string]$DataLo
         "textures/actors/human/faces/eyelashes/femalelashes01_color.dds",
         "textures/actors/human/faces/eyes/eye_tear_color.dds",
         "textures/actors/human/faces/teeth/nnteeth_color.dds",
+        "textures/actors/human/naked_body/nakedbodym_sk3_color.dds",
+        "textures/actors/human/naked_body/nakedbodyf_sk3_color.dds",
         "textures/actors/human/hands/defaulthandsm_sk3_color.dds",
         "textures/actors/human/hands/defaulthandsf_sk3_color.dds",
         "textures/clothes/outfit_service_uniform_01/outfit_service_uniform_lowerbody_01_color.dds",

@@ -1,0 +1,17 @@
+config:
+  internal_fallout_imagespace:
+    uFalloutCinematic:
+      - 1.10000002
+      - 0.200000003
+      - 1.10000002
+      - 1
+    uFalloutTint:
+      - 0.984313667
+      - 0.568627477
+      - 0
+      - 0.330000013
+    uFalloutFade:
+      - 0
+      - 0
+      - 0
+      - 0

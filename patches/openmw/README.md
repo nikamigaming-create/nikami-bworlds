@@ -114,6 +114,17 @@ reproduces retail `skinDimmer=0.1925`, `sunlightDimmer=1.21`, cinematic
 cover the record layouts, composition, and FO3/FNV weather rows. Retail HDR
 downsample/adaptation/bright-pass/bloom and the skin-only material dimmer are
 still open; patch 0017 is not a full color-parity claim.
+Patch 0018 renders the authored Fallout weather cloud layers from their `DNAM`
+textures, speed rows, color rows, opacity, and weather transitions. It is
+exported from downstream commit `81bf5e768a` and retains the explicit limitation
+that Bethesda sky/weather parity requires world-specific native visual review.
+Patch 0019 is the exact compile-ready seven-world safety checkpoint exported
+from downstream commit `debec4d9f2`. It preserves the current ESM4 record,
+interaction, movement/camera, actor assembly, material/mesh, weather/sky,
+background capture, and VR hand/pointer work together with the Starfield
+external mesh and face-bone path. It is intentionally a broad recovery patch
+that will be split into subsystem topics after clean replay; it does not claim
+that every world has reached retail visual or gameplay parity.
 Together they reproduce the currently proven flat runtime without vendoring
 game data or the OpenMW source tree.
 

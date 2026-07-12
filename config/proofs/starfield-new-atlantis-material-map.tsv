@@ -1,0 +1,291 @@
+# Starfield material bridge generated from local materialsbeta.cdb
+# material	diffuse	confidence	method	texture-set
+materials/architecture/city/newatlantis/basematerials/napaint01_base.mat	textures/common/paint/paintscuffed01_color.dds	0.9900	exact-stem	NAPaint01_Base_TextureSet1
+materials/architecture/city/newatlantis/basematerials/napaintscuffed02_base.mat	textures/common/paint/paintscuffed01_color.dds	0.9900	exact-stem	NaPaintScuffed02_Base_TextureSet2
+materials/architecture/city/newatlantis/basematerials/nawoodveneer02_base.mat	textures/common/wood/woodveneer02_color.dds	0.9400	semantic-stem	WoodVeneer02_Dark_TextureSet1
+materials/architecture/city/newatlantis/na_galbankdetailoverlay01.mat	textures/architecture/city/newatlantis/na_galbankdetailoverlay01_color.dds	0.9900	exact-stem	NA_GALBankDetailOverlay01_TextureSet1
+materials/architecture/city/newatlantis/nacarpet01.mat	textures/architecture/city/newatlantis/nacarpet01b_color.dds	0.9900	exact-stem	NACarpet01_TextureSet1
+materials/architecture/city/newatlantis/naconcretemossy01.mat	textures/architecture/city/newatlantis/naconcretemossy01_color.dds	0.9900	exact-stem	NAConcreteMossy01_TextureSet1
+materials/architecture/city/newatlantis/naconcretemossy01_green.mat	textures/landscape/ground/moss/mossclumpy01_color.dds	1.0000	compiled-material-path	Data\Materials\Architecture\City\NewAtlantis\NAConcreteMossy01_green.mat_TextureSet2
+materials/architecture/city/newatlantis/naconcretemossy02.mat	textures/architecture/city/newatlantis/naconcretemossy02_color.dds	0.9900	exact-stem	NAConcreteMossy02_TextureSet1
+materials/architecture/city/newatlantis/naconcreteprinted01.mat	textures/architecture/city/newatlantis/naconcreteprinted02_color.dds	0.9000	fuzzy-stem	NAConcretePrinted02_TextureSet1
+materials/architecture/city/newatlantis/naconcreteprinted02.mat	textures/architecture/city/newatlantis/naconcreteprinted02_color.dds	0.9900	exact-stem	NAConcretePrinted02_TextureSet1
+materials/architecture/city/newatlantis/naconcreteprinted02_layered02.mat	textures/architecture/city/newatlantis/naconcreteprinted02_color.dds	0.9400	semantic-stem	NAConcretePrinted02_TextureSet1
+materials/architecture/city/newatlantis/naconcretespeckled01_layered01.mat	textures/common/concrete/concretespeckled01_color.dds	0.9400	semantic-stem	ConcreteSpeckled01_TextureSet1
+materials/architecture/city/newatlantis/nadecaltrimdetails01.mat	textures/architecture/city/newatlantis/nadecaltrimdetails01_color.dds	1.0000	authored-alias	materialsbeta.cdb authored alias
+materials/architecture/city/newatlantis/nadecaltrimdetails01n.mat	textures/architecture/city/newatlantis/nadecaltrimdetails01_color.dds	1.0000	authored-alias	materialsbeta.cdb authored alias
+materials/architecture/city/newatlantis/nagroundcoverleafmulch01.mat	textures/landscape/ground/leaves/leavestropical01_color.dds	0.9900	exact-stem	NAGroundcoverLeafMulch01_TextureSet3
+materials/architecture/city/newatlantis/nametalsteel03pattern01.mat	textures/common/metal/metalroofext01_color.dds	0.9900	exact-stem	NAMetalSteel03Pattern01_TextureSet3
+materials/architecture/city/newatlantis/nametaltrimtech04.mat	textures/common/trim/trimtech04_color.dds	1.0000	authored-alias	materialsbeta.cdb authored alias
+materials/architecture/city/newatlantis/napaintscuffed01_blue02.mat	textures/common/metal/metalrust04_color.dds	0.9400	semantic-stem	PaintScuffed01_Orange04_TextureSet2
+materials/architecture/city/newatlantis/napaintscuffed01_blue04.mat	textures/common/metal/metalrust04_color.dds	0.9400	semantic-stem	PaintScuffed01_Orange04_TextureSet2
+materials/architecture/city/newatlantis/napaintscuffed01_grey01.mat	textures/common/metal/metalrust04_color.dds	0.9400	semantic-stem	PaintScuffed01_Orange04_TextureSet2
+materials/architecture/city/newatlantis/napaintscuffed01_grey03.mat	textures/common/metal/metalrust04_color.dds	0.9400	semantic-stem	PaintScuffed01_Orange04_TextureSet2
+materials/architecture/city/newatlantis/napaintscuffed01_orange01.mat	textures/common/metal/metalrust04_color.dds	0.9400	semantic-stem	PaintScuffed01_Orange04_TextureSet2
+materials/architecture/city/newatlantis/napaintscuffed01_red02.mat	textures/common/metal/metalrust04_color.dds	0.9400	semantic-stem	PaintScuffed01_Orange04_TextureSet2
+materials/architecture/city/newatlantis/naplasticplainsmooth02_black01.mat	textures/common/plastic/plasticfiberglass04_color.dds	0.9400	semantic-stem	NAPlasticPlainSmooth02_Yellow01_TextureSet1
+materials/architecture/city/newatlantis/naplasticplainsmooth02_grey01.mat	textures/common/plastic/plasticfiberglass04_color.dds	0.9400	semantic-stem	NAPlasticPlainSmooth02_Yellow01_TextureSet1
+materials/architecture/city/newatlantis/naplasticplaintrim01.mat	textures/architecture/city/newatlantis/naplasticplaintrim01_color.dds	0.9900	exact-stem	NAPlasticPlainTrim01_TextureSet1
+materials/architecture/city/newatlantis/nastone01mossy01.mat	textures/architecture/city/newatlantis/nastone01mossy01_color.dds	0.9900	exact-stem	NAStone01Mossy01_TextureSet1
+materials/architecture/city/newatlantis/nastonebrickwall04_layered01.mat	textures/common/stone/stonebrickwall04_color.dds	0.9400	semantic-stem	StoneBrickWall04_TextureSet1
+materials/architecture/city/newatlantis/natechpatternconcrete04.mat	textures/architecture/city/newatlantis/natechpatternconcrete04_color.dds	0.9900	exact-stem	NATechPatternConcrete04_TextureSet1
+materials/architecture/city/newatlantis/naterminalsignage01.mat	textures/architecture/city/newatlantis/naterminalsignage01_color.dds	0.9900	exact-stem	NATerminalSignage01_TextureSet1
+materials/architecture/city/newatlantis/naterminalsignage01c.mat	textures/architecture/city/newatlantis/naterminalsignage01_color.dds	1.0000	compiled-material-path	Data\Materials\Architecture\City\NewAtlantis\NATerminalSignage01c.mat_TextureSet1
+materials/architecture/city/newatlantis/naterminalsignage02.mat	textures/architecture/city/newatlantis/naterminalsignage02_color.dds	0.9900	exact-stem	NATerminalSignage02_TextureSet1
+materials/architecture/city/newatlantis/naterminalsignageuclogo01.mat	textures/architecture/city/newatlantis/naterminaluclogo01_color.dds	1.0000	authored-alias	materialsbeta.cdb authored alias
+materials/architecture/city/newatlantis/natrimtech04_metal01.mat	textures/common/trim/trimtech04_color.dds	0.9400	semantic-stem	TrimTech04_TextureSet1
+materials/architecture/city/newatlantis/signage/na_signage_resblddecals01.mat	textures/architecture/city/newatlantis/signage/na_signage_resblddecals01_color.dds	0.9900	exact-stem	NA_Signage_ResBldDecals01_TextureSet1
+materials/architecture/city/newatlantis/signage/na_signage_spaceportinn_muralext01.mat	textures/architecture/city/newatlantis/signage/nasignagespaceportinnmuralint01_color.dds	1.0000	authored-alias	materialsbeta.cdb authored alias
+materials/architecture/city/newatlantis/signage/na_signage_spaceportinn_muralext01b.mat	textures/architecture/city/newatlantis/signage/nasignagespaceportinnmuralint01b_color.dds	1.0000	authored-alias	materialsbeta.cdb authored alias
+materials/architecture/city/newatlantis/signage/na_signage_spaceportinn_muralext02.mat	textures/architecture/city/newatlantis/signage/nasignagespaceportinnmuralext02_color.dds	1.0000	authored-alias	materialsbeta.cdb authored alias
+materials/architecture/city/newatlantis/signage/na_signage_viewport_02.mat	textures/architecture/city/newatlantis/signage/na_signage_viewport_02_color.dds	1.0000	compiled-material-path	Data\Materials\Architecture\City\NewAtlantis\Signage\NA_Signage_Viewport_02.mat_TextureSet1
+materials/architecture/generic/shafts/screenpanelpattern02.mat	textures/architecture/city/newatlantis/nascreenpattern01_color.dds	0.9900	exact-stem	ScreenPanelPattern02_TextureSet1
+materials/architecture/industrialkit/interiors/indintmetaltilegrey01.mat	textures/common/metal/metaldullgeneric02_color.dds	0.8805	fuzzy-stem	IndIntMetalTileRed01_TextureSet1
+materials/architecture/outpost/outpostindustrial/exterior/opiextlandingpaddeck02.mat	textures/architecture/outpost/outpostindustrial/opiextlandingpaddeck01_color.dds	0.9068	fuzzy-stem	OpiExtLandingPadDeck01_TextureSet1
+materials/architecture/sciencekit/sciencepanelplain01_panel01.mat	textures/common/metal/metalgalvanized01_color.dds	0.9135	fuzzy-stem	SciencePanelPlain01_Panel05_TextureSet1
+materials/architecture/sciencekit/sciencepanelplain01_panel01v2.mat	textures/common/metal/metalgalvanized01_color.dds	0.8796	fuzzy-stem	SciencePanelPlain01_Panel05_TextureSet1
+materials/architecture/sciencekit/sciencepanelplain01_panel01v3.mat	textures/common/metal/metalgalvanized01_color.dds	0.8796	fuzzy-stem	SciencePanelPlain01_Panel05_TextureSet1
+materials/architecture/sciencekit/sciencepanelplain01_panel02.mat	textures/common/metal/metalgalvanized01_color.dds	0.9135	fuzzy-stem	SciencePanelPlain01_Panel05_TextureSet1
+materials/architecture/sciencekit/sciencepanelplain01_panel03.mat	textures/common/metal/metalgalvanized01_color.dds	0.9135	fuzzy-stem	SciencePanelPlain01_Panel05_TextureSet1
+materials/architecture/sciencekit/sciencepanelplain01_panel05.mat	textures/common/metal/metalgalvanized01_color.dds	0.9900	exact-stem	SciencePanelPlain01_Panel05_TextureSet1
+materials/architecture/sciencekit/sciencepanelplain01_panel06.mat	textures/common/metal/metalgalvanized01_color.dds	0.9135	fuzzy-stem	SciencePanelPlain01_Panel05_TextureSet1
+materials/architecture/sciencekit/sciencepanelplain01_panel07.mat	textures/common/metal/metalgalvanized01_color.dds	0.9135	fuzzy-stem	SciencePanelPlain01_Panel05_TextureSet1
+materials/architecture/spaceport/spaceporttrim01.mat	textures/architecture/spaceport/spaceporttrim01_color.dds	0.9900	exact-stem	SpaceportTrim01_TextureSet1
+materials/architecture/spaceport/sptarmacbase01.mat	textures/common/metal/metalroofext02_color.dds	0.9900	exact-stem	SPTarmacBase01_TextureSet1
+materials/architecture/spacestationkit/stnfloorpanelsdecal01.mat	textures/architecture/spacestationkit/stnfloorpanels01_color.dds	0.9900	exact-stem	StnFloorPanelsDecal01_TextureSet1
+materials/architecture/terrabrew/tbfloordecal01.mat	textures/architecture/terrabrew/tbfloordecal01_color.dds	0.9900	exact-stem	TBFloorDecal01_TextureSet1
+materials/architecture/terrabrew/tbscreens01.mat	textures/architecture/terrabrew/tbscreens01_color.dds	0.9900	exact-stem	TBScreens01_TextureSet1
+materials/architecture/terrabrew/tbtextilefabricwoven01.mat	textures/common/textile/textilewoven01_color.dds	0.9400	semantic-stem	TBTextileFabricWoven01_Black_TextureSet1
+materials/common/ceramic/ceramicgrooved01.mat	textures/common/metal/metalpaintedplain01_color.dds	0.9900	exact-stem	CeramicGrooved01_TextureSet1
+materials/common/concrete/concreteplain01.mat	textures/common/concrete/concreteplain01_color.dds	0.9900	exact-stem	ConcretePlain01_TextureSet1
+materials/common/concrete/concreteplain02.mat	textures/common/concrete/concreteplain02_color.dds	0.9900	exact-stem	ConcretePlain02_TextureSet1
+materials/common/concrete/concreteplain03.mat	textures/common/concrete/concreteplain03_color.dds	0.9900	exact-stem	ConcretePlain03_TextureSet1
+materials/common/concrete/concreteplain04.mat	textures/common/concrete/concreteplain04_color.dds	0.9900	exact-stem	ConcretePlain04_TextureSet1
+materials/common/concrete/concretespeckled01.mat	textures/common/concrete/concretespeckled01_color.dds	0.9900	exact-stem	ConcreteSpeckled01_TextureSet1
+materials/common/decal/decalboltstrims01.mat	textures/common/decal/decalboltstrims01_color.dds	0.9900	exact-stem	DecalBoltsTrims01_TextureSet1
+materials/common/decal/decalbuttonsknobs_01.mat	textures/architecture/outpost/outpostsciencekit/interior/buttonsknobs_01_color.dds	0.9900	exact-stem	DecalButtonsKnobs_01_TextureSet1
+materials/common/decal/decallabels01.mat	textures/common/decal/decallabels01_color.dds	0.9900	exact-stem	DecalLabels01_TextureSet1
+materials/common/decal/decallabelsletters01.mat	textures/common/decal/decallabelsletters01_color.dds	0.9900	exact-stem	DecalLabelsLetters01_TextureSet1
+materials/common/decal/decallabelsletters02.mat	textures/common/decal/decallabelsletters02_color.dds	0.9900	exact-stem	DecalLabelsLetters02_TextureSet1
+materials/common/decal/decallabelsletters03.mat	textures/common/decal/decallabelsletters03_color.dds	0.9900	exact-stem	DecalLabelsLetters03_TextureSet1
+materials/common/decal/decalmetalbevels02.mat	textures/common/decal/decalmetalbevels02_color.dds	0.9900	exact-stem	DecalMetalBevels02_TextureSet1
+materials/common/decal/decalmetalbevels04.mat	textures/common/decal/decalmetalbevels04_color.dds	0.9900	exact-stem	DecalMetalBevels04_TextureSet2
+materials/common/decal/decalmetalboltstrimsdetails01.mat	textures/common/decal/decalmetalboltstrimsdetails01_color.dds	0.9900	exact-stem	DecalMetalBoltsTrimsDetails01_TextureSet1
+materials/common/decal/decalmetalboltstrimsdetails01n.mat	textures/common/decal/decalmetalboltstrimsdetails01_color.dds	0.9339	fuzzy-stem	DecalMetalBoltsTrimsDetails01_TextureSet1
+materials/common/decal/decalmetalboltstrimsdetails02n.mat	textures/common/decal/decalmetalboltstrimsdetails02_color.dds	0.9339	fuzzy-stem	DecalMetalBoltsTrimsDetails02_TextureSet1
+materials/common/landscape/bark/barkgnarled01.mat	textures/common/landscape/bark/barkgnarled01_color.dds	0.9900	exact-stem	BarkGnarled01_TextureSet1
+materials/common/metal/metalaluminum01.mat	textures/common/metal/metalalu_color.dds	0.9900	exact-stem	MetalAluminum01_TextureSet1
+materials/common/metal/metalaluminum02.mat	textures/common/metal/metaldullgeneric02_color.dds	0.9900	exact-stem	MetalAluminum02_TextureSet1
+materials/common/metal/metalaluminum03.mat	textures/setdressing/makeshift/memorialwall/reddevils_color.dds	0.9900	exact-stem	MetalAluminum03_TextureSet2
+materials/common/metal/metalaluminumbrushed01.mat	textures/common/metal/metalbrushed01_color.dds	0.9900	exact-stem	MetalAluminumBrushed01_TextureSet1
+materials/common/metal/metalaluminumbrushed03.mat	textures/common/metal/metalbrushed01_color.dds	0.9068	fuzzy-stem	MetalAluminumBrushed01_TextureSet1
+materials/common/metal/metalaluminumscratched03.mat	textures/common/paint/paintmetalscratched01_color.dds	0.9900	exact-stem	MetalAluminumScratched03_TextureSet2
+materials/common/metal/metalaluminumscuffed01.mat	textures/common/metal/metalpainted01_color.dds	0.9900	exact-stem	MetalAluminumScuffed01_TextureSet6
+materials/common/metal/metalaluminumworn01.mat	textures/common/metal/metalalu_color.dds	0.9900	exact-stem	MetalAluminumWorn01_TextureSet2
+materials/common/metal/metalaluminumworn02.mat	textures/common/metal/metalpainted01_color.dds	0.9900	exact-stem	MetalAluminumWorn02_TextureSet1
+materials/common/metal/metalchrome01.mat	textures/common/metal/metaldullscratched01_color.dds	0.9900	exact-stem	MetalChrome01_TextureSet1
+materials/common/metal/metalrust02.mat	textures/common/metal/metalrust02_color.dds	0.9900	exact-stem	MetalRust02_TextureSet1
+materials/common/metal/metalsteel02.mat	textures/common/metal/metaldullworn01_color.dds	0.8708	fuzzy-stem	MetalSteel03_TextureSet1
+materials/common/metal/metalsteel03.mat	textures/common/metal/metaldullworn01_color.dds	0.9900	exact-stem	MetalSteel03_TextureSet1
+materials/common/metal/metalsteelbrushed01.mat	textures/common/metal/metalbrushed01_color.dds	0.9900	exact-stem	MetalSteelBrushed01_TextureSet1
+materials/common/metal/metalsteelgalvanized01.mat	textures/common/metal/metalgalvanized01_color.dds	0.9900	exact-stem	MetalSteelGalvanized01_TextureSet1
+materials/common/plastic/plasticplainsmooth02.mat	textures/common/plastic/plasticfiberglass04_color.dds	0.9400	semantic-stem	NAPlasticPlainSmooth02_Yellow01_TextureSet1
+materials/common/textile/textileinsulatedfoil01.mat	textures/common/textile/textileinsulatedfoil01_color.dds	0.9900	exact-stem	TextileInsulatedFoil01_TextureSet1
+materials/common/trim/trimmetal03.mat	textures/common/trim/trimmetal03_color.dds	0.9900	exact-stem	TrimMetal03_TextureSet1
+materials/common/trim/trimtech01.mat	textures/common/trim/trimtech01_color.dds	0.9900	exact-stem	TrimTech01_TextureSet1
+materials/common/trim/trimtech04.mat	textures/common/trim/trimtech04_color.dds	0.9900	exact-stem	TrimTech04_TextureSet1
+materials/common/wood/woodexotic03.mat	textures/common/wood/woodexotic03_color.dds	0.9900	exact-stem	WoodExotic03_TextureSet1
+materials/common/wood/woodmaple01.mat	textures/common/wood/woodmaple01_color.dds	0.9900	exact-stem	WoodMaple01_TextureSet1
+materials/common/wood/woodveneer01.mat	textures/common/wood/woodveneer01_color.dds	0.9900	exact-stem	WoodVeneer01_TextureSet1
+materials/common/wood/woodveneer02.mat	textures/common/wood/woodveneer02_color.dds	0.9900	exact-stem	WoodVeneer02_TextureSet1
+materials/landscape/ground/dirt/dirtforestpacked01.mat	textures/landscape/ground/dirt/dirtforestpacked01_color.dds	0.9900	exact-stem	DirtForestPacked01_TextureSet1
+materials/landscape/plants/plantlilypad01.mat	textures/landscape/plants/plantlilypad01_color.dds	0.9900	exact-stem	PlantLilyPad01_TextureSet1
+materials/landscape/plants/plantmossclumpy01_grass.mat	textures/landscape/plants/plantmossclumpy01_grass_color.dds	0.9900	exact-stem	PlantMossClumpy01_Grass_TextureSet1
+materials/landscape/plants/shrubs/plantshrubbroadleaf01.mat	textures/landscape/plants/shrubs/plantshrubbroadleaf01_color.dds	0.9900	exact-stem	PlantShrubBroadleaf01_TextureSet1
+materials/landscape/plants/shrubs/shrubbromeliadleaves01.mat	textures/landscape/plants/shrubs/shrubbromeliad/_color.dds	0.9900	exact-stem	ShrubBromeliadLeaves01_TextureSet1
+materials/landscape/plants/shrubs/shrubdwarflupinbark01.mat	textures/landscape/plants/shrubs/shrubdwarflupin/hickory_2_color.dds	0.9900	exact-stem	ShrubDwarfLupinBark01_TextureSet1
+materials/landscape/plants/shrubs/shrubdwarflupinleaves01.mat	textures/landscape/plants/shrubs/shrubdwarflupin/_color.dds	0.9900	exact-stem	ShrubDwarfLupinLeaves01_TextureSet1
+materials/landscape/plants/shrubs/shrubfernforest/shrubfernforest01.mat	textures/landscape/plants/shrubs/shrubfern01/shrubfern01_color.dds	0.9900	exact-stem	ShrubFernForest01_TextureSet1
+materials/landscape/plants/shrubs/shrubtrumpetfrondleaves01.mat	textures/landscape/plants/shrubs/shrubtrumpetfrond/_color.dds	0.9900	exact-stem	ShrubTrumpetFrondLeaves01_TextureSet1
+materials/landscape/plants/shrubs/shrubtrumpetfrondstem01.mat	textures/landscape/plants/shrubs/shrubtrumpetfrond/stem_color.dds	0.9900	exact-stem	ShrubTrumpetFrondStem01_TextureSet1
+materials/landscape/plants/shrubs/shrubyuccabark01.mat	textures/landscape/plants/shrubs/shrubyucca/palm_yucca_bark_1_color.dds	0.9900	exact-stem	ShrubYuccaBark01_TextureSet1
+materials/landscape/plants/shrubs/shrubyuccaleaves01.mat	textures/landscape/plants/shrubs/shrubyucca/shrubyucca01_color.dds	0.9900	exact-stem	ShrubYuccaLeaves01_TextureSet1
+materials/landscape/plants/vines/plantvineivy01.mat	textures/landscape/plants/vines/plantvineivy01_color.dds	0.9900	exact-stem	PlantVineIvy01_TextureSet1
+materials/landscape/rocks/sharp/rocksharplarge07.mat	textures/landscape/rocks/sharp/rocksharplarge07_color.dds	0.9900	exact-stem	RockSharpLarge07_TextureSet1
+materials/landscape/rocks/sharp/rocksharplarge09.mat	textures/landscape/rocks/sharp/rocksharplarge09_color.dds	0.9900	exact-stem	RockSharpLarge09_TextureSet1
+materials/landscape/rocks/sharp/rocksharplarge10.mat	textures/landscape/rocks/sharp/rocksharplarge10_color.dds	0.9900	exact-stem	RockSharpLarge10_TextureSet1
+materials/landscape/rocks/sharp/rocksharpmedium06.mat	textures/landscape/rocks/sharp/rocksharpmedium06_color.dds	0.9900	exact-stem	RockSharpMedium06_TextureSet1
+materials/landscape/rocks/sharp/rocksharpsmall02.mat	textures/landscape/rocks/sharp/rocksharpsmall02_color.dds	0.9900	exact-stem	RockSharpSmall02_TextureSet1
+materials/landscape/trees/treecypress/treecypressbark01.mat	textures/landscape/trees/treecypress/treecypressbark01_color.dds	0.9900	exact-stem	TreeCypressBark01_TextureSet1
+materials/landscape/trees/treemesa/treemesacanopytile01.mat	textures/landscape/trees/treemesa/treemesacanopytile01_color.dds	0.9900	exact-stem	TreeMesaCanopyTile01_TextureSet1
+materials/landscape/trees/treemesa/treemesaflats01.mat	textures/landscape/trees/treemesa/treemesaflats01_color.dds	0.9900	exact-stem	TreeMesaFlats01_TextureSet1
+materials/landscape/trees/treerootsgnarled/treerootsgnarledrootflats01.mat	textures/landscape/trees/treerootsgnarled/rootsflat01_color.dds	0.9900	exact-stem	TreeRootsGnarledRootFlats01_TextureSet1
+materials/setdressing/akila/ak_umbrella/ak_umbrella_blue.mat	textures/setdressing/akila_umbrella/shade_umbrella_canvas_color.dds	0.9900	exact-stem	AK_Umbrella_Blue_TextureSet1
+materials/setdressing/brooms/brooms_decal01.mat	textures/setdressing/brooms/broom_decal_color.dds	0.9900	exact-stem	Brooms_Decal01_TextureSet1
+materials/setdressing/cautionconeandtape/cautionconeandtape_decal.mat	textures/setdressing/cautionconeandtape/cautionconesandtape_decal_color.dds	0.9900	exact-stem	CautionConeAndTape_Decal_TextureSet1
+materials/setdressing/cautionconeandtape/cautionconeandtape_details.mat	textures/setdressing/cautionconeandtape/cautionconesandtape_decal_color.dds	1.0000	compiled-material-path	Data\Materials\SetDressing\CautionConeAndTape\CautionConeAndTape_Details.mat_TextureSet1
+materials/setdressing/common_materialswaps/paint/paintscuffed02_gray01.mat	textures/common/metal/metalpainted01_color.dds	0.9400	semantic-stem	PaintScuffed02_Blue02_TextureSet1
+materials/setdressing/common_materialswaps/textile_swaps/textileleather01_black01.mat	textures/common/metal/metalgalvanized01_color.dds	0.9400	semantic-stem	TextileLeather01_TextureSet2
+materials/setdressing/displayscreens/displayscreenoff.mat	textures/common/metal/metalgalvanized01_color.dds	0.9212	fuzzy-stem	DisplayScreenOff2_TextureSet1
+materials/setdressing/floormat01/floormat01.mat	textures/setdressing/floormat01/floormat01_color.dds	0.9900	exact-stem	FloorMat01_TextureSet1
+materials/setdressing/gencable/gencableset01.mat	textures/setdressing/gencable/gencableset01_color.dds	0.9900	exact-stem	GenCableSet01_TextureSet1
+materials/setdressing/harvesters/bronzealloy01.mat	textures/common/metal/metalcopperaged01_color.dds	0.9900	exact-stem	BronzeAlloy01_TextureSet1
+materials/setdressing/juicemixer/juicemixer01.mat	textures/setdressing/juicemixer/juicemixer01_color.dds	0.9900	exact-stem	JuiceMixer01_TextureSet1
+materials/setdressing/juicemixer/juicemixer01opaque.mat	textures/setdressing/juicemixer/juicemixer01_color.dds	0.9900	exact-stem	JuiceMixer01Opaque_TextureSet2
+materials/setdressing/juicemixer/juicemixer02.mat	textures/setdressing/juicemixer/juicemixer02_color.dds	0.9900	exact-stem	JuiceMixer02_TextureSet1
+materials/setdressing/kiosk/metalaluminum01_green01.mat	textures/common/metal/metalalu_color.dds	0.9400	semantic-stem	MetalAluminum01_TextureSet1
+materials/setdressing/luggybot/luggybotcartdecal01.mat	textures/setdressing/luggybot/luggybot_set_cart_decal01_color.dds	0.9900	exact-stem	LuggyBotCartDecal01_TextureSet1
+materials/setdressing/luggybot/luggybotlargecasedecal_color02.mat	textures/setdressing/luggybot/luggybot_set_largecase_decal_color.dds	0.9900	exact-stem	LuggyBotLargeCaseDecal_Color02_TextureSet1
+materials/setdressing/luggybot/luggybotlargecasewheeldecal_color01.mat	textures/setdressing/luggybot/luggybot_set_largecase_wheel_color.dds	0.9900	exact-stem	LuggyBotLargeCaseWheelDecal_Color01_TextureSet1
+materials/setdressing/luggybot/luggybotsmallcasedecal_color01.mat	textures/setdressing/luggybot/luggybot_set_smallcase_decal_color.dds	0.9900	exact-stem	LuggyBotSmallCaseDecal_Color01_TextureSet2
+materials/setdressing/luggybot/luggybotsmallcasedecal_grey01.mat	textures/setdressing/luggybot/luggybot_set_smallcase_decalgrey_color.dds	0.9900	exact-stem	LuggyBotSmallCaseDecal_Grey01_TextureSet2
+materials/setdressing/luggybot/plainplasticmatte2layer01_red01.mat	textures/setdressing/luggybot/luggybot_set_largecase_soft plastic_v3_color.dds	0.9900	exact-stem	PlainPlasticMatte2Layer01_Red01_TextureSet2
+materials/setdressing/luggybot/plasticplainsmooth02_brown01.mat	textures/common/plastic/plasticfiberglass04_color.dds	0.9400	semantic-stem	NAPlasticPlainSmooth02_Yellow01_TextureSet1
+materials/setdressing/luggybot/plasticplainsmooth02_green01.mat	textures/common/plastic/plasticfiberglass04_color.dds	0.9400	semantic-stem	NAPlasticPlainSmooth02_Yellow01_TextureSet1
+materials/setdressing/luggybot/plasticplainsmooth02_red01.mat	textures/common/plastic/plasticfiberglass04_color.dds	0.9400	semantic-stem	NAPlasticPlainSmooth02_Yellow01_TextureSet1
+materials/setdressing/neon/props/trashbags/trashbag01_base.mat	textures/setdressing/neon/props/trashbags/trashbag01_base_color.dds	0.9900	exact-stem	TrashBag01_Base_TextureSet1
+materials/setdressing/neon/props/trashbags/trashbag03_base.mat	textures/setdressing/neon/props/trashbags/trashbag03_base_color.dds	1.0000	compiled-material-path	Data\Materials\SetDressing\Neon\Props\TrashBags\TrashBag03_Base.mat_TextureSet1
+materials/setdressing/paper_sheet/paper_sheet01.mat	textures/setdressing/paper_sheet/paper_sheet01_color.dds	0.9900	exact-stem	Paper_Sheet01_TextureSet1
+materials/setdressing/plantpots/plantpots_plantcordyline.mat	textures/setdressing/plantpots/plantpot_plantcordyline_color.dds	0.9900	exact-stem	PlantPots_PlantCordyline_TextureSet1
+materials/setdressing/plantpots/plantpots_plantpaddle.mat	textures/setdressing/plantpots/plantpaddle04_color.dds	0.9900	exact-stem	PlantPots_PlantPaddle_TextureSet1
+materials/setdressing/posters/miningposter07.mat	textures/setdressing/posters/miningposter07_color.dds	0.9900	exact-stem	MiningPoster07_TextureSet3
+materials/setdressing/privatelivingquarters/decorativeboxes/decorativebox_decal01.mat	textures/common/metal/metalbarealuminumscuffed01_color.dds	0.9900	exact-stem	Decorativebox_Decal01_TextureSet1
+materials/setdressing/privatelivingquarters/decorativeboxes/decorativebox_wooddark01.mat	textures/setdressing/privatelivingquarters/decorativeboxes/decorativebox_wooddark01_color.dds	0.9900	exact-stem	Decorativebox_WoodDark01_TextureSet1
+materials/setdressing/privatelivingquarters/decorativeboxes/decorativebox_woodwhite01.mat	textures/setdressing/privatelivingquarters/decorativeboxes/decorativebox_woodwhite01_color.dds	0.9900	exact-stem	Decorativebox_WoodWhite01_TextureSet1
+materials/setdressing/signage/advertisements/signageadoishi01.mat	textures/setdressing/signage/advertisements/signageadoishi01_color.dds	1.0000	authored-alias	materialsbeta.cdb authored alias
+materials/setdressing/signage/signageflagucdivisions01.mat	textures/setdressing/signage/signageflagucdivisions01_color.dds	0.9900	exact-stem	SignageFlagUCDivisions01_TextureSet3
+materials/setdressing/signage/signsbasecolors01.mat	textures/setdressing/signage/signsbasecolors01_color.dds	0.9900	exact-stem	SignsBaseColors01_TextureSet1
+materials/setdressing/terminals/mobileterminal_screen01.mat	textures/common/metal/metalgalvanized01_color.dds	0.9900	exact-stem	MobileTerminal_Screen01_TextureSet1
+materials/setdressing/utilitycarts/janitorcart01/janitorcart01_bag.mat	textures/setdressing/utilitycarts/janitorcart01/janitorcart01_decals_color.dds	0.9900	exact-stem	JanitorCart01_Bag_TextureSet1
+materials/setdressing/utilitycarts/janitorcart01/janitorcart01_base.mat	textures/setdressing/utilitycarts/janitorcart01/janitorcart01_base_color.dds	0.9900	exact-stem	JanitorCart01_Base_TextureSet1
+materials/setdressing/utilitycarts/janitorcart01/janitorcart01_bolts.mat	textures/setdressing/utilitycarts/janitorcart01/janitorcart01_decals_color.dds	0.9900	exact-stem	JanitorCart01_Bolts_TextureSet1
+materials/setdressing/utilitycarts/janitorcart01/janitorcart01_casters.mat	textures/common/plastic/plasticplaingray_color.dds	0.9900	exact-stem	JanitorCart01_Casters_TextureSet1
+materials/setdressing/utilitycarts/janitorcart01/janitorcart01_wheels.mat	textures/common/metal/metalpainted01_color.dds	0.9900	exact-stem	JanitorCart01_Wheels_TextureSet1
+materials/setdressing/wet_floor_sign/wet_floor_sign_decal01.mat	textures/setdressing/wet_floor_sign/wet_floor_decal_color.dds	0.9900	exact-stem	Wet_Floor_Sign_Decal01_TextureSet1
+materials/ships/interior/nova/paneldecals1.mat	textures/ships/discovery/paneldecals1_color.dds	0.9900	exact-stem	PanelDecals1_TextureSet1
+materials/ships/interior/nova/paneldecals1n.mat	textures/ships/discovery/paneldecals1_color.dds	0.9120	fuzzy-stem	PanelDecals1_TextureSet1
+materials/ships/interior/shiprm_table_coffeestain01.mat	textures/ships/interior/shiprm_table_clutter/shiprm_table_tissues01_color.dds	0.9900	exact-stem	ShipRm_Table_CoffeeStain01_TextureSet1
+materials/ships/interior/shiprm_table_tissues01.mat	textures/ships/interior/shiprm_table_clutter/shiprm_table_tissues01_color.dds	0.9900	exact-stem	ShipRm_Table_Tissues01_TextureSet1
+materials/ships/pirate/ship_pirate_hullgreebles01.mat	textures/ships/pirate/ship_pirate_hullgreebles01_color.dds	0.9900	exact-stem	Ship_Pirate_HullGreebles01_TextureSet1
+# unresolved	materials/architecture/city/newatlantis/basematerials/naglow01.mat
+# unresolved	materials/architecture/city/newatlantis/basematerials/naglow01_orange01.mat
+# unresolved	materials/architecture/city/newatlantis/basematerials/naplasticplaintextured01_base.mat
+# unresolved	materials/architecture/city/newatlantis/glowblue01.mat
+# unresolved	materials/architecture/city/newatlantis/glowblue01dull.mat
+# unresolved	materials/architecture/city/newatlantis/glowwhite.mat
+# unresolved	materials/architecture/city/newatlantis/naconcreteseamed_layered01.mat
+# unresolved	materials/architecture/city/newatlantis/naglasspattern02.mat
+# unresolved	materials/architecture/city/newatlantis/nagroundgrass_layered01.mat
+# unresolved	materials/architecture/city/newatlantis/nalightstripglow01.mat
+# unresolved	materials/architecture/city/newatlantis/nametalpaintedpattern01_darkgrey01.mat
+# unresolved	materials/architecture/city/newatlantis/nametalpanels01.mat
+# unresolved	materials/architecture/city/newatlantis/naplasticcirclepattern01.mat
+# unresolved	materials/architecture/city/newatlantis/naplasticplainmatte02_grey01.mat
+# unresolved	materials/architecture/city/newatlantis/naplasticplainsmooth02_greydark01_layered01.mat
+# unresolved	materials/architecture/city/newatlantis/naplasticplainsmooth02_teal01.mat
+# unresolved	materials/architecture/city/newatlantis/naplasticplaintranslucent01.mat
+# unresolved	materials/architecture/city/newatlantis/nastreetlamp01_glow01.mat
+# unresolved	materials/architecture/city/newatlantis/signage/na_signage_jemisonmercantile01.mat
+# unresolved	materials/architecture/generic/commercial/compaintedscuffed01_white01.mat
+# unresolved	materials/architecture/generic/commercial/complastic01_black01.mat
+# unresolved	materials/architecture/generic/shafts/metalaluminumworn01_plain01.mat
+# unresolved	materials/architecture/generic/shafts/metalaluminumworn01_plain02.mat
+# unresolved	materials/architecture/generic/shafts/textilecarpet01_floor01.mat
+# unresolved	materials/architecture/generic/shafts/trimmechanical01_generic01.mat
+# unresolved	materials/architecture/generic/shafts/trimtech01_generic01.mat
+# unresolved	materials/architecture/generic/shafts/trimtech02_generic01.mat
+# unresolved	materials/architecture/industrialkit/interiors/indintmetaltilegrey03.mat
+# unresolved	materials/architecture/industrialkit/interiors/indintmetaltilewhite01dup01.mat
+# unresolved	materials/architecture/industrialkit/interiors/indintmetaltrimgrey01.mat
+# unresolved	materials/architecture/industrialkit/interiors/indintmetaltrimgrey03.mat
+# unresolved	materials/architecture/sciencekit/sciencepanelplain01_ceiling01.mat
+# unresolved	materials/architecture/sciencekit/sciencepanelplain01_ceiling02.mat
+# unresolved	materials/architecture/sciencekit/sciencerubbersurface01_pattern01.mat
+# unresolved	materials/architecture/sciencekit/sciencerubbersurface01_surface01.mat
+# unresolved	materials/architecture/spacestationkit/stnfloorpanelsdecal01n.mat
+# unresolved	materials/architecture/terrabrew/tbdecalsheet01.mat
+# unresolved	materials/architecture/terrabrew/tbfloorconcretepolished.mat
+# unresolved	materials/architecture/terrabrew/tbplasticplainsmooth02_yellow.mat
+# unresolved	materials/architecture/terrabrew/tbplasticsoftmatte01.mat
+# unresolved	materials/architecture/terrabrew/tbtrianglepattern02.mat
+# unresolved	materials/common/decal/decalboltstrims01n.mat
+# unresolved	materials/common/decal/decalletterlineoverlay01.mat
+# unresolved	materials/common/decal/decalmetalbevels01.mat
+# unresolved	materials/common/decal/decalmetalbevels01n.mat
+# unresolved	materials/common/decal/decalmetalbevels02n.mat
+# unresolved	materials/common/decal/decalmetalbevels03n.mat
+# unresolved	materials/common/decal/decalmetalbevels04n.mat
+# unresolved	materials/common/decal/detailsbuttonsknobs_01n.mat
+# unresolved	materials/common/glass/glasscleanopaque01.mat
+# unresolved	materials/common/glass/glasscleanopaquedark01.mat
+# unresolved	materials/common/glass/glasscleanopaquedark02.mat
+# unresolved	materials/common/glass/glasscleantransparent01.mat
+# unresolved	materials/common/glass/glassopaquesolartiles01.mat
+# unresolved	materials/common/glow/glowbright01.mat
+# unresolved	materials/common/glow/glowbright01_round.mat
+# unresolved	materials/common/glow/glowbright01orange01.mat
+# unresolved	materials/common/glow/glowmedium01.mat
+# unresolved	materials/common/glow/glowmedium02blue.mat
+# unresolved	materials/common/metal/metalbronze01.mat
+# unresolved	materials/common/plastic/plasticfiberglasssmooth01.mat
+# unresolved	materials/common/plastic/plasticplainsmooth03.mat
+# unresolved	materials/common/plastic/plasticplaintextured01.mat
+# unresolved	materials/common/rubber/rubberbare01.mat
+# unresolved	materials/common/rubber/rubberbare02.mat
+# unresolved	materials/common/rubber/rubberbare04.mat
+# unresolved	materials/common/rubber/rubbertexturedcracks01.mat
+# unresolved	materials/common/utility/baseplaceholder/blanknorender01.mat
+# unresolved	materials/common/utility/baseplaceholder/blanknorender02.mat
+# unresolved	materials/common/utility/decal_blank_off01.mat
+# unresolved	materials/effects/emissives/genericglow01_blue.mat
+# unresolved	materials/effects/emissives/genericglow01_orange.mat
+# unresolved	materials/effects/emissives/genericglow01_yellow.mat
+# unresolved	materials/landscape/plants/vines/plantvineivy01wind.mat
+# unresolved	materials/landscape/plants/vines/plantvineivycards01wind.mat
+# unresolved	materials/landscape/rocks/sharp/rocksharpsmall03.mat
+# unresolved	materials/landscape/slabs/sharp/slabsharpmossy01.mat
+# unresolved	materials/landscape/trees/treecypress/treecypresscityleaves01.mat
+# unresolved	materials/landscape/trees/treemesa/treemesa01.mat
+# unresolved	materials/landscape/trees/treemesa/treemesacanopytile01_alpha.mat
+# unresolved	materials/setdressing/bar_mat/barmat_base01.mat
+# unresolved	materials/setdressing/bar_mat/barmat_rubber01.mat
+# unresolved	materials/setdressing/brooms/brooms_metalaluminiumscratched01.mat
+# unresolved	materials/setdressing/brooms/brooms_plasticplainsmooth03_beige.mat
+# unresolved	materials/setdressing/brooms/brooms_plasticplainsmooth03_black.mat
+# unresolved	materials/setdressing/cautionconeandtape/cautionconeandtape_plastic.mat
+# unresolved	materials/setdressing/cautionconeandtape/cautionconeandtape_rubber.mat
+# unresolved	materials/setdressing/coathanger/coathanger_metalaluminium01.mat
+# unresolved	materials/setdressing/coathanger/coathanger_plasticplaintextured01_black.mat
+# unresolved	materials/setdressing/common_materialswaps/glow/glowbright01tint_purple01.mat
+# unresolved	materials/setdressing/common_materialswaps/metal/metalaluminium02_black01.mat
+# unresolved	materials/setdressing/common_materialswaps/patterns/abstractpattern01_tint01.mat
+# unresolved	materials/setdressing/common_materialswaps/plastic/plasticplainmatte01_basewhite01.mat
+# unresolved	materials/setdressing/common_materialswaps/plastic/plasticplainsmooth02_swap_black01.mat
+# unresolved	materials/setdressing/desktopitems/exotic_coffeebrewingmachine_metal_bronze.mat
+# unresolved	materials/setdressing/desktopitems/exotic_coffeebrewingmachine_metal_gray01.mat
+# unresolved	materials/setdressing/desktopitems/exotic_coffeebrewingmachine_plastic_black01.mat
+# unresolved	materials/setdressing/desktopitems/exotic_coffeebrewingmachine_rubber_gray01.mat
+# unresolved	materials/setdressing/greebles/paintscratched2layer_grey01.mat
+# unresolved	materials/setdressing/greebles/plasticplainsmooth04_base01.mat
+# unresolved	materials/setdressing/kiosk/glassopaquesolartiles01_base01.mat
+# unresolved	materials/setdressing/kiosk/rubbertexturedcracks01_green01.mat
+# unresolved	materials/setdressing/neon/props/industrialcoffeemachine/industrialcoffeemachine_decal_letters.mat
+# unresolved	materials/setdressing/neon/props/industrialcoffeemachine/industrialcoffeemachine_glow_brown.mat
+# unresolved	materials/setdressing/neon/props/industrialcoffeemachine/industrialcoffeemachine_metal_gray.mat
+# unresolved	materials/setdressing/neon/props/industrialcoffeemachine/industrialcoffeemachine_metal_white.mat
+# unresolved	materials/setdressing/neon/props/industrialcoffeemachine/industrialcoffeemachine_metalbrush_gray.mat
+# unresolved	materials/setdressing/neon/props/industrialcoffeemachine/industrialcoffeemachine_plastic_black.mat
+# unresolved	materials/setdressing/papertowel/papertowel_office_notepads01.mat
+# unresolved	materials/setdressing/papertowel/papertowel_shiprmtable_tissues01.mat
+# unresolved	materials/setdressing/papertowel/papertowel_shiprmtable_tissues01_brown.mat
+# unresolved	materials/setdressing/papertray/papertray_decal01.mat
+# unresolved	materials/setdressing/papertray/papertray_plastic.mat
+# unresolved	materials/setdressing/planters/concreteplain01_planter01.mat
+# unresolved	materials/setdressing/planters/concreteplain01_planter_black01.mat
+# unresolved	materials/setdressing/planters/concreteplain01_planter_white01.mat
+# unresolved	materials/setdressing/towels/bathtowels_textilecarpet04_red.mat
+# unresolved	materials/setdressing/utilitycarts/janitorcart01/janitorcart01_decals.mat
+# unresolved	materials/ships/interior/nova/shipplastictexturedgray.mat
+# unresolved	materials/ships/interior/shipconsolebuttondecalswhite.mat
+# unresolved	materials/ships/interior/shiphardware.mat
+# unresolved	materials/water/waterplaceholder.mat

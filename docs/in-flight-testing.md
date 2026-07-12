@@ -38,6 +38,29 @@ The launcher uses:
 That keeps each run on the generated profile and avoids ambient Morrowind or old
 settings leakage.
 
+## Interactive Fallout Walkaround
+
+Use the dedicated walkaround launcher for a persistent, hands-on flat world session.
+It applies the proven player anchor and first-person camera, enables the explicit
+Fallout weather/cloud bootstrap, accepts live keyboard and mouse input, and does
+not inject proof input or stop on a timer:
+
+```powershell
+.\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout_new_vegas
+.\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout3
+```
+
+Close one game before starting the other. Use `-DryRun` to inspect the selected
+cell, coordinates, environment, and command without launching OpenMW.
+
+The named cell is only the initial spawn. The complete generated world profile is
+loaded, neighboring exterior cells stream as the player crosses boundaries, and
+the launcher imposes no one-cell restriction.
+
+This is still a walking-simulator compatibility session rather than a complete
+retail-game playthrough. Weather is explicitly bootstrapped until natural
+CLMT/REGN selection is implemented.
+
 ## Screenshot Proofs
 
 Capture one flat native screenshot for every ready generated world profile:

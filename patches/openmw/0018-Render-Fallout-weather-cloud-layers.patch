@@ -1,0 +1,506 @@
+From 81bf5e768a470a65ca5c0ffc6bd801716392aa23 Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Sat, 11 Jul 2026 03:07:30 -0700
+Subject: [PATCH] Render Fallout weather cloud layers
+
+---
+ .../components_tests/esm4/testloadweather.cpp |  12 ++
+ apps/openmw/mwrender/sky.cpp                  | 204 ++++++++++++++++--
+ apps/openmw/mwrender/sky.hpp                  |  10 +
+ apps/openmw/mwrender/skyutil.cpp              |  11 +
+ apps/openmw/mwrender/skyutil.hpp              |   9 +
+ apps/openmw/mwworld/weather.cpp               |  53 +++++
+ apps/openmw/mwworld/weather.hpp               |   3 +
+ 7 files changed, 279 insertions(+), 23 deletions(-)
+
+diff --git a/apps/components_tests/esm4/testloadweather.cpp b/apps/components_tests/esm4/testloadweather.cpp
+index 422cd1fb18..1c463fe3ef 100644
+--- a/apps/components_tests/esm4/testloadweather.cpp
++++ b/apps/components_tests/esm4/testloadweather.cpp
+@@ -87,6 +87,15 @@ namespace
+         appendSubRecord(payload, std::string_view("\0IAD", 4), std::uint32_t{ 0x0cee1a });
+         appendSubRecord(payload, std::string_view("\1IAD", 4), std::uint32_t{ 0x0cee18 });
+         appendSubRecord(payload, std::string_view("\4IAD", 4), std::uint32_t{ 0x0cee18 });
++        appendSubRecord(payload, "DNAM", std::string_view("textures/sky/layer0.dds\0", 24));
++        appendSubRecord(payload, "CNAM", std::string_view("textures/sky/layer1.dds\0", 24));
++        const std::array<std::uint8_t, 4> cloudSpeeds{ 25, 50, 75, 100 };
++        appendSubRecord(payload, "ONAM", cloudSpeeds);
++        std::array<std::array<ESM4::Weather::Color, ESM4::Weather::sTimeCount>,
++            ESM4::Weather::sCloudLayerCount>
++            cloudColors{};
++        cloudColors[2][ESM4::Weather::Time_HighNoon] = { 10, 20, 30, 40 };
++        appendSubRecord(payload, "PNAM", cloudColors);
+ 
+         std::array<std::array<ESM4::Weather::Color, ESM4::Weather::sTimeCount>,
+             ESM4::Weather::sColorTypeCount>
+@@ -112,6 +121,9 @@ namespace
+         EXPECT_EQ(weather.mColors[ESM4::Weather::Color_Ambient][ESM4::Weather::Time_Day].r, 87);
+         EXPECT_EQ(weather.mColors[ESM4::Weather::Color_Ambient][ESM4::Weather::Time_HighNoon].b, 154);
+         EXPECT_EQ(weather.mColors[ESM4::Weather::Color_Sunlight][ESM4::Weather::Time_Day].g, 227);
++        EXPECT_EQ(weather.mCloudTextures[0], "textures/sky/layer0.dds");
++        EXPECT_EQ(weather.mCloudSpeeds[2], 75);
++        EXPECT_EQ(weather.mCloudColors[2][ESM4::Weather::Time_HighNoon].unused, 40);
+         EXPECT_FLOAT_EQ(weather.mFogDistance[1], 120000.f);
+         EXPECT_EQ(weather.mData.transitionDelta, 255);
+         EXPECT_EQ(weather.mData.classification, 1);
+diff --git a/apps/openmw/mwrender/sky.cpp b/apps/openmw/mwrender/sky.cpp
+index 014472903c..8825d66ce2 100644
+--- a/apps/openmw/mwrender/sky.cpp
++++ b/apps/openmw/mwrender/sky.cpp
+@@ -250,7 +250,7 @@ namespace
+                 return std::clamp(parsed, 0.f, 1.f);
+         }
+ 
+-        return 0.f;
++        return 1.f;
+     }
+ 
+     struct FalloutSkyMeshFit
+@@ -378,6 +378,39 @@ namespace
+         SkyVertexColorStats mStats;
+     };
+ 
++    class FalloutCloudLayerSetupVisitor : public osg::NodeVisitor
++    {
++    public:
++        FalloutCloudLayerSetupVisitor(
++            std::array<osg::ref_ptr<MWRender::CloudUpdater>, MWRender::WeatherResult::sFalloutCloudLayerCount>& updaters,
++            std::array<osg::ref_ptr<osg::Node>, MWRender::WeatherResult::sFalloutCloudLayerCount>& nodes)
++            : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
++            , mUpdaters(updaters)
++            , mNodes(nodes)
++        {
++        }
++
++        void apply(osg::Drawable& drawable) override
++        {
++            if (mLayer < mUpdaters.size())
++            {
++                mUpdaters[mLayer] = new MWRender::CloudUpdater;
++                mUpdaters[mLayer]->setOpacity(0.f);
++                drawable.addUpdateCallback(mUpdaters[mLayer]);
++                drawable.setNodeMask(0);
++                mNodes[mLayer] = &drawable;
++                ++mLayer;
++            }
++        }
++
++        std::size_t getLayerCount() const { return mLayer; }
++
++    private:
++        std::array<osg::ref_ptr<MWRender::CloudUpdater>, MWRender::WeatherResult::sFalloutCloudLayerCount>& mUpdaters;
++        std::array<osg::ref_ptr<osg::Node>, MWRender::WeatherResult::sFalloutCloudLayerCount>& mNodes;
++        std::size_t mLayer = 0;
++    };
++
+     std::string formatVec4(const osg::Vec4f& value)
+     {
+         std::ostringstream stream;
+@@ -720,6 +753,7 @@ namespace MWRender
+         , mIsStorm(false)
+         , mTimescaleClouds(Fallback::Map::getBool("Weather_Timescale_Clouds"))
+         , mCloudAnimationTimer(0.f)
++        , mHasFalloutCloudLayers(false)
+         , mStormParticleDirection(MWWorld::Weather::defaultDirection())
+         , mStormDirection(MWWorld::Weather::defaultDirection())
+         , mClouds()
+@@ -897,6 +931,19 @@ namespace MWRender
+         mCloudNode->addChild(mCloudMesh);
+         mCloudNode->addChild(mNextCloudMesh);
+ 
++        mFalloutCloudMesh = new osg::PositionAttitudeTransform;
++        osg::ref_ptr<osg::Node> falloutCloudMeshChild = getOptionalSkyInstance(
++            *mSceneManager, Settings::models().mSkyclouds.get(), mFalloutCloudMesh, "Fallout cloud layers");
++        if (falloutCloudMeshChild)
++        {
++            FalloutCloudLayerSetupVisitor setupVisitor(mFalloutCloudUpdaters, mFalloutCloudLayerNodes);
++            falloutCloudMeshChild->accept(setupVisitor);
++            attachSkyNodeIfUnattached(*mFalloutCloudMesh, *falloutCloudMeshChild);
++            Log(Debug::Info) << "FNV/ESM4: mapped Fallout cloud geometry layers=" << setupVisitor.getLayerCount();
++        }
++        mFalloutCloudMesh->setNodeMask(0);
++        mCloudNode->addChild(mFalloutCloudMesh);
++
+         if (mCloudUpdater || mNextCloudUpdater)
+         {
+             if (!isFalloutSkyMesh(Settings::models().mSkyclouds.get()))
+@@ -1108,30 +1155,64 @@ namespace MWRender
+ 
+         const float timeScale = MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale();
+ 
+-        // UV Scroll the clouds
+-        float cloudDelta = duration * mCloudSpeed / 400.f;
+-        if (mTimescaleClouds)
+-            cloudDelta *= timeScale / 60.f;
++        osg::Quat rotation;
++        rotation.makeRotate(MWWorld::Weather::defaultDirection(), mStormDirection);
++        if (mHasFalloutCloudLayers)
++        {
++            for (std::size_t layer = 0; layer < mFalloutCloudAnimationTimers.size(); ++layer)
++            {
++                float cloudDelta = duration * mFalloutCloudSpeeds[layer];
++                if (mTimescaleClouds)
++                    cloudDelta *= timeScale / 60.f;
++                mFalloutCloudAnimationTimers[layer]
++                    = std::fmod(mFalloutCloudAnimationTimers[layer] + cloudDelta, 4.f);
++                if (mFalloutCloudUpdaters[layer])
++                    mFalloutCloudUpdaters[layer]->setTextureCoord(mFalloutCloudAnimationTimers[layer]);
++            }
++            if (std::getenv("OPENMW_FNV_PROOF_WEATHER_ID") != nullptr)
++            {
++                mFalloutCloudProofElapsed += duration;
++                if (mFalloutCloudProofElapsed >= 1.f)
++                {
++                    mFalloutCloudProofElapsed = std::fmod(mFalloutCloudProofElapsed, 1.f);
++                    std::ostringstream stream;
++                    for (std::size_t layer = 0; layer < mFalloutCloudAnimationTimers.size(); ++layer)
++                    {
++                        if (layer != 0)
++                            stream << ',';
++                        stream << layer << ':' << mFalloutCloudAnimationTimers[layer];
++                    }
++                    Log(Debug::Info) << "FNV/ESM4 proof: weather cloud motion timers=" << stream.str();
++                }
++            }
++            if (mFalloutCloudMesh)
++                mFalloutCloudMesh->setAttitude(rotation);
++        }
++        else
++        {
++            // UV Scroll the Morrowind cloud pair.
++            float cloudDelta = duration * mCloudSpeed / 400.f;
++            if (mTimescaleClouds)
++                cloudDelta *= timeScale / 60.f;
+ 
+-        mCloudAnimationTimer += cloudDelta;
+-        if (mCloudAnimationTimer >= 4.f)
+-            mCloudAnimationTimer -= 4.f;
++            mCloudAnimationTimer += cloudDelta;
++            if (mCloudAnimationTimer >= 4.f)
++                mCloudAnimationTimer -= 4.f;
+ 
+-        if (mNextCloudUpdater)
+-            mNextCloudUpdater->setTextureCoord(mCloudAnimationTimer);
+-        if (mCloudUpdater)
+-            mCloudUpdater->setTextureCoord(mCloudAnimationTimer);
++            if (mNextCloudUpdater)
++                mNextCloudUpdater->setTextureCoord(mCloudAnimationTimer);
++            if (mCloudUpdater)
++                mCloudUpdater->setTextureCoord(mCloudAnimationTimer);
+ 
+-        // morrowind rotates each cloud mesh independently
+-        osg::Quat rotation;
+-        rotation.makeRotate(MWWorld::Weather::defaultDirection(), mStormDirection);
+-        if (mCloudMesh)
+-            mCloudMesh->setAttitude(rotation);
++            // Morrowind rotates each cloud mesh independently.
++            if (mCloudMesh)
++                mCloudMesh->setAttitude(rotation);
+ 
+-        if (mNextCloudMesh && mNextCloudMesh->getNodeMask())
+-        {
+-            rotation.makeRotate(MWWorld::Weather::defaultDirection(), mNextStormDirection);
+-            mNextCloudMesh->setAttitude(rotation);
++            if (mNextCloudMesh && mNextCloudMesh->getNodeMask())
++            {
++                rotation.makeRotate(MWWorld::Weather::defaultDirection(), mNextStormDirection);
++                mNextCloudMesh->setAttitude(rotation);
++            }
+         }
+ 
+         // rotate the stars by 360 degrees every 4 days
+@@ -1330,7 +1411,84 @@ namespace MWRender
+             }
+         }
+ 
+-        if (mClouds != weather.mCloudTexture)
++        if (mHasFalloutCloudLayers != weather.mHasFalloutCloudLayers)
++        {
++            mHasFalloutCloudLayers = weather.mHasFalloutCloudLayers;
++            if (mCloudMesh)
++                mCloudMesh->setNodeMask(mHasFalloutCloudLayers ? 0u : ~0u);
++            if (!mHasFalloutCloudLayers && mNextCloudMesh)
++                mNextCloudMesh->setNodeMask(mCloudBlendFactor > 0.f ? ~0u : 0u);
++            if (mFalloutCloudMesh)
++                mFalloutCloudMesh->setNodeMask(mHasFalloutCloudLayers ? ~0u : 0u);
++            for (const osg::ref_ptr<osg::Node>& layerNode : mFalloutCloudLayerNodes)
++                if (layerNode)
++                    layerNode->setNodeMask(0);
++        }
++
++        if (mHasFalloutCloudLayers)
++        {
++            for (std::size_t layer = 0; layer < mFalloutClouds.size(); ++layer)
++            {
++                const std::string& cloud = weather.mFalloutCloudTextures[layer];
++                osg::ref_ptr<CloudUpdater>& updater = mFalloutCloudUpdaters[layer];
++                if (mFalloutClouds[layer] != cloud)
++                {
++                    mFalloutClouds[layer] = cloud;
++                    if (!cloud.empty() && updater)
++                    {
++                        const VFS::Path::Normalized requested = Misc::ResourceHelpers::correctTexturePath(
++                            VFS::Path::toNormalized(cloud), mSceneManager->getVFS());
++                        const VFS::Path::Normalized texture
++                            = resolveWeatherCloudTexture(mSceneManager->getVFS(), requested);
++                        osg::ref_ptr<osg::Texture2D> cloudTex
++                            = new osg::Texture2D(mSceneManager->getImageManager()->getImage(texture));
++                        cloudTex->setWrap(osg::Texture::WRAP_S, osg::Texture::REPEAT);
++                        cloudTex->setWrap(osg::Texture::WRAP_T, osg::Texture::REPEAT);
++                        updater->setTexture(std::move(cloudTex));
++                    }
++                }
++
++                mFalloutCloudSpeeds[layer] = weather.mFalloutCloudSpeeds[layer];
++                if (mFalloutCloudColours[layer] != weather.mFalloutCloudColors[layer])
++                {
++                    mFalloutCloudColours[layer] = weather.mFalloutCloudColors[layer];
++                    if (updater)
++                    {
++                        osg::Vec4f emission = mFalloutCloudColours[layer];
++                        emission.a() = 1.f;
++                        updater->setEmissionColor(emission);
++                        // FO3/FNV PNAM serializes zero in the fourth color byte even for visible layers.
++                        // Layer transparency comes from the authored cloud texture alpha.
++                        updater->setOpacity(nativeSkyCloudOpacity());
++                    }
++                }
++
++                if (mFalloutCloudLayerNodes[layer])
++                {
++                    const bool visible = updater && !cloud.empty();
++                    mFalloutCloudLayerNodes[layer]->setNodeMask(visible ? ~0u : 0u);
++                }
++            }
++
++            if (std::getenv("OPENMW_FNV_PROOF_WEATHER_ID") != nullptr)
++            {
++                static bool loggedCloudLayers = false;
++                if (!loggedCloudLayers)
++                {
++                    for (std::size_t layer = 0; layer < mFalloutClouds.size(); ++layer)
++                    {
++                        Log(Debug::Info) << "FNV/ESM4 proof: weather cloud layer=" << layer << " texture="
++                                         << mFalloutClouds[layer] << " speed=" << mFalloutCloudSpeeds[layer]
++                                         << " color=(" << formatVec4(mFalloutCloudColours[layer]) << ") visible="
++                                         << (mFalloutCloudLayerNodes[layer]
++                                                && mFalloutCloudLayerNodes[layer]->getNodeMask());
++                    }
++                    loggedCloudLayers = true;
++                }
++            }
++        }
++
++        if (!mHasFalloutCloudLayers && mClouds != weather.mCloudTexture)
+         {
+             mClouds = weather.mCloudTexture;
+ 
+@@ -1383,7 +1541,7 @@ namespace MWRender
+             }
+         }
+ 
+-        if (mCloudBlendFactor != weather.mCloudBlendFactor)
++        if (!mHasFalloutCloudLayers && mCloudBlendFactor != weather.mCloudBlendFactor)
+         {
+             mCloudBlendFactor = std::clamp(weather.mCloudBlendFactor, 0.f, 1.f);
+             const float nativeCloudOpacity
+diff --git a/apps/openmw/mwrender/sky.hpp b/apps/openmw/mwrender/sky.hpp
+index 2a0104977c..130e33a63d 100644
+--- a/apps/openmw/mwrender/sky.hpp
++++ b/apps/openmw/mwrender/sky.hpp
+@@ -1,6 +1,7 @@
+ #ifndef OPENMW_MWRENDER_SKY_H
+ #define OPENMW_MWRENDER_SKY_H
+ 
++#include <array>
+ #include <memory>
+ #include <string>
+ #include <vector>
+@@ -132,6 +133,9 @@ namespace MWRender
+         osg::ref_ptr<CloudUpdater> mNextCloudUpdater;
+         osg::ref_ptr<osg::PositionAttitudeTransform> mCloudMesh;
+         osg::ref_ptr<osg::PositionAttitudeTransform> mNextCloudMesh;
++        std::array<osg::ref_ptr<CloudUpdater>, WeatherResult::sFalloutCloudLayerCount> mFalloutCloudUpdaters;
++        std::array<osg::ref_ptr<osg::Node>, WeatherResult::sFalloutCloudLayerCount> mFalloutCloudLayerNodes;
++        osg::ref_ptr<osg::PositionAttitudeTransform> mFalloutCloudMesh;
+ 
+         osg::ref_ptr<osg::Node> mAtmosphereDay;
+ 
+@@ -162,6 +166,10 @@ namespace MWRender
+ 
+         bool mTimescaleClouds;
+         float mCloudAnimationTimer;
++        bool mHasFalloutCloudLayers;
++        std::array<float, WeatherResult::sFalloutCloudLayerCount> mFalloutCloudAnimationTimers{};
++        std::array<float, WeatherResult::sFalloutCloudLayerCount> mFalloutCloudSpeeds{};
++        float mFalloutCloudProofElapsed = 0.f;
+ 
+         // particle system rotation is independent of cloud rotation internally
+         osg::Vec3f mStormParticleDirection;
+@@ -171,6 +179,8 @@ namespace MWRender
+         // remember some settings so we don't have to apply them again if they didn't change
+         std::string mClouds;
+         std::string mNextClouds;
++        std::array<std::string, WeatherResult::sFalloutCloudLayerCount> mFalloutClouds;
++        std::array<osg::Vec4f, WeatherResult::sFalloutCloudLayerCount> mFalloutCloudColours{};
+         float mCloudBlendFactor;
+         float mCloudSpeed;
+         float mStarsOpacity;
+diff --git a/apps/openmw/mwrender/skyutil.cpp b/apps/openmw/mwrender/skyutil.cpp
+index e6cc08a1b0..081f7bd07c 100644
+--- a/apps/openmw/mwrender/skyutil.cpp
++++ b/apps/openmw/mwrender/skyutil.cpp
+@@ -597,6 +597,17 @@ namespace MWRender
+         stateset->setAttribute(
+             createAlphaTrackingUnlitMaterial(), osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
+ 
++        // Fallout's SkyShaderProperty performs ordinary source-alpha blending
++        // even when the NIF has no NiAlphaProperty. In particular, alpha.dds
++        // is a DXT5 transparency mask for the clear horizon layers; relying on
++        // OpenGL's default ONE/ZERO blend function turns those meshes into the
++        // opaque concentric bands seen in exterior proofs.
++        osg::ref_ptr<osg::BlendFunc> blendFunc = new osg::BlendFunc;
++        blendFunc->setFunction(osg::BlendFunc::SRC_ALPHA, osg::BlendFunc::ONE_MINUS_SRC_ALPHA);
++        stateset->setAttributeAndModes(
++            blendFunc, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
++        stateset->setMode(GL_BLEND, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
++
+         osg::ref_ptr<osg::TexMat> texmat = new osg::TexMat;
+         stateset->setTextureAttributeAndModes(0, texmat);
+ 
+diff --git a/apps/openmw/mwrender/skyutil.hpp b/apps/openmw/mwrender/skyutil.hpp
+index 034279a120..21b3125ee3 100644
+--- a/apps/openmw/mwrender/skyutil.hpp
++++ b/apps/openmw/mwrender/skyutil.hpp
+@@ -8,6 +8,8 @@
+ #include <osg/Vec2f>
+ #include <osg/Vec4f>
+ 
++#include <array>
++
+ #include <osgParticle/ConstantRateCounter>
+ #include <osgParticle/Shooter>
+ 
+@@ -35,6 +37,8 @@ namespace MWRender
+ 
+     struct WeatherResult
+     {
++        static constexpr std::size_t sFalloutCloudLayerCount = 4;
++
+         std::string mCloudTexture;
+         std::string mNextCloudTexture;
+         float mCloudBlendFactor;
+@@ -65,6 +69,11 @@ namespace MWRender
+ 
+         float mCloudSpeed;
+ 
++        bool mHasFalloutCloudLayers = false;
++        std::array<std::string, sFalloutCloudLayerCount> mFalloutCloudTextures;
++        std::array<float, sFalloutCloudLayerCount> mFalloutCloudSpeeds{};
++        std::array<osg::Vec4f, sFalloutCloudLayerCount> mFalloutCloudColors{};
++
+         float mGlareView;
+ 
+         bool mNight; // use night skybox
+diff --git a/apps/openmw/mwworld/weather.cpp b/apps/openmw/mwworld/weather.cpp
+index 8a2ab72424..c447f12fc9 100644
+--- a/apps/openmw/mwworld/weather.cpp
++++ b/apps/openmw/mwworld/weather.cpp
+@@ -99,6 +99,13 @@ namespace MWWorld
+             return osg::Vec4f(value.r * byteToFloat, value.g * byteToFloat, value.b * byteToFloat, 1.f);
+         }
+ 
++        osg::Vec4f falloutCloudColor(const ESM4::Weather::Color& value)
++        {
++            constexpr float byteToFloat = 1.f / 255.f;
++            return osg::Vec4f(
++                value.r * byteToFloat, value.g * byteToFloat, value.b * byteToFloat, value.unused * byteToFloat);
++        }
++
+         FalloutWeatherColorSamples falloutColorSamples(
+             const ESM4::Weather& weather, ESM4::Weather::ColorType type)
+         {
+@@ -1364,6 +1371,18 @@ namespace MWWorld
+             weather.mCloudSpeed = static_cast<float>(source.mData.lowerCloudSpeed) / 255.f;
+             weather.mGlareView = static_cast<float>(source.mData.sunGlare) / 255.f;
+             weather.mFalloutImageSpaceModifiers = source.mImageSpaceModifiers;
++            weather.mFalloutCloudTextures = source.mCloudTextures;
++            std::array<float, 4> cloudSpeeds{};
++            std::array<FalloutWeatherColorSamples, 4> cloudColors{};
++            for (std::size_t layer = 0; layer < cloudSpeeds.size(); ++layer)
++            {
++                // xEdit/fopdoc specifies that ONAM uint8 values are divided by 2550.
++                cloudSpeeds[layer] = static_cast<float>(source.mCloudSpeeds[layer]) / 2550.f;
++                for (std::size_t sample = 0; sample < cloudColors[layer].size(); ++sample)
++                    cloudColors[layer][sample] = falloutCloudColor(source.mCloudColors[layer][sample]);
++            }
++            weather.mFalloutCloudSpeeds = cloudSpeeds;
++            weather.mFalloutCloudColors = cloudColors;
+             mWeatherSettings.push_back(std::move(weather));
+             ++imported;
+         }
+@@ -1537,6 +1556,27 @@ namespace MWWorld
+         mResult.mBaseWindSpeed = mWeatherSettings[weatherID].mWindSpeed;
+ 
+         mResult.mCloudSpeed = current.mCloudSpeed;
++        mResult.mHasFalloutCloudLayers = current.mFalloutCloudTextures && current.mFalloutCloudSpeeds
++            && current.mFalloutCloudColors;
++        if (mResult.mHasFalloutCloudLayers)
++        {
++            mResult.mFalloutCloudTextures = *current.mFalloutCloudTextures;
++            mResult.mFalloutCloudSpeeds = *current.mFalloutCloudSpeeds;
++            for (std::size_t layer = 0; layer < mResult.mFalloutCloudColors.size(); ++layer)
++            {
++                const FalloutWeatherColorSamples& samples = (*current.mFalloutCloudColors)[layer];
++                if (gameHour >= 12.f && gameHour <= mTimeSettings.mDayEnd)
++                    mResult.mFalloutCloudColors[layer]
++                        = sampleFalloutWeatherColor(samples, gameHour, mTimeSettings);
++                else
++                {
++                    const TimeOfDayInterpolator<osg::Vec4f> legacy(samples[ESM4::Weather::Time_Sunrise],
++                        samples[ESM4::Weather::Time_Day], samples[ESM4::Weather::Time_Sunset],
++                        samples[ESM4::Weather::Time_Night]);
++                    mResult.mFalloutCloudColors[layer] = legacy.getValue(gameHour, mTimeSettings, "Sky");
++                }
++            }
++        }
+         mResult.mGlareView = current.mGlareView;
+         mResult.mAmbientLoopSoundID = current.mAmbientLoopSoundID;
+         mResult.mRainLoopSoundID = current.mRainLoopSoundID;
+@@ -1657,6 +1697,19 @@ namespace MWWorld
+ 
+         mResult.mWindSpeed = lerp(mResult.mCurrentWindSpeed, mResult.mNextWindSpeed, factor);
+         mResult.mCloudSpeed = lerp(current.mCloudSpeed, other.mCloudSpeed, factor);
++        mResult.mHasFalloutCloudLayers = current.mHasFalloutCloudLayers && other.mHasFalloutCloudLayers;
++        if (mResult.mHasFalloutCloudLayers)
++        {
++            for (std::size_t layer = 0; layer < mResult.mFalloutCloudTextures.size(); ++layer)
++            {
++                mResult.mFalloutCloudTextures[layer] = factor < 0.5f ? current.mFalloutCloudTextures[layer]
++                                                                     : other.mFalloutCloudTextures[layer];
++                mResult.mFalloutCloudSpeeds[layer]
++                    = lerp(current.mFalloutCloudSpeeds[layer], other.mFalloutCloudSpeeds[layer], factor);
++                mResult.mFalloutCloudColors[layer]
++                    = lerp(current.mFalloutCloudColors[layer], other.mFalloutCloudColors[layer], factor);
++            }
++        }
+         mResult.mGlareView = lerp(current.mGlareView, other.mGlareView, factor);
+         mResult.mNightFade = lerp(current.mNightFade, other.mNightFade, factor);
+ 
+diff --git a/apps/openmw/mwworld/weather.hpp b/apps/openmw/mwworld/weather.hpp
+index 883fc1bd0a..d617657fcf 100644
+--- a/apps/openmw/mwworld/weather.hpp
++++ b/apps/openmw/mwworld/weather.hpp
+@@ -169,6 +169,9 @@ namespace MWWorld
+         std::optional<FalloutWeatherColorSamples> mFalloutAmbientColors;
+         std::optional<FalloutWeatherColorSamples> mFalloutSunlightColors;
+         std::array<ESM::FormId, 6> mFalloutImageSpaceModifiers{};
++        std::optional<std::array<std::string, 4>> mFalloutCloudTextures;
++        std::optional<std::array<float, 4>> mFalloutCloudSpeeds;
++        std::optional<std::array<FalloutWeatherColorSamples, 4>> mFalloutCloudColors;
+ 
+         // Fog depth/density
+         TimeOfDayInterpolator<float> mLandFogDepth;
+-- 
+2.53.0.windows.1
+

@@ -24,6 +24,7 @@ param(
     [switch]$UseActorAnimationPolicyEnvironment,
     [switch]$EnableSound,
     [switch]$ShowGui,
+    [switch]$BackgroundWindow,
     [switch]$AllowWindowCaptureFallback,
     [switch]$AllowDuplicate,
     [switch]$KeepRunning,
@@ -1448,6 +1449,9 @@ foreach ($id in $WorldId) {
     else {
         Write-Host "Capture: OpenMW native screenshot action (F12)."
     }
+    if ($BackgroundWindow) {
+        Write-Host "Presentation: launch minimized and do not request foreground focus."
+    }
     $presentationPolicy = Resolve-CatalogPresentationPolicy -StartsCatalog $startsCatalog -Spec $catalogStartSpec -World $world -ShowGuiOverride ([bool]$ShowGui)
 
     $manifest = [ordered]@{
@@ -1468,6 +1472,7 @@ foreach ($id in $WorldId) {
         captureSeconds = @($effectiveCaptureSeconds)
         extraArgs = @($effectiveExtraArgs)
         soundEnabled = [bool]$EnableSound
+        backgroundWindow = [bool]$BackgroundWindow
         scriptRun = $resolvedCatalogScriptRun
         engineScreenshotEnabled = [bool]$engineScreenshotEnabled
         engineScreenshotFrames = if ($engineScreenshotEnabled) { $effectiveEngineScreenshotFrames } else { $null }
@@ -1566,7 +1571,16 @@ foreach ($id in $WorldId) {
     $processStartedAt = $null
     try {
         $processStartedAt = Get-Date
-        $process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory (Split-Path -Parent $binary) -PassThru
+        $startParameters = @{
+            FilePath = $binary
+            ArgumentList = $argumentLine
+            WorkingDirectory = (Split-Path -Parent $binary)
+            PassThru = $true
+        }
+        if ($BackgroundWindow) {
+            $startParameters.WindowStyle = "Minimized"
+        }
+        $process = Start-Process @startParameters
         $manifest.status = "started"
         $manifest.pid = $process.Id
         Write-Host "Started PID $($process.Id)."

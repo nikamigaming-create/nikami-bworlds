@@ -166,40 +166,47 @@
       }
     },
     "oblivion": {
-      "startCell": "ICPalace03",
-      "label": "Imperial City Palace exterior",
-      "esm4GridRadius": 1,
+      "startCell": "ICWaterfront04",
+      "label": "Imperial City Waterfront exterior",
+      "esm4GridRadius": 0,
       "environment": {
         "OPENMW_FNV_BOOTSTRAP_HOUR": "12",
         "OPENMW_FNV_PROOF_WEATHER_ID": "0",
         "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
       },
       "anchor": {
-        "source": "Oblivion.esm CELL ICPalace03, static survey camera pulled outside/up from palace shell",
+        "source": "Oblivion.esm CELL ICWaterfront04 (Tamriel grid 4,11), west of authored daytime Waterfront Guard ref 0x00009C5B",
         "position": {
-          "x": 28672,
-          "y": 63424,
-          "z": 3600
+          "x": 19050,
+          "y": 46929.4,
+          "z": 500
         },
         "rotation": {
           "x": 0,
           "y": 0,
-          "z": 1.5707964
+          "z": 2.229
         },
         "camera": {
           "mode": "static",
           "position": {
-            "x": 26770,
-            "y": 63020,
-            "z": 4210
+            "x": 18800,
+            "y": 46929.4,
+            "z": 430
           },
           "target": {
-            "x": 26594,
-            "y": 63430,
-            "z": 4160
+            "x": 19446.6,
+            "y": 46929.4,
+            "z": 390
           }
         },
-        "dry": true
+        "exteriorLocation": {
+          "worldspace": "FormId:0x3c",
+          "grid": {
+            "x": 4,
+            "y": 11
+          }
+        },
+        "dry": false
       },
       "slices": {
         "imperial-city-palace-geometry-actor-smoke": {
@@ -1685,6 +1692,64 @@
             "No desktop or input automation: a delayed OpenMW startup script applies the real AiTravel package to the exact FNV actor base after the exterior is ready.",
             "Static camera faces north from the open yard while AiTravel turns the actor south, keeping the authored face, hands, weapon, and torso visible throughout the route."
           ]
+        },
+        "goodsprings-bighorner-creature-front-walk": {
+          "label": "Goodsprings young bighorner deterministic three-quarter walk",
+          "scriptRun": "config/proofs/fnv-bighorner-front-walk.txt",
+          "environment": {
+            "OPENMW_PROOF_DELAY_STARTUP_SCRIPT": "1",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_REF": "FormId:0x110706e",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_X": "180",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_Y": "-180",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_EYE_Z": "120",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_X": "0",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_Y": "0",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_TARGET_Z": "65",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEADING": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEADING_DISTANCE": "100"
+          },
+          "anchor": {
+            "source": "FalloutNV.esm Goodsprings GSBighorner02Ref FormId:0x110706e; scripted AiTravel on the authored placed creature",
+            "position": {
+              "x": -69717.4,
+              "y": -900,
+              "z": 8104
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -69537.4,
+                "y": -1283.67,
+                "z": 8224
+              },
+              "target": {
+                "x": -69717.4,
+                "y": -1103.67,
+                "z": 8169
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 18,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "240,246,252,258,264,270,276,282,288,294,300,306,312,318,324,330,336,342,348,354,360,366,372,378,384,390,396,402,408,414,420",
+            "expectedScreenshotCount": 31,
+            "crashReportSettleSeconds": 3
+          },
+          "notes": [
+            "No desktop or input automation: delayed AiTravel moves the exact authored young bighorner while the engine streams the Goodsprings exterior.",
+            "Three-quarter follow framing keeps the torso and legs visible; the rejected direct-front diagnostic hid most of the body behind the animal's head and horns."
+          ]
         }
       }
     },
@@ -1776,16 +1841,16 @@
       "label": "Sanctuary Hills Codsworth exterior",
       "esm4GridRadius": 1,
       "anchor": {
-        "source": "Fallout4.esm actor cast mine: Codsworth persistent Commonwealth placement near SanctuaryExt02",
+        "source": "Fallout4.esm actor cast mine plus native movement telemetry: open Sanctuary street southeast of Codsworth, facing northwest toward his persistent placement near SanctuaryExt02",
         "position": {
-          "x": -80269.641,
-          "y": 90568.555,
-          "z": 7821.387
+          "x": -79892.0,
+          "y": 90319.0,
+          "z": 7840.1
         },
         "rotation": {
           "x": 0,
           "y": 0,
-          "z": 2.3561945
+          "z": -0.7853982
         },
         "exteriorLocation": {
           "worldspace": "FormId:0x100003c",
@@ -2090,40 +2155,43 @@
       }
     },
     "starfield": {
-      "startCell": "NewAtlantisSpaceport",
-      "label": "New Atlantis spaceport exterior",
-      "esm4GridRadius": 0,
+      "startCell": "NAViewport",
+      "label": "New Atlantis Viewport exterior",
+      "esm4GridRadius": 1,
+      "environment": {
+        "OPENMW_WORLD_VIEWER_SYNTHETIC_GROUND_Z": "2542.3984"
+      },
       "anchor": {
-        "source": "Starfield.esm CELL NewAtlantisSpaceport, mined ESM4 placement center and actor cluster",
+        "source": "Starfield.esm CELL NAViewport (New Atlantis exterior grid -1,0), south of authored Gerhard Pohl ref 0x0005FA9F and Amoli Bava ref 0x0005FA9E",
         "position": {
-          "x": -53.948226,
-          "y": -37.238238,
-          "z": 83.621925
+          "x": -2240,
+          "y": 1056,
+          "z": 2642.3984
         },
         "rotation": {
           "x": 0,
           "y": 0,
-          "z": 5.0
+          "z": -0.205
         },
         "exteriorLocation": {
           "worldspace": "FormId:0x1251b",
-          "cellId": "FormId:0x125b6",
+          "cellId": "FormId:0x12522",
           "grid": {
             "x": -1,
-            "y": -1
+            "y": 0
           }
         },
         "camera": {
           "mode": "static",
           "position": {
-            "x": -122,
-            "y": -131,
-            "z": 106
+            "x": -3480,
+            "y": 560,
+            "z": 3260
           },
           "target": {
-            "x": -58,
-            "y": -78,
-            "z": 84
+            "x": -2310,
+            "y": 1320,
+            "z": 2600
           }
         },
         "dry": true
