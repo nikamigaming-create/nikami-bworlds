@@ -248,6 +248,9 @@
         "Saves": {
           "character": "world-viewer-fnv"
         },
+        "Shaders": {
+          "clamp lighting": false
+        },
         "Windows": {
           "map hidden": false,
           "stats hidden": true
