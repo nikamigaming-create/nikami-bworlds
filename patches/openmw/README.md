@@ -235,6 +235,13 @@ full face/hair/material parity remain open. Broader
 CTDA/RunOn coverage, compiled bytecode, multi-line voice queues, and service
 menus remain explicit follow-on gates rather than implied compatibility claims.
 
+Patch 0024 executes the retail-derived Fallout HDR source normalization,
+authored bright threshold/scale, exterior/interior bloom weight, separable
+quarter-resolution bloom, and final HDR destination blend before the existing
+cinematic/tint/fade stage. Easy Pete and Lucas Simms native background
+portraits are the bounded visual evidence; full linear-HDR and retail timing
+parity remain broader acceptance gates.
+
 On a cold restart, read `../../docs/fallout-retail-parity-reboot.md` before
 editing an external checkout. Every new compatibility assumption must also be
 classified in `../../docs/fallout-compatibility-evidence-ledger.md`; rows

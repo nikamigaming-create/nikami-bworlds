@@ -770,6 +770,75 @@
             "One executable launch should produce six native front, face-close, side, top, and doorway-context screenshots around Lucas Simms and the Megaton entrance actor line."
           ]
         },
+        "megaton-entrance-lucas-actor-tracked-portrait": {
+          "label": "Megaton Lucas Simms actor-tracked portrait",
+          "environment": {
+            "OPENMW_FNV_BOOTSTRAP_HOUR": "12",
+            "OPENMW_FNV_PROOF_IMAGE_SPACE_ID": "FormId:0x101d775",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_FNV_DISABLE_PACKAGE_PREPLACEMENT": "1",
+            "OPENMW_FNV_DISABLE_PACKAGE_PROCEDURE": "1",
+            "OPENMW_FNV_DISABLE_AI_PACKAGES": "1",
+            "OPENMW_FNV_PROOF_TARGET_NPC": "LucasSimms",
+            "OPENMW_FNV_HIDE_PLAYER_PROOF_PARTS": "1",
+            "OPENMW_FNV_PROOF_HIDE_EQUIPPED_WEAPON": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_REF": "FormId:0x1003b46",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_DISTANCE": "38",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_FOCUS": "2",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_EYE_Z": "0",
+            "OPENMW_WORLD_VIEWER_REQUIRE_PORTRAIT_CLEAR": "1",
+            "OPENMW_WORLD_VIEWER_PORTRAIT_CLEAR_FRAMES": "8",
+            "OPENMW_WORLD_VIEWER_PORTRAIT_MAX_HAND_OFFSET_Z": "-18"
+          },
+          "anchor": {
+            "source": "Fallout3.esm LucasSimmsRef FormId:0x00003b46; live rendered head drives the proof camera",
+            "position": {
+              "x": -2907,
+              "y": -23485,
+              "z": 12643
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 0.2
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -3015,
+                "y": -22465,
+                "z": 13015
+              },
+              "target": {
+                "x": -3015,
+                "y": -22564,
+                "z": 12995
+              }
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 16,
+            "captureSeconds": [
+              12
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "240,270",
+            "expectedScreenshotCount": 2,
+            "crashReportSettleSeconds": 3
+          },
+          "validation": {
+            "visualReviewRequired": true,
+            "expectedActor": "LucasSimms",
+            "requireActorFramingTelemetry": true,
+            "requirePortraitAcceptanceTelemetry": true
+          },
+          "notes": [
+            "Uses the authored Lucas Simms reference and live Bip01 Head transform; it does not stage or rotate the actor.",
+            "This framing slice hides the equipped rifle; weapon attachment remains a separate proof gate."
+          ]
+        },
         "megaton-entrance-lucas-actor-walkaround": {
           "label": "Megaton entrance Lucas actor player-camera walkaround",
           "anchor": {
@@ -1328,6 +1397,91 @@
           "notes": [
             "Uses Easy Pete's authored exterior reference and native FaceGen/bodymod assets; no staged replacement actor.",
             "Flat close-up colour and head-part gate; package relocation is disabled so the authored exterior ref stays in frame."
+          ]
+        },
+          "goodsprings-easy-pete-seated-tracked-portrait": {
+          "label": "Goodsprings Easy Pete natural seated retail portrait",
+          "environment": {
+            "OPENMW_FNV_BOOTSTRAP_HOUR": "14.45",
+            "OPENMW_FNV_PROOF_WEATHER_ID": "FormId:0x11237d7",
+            "OPENMW_FNV_PROOF_IMAGE_SPACE_ID": "FormId:0x108809d",
+            "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1",
+            "OPENMW_FNV_PROOF_TARGET_NPC": "GSEasyPete",
+            "OPENMW_FNV_HIDE_PLAYER_PROOF_PARTS": "1",
+            "OPENMW_FNV_PROOF_HIDE_EQUIPPED_WEAPON": "1",
+            "OPENMW_FNV_FORCED_KF_SOURCE": "meshes/characters/_male/idleanims/sitchairrelaxb.kf",
+            "OPENMW_FNV_FORCED_OVERLAY_GROUP": "idle",
+            "OPENMW_FNV_FORCED_OVERLAY_FULL_BODY": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_REF": "FormId:0x1104c80",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD": "1",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_DISTANCE": "70",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_FOCUS": "2",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_EYE_Z": "20",
+            "OPENMW_WORLD_VIEWER_PORTRAIT_CLEAR_FRAMES": "8",
+            "OPENMW_WORLD_VIEWER_PORTRAIT_MAX_HAND_OFFSET_Z": "12"
+          },
+          "anchor": {
+            "source": "FalloutNV.esm EasyPeteRef FormId:0x104c80; authored package and chair marker select the seated state",
+            "position": {
+              "x": -67730,
+              "y": 3342,
+              "z": 8392
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 1.5
+            },
+            "camera": {
+              "mode": "static",
+              "position": {
+                "x": -67883.5,
+                "y": 3457.5,
+                "z": 8482.3
+              },
+              "target": {
+                "x": -67952.6,
+                "y": 3446.5,
+                "z": 8482.3
+              },
+              "sequence": [
+                {
+                  "frame": 0,
+                  "position": {
+                    "x": -67883.5312,
+                    "y": 3457.54321,
+                    "z": 8482.33789
+                  },
+                  "target": {
+                    "x": -67952.6484,
+                    "y": 3446.4502,
+                    "z": 8482.33789
+                  }
+                }
+              ]
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 12,
+            "captureSeconds": [
+              10
+            ],
+            "engineScreenshotEnabled": true,
+            "engineScreenshotFrames": "420",
+            "expectedScreenshotCount": 1,
+            "crashReportSettleSeconds": 3
+          },
+          "validation": {
+            "visualReviewRequired": true,
+            "expectedActor": "GSEasyPete",
+            "requireActorFramingTelemetry": false,
+            "requirePortraitAcceptanceTelemetry": false
+          },
+          "notes": [
+            "Leaves authored AI packages enabled so Easy Pete reaches his retail chair naturally; it does not use AiWander, SetAngle, package suppression, or a staged actor.",
+            "Pins the xNVSE-recorded retail eye and target vector through a frame-zero camera keyframe so the generic live-head portrait camera cannot override the matched composition.",
+            "Sweeps one complete 13.333334-second dynamicidle_chairsit loop; choose the matching pose from bone silhouette rather than rotating or staging the actor."
           ]
         },
         "goodsprings-easy-pete-actor-tracked-portrait": {

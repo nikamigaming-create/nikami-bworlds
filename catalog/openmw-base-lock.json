@@ -10,14 +10,14 @@
   "compositeCheckpoint": {
     "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
     "branch": "main",
-    "commit": "a77bf86556b0c9cd895c9610fa44f00be3d6a6da",
-    "tree": "82b7b3083932ccef1b6b401187bd56de1d1c06ed"
+    "commit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
+    "tree": "1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a"
   },
   "replayVerification": {
     "series": "patches/openmw/series",
-    "patchCount": 23,
+    "patchCount": 24,
     "base": "9acf88c34bdae7e7241104e0035cb5af9e1bac9d",
-    "replayedTree": "82b7b3083932ccef1b6b401187bd56de1d1c06ed",
+    "replayedTree": "1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a",
     "matchesCompositeCheckpoint": true,
     "method": "cumulative git apply in a disposable detached worktree, followed by git add -A and git write-tree"
   },
@@ -42,7 +42,7 @@
   "layers": [
     "official-openmw-moving-reference",
     "openmw-vr-fork-and-unpublished-98-commit-base-delta",
-    "flat-bethesda-overlay-patches-0001-through-0023",
+    "flat-bethesda-overlay-patches-0001-through-0024",
     "future-vr-integration-after-flat-parity"
   ]
 }

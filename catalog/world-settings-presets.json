@@ -242,12 +242,19 @@
     "fallout_new_vegas": {
       "preset": "esm4_world_viewer_first_frame",
       "sections": {
+        "Camera": {
+          "field of view": 75
+        },
         "Saves": {
           "character": "world-viewer-fnv"
         },
         "Windows": {
           "map hidden": false,
           "stats hidden": true
+        },
+        "Video": {
+          "resolution x": 2048,
+          "resolution y": 1280
         },
         "VR": {
           "fallout hand mesh offset x": 0,

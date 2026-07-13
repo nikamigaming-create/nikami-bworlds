@@ -170,6 +170,35 @@ class ESM4Catalog:
                 fields.setdefault("models", []).append(zstr(raw))
             elif rtype in ("HAIR", "EYES", "HDPT") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
                 fields.setdefault("models", []).append(zstr(raw))
+            elif rtype == "IDLE" and name == "MODL":
+                fields["model"] = zstr(raw)
+            elif rtype == "IDLE" and name == "DNAM":
+                fields["collision"] = zstr(raw)
+            elif rtype == "IDLE" and name == "ENAM":
+                fields["event"] = zstr(raw)
+            elif rtype == "IDLE" and name == "ANAM" and len(raw) >= 8:
+                fields["parent"] = form_from_raw(raw, self.mod_index)
+                fields["previous"] = form_from_raw(raw[4:], self.mod_index)
+            elif rtype == "IDLE" and name in ("CTDA", "CTDT"):
+                fields.setdefault("conditionData", []).append(
+                    {
+                        "subrecord": name,
+                        "bytes": len(raw),
+                        "hex": raw.hex(),
+                    }
+                )
+            elif rtype == "IDLM" and name == "MODL":
+                fields["model"] = zstr(raw)
+            elif rtype == "IDLM" and name == "IDLF" and raw:
+                fields["idleFlags"] = raw[0]
+            elif rtype == "IDLM" and name == "IDLC" and raw:
+                fields["idleCount"] = raw[0] if len(raw) == 1 else u32(raw, 0)
+            elif rtype == "IDLM" and name == "IDLT" and len(raw) >= 4:
+                fields["idleTimer"] = f32(raw, 0)
+            elif rtype == "IDLM" and name == "IDLA" and len(raw) % 4 == 0:
+                fields["idleAnimations"] = [
+                    form(u32(raw, offset), self.mod_index) for offset in range(0, len(raw), 4)
+                ]
             elif rtype in ("ACTI", "TACT", "DOOR") and name == "MODL":
                 fields.setdefault("models", []).append(zstr(raw))
             elif rtype == "ACTI" and name == "SCRI" and len(raw) >= 4:
@@ -214,6 +243,10 @@ class ESM4Catalog:
                 fields.setdefault("leveledEntries", []).append(form(u32(raw, 4), self.mod_index))
             elif rtype == "WRLD" and name == "WCTR" and len(raw) >= 4:
                 fields["centerCell"] = [struct.unpack_from("<h", raw, 0)[0], struct.unpack_from("<h", raw, 2)[0]]
+            elif rtype == "WRLD" and name == "INAM" and len(raw) >= 4:
+                fields["imageSpace"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "CELL" and name == "XCIM" and len(raw) >= 4:
+                fields["imageSpace"] = form_from_raw(raw, self.mod_index)
             elif rtype == "CLMT" and name == "TNAM" and len(raw) >= 6:
                 fields["climateTiming"] = {
                     "sunriseBegin": raw[0],
@@ -231,7 +264,18 @@ class ESM4Catalog:
 
     def record_matches_terms(self, item):
         text = " ".join(
-            str(item.get(key, "")) for key in ("editorId", "fullName", "type", "id", "parentCell", "parentWorld")
+            str(item.get(key, ""))
+            for key in (
+                "editorId",
+                "fullName",
+                "type",
+                "id",
+                "parentCell",
+                "parentWorld",
+                "model",
+                "collision",
+                "event",
+            )
         ).lower()
         return [term for term in self.terms if term in text]
 
@@ -328,6 +372,22 @@ class ESM4Catalog:
                     record["faceGenFingerprints"] = fields["faceGenFingerprints"]
                 if "models" in fields:
                     record["models"] = fields["models"][:8]
+                for field_name in ("model", "collision", "event", "idleFlags", "idleCount", "idleTimer"):
+                    if field_name in fields:
+                        record[field_name] = fields[field_name]
+                for field_name in ("parent", "previous"):
+                    if field_name in fields:
+                        record[field_name] = form_hex(fields[field_name])
+                        record["openmw" + field_name[0].upper() + field_name[1:]] = openmw_form_id(
+                            fields[field_name]
+                        )
+                if "conditionData" in fields:
+                    record["conditionData"] = fields["conditionData"]
+                if "idleAnimations" in fields:
+                    record["idleAnimations"] = [form_hex(value) for value in fields["idleAnimations"] if value]
+                    record["openmwIdleAnimations"] = [
+                        openmw_form_id(value) for value in fields["idleAnimations"] if value
+                    ]
                 for field_name in (
                     "script",
                     "loopingSound",
@@ -373,6 +433,8 @@ class ESM4Catalog:
                     "editorId": fields.get("editorId", ""),
                     "fullName": fields.get("fullName", ""),
                     "centerCell": fields.get("centerCell"),
+                    "imageSpace": form_hex(fields.get("imageSpace")),
+                    "openmwImageSpace": openmw_form_id(fields.get("imageSpace")),
                 }
                 self.worlds[rec_form] = world
                 current_world = rec_form
@@ -391,6 +453,8 @@ class ESM4Catalog:
                     "openmwParentWorld": openmw_form_id(current_world) if is_exterior else None,
                     "x": fields.get("x", 0),
                     "y": fields.get("y", 0),
+                    "imageSpace": form_hex(fields.get("imageSpace")),
+                    "openmwImageSpace": openmw_form_id(fields.get("imageSpace")),
                     "matches": [],
                     "matchedRefs": [],
                     "matchedRefCount": 0,

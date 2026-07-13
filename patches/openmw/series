@@ -22,3 +22,4 @@
 0021-Preload-ESM4-teleport-door-destinations.patch
 0022-Make-flat-OpenXR-headers-reproducible.patch
 0023-Stop-implicit-Fallout-preview-equipment.patch
+0024-Execute-Fallout-HDR-blend-and-bloom.patch
