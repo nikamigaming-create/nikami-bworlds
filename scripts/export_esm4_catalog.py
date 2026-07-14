@@ -138,6 +138,8 @@ class ESM4Catalog:
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "DATA" and len(raw) >= 24:
                 fields["pos"] = [f32(raw, 0), f32(raw, 4), f32(raw, 8)]
                 fields["rot"] = [f32(raw, 12), f32(raw, 16), f32(raw, 20)]
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XSCL" and len(raw) >= 4:
+                fields["scale"] = f32(raw, 0)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XESP" and len(raw) >= 8:
                 fields["enableParent"] = form_from_raw(raw, self.mod_index)
                 fields["enableParentFlags"] = u32(raw, 4)
@@ -199,6 +201,24 @@ class ESM4Catalog:
                 fields["idleAnimations"] = [
                     form(u32(raw, offset), self.mod_index) for offset in range(0, len(raw), 4)
                 ]
+            elif rtype == "LIGH" and name == "DATA" and len(raw) in (24, 32, 48, 64):
+                fields["light"] = {
+                    "time": i32(raw, 0),
+                    "radius": u32(raw, 4),
+                    "colorRgba": list(raw[8:12]),
+                    "flags": i32(raw, 12),
+                }
+                value_offset = 16
+                if len(raw) >= 32:
+                    fields["light"]["falloff"] = f32(raw, 16)
+                    fields["light"]["fov"] = f32(raw, 20)
+                    value_offset = 24 if len(raw) == 32 else len(raw) - 8
+                fields["light"]["value"] = u32(raw, value_offset)
+                fields["light"]["weight"] = f32(raw, value_offset + 4)
+            elif rtype == "LIGH" and name == "FNAM" and len(raw) >= 4:
+                fields["lightFade"] = f32(raw, 0)
+            elif rtype == "LIGH" and name == "MODL":
+                fields["model"] = zstr(raw)
             elif rtype in ("ACTI", "TACT", "DOOR") and name == "MODL":
                 fields.setdefault("models", []).append(zstr(raw))
             elif rtype == "ACTI" and name == "SCRI" and len(raw) >= 4:
@@ -375,6 +395,9 @@ class ESM4Catalog:
                 for field_name in ("model", "collision", "event", "idleFlags", "idleCount", "idleTimer"):
                     if field_name in fields:
                         record[field_name] = fields[field_name]
+                if "light" in fields:
+                    record["light"] = fields["light"]
+                    record["light"]["fade"] = fields.get("lightFade", 1.0)
                 for field_name in ("parent", "previous"):
                     if field_name in fields:
                         record[field_name] = form_hex(fields[field_name])
@@ -414,6 +437,7 @@ class ESM4Catalog:
                     record["openmwBase"] = openmw_form_id(fields.get("base"))
                     record["pos"] = fields.get("pos")
                     record["rot"] = fields.get("rot")
+                    record["scale"] = fields.get("scale", 1.0)
                     record["destDoor"] = form_hex(fields.get("destDoor"))
                     record["openmwDestDoor"] = openmw_form_id(fields.get("destDoor"))
                     record["destPos"] = fields.get("destPos")
@@ -479,6 +503,7 @@ class ESM4Catalog:
                     "openmwBase": openmw_form_id(fields.get("base")),
                     "pos": fields.get("pos"),
                     "rot": fields.get("rot"),
+                    "scale": fields.get("scale", 1.0),
                     "editorId": fields.get("editorId", ""),
                     "enableParent": form_hex(fields.get("enableParent")),
                     "openmwEnableParent": openmw_form_id(fields.get("enableParent")),
@@ -631,6 +656,7 @@ class ESM4Catalog:
         worlds = sorted(self.worlds.values(), key=lambda w: w.get("editorId", ""))
         teleport_refs = []
         radio_refs = []
+        light_refs = []
         for cell in self.cells.values():
             for ref in cell["teleportRefs"]:
                 teleport_refs.append(
@@ -654,6 +680,30 @@ class ESM4Catalog:
                         **ref,
                     }
                 )
+        for placement in self.placements:
+            base = placement.get("base")
+            if not base:
+                continue
+            base_record = self.records.get(int(base, 16))
+            if not base_record or base_record.get("type") != "LIGH":
+                continue
+            cell = self.cells.get(int(placement["parentCell"], 16))
+            light_refs.append(
+                {
+                    "ref": placement["id"],
+                    "openmwRef": placement["openmwId"],
+                    "cell": placement["parentCell"],
+                    "cellEditorId": cell.get("editorId", "") if cell else "",
+                    "base": base,
+                    "openmwBase": placement.get("openmwBase"),
+                    "baseEditorId": base_record.get("editorId", ""),
+                    "model": base_record.get("model", ""),
+                    "light": base_record.get("light"),
+                    "pos": placement.get("pos"),
+                    "rot": placement.get("rot"),
+                    "scale": placement.get("scale", 1.0),
+                }
+            )
         return {
             "schemaVersion": 1,
             "source": str(self.path),
@@ -667,11 +717,13 @@ class ESM4Catalog:
                 "cells": len(self.cells),
                 "placements": len(self.placements),
                 "termRecords": len(term_records),
+                "lightRefs": len(light_refs),
             },
             "worlds": worlds,
             "termRecords": term_records[:1000],
             "teleportRefs": teleport_refs,
             "radioRefs": radio_refs,
+            "lightRefs": light_refs,
             "topCells": top_cells,
             "topActorCells": top_actor_cells,
         }

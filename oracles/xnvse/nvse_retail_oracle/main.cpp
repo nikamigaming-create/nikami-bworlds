@@ -1703,6 +1703,15 @@ namespace
             void* sceneCamera = sceneGraphOwner != nullptr
                 ? reinterpret_cast<void*(__thiscall*)(void*)>(0x006629F0)(sceneGraphOwner)
                 : nullptr;
+            NiFrustum sceneCameraFrustum = {};
+            NiViewport sceneCameraViewport = {};
+            float sceneCameraMinNearPlaneDistance = 0.f;
+            float sceneCameraMaxFarNearRatio = 0.f;
+            const bool hasSceneCameraProjection = sceneCamera != nullptr
+                && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0xEC, sceneCameraFrustum)
+                && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x108, sceneCameraMinNearPlaneDistance)
+                && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x10C, sceneCameraMaxFarNearRatio)
+                && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x110, sceneCameraViewport);
             if (sceneCamera != nullptr)
                 cameraLodAdjust = reinterpret_cast<float(__thiscall*)(void*)>(0x00508070)(sceneCamera);
             safeRead(reinterpret_cast<const void*>(0x011AD7C4), actorFadeMultiplier);
@@ -1735,6 +1744,21 @@ namespace
             }
             else
                 gOutput << "null,\"cameraDistance\":null";
+            gOutput
+                << ",\"sceneCameraProjection\":";
+            if (hasSceneCameraProjection)
+            {
+                gOutput << "{\"frustum\":[" << sceneCameraFrustum.l << ',' << sceneCameraFrustum.r << ','
+                        << sceneCameraFrustum.t << ',' << sceneCameraFrustum.b << ',' << sceneCameraFrustum.n << ','
+                        << sceneCameraFrustum.f << ']'
+                        << ",\"orthographic\":" << (sceneCameraFrustum.o != 0 ? "true" : "false")
+                        << ",\"minNearPlaneDistance\":" << sceneCameraMinNearPlaneDistance
+                        << ",\"maxFarNearRatio\":" << sceneCameraMaxFarNearRatio
+                        << ",\"viewport\":[" << sceneCameraViewport.l << ',' << sceneCameraViewport.r << ','
+                        << sceneCameraViewport.t << ',' << sceneCameraViewport.b << "]}";
+            }
+            else
+                gOutput << "null";
             gOutput
                 << ",\"boneLodInputs\":{\"actorScale\":" << actorScale
                 << ",\"cameraLodAdjust\":" << cameraLodAdjust

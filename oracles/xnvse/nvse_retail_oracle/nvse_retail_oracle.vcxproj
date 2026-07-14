@@ -24,7 +24,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)..;$(ProjectDir)..\nvse;$(ProjectDir)..\nvse\nvse;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\..\external\xnvse;$(ProjectDir)..\..\..\external\xnvse\nvse;$(ProjectDir)..\..\..\external\xnvse\nvse\nvse;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;RUNTIME_VERSION=0x040020D0;RUNTIME;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeader />

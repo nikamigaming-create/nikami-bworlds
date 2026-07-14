@@ -1,0 +1,173 @@
+{
+  "schema": "nikami-fnv-easy-pete-pixel-parity-config/v1",
+  "expectedSize": [
+    2048,
+    1280
+  ],
+  "telemetry": {
+    "oracle": "run/retail-oracle/fnv-easy-pete-unified-frame30-v3.jsonl",
+    "oracleFrame": 30,
+    "retailActorRef": "0x104c80",
+    "openmwBaseForm": "0x1104c7f",
+    "captureFrame": 420,
+    "retailProjection": {
+      "source": "run/retail-oracle/fnv-easy-pete-unified-frame30-v3.jsonl.d3d9.jsonl plus the same-frame actor/camera/framebuffer records",
+      "viewport": [
+        2048,
+        1280
+      ],
+      "baseHorizontalFovBits": "0x42960000",
+      "verticalFovBits": "0x426F5C9D",
+      "nearFarBits": [
+        "0x40A00000",
+        "0x48ACC600"
+      ],
+      "retailD3DMatrixBits": [
+        "0x3F8B02BE", "0x00000000", "0x00000000", "0x00000000",
+        "0x00000000", "0x3FDE6AC9", "0x00000000", "0x00000000",
+        "0x00000000", "0x00000000", "0x3F800077", "0x3F800000",
+        "0x00000000", "0x00000000", "0xC0A00094", "0x00000000"
+      ],
+      "expectedOpenGLMatrixBits": [
+        "0x3F8B02BE", "0x00000000", "0x00000000", "0x00000000",
+        "0x00000000", "0x3FDE6AC9", "0x00000000", "0x00000000",
+        "0x00000000", "0x00000000", "0xBF8000EE", "0xBF800000",
+        "0x00000000", "0x00000000", "0xC1200094", "0x00000000"
+      ]
+    },
+    "cameraEye": [
+      -67883.5312,
+      3457.54321,
+      8482.33789
+    ],
+    "cameraTarget": [
+      -67952.6484,
+      3446.4502,
+      8482.33789
+    ],
+    "cameraTolerance": 0.1,
+    "headPositionTolerance": 0.5,
+    "headForwardMatrixIndices": [
+      1,
+      4,
+      7
+    ],
+    "headForwardToleranceDegrees": 1.0,
+    "retailPoseSource": {
+      "nodes": 63,
+      "transformWords": 819,
+      "arithmetic": "parent-times-local-round-every-float32-op"
+    },
+    "retailPoseReplayNodes": 62,
+    "retailRootBits": [
+      "0xC784C060",
+      "0x4557A682",
+      "0x46030D3E",
+      "0x00000000",
+      "0x00000000",
+      "0x3FCF48FC"
+    ],
+    "requiredPartClasses": {
+      "head": 1,
+      "faceHair": 1,
+      "faceBeard": 1,
+      "headgear": 1,
+      "faceEye": 2,
+      "faceMouth": 1,
+      "faceTeeth": 2,
+      "faceTongue": 1
+    },
+    "requirePerDrawLightSnapshot": true,
+    "lightValueTolerance": 0.00001,
+    "expectedSelectedLights": [
+      {
+        "id": 3,
+        "diffuse": [
+          2.19137263,
+          1.8031373,
+          0.629803956,
+          1.0
+        ],
+        "attenuation": [
+          0.0,
+          0.015,
+          0.0
+        ],
+        "radius": 200.0
+      }
+    ]
+  },
+  "pixelThresholds": {
+    "maxMae": 3.0,
+    "maxP95AbsoluteError": 10.0,
+    "maxPixelsAbove16Percent": 3.0,
+    "maxAbsoluteLumaDelta": 2.0,
+    "maxAbsoluteWarmHighlightDeltaPercent": 0.75
+  },
+  "rois": [
+    {
+      "name": "easy-pete-head",
+      "box": [
+        740,
+        620,
+        1140,
+        1075
+      ],
+      "thresholds": {
+        "maxMae": 4.0,
+        "maxP95AbsoluteError": 14.0,
+        "maxPixelsAbove16Percent": 5.0,
+        "maxAbsoluteLumaDelta": 3.0,
+        "maxAbsoluteWarmHighlightDeltaPercent": 1.0
+      }
+    },
+    {
+      "name": "easy-pete-face-skin-eyes",
+      "box": [
+        850,
+        775,
+        1075,
+        990
+      ],
+      "thresholds": {
+        "maxMae": 4.0,
+        "maxP95AbsoluteError": 14.0,
+        "maxPixelsAbove16Percent": 5.0,
+        "maxAbsoluteLumaDelta": 3.0,
+        "maxAbsoluteWarmHighlightDeltaPercent": 1.0
+      }
+    },
+    {
+      "name": "hat-hair-sideburns-beard",
+      "box": [
+        740,
+        620,
+        1140,
+        1080
+      ],
+      "thresholds": {
+        "maxMae": 4.0,
+        "maxP95AbsoluteError": 14.0,
+        "maxPixelsAbove16Percent": 5.0,
+        "maxAbsoluteLumaDelta": 3.0,
+        "maxAbsoluteWarmHighlightDeltaPercent": 1.0
+      }
+    },
+    {
+      "name": "board-side-lighting",
+      "box": [
+        470,
+        210,
+        1120,
+        1140
+      ],
+      "thresholds": {
+        "maxMae": 3.5,
+        "maxP95AbsoluteError": 12.0,
+        "maxPixelsAbove16Percent": 4.0,
+        "maxAbsoluteLumaDelta": 2.5,
+        "maxAbsoluteWarmHighlightDeltaPercent": 0.75
+      }
+    }
+  ]
+}

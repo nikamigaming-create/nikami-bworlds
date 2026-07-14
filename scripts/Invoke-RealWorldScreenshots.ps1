@@ -674,6 +674,9 @@ function Apply-CatalogEnvironmentSpec {
         if ($value -is [bool]) {
             $value = if ([bool]$value) { "1" } else { $null }
         }
+        elseif ($value -is [string]) {
+            $value = ([string]$value).Replace('${NIKAMI_REPO_ROOT}', $script:NikamiRepoRoot)
+        }
         Set-ScopedProcessEnvValue -PreviousEnvironment $PreviousEnvironment -AppliedEnvironment $AppliedEnvironment -Name $name -Value $value
     }
 }

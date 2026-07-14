@@ -48,6 +48,9 @@ param(
     [switch]$CaptureAnimation,
     [int[]]$ScreenshotFrame = @(),
     [string]$ScreenshotDirectory = "",
+    [switch]$MaterialShaderCapture,
+    [ValidateRange(1, 1000000)]
+    [int]$MaterialShaderFrame = 30,
     [switch]$PortraitCamera,
     [ValidateRange(32, 1000)]
     [float]$PortraitDistance = 110,
@@ -104,6 +107,75 @@ function Remove-FileWithRetry([string]$Path, [int]$TimeoutMilliseconds = 5000) {
     throw "Timed out removing file: $Path"
 }
 
+function Remove-DirectoryWithRetry([string]$Path, [int]$TimeoutMilliseconds = 15000) {
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    do {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+        }
+        catch {
+            if ([DateTime]::UtcNow -ge $deadline) { throw }
+            Start-Sleep -Milliseconds 150
+        }
+        if (-not (Test-Path -LiteralPath $Path)) { return }
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Timed out removing directory: $Path"
+}
+
+function Convert-FNVRawFramebufferToBmp(
+    [string]$Path,
+    [string]$OutputPath,
+    [int]$Width,
+    [int]$Height,
+    [string]$RowOrder,
+    [string]$ChannelOrder
+) {
+    if ($Width -lt 1 -or $Height -lt 1 -or $ChannelOrder -ne 'BGRA8' -or
+        $RowOrder -notin @('top-to-bottom', 'bottom-to-top')) {
+        throw "Unsupported raw framebuffer layout: ${Width}x${Height} $RowOrder $ChannelOrder"
+    }
+    $pixels = [System.IO.File]::ReadAllBytes($Path)
+    $rowBytes = [int64]$Width * 4
+    $expectedBytes = $rowBytes * [int64]$Height
+    if ($pixels.Length -ne $expectedBytes) {
+        throw "Raw framebuffer byte count mismatch for $Path (expected $expectedBytes, got $($pixels.Length))."
+    }
+    Add-Type -AssemblyName System.Drawing
+    $bitmap = New-Object System.Drawing.Bitmap(
+        $Width, $Height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $rectangle = New-Object System.Drawing.Rectangle(0, 0, $Width, $Height)
+    $data = $bitmap.LockBits(
+        $rectangle,
+        [System.Drawing.Imaging.ImageLockMode]::WriteOnly,
+        [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    try {
+        for ($destinationRow = 0; $destinationRow -lt $Height; ++$destinationRow) {
+            $sourceRow = if ($RowOrder -eq 'top-to-bottom') {
+                $destinationRow
+            } else {
+                $Height - 1 - $destinationRow
+            }
+            $destinationOffset = if ($data.Stride -ge 0) {
+                $destinationRow * $data.Stride
+            } else {
+                ($Height - 1 - $destinationRow) * (-$data.Stride)
+            }
+            $destination = [IntPtr]::Add($data.Scan0, $destinationOffset)
+            [System.Runtime.InteropServices.Marshal]::Copy(
+                $pixels, $sourceRow * $rowBytes, $destination, $rowBytes)
+        }
+    }
+    finally {
+        $bitmap.UnlockBits($data)
+    }
+    try {
+        $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Bmp)
+    }
+    finally {
+        $bitmap.Dispose()
+    }
+}
+
 function Get-ManifestRuntimeFile(
     [object]$Manifest,
     [string]$Key,
@@ -154,6 +226,9 @@ if ($TimeoutSeconds -lt 10 -or $TimeoutSeconds -gt 300) {
 }
 if ($SampleEvery -lt 1) {
     throw "SampleEvery must be positive."
+}
+if ($MaterialShaderCapture -and $MaterialShaderFrame -gt $MaxFrames) {
+    throw "MaterialShaderFrame must be less than or equal to MaxFrames."
 }
 foreach ($form in @($TargetForm, $ExpectedTargetBaseForm, $ObserverApproachForm, $EquipForm, $SessionTargetForm)) {
     if ($form -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$') {
@@ -363,6 +438,7 @@ $screenshotOutputDirectory = if ([string]::IsNullOrWhiteSpace($ScreenshotDirecto
     Resolve-AbsolutePath $ScreenshotDirectory
 }
 $capturedScreenshots = @()
+$framebufferDerivedScreenshots = @()
 $portraitProofCrops = @()
 $fixtureDestinations = @()
 $rootHookBackups = @()
@@ -452,6 +528,8 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_SET_STAGE_QUEST = $SetStageQuestForm
     NIKAMI_ORACLE_SET_STAGE_INDEX = [string]$SetStageIndex
     NIKAMI_ORACLE_SCREENSHOT_FRAMES = (@($ScreenshotFrame) -join ",")
+    NIKAMI_ORACLE_MATERIAL_SHADER_CAPTURE = if ($MaterialShaderCapture) { "1" } else { "0" }
+    NIKAMI_ORACLE_MATERIAL_SHADER_FRAME = [string]$MaterialShaderFrame
     NIKAMI_ORACLE_BATCH_TARGET_FORMS = (@($BatchTargetForm) -join ",")
     NIKAMI_ORACLE_BATCH_SETTLE_FRAMES = [string]$BatchSettleFrames
     NIKAMI_ORACLE_BATCH_ADVANCE_FRAMES = [string]$BatchAdvanceFrames
@@ -724,7 +802,7 @@ finally {
             if (-not (Test-PathWithinRoot -Path $ephemeralRunRoot -Root $runtimeRootPath)) {
                 throw "Ephemeral run directory escaped RuntimeRoot: $ephemeralRunRoot"
             }
-            Remove-Item -LiteralPath $ephemeralRunRoot -Recurse -Force
+            Remove-DirectoryWithRetry -Path $ephemeralRunRoot
         } catch { $cleanupFailures.Add("Failed to remove ephemeral xNVSE run directory: $($_.Exception.Message)") | Out-Null }
     }
 }
@@ -742,6 +820,72 @@ if (-not (Test-Path -LiteralPath $output -PathType Leaf)) {
 }
 
 $events = @(Get-Content -LiteralPath $output | ForEach-Object { $_ | ConvertFrom-Json })
+if ($MaterialShaderCapture -and $capturedScreenshots.Count -eq 0 -and
+    $ScreenshotFrame.Count -eq 1 -and $ScreenshotFrame[0] -eq $MaterialShaderFrame) {
+    $rawFrames = @($events | Where-Object {
+        $_.event -eq 'final-framebuffer-raw' -and $_.frame -eq $MaterialShaderFrame -and $_.complete
+    })
+    if ($rawFrames.Count -eq 1 -and (Test-Path -LiteralPath ([string]$rawFrames[0].path) -PathType Leaf)) {
+        $derivedPath = Join-Path $screenshotOutputDirectory ('frame-{0:D6}.bmp' -f $MaterialShaderFrame)
+        Convert-FNVRawFramebufferToBmp `
+            -Path ([string]$rawFrames[0].path) `
+            -OutputPath $derivedPath `
+            -Width ([int]$rawFrames[0].width) `
+            -Height ([int]$rawFrames[0].height) `
+            -RowOrder ([string]$rawFrames[0].rowOrder) `
+            -ChannelOrder ([string]$rawFrames[0].channelOrder)
+        $capturedScreenshots += $derivedPath
+        $framebufferDerivedScreenshots += $derivedPath
+    }
+}
+$materialCaptureEvidence = $null
+if ($MaterialShaderCapture) {
+    if ($ScreenshotFrame -notcontains $MaterialShaderFrame) {
+        throw "MaterialShaderCapture requires ScreenshotFrame to contain MaterialShaderFrame ($MaterialShaderFrame)."
+    }
+    $actorFrames = @($events | Where-Object {
+        $_.event -eq 'actor-frame' -and $_.frame -eq $MaterialShaderFrame -and
+        ($TargetForm -eq '0' -or $_.refForm -eq (ConvertTo-FNVFormId $TargetForm) -or
+            $_.baseForm -eq (ConvertTo-FNVFormId $TargetForm))
+    })
+    if (-not $CaptureAnimation -or $actorFrames.Count -ne 1) {
+        throw "Unified material capture requires exactly one target actor-frame at frame $MaterialShaderFrame; found $($actorFrames.Count)."
+    }
+    $ledgers = @($events | Where-Object {
+        $_.event -eq 'd3d9-ledger' -and $_.captureFrame -eq $MaterialShaderFrame -and $_.opened
+    })
+    if ($ledgers.Count -ne 1) {
+        throw "Unified material capture requires exactly one open D3D9 ledger at frame $MaterialShaderFrame; found $($ledgers.Count)."
+    }
+    $framebuffers = @($events | Where-Object {
+        $_.event -eq 'final-framebuffer-raw' -and $_.frame -eq $MaterialShaderFrame -and $_.complete
+    })
+    if ($framebuffers.Count -ne 1) {
+        throw "Unified material capture requires exactly one complete final framebuffer at frame $MaterialShaderFrame; found $($framebuffers.Count)."
+    }
+    $ledgerPath = [string]$ledgers[0].path
+    if (-not (Test-Path -LiteralPath $ledgerPath -PathType Leaf)) {
+        throw "Unified material capture D3D9 ledger is missing: $ledgerPath"
+    }
+    $ledgerEvents = @(Get-Content -LiteralPath $ledgerPath | ForEach-Object { $_ | ConvertFrom-Json })
+    $ledgerStarts = @($ledgerEvents | Where-Object {
+        $_.event -eq 'start' -and $_.captureFrame -eq $MaterialShaderFrame
+    })
+    $ledgerFrames = @($ledgerEvents | Where-Object {
+        $_.event -eq 'final-framebuffer' -and $_.frame -eq $MaterialShaderFrame -and $_.complete
+    })
+    $draws = @($ledgerEvents | Where-Object { $_.event -eq 'draw' -and $_.frame -eq $MaterialShaderFrame })
+    if ($ledgerStarts.Count -ne 1 -or $ledgerFrames.Count -ne 1 -or $draws.Count -lt 1) {
+        throw "D3D9 ledger failed coherence gate at frame $MaterialShaderFrame (starts=$($ledgerStarts.Count), framebuffers=$($ledgerFrames.Count), draws=$($draws.Count))."
+    }
+    $materialCaptureEvidence = [ordered]@{
+        frame = $MaterialShaderFrame
+        actorFrames = $actorFrames.Count
+        ledger = Get-FNVFileEvidence $ledgerPath 'retail-d3d9-ledger'
+        draws = $draws.Count
+        finalFramebuffer = Get-FNVFileEvidence ([string]$framebuffers[0].path) 'retail-final-framebuffer'
+    }
+}
 $eventValidation = Assert-FNVRetailOracleEvidence `
     -Events $events `
     -SaveName $SaveName `
@@ -870,6 +1014,8 @@ $manifestDocument = [ordered]@{
         commandFrame = $CommandFrame
         afterFrame = $AfterFrame
         maxFrames = $MaxFrames
+        materialShaderCapture = [bool]$MaterialShaderCapture
+        materialShaderFrame = $MaterialShaderFrame
         batchSettleFrames = $BatchSettleFrames
         batchAdvanceFrames = $BatchAdvanceFrames
     }
@@ -888,6 +1034,10 @@ $manifestDocument = [ordered]@{
         capture = $captureEvidence
         screenshots = @($screenshotEvidence)
         portraitProofCrops = @($proofCropEvidence)
+        framebufferDerivedScreenshots = @($framebufferDerivedScreenshots | ForEach-Object {
+            Get-FNVFileEvidence $_ 'framebuffer-derived-retail-screenshot'
+        })
+        materialCapture = $materialCaptureEvidence
         eventCounts = @($eventCounts)
     }
     validation = $eventValidation
@@ -930,9 +1080,13 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     batchEnableTargets = [bool]$BatchEnableTargets
     batchEnableParentForms = @($BatchEnableParentForm)
     screenshots = @($capturedScreenshots)
+    framebufferDerivedScreenshots = @($framebufferDerivedScreenshots)
     portraitProofCrops = @($portraitProofCrops)
     portraitCamera = [bool]$PortraitCamera
     portraitDistance = $PortraitDistance
+    materialShaderCapture = [bool]$MaterialShaderCapture
+    materialShaderFrame = $MaterialShaderFrame
+    materialCaptureEvidence = $materialCaptureEvidence
     appearanceTelemetry = @($appearanceEvents)
     setStageQuestForm = $SetStageQuestForm
     setStageIndex = $SetStageIndex
