@@ -28,7 +28,8 @@
         "OPENMW_WORLD_VIEWER_",
         "OPENMW_PROOF_",
         "OPENMW_ESM4_",
-        "OPENMW_FNV_"
+        "OPENMW_FNV_",
+        "OPENMW_BETHESDA_"
       ]
     },
     "extraArgs": [

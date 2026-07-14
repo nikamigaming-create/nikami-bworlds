@@ -5,7 +5,8 @@ param(
     [string]$SaveFixture = "run/retail-oracle/checkpoints/NikamiOracleEasyPeteSeated.fos",
     [string]$RunId = ("fnv-goodsprings-appearance-" + (Get-Date -Format "yyyyMMdd-HHmmss")),
     [string]$OutputRoot = "run/retail-oracle",
-    [switch]$StageReferences
+    [switch]$StageReferences,
+    [string[]]$TargetId = @()
 )
 
 Set-StrictMode -Version Latest
@@ -37,8 +38,16 @@ if (Test-Path -LiteralPath $outputDirectory) {
 New-Item -ItemType Directory -Path $outputDirectory | Out-Null
 
 $matrix = Get-Content -LiteralPath $matrixFile -Raw | ConvertFrom-Json
-$humanoids = @($matrix.targets | Where-Object { $_.category -like "*humanoid" })
-if ($humanoids.Count -ne [int]$matrix.scope.humanoidCount) {
+$targetFilter = @{}
+foreach ($filterId in $TargetId) {
+    if (-not [string]::IsNullOrWhiteSpace($filterId)) {
+        $targetFilter[$filterId] = $true
+    }
+}
+$humanoids = @($matrix.targets | Where-Object {
+    $_.category -like "*humanoid" -and ($targetFilter.Count -eq 0 -or $targetFilter.ContainsKey([string]$_.id))
+})
+if ($targetFilter.Count -eq 0 -and $humanoids.Count -ne [int]$matrix.scope.humanoidCount) {
     throw "Matrix humanoid count does not match its declared scope."
 }
 

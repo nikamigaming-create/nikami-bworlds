@@ -140,6 +140,56 @@ def image_metrics(retail: np.ndarray, openmw: np.ndarray) -> dict[str, Any]:
     )
 
 
+def color_fit_diagnostics(retail: np.ndarray, openmw: np.ndarray) -> dict[str, Any]:
+    """Measure how much of the pixel mismatch is explainable by simple color transforms.
+
+    These diagnostics are not used as acceptance gates. They are a triage tool:
+    if a global scale or affine RGB transform collapses the error, the next
+    suspect is image-space/post processing. If the face ROI remains bad after
+    the same simple fit, the culprit is still local material/shader behavior.
+    """
+
+    retail_f = retail.reshape(-1, 3).astype(np.float64)
+    openmw_f = openmw.reshape(-1, 3).astype(np.float64)
+    before = float(np.mean(np.abs(retail_f - openmw_f)))
+
+    scale = []
+    scale_prediction = np.zeros_like(retail_f)
+    for channel in range(3):
+        source = openmw_f[:, channel]
+        target = retail_f[:, channel]
+        denominator = float(np.dot(source, source))
+        factor = 0.0 if denominator <= 1e-12 else float(np.dot(source, target) / denominator)
+        scale.append(factor)
+        scale_prediction[:, channel] = source * factor
+    scale_mae = float(np.mean(np.abs(retail_f - np.clip(scale_prediction, 0, 255))))
+
+    affine = []
+    affine_prediction = np.zeros_like(retail_f)
+    design = np.column_stack([openmw_f, np.ones(openmw_f.shape[0], dtype=np.float64)])
+    for channel in range(3):
+        coefficients = np.linalg.lstsq(design, retail_f[:, channel], rcond=None)[0]
+        affine.append(coefficients.tolist())
+        affine_prediction[:, channel] = design @ coefficients
+    affine_mae = float(np.mean(np.abs(retail_f - np.clip(affine_prediction, 0, 255))))
+
+    return round_number(
+        {
+            "maeBeforeFit": before,
+            "scaleOnly": {
+                "retailApproxEqualsOpenmwTimesRgb": scale,
+                "maeAfterFit": scale_mae,
+                "maeReduction": before - scale_mae,
+            },
+            "affineRgb": {
+                "retailRgbApproxEqualsMatrixOpenmwRgbPlusBias": affine,
+                "maeAfterFit": affine_mae,
+                "maeReduction": before - affine_mae,
+            },
+        }
+    )
+
+
 def load_oracle_frame(path: Path, frame: int, ref_form: int) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as stream:
         for line in stream:
@@ -149,6 +199,336 @@ def load_oracle_frame(path: Path, frame: int, ref_form: int) -> dict[str, Any]:
             if int(event.get("frame", -1)) == frame and int(event.get("refForm", -1)) == ref_form:
                 return event
     raise RuntimeError(f"No retail actor-frame frame={frame} refForm={ref_form} in {path}")
+
+
+def parse_texture_stages(state: str) -> dict[str, dict[str, Any]]:
+    stages: dict[str, dict[str, Any]] = {}
+    stage_re = re.compile(r"u(?P<unit>\d+)=\{(?P<body>[^{}]*)\}")
+    for match in stage_re.finditer(state):
+        body = match.group("body")
+        record: dict[str, Any] = {}
+        for token in body.split(","):
+            if "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            record[key.strip()] = value.strip()
+        stages[f"u{match.group('unit')}"] = record
+    return stages
+
+
+def extract_braced_value(text: str, key: str) -> str | None:
+    marker = f"{key}={{"
+    start = text.find(marker)
+    if start < 0:
+        return None
+    index = start + len(marker)
+    depth = 1
+    while index < len(text):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start + len(marker) : index]
+        index += 1
+    return None
+
+
+def summarize_stage_state(state: str | None) -> dict[str, Any]:
+    if not state:
+        return {"present": False, "stages": {}, "stageTypes": [], "images": []}
+    stages = parse_texture_stages(state)
+    return {
+        "present": True,
+        "stages": stages,
+        "stageTypes": sorted({str(stage.get("type", "")) for stage in stages.values() if stage.get("type")}),
+        "images": [
+            stage["image"]
+            for _, stage in sorted(stages.items())
+            if "image" in stage
+        ],
+        "hasNormalMap": any(stage.get("type") == "normalMap" for stage in stages.values()),
+        "hasSkinAuxMap": any(stage.get("type") == "skinAuxMap" for stage in stages.values()),
+        "hasFaceGenMap0": any(stage.get("type") == "faceGenMap0" for stage in stages.values()),
+        "hasFaceGenMap1": any(stage.get("type") == "faceGenMap1" for stage in stages.values()),
+        "usesNeutralFaceGen0": "neutral-facegen0" in state.lower(),
+        "usesNeutralFaceGen1": "neutral-facegen1" in state.lower(),
+    }
+
+
+def summarize_merged_stage_states(*states: dict[str, Any] | None) -> dict[str, Any]:
+    merged: dict[str, dict[str, Any]] = {}
+    for state in states:
+        if not state or not state.get("present"):
+            continue
+        for unit, stage in state.get("stages", {}).items():
+            merged[unit] = stage
+    text = json.dumps(merged, sort_keys=True)
+    return {
+        "present": bool(merged),
+        "stages": merged,
+        "stageTypes": sorted({str(stage.get("type", "")) for stage in merged.values() if stage.get("type")}),
+        "images": [stage["image"] for _, stage in sorted(merged.items()) if "image" in stage],
+        "hasNormalMap": any(stage.get("type") == "normalMap" for stage in merged.values()),
+        "hasSkinAuxMap": any(stage.get("type") == "skinAuxMap" for stage in merged.values()),
+        "hasFaceGenMap0": any(stage.get("type") == "faceGenMap0" for stage in merged.values()),
+        "hasFaceGenMap1": any(stage.get("type") == "faceGenMap1" for stage in merged.values()),
+        "usesNeutralFaceGen0": "neutral-facegen0" in text.lower(),
+        "usesNeutralFaceGen1": "neutral-facegen1" in text.lower(),
+    }
+
+
+def load_retail_d3d9_skin_draw(path: Path, frame: int) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+
+    expected_stage_hashes: dict[int, int] = {}
+    expected_raws: list[dict[str, Any]] = []
+    selected_draw: dict[str, Any] | None = None
+    watched_ps_constants = [0, 1, 2, 3, 4, 19, 20, 21, 22, 23, 24, 27, 31]
+    watched_vs_constants = [7, 26]
+
+    with path.open("r", encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if event.get("event") == "texture-raw" and str(event.get("semantic", "")).startswith("easy-pete-"):
+                stage = event.get("stage")
+                full_hash = event.get("fullContentFnv1a32")
+                if isinstance(stage, int) and isinstance(full_hash, int):
+                    expected_stage_hashes[stage] = full_hash
+                expected_raws.append(
+                    {
+                        key: event.get(key)
+                        for key in (
+                            "semantic",
+                            "stage",
+                            "width",
+                            "height",
+                            "format",
+                            "levels",
+                            "bytes",
+                            "topLevelFnv1a32",
+                            "fullContentFnv1a32",
+                            "path",
+                        )
+                    }
+                )
+                continue
+
+            if event.get("event") != "draw" or int(event.get("frame", -1)) != int(frame):
+                continue
+            textures = event.get("textures") or []
+            texture_by_stage = {
+                int(texture.get("stage")): texture
+                for texture in textures
+                if isinstance(texture, dict) and isinstance(texture.get("stage"), int)
+            }
+            if not all(stage in expected_stage_hashes for stage in range(5)):
+                continue
+            if not all(
+                texture_by_stage.get(stage, {}).get("contentFnv1a32") == expected_stage_hashes[stage]
+                for stage in range(5)
+            ):
+                continue
+
+            constants = event.get("constants", {})
+            ps_float = constants.get("psFloat") or []
+            vs_float = constants.get("vsFloat") or []
+
+            def pick_constants(values: list[Any], indices: list[int]) -> dict[str, Any]:
+                return {
+                    f"c{index}": values[index]
+                    for index in indices
+                    if index < len(values)
+                }
+
+            selected_draw = {
+                "sequence": event.get("sequence"),
+                "draw": event.get("draw"),
+                "vertexShader": event.get("vertexShader"),
+                "pixelShader": event.get("pixelShader"),
+                "textures": [
+                    {
+                        key: texture.get(key)
+                        for key in (
+                            "stage",
+                            "width",
+                            "height",
+                            "format",
+                            "levels",
+                            "contentFnv1a32",
+                            "bytesHashed",
+                            "readbackComplete",
+                        )
+                    }
+                    for texture in textures
+                    if isinstance(texture, dict)
+                    and int(texture.get("stage", -1)) in set(range(6)) | set(range(8, 14))
+                ],
+                "psConstants": pick_constants(ps_float, watched_ps_constants),
+                "vsConstants": pick_constants(vs_float, watched_vs_constants),
+            }
+            break
+
+    return {
+        "source": str(path),
+        "expectedGeneratedTextures": sorted(expected_raws, key=lambda item: int(item.get("stage", 999))),
+        "selectedDraw": selected_draw,
+        "selectedDrawFound": selected_draw is not None,
+    }
+
+
+def vector_abs_deltas(left: list[float], right: list[float]) -> list[float]:
+    return [abs(float(a) - float(b)) for a, b in zip(left, right)]
+
+
+def max_abs_delta(left: list[float], right: list[float]) -> float:
+    deltas = vector_abs_deltas(left, right)
+    return max(deltas) if deltas else math.inf
+
+
+def build_skin_constant_diagnostics(
+    retail_d3d9_skin_draw: dict[str, Any] | None,
+    openmw_telemetry: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not retail_d3d9_skin_draw or not retail_d3d9_skin_draw.get("selectedDraw"):
+        return {"available": False, "reason": "missing retail skin draw"}
+    if not openmw_telemetry:
+        return {"available": False, "reason": "missing OpenMW telemetry"}
+
+    selected_draw = retail_d3d9_skin_draw["selectedDraw"]
+    ps_constants = selected_draw.get("psConstants") or {}
+    vs_constants = selected_draw.get("vsConstants") or {}
+    selected_lights = openmw_telemetry.get("selectedLights") or []
+    light_snapshot = openmw_telemetry.get("lightSnapshot") or ""
+    weather_render_state = openmw_telemetry.get("weatherRenderState") or {}
+    selected_by_id = {int(light["id"]): light for light in selected_lights if "id" in light}
+
+    sun_match = re.search(r"sun=\{.*?diffuse:\((?P<diffuse>[^)]*)\)", light_snapshot)
+    openmw_sun = [
+        float(token.strip())
+        for token in sun_match.group("diffuse").split(",")[:3]
+    ] if sun_match else None
+    c3_expected = ps_constants.get("c3")
+    c4_expected = ps_constants.get("c4")
+    c1_expected = ps_constants.get("c1")
+    c27_expected = ps_constants.get("c27")
+    c24_expected = ps_constants.get("c24")
+    vs_c26_expected = vs_constants.get("c26")
+    light3 = selected_by_id.get(3)
+
+    mapped: dict[str, Any] = {}
+    openmw_ambient = weather_render_state.get("ambient")
+    if openmw_ambient and c1_expected:
+        actual = [float(component) for component in openmw_ambient[:3]]
+        expected = [float(component) for component in c1_expected[:3]]
+        mapped["ps_c1_weatherAmbient"] = {
+            "expectedRetail": expected,
+            "actualOpenMWDerived": actual,
+            "maxAbsDelta": max_abs_delta(expected, actual),
+            "source": "OpenMW forced FNV weather render state ambient consumed by skin.frag as gl_LightModel.ambient",
+        }
+
+    if openmw_sun and c3_expected:
+        actual = [component * 1.05 for component in openmw_sun]
+        expected = [float(component) for component in c3_expected[:3]]
+        mapped["ps_c3_sunDiffuseTimes105"] = {
+            "expectedRetail": expected,
+            "actualOpenMWDerived": actual,
+            "maxAbsDelta": max_abs_delta(expected, actual),
+            "source": "OpenMW FNV parity light snapshot sun.diffuse * skin.frag 1.05",
+        }
+
+    if light3 and c4_expected:
+        actual = [float(component) for component in light3["diffuse"][:3]]
+        expected = [float(component) for component in c4_expected[:3]]
+        mapped["ps_c4_selectedPointDiffuse"] = {
+            "expectedRetail": expected,
+            "actualOpenMWDerived": actual,
+            "maxAbsDelta": max_abs_delta(expected, actual),
+            "source": "OpenMW selected light id=3 diffuse",
+        }
+
+    if light3 and c24_expected:
+        actual = float(light3["radius"]) * 1.189032975
+        expected = float(c24_expected[3])
+        mapped["ps_c24_w_runtimeRadius"] = {
+            "expectedRetail": expected,
+            "actualOpenMWDerived": actual,
+            "absDelta": abs(expected - actual),
+            "source": "OpenMW selected light id=3 radius * skin.frag falloutRuntimeRadiusScale",
+        }
+
+    capture = openmw_telemetry.get("capture") or {}
+    camera_eye = capture.get("cameraEye")
+    if light3 and camera_eye and vs_c26_expected and light3.get("position"):
+        actual = [
+            float(light3["position"][index]) - float(camera_eye[index])
+            for index in range(3)
+        ]
+        expected = [float(component) for component in vs_c26_expected[:3]]
+        mapped["vs_c26_cameraRelativeWorldLight"] = {
+            "expectedRetail": expected,
+            "actualOpenMWDerived": actual,
+            "maxAbsDelta": max_abs_delta(expected, actual),
+            "source": "OpenMW selected light id=3 world position minus locked proof camera eye; skin.vert rotates OpenGL view vector back to this camera-relative world basis for attenuation UV",
+        }
+
+    if c27_expected:
+        expected = [float(component) for component in c27_expected]
+        actual = [0.0, 0.0, 10.0, 0.0]
+        mapped["ps_c27_skinToggles"] = {
+            "expectedRetail": expected,
+            "actualOpenMWDerived": actual,
+            "maxAbsDelta": max_abs_delta(expected, actual),
+            "source": "SKIN2002 c27.x/c27.y disable vertex color and vertex-light blend for this draw; c27.w alpha threshold is zero",
+        }
+
+    # Microsoft fxc /dumpbin for the selected Easy Pete SKIN2002 draw reports:
+    #   PS registers: AmbientColor c1, PSLightColor c3 size 2, Toggles c27.
+    #   VS registers: LightData c25 size 2.
+    # The D3D9 capture stores the whole Set*ShaderConstantF array, including
+    # stale registers that this shader does not reference. Keep those visible
+    # as ignored/stale capture state, but only fail on referenced constants that
+    # OpenMW has not mapped.
+    unmapped = {
+        "psReferenced": {},
+        "vsReferenced": {},
+    }
+    if vs_c26_expected and "vs_c26_cameraRelativeWorldLight" not in mapped:
+        unmapped["vsReferenced"]["c26.xyz"] = vs_c26_expected[:3]
+    ignored_stale = {
+        "psUnreferencedByDisassembly": {
+            key: ps_constants[key]
+            for key in ("c2", "c19", "c20", "c21", "c22", "c23", "c24", "c31")
+            if key in ps_constants
+        }
+    }
+
+    return {
+        "available": True,
+        "disassembledRegisterUse": {
+            "pixelShader": {
+                "c1": "AmbientColor",
+                "c3_c4": "PSLightColor[0..1]",
+                "c27": "Toggles",
+            },
+            "vertexShader": {
+                "c25_c26": "LightData[0..1]; c26.xyz drives tangent-space light vector and attenuation UV, c26.w is runtime radius",
+            },
+        },
+        "mapped": mapped,
+        "unmappedRetailConstants": unmapped,
+        "ignoredCapturedConstants": ignored_stale,
+        "mappedTolerance": 0.00001,
+        "unmappedCount": sum(len(group) for group in unmapped.values()),
+    }
 
 
 def retail_pose(event: dict[str, Any], forward_indices: list[int]) -> dict[str, Any]:
@@ -239,6 +619,8 @@ def parse_openmw_telemetry(log_path: Path, capture_frame: int, target_base_hex: 
         light_snapshot = light_match.group("body").strip()
         selected_light_re = re.compile(
             r"\{index:(?P<index>\d+),id:(?P<id>\d+),.*?"
+            r"position:\((?P<position>[^)]*)\),"
+            r"viewPosition:\((?P<viewPosition>[^)]*)\),"
             r"diffuse:\((?P<diffuse>[^)]*)\).*?"
             r"attenuation:\((?P<attenuation>[^)]*)\),"
             r"radius:(?P<radius>[-+0-9.eE]+),"
@@ -248,6 +630,14 @@ def parse_openmw_telemetry(log_path: Path, capture_frame: int, target_base_hex: 
                 {
                     "index": int(selected_match.group("index")),
                     "id": int(selected_match.group("id")),
+                    "position": [
+                        float(token.strip())
+                        for token in selected_match.group("position").split(",")
+                    ],
+                    "viewPosition": [
+                        float(token.strip())
+                        for token in selected_match.group("viewPosition").split(",")
+                    ],
                     "diffuse": [
                         float(token.strip())
                         for token in selected_match.group("diffuse").split(",")
@@ -259,6 +649,22 @@ def parse_openmw_telemetry(log_path: Path, capture_frame: int, target_base_hex: 
                     "radius": float(selected_match.group("radius")),
                 }
             )
+
+    weather_render_state = None
+    weather_re = re.compile(
+        r"FNV/ESM4 proof: weather render state .*?\bambient=\((?P<ambient>[^)]*)\).*?\bsun=\((?P<sun>[^)]*)\)"
+    )
+    for weather_match in weather_re.finditer(text):
+        weather_render_state = {
+            "ambient": [
+                float(token.strip())
+                for token in weather_match.group("ambient").split(",")[:4]
+            ],
+            "sun": [
+                float(token.strip())
+                for token in weather_match.group("sun").split(",")[:4]
+            ],
+        }
 
     pose_source = None
     pose_source_match = re.search(
@@ -331,6 +737,55 @@ def parse_openmw_telemetry(log_path: Path, capture_frame: int, target_base_hex: 
             "status": projection_match.group("status"),
         }
 
+    target_head_draw = None
+    normalized_target = target_base_hex.lower()
+    for line in text.splitlines():
+        if "FACE DRAWABLE AUDIT" not in line:
+            continue
+        if normalized_target not in line.lower():
+            continue
+        if "phase=final-race-head" not in line:
+            continue
+        if "headold" not in line.lower() and "headhuman" not in line.lower():
+            continue
+
+        drawable_state = extract_braced_value(line, "drawableState")
+        source_state = extract_braced_value(line, "sourceState")
+        render_state = extract_braced_value(line, "renderState")
+        inherited_state = extract_braced_value(line, "inheritedStatePath")
+        matrix_match = re.search(
+            r";'(?P<name>HeadOld|HeadMale)'=\{type=MatrixTransform,state=(?P<state>.*?),matrixT=",
+            line,
+        )
+        rig_match = re.search(
+            r";'(?P<name>HeadOld|HeadMale)'=\{type=RigGeometry,state=(?P<state>.*?)\}\}\s+renderValid=",
+            line,
+        )
+        drawable_summary = summarize_stage_state(drawable_state)
+        source_summary = summarize_stage_state(source_state)
+        render_summary = summarize_stage_state(render_state)
+        matrix_summary = summarize_stage_state(matrix_match.group("state") if matrix_match else None)
+        rig_summary = summarize_stage_state(rig_match.group("state") if rig_match else None)
+        target_head_draw = {
+            "model": re.search(r"model=([^ ]+)", line).group(1) if re.search(r"model=([^ ]+)", line) else None,
+            "drawable": re.search(r"drawable='([^']+)'", line).group(1)
+            if re.search(r"drawable='([^']+)'", line)
+            else None,
+            "texture": re.search(r"\btexture=([^ ]+)", line).group(1) if re.search(r"\btexture=([^ ]+)", line) else None,
+            "drawableState": drawable_summary,
+            "sourceState": source_summary,
+            "renderState": render_summary,
+            "matrixTransformState": matrix_summary,
+            "rigGeometryState": rig_summary,
+            "effectiveState": summarize_merged_stage_states(matrix_summary, rig_summary, render_summary, drawable_summary),
+            "inheritedStateContainsNeutralFaceGen0": bool(
+                inherited_state and "neutral-facegen0" in inherited_state.lower()
+            ),
+            "inheritedStateContainsNeutralFaceGen1": bool(
+                inherited_state and "neutral-facegen1" in inherited_state.lower()
+            ),
+        }
+
     return round_number(
         {
             "capture": capture,
@@ -340,10 +795,12 @@ def parse_openmw_telemetry(log_path: Path, capture_frame: int, target_base_hex: 
             "screenshotSaved": screenshot_saved,
             "lightSnapshot": light_snapshot,
             "selectedLights": selected_lights,
+            "weatherRenderState": weather_render_state,
             "poseSource": pose_source,
             "rootReplay": root_replay,
             "poseAudits": pose_audits,
             "projectionAudit": projection_audit,
+            "targetHeadDraw": target_head_draw,
         }
     )
 
@@ -475,6 +932,12 @@ def main() -> int:
     retail_array = np.asarray(retail_image, dtype=np.uint8)
     openmw_array = np.asarray(openmw_image, dtype=np.uint8)
     full_metrics = image_metrics(retail_array, openmw_array)
+    color_fit = {
+        "full-frame": {
+            "box": [0, 0, retail_image.width, retail_image.height],
+            "diagnostics": color_fit_diagnostics(retail_array, openmw_array),
+        }
+    }
     gates.extend(threshold_gates("full-frame", full_metrics, config["pixelThresholds"]))
 
     roi_metrics: dict[str, Any] = {}
@@ -484,10 +947,28 @@ def main() -> int:
             raise RuntimeError(f"ROI {roi['name']} is outside the locked frame: {roi['box']}")
         metrics = image_metrics(retail_array[y0:y1, x0:x1], openmw_array[y0:y1, x0:x1])
         roi_metrics[roi["name"]] = {"box": [x0, y0, x1, y1], "metrics": metrics}
+        color_fit[roi["name"]] = {
+            "box": [x0, y0, x1, y1],
+            "diagnostics": color_fit_diagnostics(retail_array[y0:y1, x0:x1], openmw_array[y0:y1, x0:x1]),
+        }
         gates.extend(threshold_gates(roi["name"], metrics, roi.get("thresholds", {})))
 
     telemetry_config = config["telemetry"]
     oracle_path = args.oracle or Path(telemetry_config["oracle"])
+    retail_d3d9_path = oracle_path.with_name(oracle_path.name + ".d3d9.jsonl")
+    retail_d3d9_skin_draw = load_retail_d3d9_skin_draw(
+        retail_d3d9_path, int(telemetry_config["oracleFrame"])
+    )
+    skin_constant_diagnostics: dict[str, Any] | None = None
+    gates.append(
+        Gate(
+            "telemetry.retail-d3d9-skin-draw",
+            bool(retail_d3d9_skin_draw and retail_d3d9_skin_draw["selectedDrawFound"]),
+            "retail D3D9 draw binding Easy Pete generated skin stages 0-4",
+            retail_d3d9_skin_draw,
+            "the oracle must identify the exact retail skin draw, shader bytecode hashes, textures, and constants",
+        )
+    )
     oracle_event = load_oracle_frame(
         oracle_path,
         int(telemetry_config["oracleFrame"]),
@@ -520,6 +1001,125 @@ def main() -> int:
             args.openmw_log,
             int(telemetry_config["captureFrame"]),
             telemetry_config["openmwBaseForm"],
+        )
+        target_head_draw = openmw_telemetry.get("targetHeadDraw")
+        head_shader_state = target_head_draw.get("matrixTransformState") if target_head_draw else None
+        head_effective_state = target_head_draw.get("effectiveState") if target_head_draw else None
+        head_any_state = [
+            target_head_draw.get(key)
+            for key in ("drawableState", "sourceState", "renderState", "matrixTransformState", "rigGeometryState")
+            if target_head_draw
+        ]
+        gates.append(
+            Gate(
+                "telemetry.openmw-target-head-draw-found",
+                target_head_draw is not None,
+                "final-race-head FACE DRAWABLE AUDIT for the target Easy Pete head",
+                target_head_draw,
+                "head material/layer checks must be tied to Easy Pete's real head draw, not bootstrap Player noise",
+            )
+        )
+        gates.append(
+            Gate(
+                "telemetry.openmw-target-head-no-neutral-facegen",
+                bool(
+                    target_head_draw
+                    and not target_head_draw["inheritedStateContainsNeutralFaceGen0"]
+                    and not target_head_draw["inheritedStateContainsNeutralFaceGen1"]
+                ),
+                {"neutralFaceGen0": False, "neutralFaceGen1": False},
+                {
+                    "neutralFaceGen0": target_head_draw["inheritedStateContainsNeutralFaceGen0"]
+                    if target_head_draw
+                    else None,
+                    "neutralFaceGen1": target_head_draw["inheritedStateContainsNeutralFaceGen1"]
+                    if target_head_draw
+                    else None,
+                },
+                "the target head must not fall back to neutral/generated stub facegen maps",
+            )
+        )
+        gates.append(
+            Gate(
+                "telemetry.openmw-target-head-shader-state-complete",
+                bool(
+                    head_shader_state
+                    and head_shader_state.get("hasNormalMap")
+                    and head_shader_state.get("hasSkinAuxMap")
+                    and head_shader_state.get("hasFaceGenMap0")
+                    and head_shader_state.get("hasFaceGenMap1")
+                ),
+                {
+                    "normalMap": True,
+                    "skinAuxMap": True,
+                    "faceGenMap0": True,
+                    "faceGenMap1": True,
+                    "state": "MatrixTransform shader state",
+                },
+                head_shader_state,
+                "the effective target head shader state must carry the skin normal, skin aux/scatter, and both FaceGen maps",
+            )
+        )
+        gates.append(
+            Gate(
+                "telemetry.openmw-target-head-effective-state-complete",
+                bool(
+                    head_effective_state
+                    and head_effective_state.get("hasNormalMap")
+                    and head_effective_state.get("hasSkinAuxMap")
+                    and head_effective_state.get("hasFaceGenMap0")
+                    and head_effective_state.get("hasFaceGenMap1")
+                ),
+                {
+                    "normalMap": True,
+                    "skinAuxMap": True,
+                    "faceGenMap0": True,
+                    "faceGenMap1": True,
+                    "state": "merged inherited + target drawable state",
+                },
+                head_effective_state,
+                "the effective target head draw state must retain inherited skin layers and actor FaceGen maps together",
+            )
+        )
+        gates.append(
+            Gate(
+                "telemetry.openmw-target-head-any-state-has-all-layers",
+                any(
+                    state
+                    and state.get("hasNormalMap")
+                    and state.get("hasSkinAuxMap")
+                    and state.get("hasFaceGenMap0")
+                    and state.get("hasFaceGenMap1")
+                    for state in head_any_state
+                ),
+                {"normalMap": True, "skinAuxMap": True, "faceGenMap0": True, "faceGenMap1": True},
+                head_any_state,
+                "at least one recorded target head state must show all layers together; otherwise the layer chain is broken",
+            )
+        )
+        skin_constant_diagnostics = build_skin_constant_diagnostics(retail_d3d9_skin_draw, openmw_telemetry)
+        mapped_tolerance = float(skin_constant_diagnostics.get("mappedTolerance", 1e-5))
+        for key, comparison in skin_constant_diagnostics.get("mapped", {}).items():
+            delta = float(comparison.get("maxAbsDelta", comparison.get("absDelta", math.inf)))
+            gates.append(
+                Gate(
+                    f"telemetry.skin-constant.{key}",
+                    delta <= mapped_tolerance,
+                    {"maximumAbsoluteError": mapped_tolerance, "retailConstant": key},
+                    comparison,
+                    "mapped OpenMW skin shader/light input must numerically match the retail SKIN2002 constant",
+                )
+            )
+        unmapped = skin_constant_diagnostics.get("unmappedRetailConstants", {})
+        unmapped_count = int(skin_constant_diagnostics.get("unmappedCount", 0))
+        gates.append(
+            Gate(
+                "telemetry.skin-constants-all-accounted",
+                unmapped_count == 0,
+                {"unmappedRetailConstants": 0},
+                unmapped,
+                "every captured retail SKIN2002 constant must be either implemented, matched, or explicitly explained",
+            )
         )
         capture = openmw_telemetry["capture"]
         gates.append(
@@ -777,8 +1377,11 @@ def main() -> int:
         },
         "retailPose": oracle_pose,
         "openmwTelemetry": openmw_telemetry,
+        "retailD3D9SkinDraw": retail_d3d9_skin_draw,
+        "skinConstantDiagnostics": skin_constant_diagnostics,
         "fullFrameMetrics": full_metrics,
         "roiMetrics": roi_metrics,
+        "colorFitDiagnostics": color_fit,
         "gates": [gate.as_dict() for gate in gates],
         "failedGates": [gate.name for gate in gates if not gate.passed],
         "artifacts": {
