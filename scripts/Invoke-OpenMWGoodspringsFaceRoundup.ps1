@@ -38,6 +38,7 @@ $angleTable = @{
     front = 0
     left = -70
     right = 70
+    back = 180
 }
 $anglesToCapture = New-Object System.Collections.Generic.List[object]
 foreach ($angleNameRaw in $Angle) {
@@ -60,7 +61,7 @@ foreach ($filterId in $TargetId) {
     }
 }
 
-foreach ($target in @($matrix.targets | Where-Object { $_.category -like "*humanoid" })) {
+foreach ($target in @($matrix.targets)) {
     $id = [string]$target.id
     if ($targetFilter.Count -gt 0 -and -not $targetFilter.ContainsKey($id)) {
         continue
@@ -79,6 +80,13 @@ foreach ($target in @($matrix.targets | Where-Object { $_.category -like "*human
         "Goodsprings"
     }
     $pos = @($target.authoredPlacement.position)
+    $category = [string]$target.category
+    # Keep the humanoid face framing that the original roundup established, but
+    # pull back for non-humanoid skeletons so the robot/creature body is not
+    # silently cropped out of the same cast audit.
+    $followDistance = if ($category -like "*robot") { 230 } elseif ($category -like "*creature") { 145 } else { 90 }
+    $followFocus = if ($category -like "*humanoid") { 2 } else { 0 }
+    $followEyeZ = if ($category -like "*robot") { -35 } elseif ($category -like "*creature") { -12 } else { 16 }
     foreach ($angleSpec in @($anglesToCapture.ToArray())) {
         $angleName = [string]$angleSpec.name
         $caseRoot = Join-Path $outputRootAbs (Join-Path $id $angleName)
@@ -90,6 +98,7 @@ foreach ($target in @($matrix.targets | Where-Object { $_.category -like "*human
             "OPENMW_FNV_PART_MATRIX_AUDIT=1",
             "OPENMW_WORLD_VIEWER_RENDER_DISABLED_ACTORS=1",
             "OPENMW_PROOF_HIDE_PLAYER_VISUAL=1",
+            "OPENMW_FNV_PROOF_DISABLE_HEAD_TRACKING=1",
             "OPENMW_WORLD_VIEWER_START_DRY=1",
             "OPENMW_WORLD_VIEWER_START_POS_X=$($pos[0])",
             "OPENMW_WORLD_VIEWER_START_POS_Y=$($pos[1])",
@@ -101,9 +110,9 @@ foreach ($target in @($matrix.targets | Where-Object { $_.category -like "*human
             "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_REF=$ref",
             "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD=1",
             "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_ORBIT_DEG=$($angleSpec.orbitDeg)",
-            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_DISTANCE=90",
-            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_FOCUS=2",
-            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_EYE_Z=16",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_DISTANCE=$followDistance",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_FOCUS=$followFocus",
+            "OPENMW_WORLD_VIEWER_START_CAMERA_FOLLOW_HEAD_EYE_Z=$followEyeZ",
             "OPENMW_WORLD_VIEWER_REQUIRE_PORTRAIT_CLEAR=1",
             "OPENMW_WORLD_VIEWER_PORTRAIT_MIN_HEAD_X=0.12",
             "OPENMW_WORLD_VIEWER_PORTRAIT_MAX_HEAD_X=0.88",
@@ -147,6 +156,7 @@ foreach ($target in @($matrix.targets | Where-Object { $_.category -like "*human
         }
         $rows.Add([pscustomobject][ordered]@{
             id = $id
+            category = $category
             angle = $angleName
             orbitDeg = [float]$angleSpec.orbitDeg
             reference = $ref

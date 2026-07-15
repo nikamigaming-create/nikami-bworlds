@@ -159,6 +159,17 @@ class ESM4Catalog:
                 fields["baseTemplate"] = form_from_raw(raw, self.mod_index)
             elif rtype == "NPC_" and name == "EAMT" and len(raw) >= 2:
                 fields["templateFlags"] = u16(raw, 0)
+            elif rtype in ("NPC_", "CREA", "CONT") and name == "CNTO" and len(raw) >= 8:
+                fields.setdefault("inventory", []).append(
+                    {
+                        "item": form_from_raw(raw, self.mod_index),
+                        "count": i32(raw, 4),
+                    }
+                )
+            elif rtype == "NPC_" and name == "DOFT" and len(raw) >= 4:
+                fields["defaultOutfit"] = form_from_raw(raw, self.mod_index)
+            elif rtype == "NPC_" and name == "SOFT" and len(raw) >= 4:
+                fields["sleepOutfit"] = form_from_raw(raw, self.mod_index)
             elif rtype == "NPC_" and name == "LNAM" and len(raw) >= 4:
                 fields["hairLength"] = f32(raw, 0)
             elif rtype == "NPC_" and name == "HCLR" and len(raw) >= 4:
@@ -168,8 +179,9 @@ class ESM4Catalog:
                     "bytes": len(raw),
                     "sha256": hashlib.sha256(raw).hexdigest(),
                 }
-            elif rtype in ("NPC_", "CREA") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
+            elif rtype in ("NPC_", "CREA", "ARMO", "CLOT", "WEAP") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
                 fields.setdefault("models", []).append(zstr(raw))
+                fields.setdefault("modelSlots", []).append({"slot": name, "model": zstr(raw)})
             elif rtype in ("HAIR", "EYES", "HDPT") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
                 fields.setdefault("models", []).append(zstr(raw))
             elif rtype == "IDLE" and name == "MODL":
@@ -261,6 +273,24 @@ class ESM4Catalog:
                 }
             elif rtype in ("LVLN", "LVLC") and name == "LVLO" and len(raw) >= 8:
                 fields.setdefault("leveledEntries", []).append(form(u32(raw, 4), self.mod_index))
+            elif rtype == "LVLI" and name == "LVLO" and len(raw) >= 8:
+                # FO3/FNV LVLO is level:u16, padding:u16, item:FormID and
+                # optionally count:u16/padding:u16. Preserve the authored
+                # branch metadata so actor equipment can be accounted for
+                # without guessing from a screenshot.
+                fields.setdefault("leveledItemEntries", []).append(
+                    {
+                        "level": u16(raw, 0),
+                        "item": form(u32(raw, 4), self.mod_index),
+                        "count": u16(raw, 8) if len(raw) >= 10 else 1,
+                    }
+                )
+            elif rtype == "OTFT" and name == "INAM" and len(raw) % 4 == 0:
+                fields.setdefault("outfitItems", []).extend(
+                    form(u32(raw, offset), self.mod_index) for offset in range(0, len(raw), 4)
+                )
+            elif rtype in ("ARMO", "CLOT") and name in ("BMDT", "BODT") and len(raw) >= 4:
+                fields["bodyFlags"] = u32(raw, 0)
             elif rtype == "WRLD" and name == "WCTR" and len(raw) >= 4:
                 fields["centerCell"] = [struct.unpack_from("<h", raw, 0)[0], struct.unpack_from("<h", raw, 2)[0]]
             elif rtype == "WRLD" and name == "INAM" and len(raw) >= 4:
@@ -392,6 +422,26 @@ class ESM4Catalog:
                     record["faceGenFingerprints"] = fields["faceGenFingerprints"]
                 if "models" in fields:
                     record["models"] = fields["models"][:8]
+                if "modelSlots" in fields:
+                    record["modelSlots"] = fields["modelSlots"][:8]
+                if "inventory" in fields:
+                    record["inventory"] = [
+                        {
+                            "item": form_hex(entry["item"]),
+                            "openmwItem": openmw_form_id(entry["item"]),
+                            "count": entry["count"],
+                        }
+                        for entry in fields["inventory"]
+                        if entry["item"]
+                    ]
+                for field_name in ("defaultOutfit", "sleepOutfit"):
+                    if field_name in fields:
+                        record[field_name] = form_hex(fields[field_name])
+                        record["openmw" + field_name[0].upper() + field_name[1:]] = openmw_form_id(
+                            fields[field_name]
+                        )
+                if "bodyFlags" in fields:
+                    record["bodyFlags"] = fields["bodyFlags"]
                 for field_name in ("model", "collision", "event", "idleFlags", "idleCount", "idleTimer"):
                     if field_name in fields:
                         record[field_name] = fields[field_name]
@@ -430,6 +480,20 @@ class ESM4Catalog:
                     record["openmwLeveledEntries"] = [
                         openmw_form_id(entry) for entry in fields["leveledEntries"][:80] if entry
                     ]
+                if "leveledItemEntries" in fields:
+                    record["leveledItemEntries"] = [
+                        {
+                            "level": entry["level"],
+                            "item": form_hex(entry["item"]),
+                            "openmwItem": openmw_form_id(entry["item"]),
+                            "count": entry["count"],
+                        }
+                        for entry in fields["leveledItemEntries"][:80]
+                        if entry["item"]
+                    ]
+                if "outfitItems" in fields:
+                    record["outfitItems"] = [form_hex(entry) for entry in fields["outfitItems"] if entry]
+                    record["openmwOutfitItems"] = [openmw_form_id(entry) for entry in fields["outfitItems"] if entry]
                 if rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD"):
                     record["parentCell"] = form_hex(current_cell)
                     record["openmwParentCell"] = openmw_form_id(current_cell)

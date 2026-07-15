@@ -540,11 +540,9 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_PORTRAIT_DISTANCE = [string]$PortraitDistance
     NIKAMI_ORACLE_EXIT_WHEN_DONE = "1"
 }
-$plannedRootHookMoves = if ($isolateRootHookDlls) {
-    @($rootHookCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
-} else {
-    @()
-}
+$plannedRootHookMoves = @(if ($isolateRootHookDlls) {
+    $rootHookCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+})
 $loaderArgumentList = @('-altdll', $coreDll)
 if ($DryRun) {
     [pscustomobject][ordered]@{

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
@@ -92,6 +93,7 @@ namespace
     bool gAppearanceLogged = false;
     bool gRenderEnvironmentLogged = false;
     bool gImageSpaceShaderHookLogged = false;
+    std::set<UInt32> gActorGeometryLogged;
     float gPortraitDistance = 110.f;
     unsigned int gBehaviorBeforeFrame = 60;
     unsigned int gBehaviorCommandFrame = 90;
@@ -1175,6 +1177,161 @@ namespace
         return nullptr;
     }
 
+    // Runtime 1.4.0.525 layout documented by the game's NiGeometryData methods.
+    // Keep the oracle copy private so a stale public xNVSE class declaration cannot
+    // silently move the vertex pointer. The explicit size/offsets are part of the
+    // evidence emitted below.
+    struct OracleGeometryData
+    {
+        void* vtable;
+        UInt32 refCount;
+        UInt16 vertexCount;
+        UInt16 id;
+        UInt16 dataFlags;
+        UInt16 dirtyFlags;
+        OracleVector3 boundCenter;
+        float boundRadius;
+        OracleVector3* vertices;
+        OracleVector3* normals;
+        void* vertexColors;
+        void* uvCoordinates;
+        void* additionalData;
+        void* bufferData;
+        UInt8 keepFlags;
+        UInt8 compressFlags;
+        UInt8 byte3A;
+        UInt8 byte3B;
+        UInt8 canSave;
+        UInt8 padding[3];
+    };
+
+    static_assert(sizeof(OracleGeometryData) == 0x40);
+    static_assert(offsetof(OracleGeometryData, vertices) == 0x20);
+
+    bool isOracleGeometryType(const std::string& type)
+    {
+        return type == "NiGeometry" || type == "NiLines"
+            || type.find("TriShape") != std::string::npos
+            || type.find("TriStrips") != std::string::npos;
+    }
+
+    void writeActorGeometryRecursive(Actor* actor, NiAVObject* object, unsigned int depth)
+    {
+        if (actor == nullptr || object == nullptr || depth > 64)
+            return;
+
+        const std::string type = safeRuntimeString(runtimeTypeName(reinterpret_cast<NiObject*>(object)));
+        if (isOracleGeometryType(type))
+        {
+            // FNV NiAVObject is 0x9c bytes. NiGeometry's shader property, model
+            // data, and skin instance live at 0xa8, 0xb8, and 0xbc respectively.
+            NiObject* shaderProperty = nullptr;
+            NiObject* skinInstance = nullptr;
+            OracleGeometryData* dataAddress = nullptr;
+            safeRead(reinterpret_cast<const UInt8*>(object) + 0xA8, shaderProperty);
+            safeRead(reinterpret_cast<const UInt8*>(object) + 0xB8, dataAddress);
+            safeRead(reinterpret_cast<const UInt8*>(object) + 0xBC, skinInstance);
+
+            OracleGeometryData data = {};
+            if (safeRead(dataAddress, data) && data.vertexCount > 0 && data.vertexCount <= 32768
+                && data.vertices != nullptr)
+            {
+                std::vector<OracleVector3> vertices;
+                vertices.reserve(data.vertexCount);
+                OracleVector3 minimum = {};
+                OracleVector3 maximum = {};
+                bool complete = true;
+                for (UInt32 index = 0; index < data.vertexCount; ++index)
+                {
+                    OracleVector3 vertex = {};
+                    if (!safeRead(data.vertices + index, vertex)
+                        || !std::isfinite(vertex.x) || !std::isfinite(vertex.y) || !std::isfinite(vertex.z))
+                    {
+                        complete = false;
+                        break;
+                    }
+                    if (vertices.empty())
+                        minimum = maximum = vertex;
+                    else
+                    {
+                        minimum.x = (std::min)(minimum.x, vertex.x);
+                        minimum.y = (std::min)(minimum.y, vertex.y);
+                        minimum.z = (std::min)(minimum.z, vertex.z);
+                        maximum.x = (std::max)(maximum.x, vertex.x);
+                        maximum.y = (std::max)(maximum.y, vertex.y);
+                        maximum.z = (std::max)(maximum.z, vertex.z);
+                    }
+                    vertices.push_back(vertex);
+                }
+
+                const std::string name = safeRuntimeString(object->m_pcName);
+                const std::string parentName = object->m_parent != nullptr
+                    ? safeRuntimeString(object->m_parent->m_pcName) : std::string();
+                const std::string shaderType = safeRuntimeString(runtimeTypeName(shaderProperty));
+                const std::string skinType = safeRuntimeString(runtimeTypeName(skinInstance));
+                const UInt32 vertexHash = complete && !vertices.empty()
+                    ? fnv1a32(reinterpret_cast<const UInt8*>(vertices.data()),
+                        vertices.size() * sizeof(OracleVector3))
+                    : 0;
+
+                gOutput << std::setprecision(9)
+                        << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-geometry\""
+                        << ",\"frame\":" << gFrame
+                        << ",\"refForm\":" << actor->refID
+                        << ",\"baseForm\":" << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
+                        << ",\"name\":" << jsonString(name.empty() ? nullptr : name.c_str())
+                        << ",\"parentName\":" << jsonString(parentName.empty() ? nullptr : parentName.c_str())
+                        << ",\"runtimeType\":" << jsonString(type.empty() ? nullptr : type.c_str())
+                        << ",\"shaderPropertyType\":"
+                        << jsonString(shaderType.empty() ? nullptr : shaderType.c_str())
+                        << ",\"skinInstanceType\":" << jsonString(skinType.empty() ? nullptr : skinType.c_str())
+                        << ",\"depth\":" << depth
+                        << ",\"layout\":\"NiGeometryData@0xb8 vertices@data+0x20\""
+                        << ",\"geometryDataAddress\":"
+                        << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(dataAddress))
+                        << ",\"verticesAddress\":"
+                        << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(data.vertices))
+                        << ",\"vertexCount\":" << data.vertexCount
+                        << ",\"dataFlags\":" << data.dataFlags
+                        << ",\"dirtyFlags\":" << data.dirtyFlags
+                        << ",\"keepFlags\":" << static_cast<unsigned int>(data.keepFlags)
+                        << ",\"compressFlags\":" << static_cast<unsigned int>(data.compressFlags)
+                        << ",\"complete\":" << (complete ? "true" : "false")
+                        << ",\"fnv1a32\":" << vertexHash
+                        << ",\"dataBound\":{\"center\":[" << data.boundCenter.x << ',' << data.boundCenter.y
+                        << ',' << data.boundCenter.z << "],\"radius\":" << data.boundRadius << '}'
+                        << ",\"measuredBounds\":{\"min\":[" << minimum.x << ',' << minimum.y << ',' << minimum.z
+                        << "],\"max\":[" << maximum.x << ',' << maximum.y << ',' << maximum.z << "]}"
+                        << ",\"transform\":";
+                writeTransform(gOutput, *object);
+                gOutput << ",\"vertices\":[";
+                for (std::size_t index = 0; index < vertices.size(); ++index)
+                {
+                    if (index != 0)
+                        gOutput << ',';
+                    gOutput << '[' << vertices[index].x << ',' << vertices[index].y << ',' << vertices[index].z << ']';
+                }
+                gOutput << "]}\n";
+            }
+        }
+
+        NiNode* node = object->GetAsNiNode();
+        if (node == nullptr || node->m_children.data == nullptr)
+            return;
+        const unsigned int count
+            = (std::min)(static_cast<unsigned int>(node->m_children.firstFreeEntry), 2048u);
+        for (unsigned int index = 0; index < count; ++index)
+            writeActorGeometryRecursive(actor, node->m_children.data[index], depth + 1);
+    }
+
+    void writeActorGeometry(Actor* actor, NiNode* root)
+    {
+        if (actor == nullptr || root == nullptr)
+            return;
+        writeActorGeometryRecursive(actor, root, 0);
+        gOutput.flush();
+    }
+
     void writeBoneLodProbe(std::ostream& out, NiBSBoneLODController* controllerAddress)
     {
         if (controllerAddress == nullptr)
@@ -1652,6 +1809,8 @@ namespace
             HighProcess* hp = process->processLevel == 0 ? static_cast<HighProcess*>(process) : nullptr;
             TESObjectWEAP* weapon = mhp != nullptr && mhp->weaponInfo != nullptr ? mhp->weaponInfo->weapon : nullptr;
             NiNode* root = actor->GetNiNode();
+            if (root != nullptr && gActorGeometryLogged.insert(actor->refID).second)
+                writeActorGeometry(actor, root);
             PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
             OracleVector3 cameraPos3rdPerson = {};
             OracleVector3 cameraPos = {};

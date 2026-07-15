@@ -37,7 +37,7 @@ TARGETS = (
 )
 
 TRAITS_TEMPLATE_FLAG = 0x0001
-USE_TEMPLATE_ACTOR_FLAG = 0x00000100
+INVENTORY_TEMPLATE_FLAG = 0x0100
 
 
 def sha256_file(path):
@@ -102,23 +102,54 @@ def template_chain(catalog, base_record):
     return result
 
 
-def effective_traits_record(catalog, base_record):
+def effective_template_record(catalog, base_record, template_flag):
     current = base_record
     seen = set()
     for _ in range(8):
         template = form_int(current.get("baseTemplate"))
         flags = current.get("templateFlags", 0)
-        actor_flags = current.get("actorFlags", 0)
-        if (
-            template is None
-            or not (actor_flags & USE_TEMPLATE_ACTOR_FLAG)
-            or not (flags & TRAITS_TEMPLATE_FLAG)
-            or template in seen
-        ):
+        if template is None or not (flags & template_flag) or template in seen:
             return current
         seen.add(template)
         current = catalog.records.get(template, current)
     return current
+
+
+def effective_traits_record(catalog, base_record):
+    return effective_template_record(catalog, base_record, TRAITS_TEMPLATE_FLAG)
+
+
+def inventory_record(catalog, record):
+    items = []
+    for entry in record.get("inventory", []):
+        item_form = form_int(entry.get("item"))
+        link = record_link(catalog, item_form)
+        item_record = catalog.records.get(item_form, {}) if item_form is not None else {}
+        row = {
+            "item": link,
+            "count": entry.get("count", 1),
+        }
+        if item_record.get("bodyFlags") is not None:
+            row["bodyFlags"] = item_record["bodyFlags"]
+        if item_record.get("modelSlots"):
+            row["modelSlots"] = item_record["modelSlots"]
+        if item_record.get("leveledItemEntries"):
+            row["leveledCandidates"] = [
+                {
+                    "level": candidate.get("level"),
+                    "count": candidate.get("count", 1),
+                    "item": record_link(catalog, form_int(candidate.get("item"))),
+                }
+                for candidate in item_record["leveledItemEntries"]
+            ]
+        items.append(row)
+    return {
+        "record": record_link(catalog, form_int(record.get("id"))),
+        "items": items,
+        "defaultOutfit": record_link(catalog, form_int(record.get("defaultOutfit"))),
+        "sleepOutfit": record_link(catalog, form_int(record.get("sleepOutfit"))),
+        "templateFlags": record.get("templateFlags", 0),
+    }
 
 
 def build_matrix(esm_path):
@@ -167,11 +198,17 @@ def build_matrix(esm_path):
         }
         if base_record.get("type") == "NPC_":
             traits_record = effective_traits_record(catalog, base_record)
+            inventory_source = effective_template_record(catalog, base_record, INVENTORY_TEMPLATE_FLAG)
             target["appearance"] = {
                 "authored": appearance_record(catalog, base_record),
                 "templateChain": template_chain(catalog, base_record),
                 "effectiveTraits": appearance_record(catalog, traits_record),
                 "runtimeTraitsStatus": "must-match-xnvse-capture",
+            }
+            target["equipment"] = {
+                "authoredInventory": inventory_record(catalog, base_record),
+                "effectiveInventory": inventory_record(catalog, inventory_source),
+                "runtimeEquippedStatus": "must-match-retail-scene-graph-and-xnvse-capture",
             }
         else:
             target["appearance"] = {
