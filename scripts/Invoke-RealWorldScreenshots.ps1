@@ -15,6 +15,8 @@ param(
     [string]$StartSlice = "",
     [string]$EngineScreenshotFrames = "180",
     [int]$EngineScreenshotReadyFrames = -1,
+    [int]$ExpectedScreenshotCount = 0,
+    [int]$NativeScreenshotWaitSeconds = 10,
     [int]$CrashReportSettleSeconds = 2,
     [switch]$NoEngineScreenshot,
     [string[]]$ExtraArgs = @(),
@@ -1384,7 +1386,14 @@ foreach ($id in $WorldId) {
     $effectiveEngineScreenshotFrames = $captureConfig.engineScreenshotFrames
     $effectiveEngineScreenshotReadyFrames = if ($null -ne $captureConfig.engineScreenshotReadyFrames) { [int]$captureConfig.engineScreenshotReadyFrames } else { -1 }
     $effectiveCrashReportSettleSeconds = [int]$captureConfig.crashReportSettleSeconds
-    $effectiveExpectedScreenshotCount = if ($null -ne $captureConfig.expectedScreenshotCount) { [int]$captureConfig.expectedScreenshotCount } else { $null }
+    $effectiveExpectedScreenshotCount = if ($ExpectedScreenshotCount -gt 0) {
+        [int]$ExpectedScreenshotCount
+    } elseif ($null -ne $captureConfig.expectedScreenshotCount) {
+        [int]$captureConfig.expectedScreenshotCount
+    } else {
+        $null
+    }
+    $effectiveNativeScreenshotWaitSeconds = [Math]::Max(1, [int]$NativeScreenshotWaitSeconds)
     $engineScreenshotEnabled = [bool]$captureConfig.engineScreenshotEnabled
     $effectiveSkipMenu = $SkipMenu -or ($null -ne $catalogStartSpec)
     $actorAnimationWorldPolicy = $null
@@ -1482,6 +1491,7 @@ foreach ($id in $WorldId) {
         engineScreenshotReadyFrames = if ($engineScreenshotEnabled -and $effectiveEngineScreenshotReadyFrames -ge 0) { $effectiveEngineScreenshotReadyFrames } else { $null }
         crashReportSettleSeconds = $effectiveCrashReportSettleSeconds
         expectedScreenshotCount = $effectiveExpectedScreenshotCount
+        nativeScreenshotWaitSeconds = $effectiveNativeScreenshotWaitSeconds
         catalogStart = if ($null -ne $catalogStartSpec) {
             [ordered]@{
                 startsPath = $StartsPath
@@ -1658,7 +1668,7 @@ foreach ($id in $WorldId) {
                     $alreadyCapturedNative = @($manifest.screenshots | Where-Object { $_.source -eq "openmw-native-screenshot" }).Count
                     $expectedScreenshotsForAttempt = [Math]::Max(1, [int]$effectiveExpectedScreenshotCount - $alreadyCapturedNative)
                 }
-                $nativeScreenshots = @(Wait-ForNativeScreenshots -Directory $nativeScreensDir -Since $requestedAt -KnownFiles $knownNativeScreenshots -TimeoutSeconds 10 -ExpectedCount $expectedScreenshotsForAttempt)
+                $nativeScreenshots = @(Wait-ForNativeScreenshots -Directory $nativeScreensDir -Since $requestedAt -KnownFiles $knownNativeScreenshots -TimeoutSeconds $effectiveNativeScreenshotWaitSeconds -ExpectedCount $expectedScreenshotsForAttempt)
                 if ($nativeScreenshots.Count -eq 0) {
                     if ($engineScreenshotEnabled) {
                         Write-Warning "No scheduled native OpenMW screenshot appeared for $id by t=$captureSecond seconds."
