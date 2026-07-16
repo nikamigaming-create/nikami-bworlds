@@ -5578,6 +5578,117 @@ namespace
         return false;
     }
 
+    bool sidecarReadFiniteTransform(
+        const NiAVObject* object, std::size_t offset, NiTransform& transform)
+    {
+        if (object == nullptr
+            || !safeRead(reinterpret_cast<const UInt8*>(object) + offset, transform))
+            return false;
+
+        for (float component : transform.rotate.data)
+        {
+            if (!std::isfinite(component))
+                return false;
+        }
+        return std::isfinite(transform.translate.x) && std::isfinite(transform.translate.y)
+            && std::isfinite(transform.translate.z) && std::isfinite(transform.scale)
+            && transform.scale > 0.f && transform.scale < 1000.f;
+    }
+
+    UInt32 sidecarFloatBits(float value)
+    {
+        UInt32 bits = 0;
+        static_assert(sizeof(bits) == sizeof(value));
+        std::memcpy(&bits, &value, sizeof(bits));
+        return bits;
+    }
+
+    void sidecarWriteTransformBits(std::ostream& out, const NiTransform& transform)
+    {
+        out << "\"rotationBits\":[";
+        for (UInt32 index = 0; index < 9; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            out << sidecarFloatBits(transform.rotate.data[index]);
+        }
+        out << "],\"translationBits\":[" << sidecarFloatBits(transform.translate.x) << ','
+            << sidecarFloatBits(transform.translate.y) << ','
+            << sidecarFloatBits(transform.translate.z) << "],\"scaleBits\":"
+            << sidecarFloatBits(transform.scale);
+    }
+
+    void sidecarWriteWeaponAttachment(
+        std::ostream& out, Actor* actor, UInt32 requestedWeapon)
+    {
+        out << ",\"attachment\":{";
+        if (actor == nullptr || requestedWeapon == 0)
+        {
+            out << "\"available\":false}";
+            return;
+        }
+
+        TESForm* actorBaseForm = nullptr;
+        UInt8 actorBaseType = 0;
+        if (!safeRead(&actor->baseForm, actorBaseForm) || actorBaseForm == nullptr
+            || !safeRead(&actorBaseForm->typeID, actorBaseType)
+            || actorBaseType != kFormType_TESNPC)
+        {
+            out << "\"available\":false}";
+            return;
+        }
+
+        ValidBip01Names* slots = nullptr;
+        if (!safeRead(&static_cast<Character*>(actor)->validBip01Names, slots) || slots == nullptr)
+        {
+            out << "\"available\":false}";
+            return;
+        }
+
+        for (UInt32 slot = 0; slot < 20; ++slot)
+        {
+            ValidBip01Names::Data data = {};
+            UInt32 modelForm = 0;
+            if (!safeRead(&slots->unk002C[slot], data) || data.model == nullptr
+                || !safeRead(&data.model->refID, modelForm) || modelForm != requestedWeapon
+                || data.bones == nullptr)
+                continue;
+
+            NiAVObject* modelRoot = data.bones;
+            NiNode* attachmentFrame = nullptr;
+            NiNode* skeletonParent = nullptr;
+            char* modelRootNameAddress = nullptr;
+            char* frameNameAddress = nullptr;
+            char* parentNameAddress = nullptr;
+            NiTransform local = {};
+            const bool readable = safeRead(&modelRoot->m_pcName, modelRootNameAddress)
+                && safeRead(&modelRoot->m_parent, attachmentFrame) && attachmentFrame != nullptr
+                && safeRead(&attachmentFrame->m_pcName, frameNameAddress)
+                && safeRead(&attachmentFrame->m_parent, skeletonParent) && skeletonParent != nullptr
+                && safeRead(&skeletonParent->m_pcName, parentNameAddress)
+                && sidecarReadFiniteTransform(
+                    attachmentFrame, sNiAVObjectLocalTransformOffset, local);
+            const std::string modelRootName
+                = readable ? safeRuntimeString(modelRootNameAddress) : std::string();
+            const std::string frameName
+                = readable ? safeRuntimeString(frameNameAddress) : std::string();
+            const std::string parentName
+                = readable ? safeRuntimeString(parentNameAddress) : std::string();
+            if (!readable || modelRootName.empty() || frameName.empty() || parentName.empty())
+                break;
+
+            out << "\"available\":true,\"sourceForm\":" << modelForm
+                << ",\"evaluatedSlot\":" << slot << ",\"evaluatedState\":" << data.unk00C
+                << ",\"modelRootName\":" << jsonString(modelRootName.c_str())
+                << ",\"frameName\":" << jsonString(frameName.c_str())
+                << ",\"parentName\":" << jsonString(parentName.c_str()) << ',';
+            sidecarWriteTransformBits(out, local);
+            out << '}';
+            return;
+        }
+        out << "\"available\":false}";
+    }
+
     std::string sidecarBuildTelemetry(Actor* actor, bool screenshotReady,
         const SidecarScreenshotFile* screenshot)
     {
@@ -5676,7 +5787,9 @@ namespace
             out << "{\"form\":" << pair.first << ",\"count\":" << pair.second.count
                 << ",\"worn\":" << (pair.second.worn ? "true" : "false") << '}';
         }
-        out << "]}";
+        out << ']';
+        sidecarWriteWeaponAttachment(out, actor, requestedWeapon);
+        out << '}';
 
         out << ",\"equipment\":{\"worn\":[";
         bool firstWorn = true;

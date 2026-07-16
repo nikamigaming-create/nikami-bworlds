@@ -886,8 +886,172 @@ function Assert-SidecarObservedStateParity([object]$Retail, [object]$OpenMw) {
         throw ("NKSC weapon draw-state mismatch: retail=$retailWeaponOut, " +
             "OpenMW-consumed=$openMwRetailWeaponOut, OpenMW-observed=$openMwWeaponOut.")
     }
+
+    $readBits = {
+        param([object]$Object, [string]$Property, [int]$Count, [string]$Context)
+        $items = @(Get-RequiredProperty $Object $Property $Context)
+        if ($items.Count -ne $Count) {
+            throw "$Context.$Property must contain exactly $Count uint32 values."
+        }
+        [uint32[]]$result = @()
+        for ($index = 0; $index -lt $items.Count; ++$index) {
+            $result += [uint32](Get-JsonInteger $items[$index] "$Context.$Property[$index]" `
+                0 ([uint32]::MaxValue))
+        }
+        return $result
+    }
+    $assertEqualBits = {
+        param([uint32[]]$Expected, [uint32[]]$Actual, [string]$Context)
+        if ($Expected.Count -ne $Actual.Count) {
+            throw "$Context arity mismatch."
+        }
+        for ($index = 0; $index -lt $Expected.Count; ++$index) {
+            if ($Expected[$index] -ne $Actual[$index]) {
+                throw "$Context differs at component ${index}: retail=$($Expected[$index]), OpenMW=$($Actual[$index])."
+            }
+        }
+    }
+
+    $retailWeaponPolicy = Get-RequiredProperty $Retail.document 'weaponPolicy' 'Retail payload'
+    $openMwWeaponPolicy = Get-RequiredProperty $OpenMw.document 'weaponPolicy' 'OpenMW payload'
+    $requestedWeapon = Get-JsonInteger `
+        (Get-RequiredProperty $retailWeaponPolicy 'requestedForm' 'Retail payload.weaponPolicy') `
+        'Retail payload.weaponPolicy.requestedForm' 0 ([uint32]::MaxValue)
+    $retailAttachment = Get-RequiredProperty $retailWeaponPolicy 'attachment' `
+        'Retail payload.weaponPolicy'
+    $openMwAttachment = Get-RequiredProperty $openMwWeaponPolicy 'attachment' `
+        'OpenMW payload.weaponPolicy'
+    $consumedAttachment = Get-RequiredProperty $openMwAttachment 'consumed' `
+        'OpenMW payload.weaponPolicy.attachment'
+    $observedAttachment = Get-RequiredProperty $openMwAttachment 'observed' `
+        'OpenMW payload.weaponPolicy.attachment'
+    $retailAttachmentAvailable = Get-JsonBoolean `
+        (Get-RequiredProperty $retailAttachment 'available' 'Retail payload.weaponPolicy.attachment') `
+        'Retail payload.weaponPolicy.attachment.available'
+    $consumedAttachmentAvailable = Get-JsonBoolean `
+        (Get-RequiredProperty $consumedAttachment 'available' 'OpenMW consumed attachment') `
+        'OpenMW consumed attachment.available'
+    if ($retailAttachmentAvailable -ne $consumedAttachmentAvailable) {
+        throw 'NKSC OpenMW did not consume the retail weapon-attachment availability state.'
+    }
+    if ($requestedWeapon -ne 0 -and -not [bool]$retailWeaponOut -and
+        -not $retailAttachmentAvailable) {
+        throw 'NKSC retail holstered weapon has no runtime attachment contract.'
+    }
+
+    $attachmentEvidence = [ordered]@{
+        available = [bool]$retailAttachmentAvailable
+        applied = $false
+        attached = $false
+        visible = $false
+        frameName = ''
+        parentName = ''
+    }
+    if ($retailAttachmentAvailable) {
+        $retailSource = Get-JsonInteger `
+            (Get-RequiredProperty $retailAttachment 'sourceForm' 'Retail weapon attachment') `
+            'Retail weapon attachment.sourceForm' 1 ([uint32]::MaxValue)
+        $consumedSource = Get-JsonInteger `
+            (Get-RequiredProperty $consumedAttachment 'sourceForm' 'OpenMW consumed attachment') `
+            'OpenMW consumed attachment.sourceForm' 1 ([uint32]::MaxValue)
+        $retailSlot = Get-JsonInteger `
+            (Get-RequiredProperty $retailAttachment 'evaluatedSlot' 'Retail weapon attachment') `
+            'Retail weapon attachment.evaluatedSlot' 0 19
+        $consumedSlot = Get-JsonInteger `
+            (Get-RequiredProperty $consumedAttachment 'evaluatedSlot' 'OpenMW consumed attachment') `
+            'OpenMW consumed attachment.evaluatedSlot' 0 19
+        $retailState = Get-JsonInteger `
+            (Get-RequiredProperty $retailAttachment 'evaluatedState' 'Retail weapon attachment') `
+            'Retail weapon attachment.evaluatedState' 0 ([uint32]::MaxValue)
+        $consumedState = Get-JsonInteger `
+            (Get-RequiredProperty $consumedAttachment 'evaluatedState' 'OpenMW consumed attachment') `
+            'OpenMW consumed attachment.evaluatedState' 0 ([uint32]::MaxValue)
+        $retailRoot = Get-JsonString `
+            (Get-RequiredProperty $retailAttachment 'modelRootName' 'Retail weapon attachment') `
+            'Retail weapon attachment.modelRootName'
+        $consumedRoot = Get-JsonString `
+            (Get-RequiredProperty $consumedAttachment 'modelRootName' 'OpenMW consumed attachment') `
+            'OpenMW consumed attachment.modelRootName'
+        $retailFrame = Get-JsonString `
+            (Get-RequiredProperty $retailAttachment 'frameName' 'Retail weapon attachment') `
+            'Retail weapon attachment.frameName'
+        $consumedFrame = Get-JsonString `
+            (Get-RequiredProperty $consumedAttachment 'frameName' 'OpenMW consumed attachment') `
+            'OpenMW consumed attachment.frameName'
+        $retailParent = Get-JsonString `
+            (Get-RequiredProperty $retailAttachment 'parentName' 'Retail weapon attachment') `
+            'Retail weapon attachment.parentName'
+        $consumedParent = Get-JsonString `
+            (Get-RequiredProperty $consumedAttachment 'parentName' 'OpenMW consumed attachment') `
+            'OpenMW consumed attachment.parentName'
+        if ($retailSource -ne $requestedWeapon -or $consumedSource -ne $retailSource -or
+            $consumedSlot -ne $retailSlot -or $consumedState -ne $retailState -or
+            $consumedRoot -cne $retailRoot -or $consumedFrame -cne $retailFrame -or
+            $consumedParent -cne $retailParent) {
+            throw 'NKSC OpenMW consumed weapon-attachment identity differs from retail.'
+        }
+        [uint32[]]$retailRotation = & $readBits $retailAttachment 'rotationBits' 9 `
+            'Retail weapon attachment'
+        [uint32[]]$consumedRotation = & $readBits $consumedAttachment 'rotationBits' 9 `
+            'OpenMW consumed attachment'
+        [uint32[]]$retailTranslation = & $readBits $retailAttachment 'translationBits' 3 `
+            'Retail weapon attachment'
+        [uint32[]]$consumedTranslation = & $readBits $consumedAttachment 'translationBits' 3 `
+            'OpenMW consumed attachment'
+        & $assertEqualBits $retailRotation $consumedRotation 'NKSC consumed holster rotation'
+        & $assertEqualBits $retailTranslation $consumedTranslation 'NKSC consumed holster translation'
+        $retailScale = [uint32](Get-JsonInteger `
+            (Get-RequiredProperty $retailAttachment 'scaleBits' 'Retail weapon attachment') `
+            'Retail weapon attachment.scaleBits' 0 ([uint32]::MaxValue))
+        $consumedScale = [uint32](Get-JsonInteger `
+            (Get-RequiredProperty $consumedAttachment 'scaleBits' 'OpenMW consumed attachment') `
+            'OpenMW consumed attachment.scaleBits' 0 ([uint32]::MaxValue))
+        if ($retailScale -ne $consumedScale) {
+            throw 'NKSC consumed holster scale differs from retail.'
+        }
+
+        $attachmentEvidence.frameName = $retailFrame
+        $attachmentEvidence.parentName = $retailParent
+        if ($requestedWeapon -ne 0 -and -not [bool]$retailWeaponOut) {
+            $applied = Get-JsonBoolean `
+                (Get-RequiredProperty $observedAttachment 'applied' 'OpenMW observed attachment') `
+                'OpenMW observed attachment.applied'
+            $attached = Get-JsonBoolean `
+                (Get-RequiredProperty $observedAttachment 'attached' 'OpenMW observed attachment') `
+                'OpenMW observed attachment.attached'
+            $visible = Get-JsonBoolean `
+                (Get-RequiredProperty $observedAttachment 'visible' 'OpenMW observed attachment') `
+                'OpenMW observed attachment.visible'
+            $observedFrame = Get-JsonString `
+                (Get-RequiredProperty $observedAttachment 'frameName' 'OpenMW observed attachment') `
+                'OpenMW observed attachment.frameName'
+            $observedParent = Get-JsonString `
+                (Get-RequiredProperty $observedAttachment 'parentName' 'OpenMW observed attachment') `
+                'OpenMW observed attachment.parentName'
+            if (-not $applied -or -not $attached -or -not $visible -or
+                $observedFrame -cne $retailFrame -or $observedParent -cne $retailParent) {
+                throw 'NKSC OpenMW live holster frame is missing, detached, hidden, or under the wrong retail parent.'
+            }
+            [uint32[]]$observedRotation = & $readBits $observedAttachment 'rotationBits' 9 `
+                'OpenMW observed attachment'
+            [uint32[]]$observedTranslation = & $readBits $observedAttachment 'translationBits' 3 `
+                'OpenMW observed attachment'
+            & $assertEqualBits $retailRotation $observedRotation 'NKSC observed holster rotation'
+            & $assertEqualBits $retailTranslation $observedTranslation 'NKSC observed holster translation'
+            $observedScale = [uint32](Get-JsonInteger `
+                (Get-RequiredProperty $observedAttachment 'scaleBits' 'OpenMW observed attachment') `
+                'OpenMW observed attachment.scaleBits' 0 ([uint32]::MaxValue))
+            if ($observedScale -ne $retailScale) {
+                throw 'NKSC observed holster scale differs from retail.'
+            }
+            $attachmentEvidence.applied = [bool]$applied
+            $attachmentEvidence.attached = [bool]$attached
+            $attachmentEvidence.visible = [bool]$visible
+        }
+    }
     return [pscustomobject][ordered]@{
         weaponOut = [bool]$retailWeaponOut
+        weaponAttachment = [pscustomobject]$attachmentEvidence
     }
 }
 

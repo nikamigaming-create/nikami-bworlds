@@ -118,12 +118,51 @@ try {
         $failures.Add("CRC32 rejected the canonical test vector: $($_.Exception.Message)") | Out-Null
     }
 
+    [uint32[]]$holsterRotationBits = @(
+        3210826934, 3203525720, 1026989424,
+        3189668151, 1045015346, 3212302068,
+        1055242061, 3210471966, 3195822950
+    )
+    [uint32[]]$holsterTranslationBits = @(1100293858, 3239811472, 3235687431)
+    $retailHolsterAttachment = [pscustomobject][ordered]@{
+        available = $true
+        sourceForm = 518692
+        evaluatedSlot = 5
+        evaluatedState = 0
+        modelRootName = 'Weapon  (0007EA24)'
+        frameName = 'Weapon'
+        parentName = 'Bip01 Spine2'
+        rotationBits = $holsterRotationBits
+        translationBits = $holsterTranslationBits
+        scaleBits = [uint32]1065353217
+    }
     $retailHolstered = [pscustomobject]@{
-        document = [pscustomobject]@{ animation = [pscustomobject]@{ weaponOut = $false } }
+        document = [pscustomobject]@{
+            animation = [pscustomobject]@{ weaponOut = $false }
+            weaponPolicy = [pscustomobject]@{
+                requestedForm = 518692
+                attachment = $retailHolsterAttachment
+            }
+        }
     }
     $openMwHolstered = [pscustomobject]@{
         document = [pscustomobject]@{
             animation = [pscustomobject]@{ retailWeaponOut = $false; weaponOut = $false }
+            weaponPolicy = [pscustomobject]@{
+                attachment = [pscustomobject]@{
+                    consumed = Copy-JsonDocument $retailHolsterAttachment
+                    observed = [pscustomobject][ordered]@{
+                        applied = $true
+                        attached = $true
+                        visible = $true
+                        frameName = 'Weapon'
+                        parentName = 'Bip01 Spine2'
+                        rotationBits = $holsterRotationBits
+                        translationBits = $holsterTranslationBits
+                        scaleBits = [uint32]1065353217
+                    }
+                }
+            }
         }
     }
     try {
@@ -142,6 +181,21 @@ try {
     Assert-ThrowsLike {
         Assert-SidecarObservedStateParity -Retail $retailHolstered -OpenMw $openMwDrawn
     } 'weapon draw-state mismatch' 'Coordinator accepted mismatched retail/OpenMW weapon draw state.'
+
+    $openMwTransposedHolster = Copy-JsonDocument $openMwHolstered
+    $openMwTransposedHolster.document.weaponPolicy.attachment.observed.rotationBits[1] = `
+        $holsterRotationBits[3]
+    Assert-ThrowsLike {
+        Assert-SidecarObservedStateParity -Retail $retailHolstered -OpenMw $openMwTransposedHolster
+    } 'observed holster rotation differs' `
+        'Coordinator accepted a live holster frame with a transposed retail basis.'
+
+    $openMwHiddenHolster = Copy-JsonDocument $openMwHolstered
+    $openMwHiddenHolster.document.weaponPolicy.attachment.observed.visible = $false
+    Assert-ThrowsLike {
+        Assert-SidecarObservedStateParity -Retail $retailHolstered -OpenMw $openMwHiddenHolster
+    } 'missing, detached, hidden, or under the wrong retail parent' `
+        'Coordinator accepted a hidden live holstered weapon.'
 
     $validationRows = @(& $coordinator -ManifestPath $fixture -ValidateOnly)
     Assert-Contract ($validationRows.Count -eq 1) 'ValidateOnly did not return exactly one plan object.'
