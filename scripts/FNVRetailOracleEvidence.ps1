@@ -86,6 +86,8 @@ function Assert-FNVRetailOracleEvidence {
         [int]$BatchAdvanceFrames = 3,
         [bool]$BatchMoveToTargets = $false,
         [bool]$BatchEnableTargets = $false,
+        [bool]$BatchProofStaging = $false,
+        [int]$BatchProofInitializationFrames = 30,
         [string[]]$BatchEnableParentForm = @(),
         [bool]$PortraitCamera = $false,
         [bool]$RequireAppearanceTelemetry = $false,
@@ -124,6 +126,12 @@ function Assert-FNVRetailOracleEvidence {
     $expectedTransformLayout = 'local@0x34/world@0x68/NiTransform@0x34'
     Assert-FNVEvidence ([string]$startEvents[0].niAvObjectTransformLayout -ceq $expectedTransformLayout) `
         "start transform layout does not exactly match '$expectedTransformLayout'."
+    if ($BatchProofStaging) {
+        Assert-FNVEvidence (Test-FNVEvidenceProperty $startEvents[0] 'batchProofStaging') `
+            'proof-staged start is missing batchProofStaging.'
+        Assert-FNVEvidence (Get-FNVEvidenceBoolean $startEvents[0] 'batchProofStaging' 'start') `
+            'start did not confirm batch proof staging.'
+    }
 
     $loadRequests = @($allEvents | Where-Object { $_.event -eq 'load-request' })
     $loadResults = @($allEvents | Where-Object { $_.event -eq 'load-result' })
@@ -342,7 +350,7 @@ function Assert-FNVRetailOracleEvidence {
             Assert-FNVEvidence (Get-FNVEvidenceBoolean $load[0] 'enableAccepted' "batch target $index load") `
                 "batch target $index enable was rejected."
             Assert-FNVEvidence ((Get-FNVEvidenceBoolean $load[0] 'moveRequested' "batch target $index load") `
-                -eq $BatchMoveToTargets) `
+                -eq ($BatchMoveToTargets -or $BatchProofStaging)) `
                 "batch target $index moveRequested did not match the runner."
             Assert-FNVEvidence (Get-FNVEvidenceBoolean $load[0] 'moveAccepted' "batch target $index load") `
                 "batch target $index move was rejected."
@@ -366,7 +374,10 @@ function Assert-FNVRetailOracleEvidence {
             $readyFrame = Get-FNVEventFrame $ready[0] "batch target $index ready"
             $batchScreenshotFrame = Get-FNVEventFrame $screenshot[0] "batch target $index screenshot"
             $targetCompleteFrame = Get-FNVEventFrame $targetComplete[0] "batch target $index complete"
-            $expectedLoadFrame = if ($index -eq 0) { 1 } else { $previousCompleteFrame + 1 }
+            $expectedLoadFrame = if ($index -eq 0) {
+                if ($BatchProofStaging) { 1 + $BatchProofInitializationFrames } else { 1 }
+            }
+            else { $previousCompleteFrame + 1 }
             Assert-FNVEvidence ($loadFrame -eq $expectedLoadFrame) `
                 "batch target $index load frame $loadFrame does not equal $expectedLoadFrame."
             Assert-FNVEvidence ($loadFrame -le $readyFrame) "batch target $index load occurs after ready."

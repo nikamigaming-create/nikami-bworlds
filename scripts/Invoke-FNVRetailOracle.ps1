@@ -16,6 +16,10 @@ param(
     [int]$AfterFrame = 30,
     [int]$MaxFrames = 40,
     [int]$TimeoutSeconds = 55,
+    [string]$PlanPath = "",
+    [string]$SharedMemoryName = "",
+    [ValidateRange(1000, 300000)]
+    [int]$BarrierTimeoutMilliseconds = 30000,
     [int]$SampleEvery = 1,
     [string]$TargetForm = "0",
     [string]$ExpectedTargetBaseForm = "0",
@@ -54,6 +58,10 @@ param(
     [switch]$PortraitCamera,
     [ValidateRange(32, 1000)]
     [float]$PortraitDistance = 110,
+    [ValidateSet('front-portrait', 'front-full-body')]
+    [string]$CameraShotKind = 'front-portrait',
+    [ValidateRange(1.25, 10)]
+    [float]$FullBodyDistanceScale = 1.6,
     [switch]$RequireAppearanceTelemetry,
     [string[]]$BatchTargetForm = @(),
     [string[]]$BatchExpectedBaseForm = @(),
@@ -63,6 +71,26 @@ param(
     [int]$BatchAdvanceFrames = 3,
     [switch]$BatchMoveToTargets,
     [switch]$BatchEnableTargets,
+    [switch]$BatchProofStaging,
+    [string]$BatchProofAnchorForm = '0',
+    [float]$BatchProofTargetX = 0,
+    [float]$BatchProofTargetY = 0,
+    [float]$BatchProofTargetZ = 0,
+    [float]$BatchProofTargetYaw = 0,
+    [float]$BatchProofPlayerX = 0,
+    [float]$BatchProofPlayerY = 0,
+    [float]$BatchProofPlayerZ = 0,
+    [ValidateRange(0, 512)]
+    [float]$BatchProofMinimumCameraHeight = 48,
+    [ValidateRange(0, 512)]
+    [float]$BatchProofMinimumAimHeight = 16,
+    [ValidateRange(1, 1200)]
+    [int]$BatchProofInitializationFrames = 30,
+    [ValidateRange(1, 600)]
+    [int]$BatchProofTargetSettleFrames = 15,
+    [switch]$BatchForceWeaponOut,
+    [ValidateRange(1, 600)]
+    [int]$BatchWeaponProbeFrames = 12,
     [string[]]$BatchEnableParentForm = @()
 )
 
@@ -80,6 +108,32 @@ function Resolve-AbsolutePath([string]$Path) {
         return [System.IO.Path]::GetFullPath($Path)
     }
     return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Path))
+}
+
+function ConvertFrom-SidecarPlanUInt([string]$Text, [string]$Context) {
+    if ($Text -notmatch '^(?:0[xX][0-9a-fA-F]{1,8}|[0-9]{1,10})$') {
+        throw "$Context is not a canonical unsigned 32-bit integer."
+    }
+    try {
+        $value = if ($Text -match '^0[xX]') {
+            [Convert]::ToUInt32($Text.Substring(2), 16)
+        } else {
+            [uint32]::Parse($Text, [Globalization.NumberStyles]::None,
+                [Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
+    catch { throw "$Context exceeds the unsigned 32-bit range." }
+    return [uint32]$value
+}
+
+function ConvertFrom-SidecarPlanFloat([string]$Text, [string]$Context) {
+    $value = 0.0
+    if (-not [double]::TryParse($Text, [Globalization.NumberStyles]::Float,
+            [Globalization.CultureInfo]::InvariantCulture, [ref]$value) -or
+        [double]::IsNaN($value) -or [double]::IsInfinity($value)) {
+        throw "$Context is not a finite invariant floating-point value."
+    }
+    return [double]$value
 }
 
 function Test-PathWithinRoot([string]$Path, [string]$Root, [switch]$AllowRoot) {
@@ -120,6 +174,31 @@ function Remove-DirectoryWithRetry([string]$Path, [int]$TimeoutMilliseconds = 15
         if (-not (Test-Path -LiteralPath $Path)) { return }
     } while ([DateTime]::UtcNow -lt $deadline)
     throw "Timed out removing directory: $Path"
+}
+
+function Complete-FNVProcessHandle(
+    [System.Diagnostics.Process]$Process,
+    [string]$Label,
+    [int]$GraceMilliseconds = 5000
+) {
+    if ($null -eq $Process) { return }
+    try {
+        $Process.Refresh()
+        if (-not $Process.HasExited) {
+            if (-not $Process.WaitForExit($GraceMilliseconds)) {
+                $Process.Kill()
+                if (-not $Process.WaitForExit($GraceMilliseconds)) {
+                    throw "$Label did not exit within $GraceMilliseconds ms after Kill()."
+                }
+            }
+        }
+        # The parameterless overload completes native process-handle cleanup
+        # after the process has signaled, including the fast launcher process.
+        $Process.WaitForExit()
+    }
+    finally {
+        $Process.Dispose()
+    }
 }
 
 function Convert-FNVRawFramebufferToBmp(
@@ -221,8 +300,12 @@ if ($BeforeFrame -lt 1 -or $CommandFrame -le $BeforeFrame -or $AfterFrame -le $C
 if ($MaxFrames -lt $AfterFrame) {
     throw "MaxFrames must be greater than or equal to AfterFrame."
 }
-if ($TimeoutSeconds -lt 10 -or $TimeoutSeconds -gt 300) {
-    throw "TimeoutSeconds must be between 10 and 300."
+$planMode = -not [string]::IsNullOrWhiteSpace($PlanPath)
+if ($planMode -ne (-not [string]::IsNullOrWhiteSpace($SharedMemoryName))) {
+    throw "PlanPath and SharedMemoryName must be supplied together."
+}
+if ($TimeoutSeconds -lt 10 -or $TimeoutSeconds -gt 86400) {
+    throw "TimeoutSeconds must be between 10 and 86400."
 }
 if ($SampleEvery -lt 1) {
     throw "SampleEvery must be positive."
@@ -307,6 +390,10 @@ foreach ($frame in $ScreenshotFrame) {
 if ($PortraitCamera -and $TargetForm -match '^(0[xX]0+|0+)$') {
     throw "PortraitCamera requires a nonzero TargetForm."
 }
+if ($CameraShotKind -eq 'front-full-body' -and -not $PortraitCamera -and
+    $BatchTargetForm.Count -eq 0 -and -not $planMode) {
+    throw "CameraShotKind front-full-body requires PortraitCamera or BatchTargetForm."
+}
 if ($ExpectedTargetBaseForm -notmatch '^(0[xX]0+|0+)$' -and
     $TargetForm -match '^(0[xX]0+|0+)$') {
     throw "ExpectedTargetBaseForm requires a nonzero TargetForm."
@@ -344,6 +431,11 @@ $canonicalParentForms = @($BatchEnableParentForm | ForEach-Object { ConvertTo-FN
 if (@($canonicalParentForms | Select-Object -Unique).Count -ne $canonicalParentForms.Count) {
     throw "BatchEnableParentForm contains duplicate parent identities."
 }
+if ($planMode -and ($BatchTargetForm.Count -gt 0 -or $ScreenshotFrame.Count -gt 0 -or
+    $TargetForm -notmatch '^(0[xX]0+|0+)$' -or $ExpectedTargetBaseForm -notmatch '^(0[xX]0+|0+)$' -or
+    $MaterialShaderCapture -or $FurnitureOnly)) {
+    throw "PlanPath owns actor/action staging and screenshots; do not combine it with legacy target, batch, screenshot, material, or furniture modes."
+}
 if ($BatchTargetForm.Count -gt 0 -and $ScreenshotFrame.Count -gt 0) {
     throw "BatchTargetForm owns its screenshot schedule; do not also pass ScreenshotFrame."
 }
@@ -352,14 +444,201 @@ if ($BatchTargetForm.Count -gt 0 -and
     throw "BatchTargetForm cannot be combined with single TargetForm/base identities."
 }
 if ($BatchTargetForm.Count -eq 0 -and
-    ($BatchMoveToTargets -or $BatchEnableTargets -or $BatchEnableParentForm.Count -gt 0)) {
+    ($BatchMoveToTargets -or $BatchEnableTargets -or $BatchProofStaging -or $BatchForceWeaponOut -or
+        $BatchEnableParentForm.Count -gt 0)) {
     throw "Batch movement, enablement, and parent identities require BatchTargetForm."
+}
+if ($BatchProofStaging) {
+    if ($BatchProofAnchorForm -notmatch '^(0[xX][0-9a-fA-F]+|[0-9]+)$' -or
+        $BatchProofAnchorForm -match '^(0[xX]0+|0+)$') {
+        throw "BatchProofStaging requires a nonzero decimal or 0x-prefixed BatchProofAnchorForm."
+    }
+    try { $canonicalBatchProofAnchor = ConvertTo-FNVFormId $BatchProofAnchorForm }
+    catch { throw "BatchProofAnchorForm requires a 32-bit FormID, got: $BatchProofAnchorForm" }
+    if (-not $BatchEnableTargets) {
+        throw "BatchProofStaging requires BatchEnableTargets so each authored reference is activated explicitly."
+    }
+    if ($CameraShotKind -ne 'front-full-body') {
+        throw "BatchProofStaging requires CameraShotKind front-full-body."
+    }
+    foreach ($value in @($BatchProofTargetX, $BatchProofTargetY, $BatchProofTargetZ,
+            $BatchProofTargetYaw, $BatchProofPlayerX, $BatchProofPlayerY, $BatchProofPlayerZ,
+            $BatchProofMinimumCameraHeight, $BatchProofMinimumAimHeight)) {
+        if ([float]::IsNaN([float]$value) -or [float]::IsInfinity([float]$value)) {
+            throw "BatchProofStaging coordinates, yaw, and camera heights must all be finite."
+        }
+    }
+    if ($BatchProofMinimumCameraHeight -lt $BatchProofMinimumAimHeight) {
+        throw "BatchProofMinimumCameraHeight must be at least BatchProofMinimumAimHeight."
+    }
+}
+else {
+    $canonicalBatchProofAnchor = [uint32]0
 }
 if ($RequireAppearanceTelemetry -and $BatchTargetForm.Count -eq 0 -and
     $TargetForm -match '^(0[xX]0+|0+)$') {
     throw "RequireAppearanceTelemetry requires TargetForm or BatchTargetForm."
 }
-$expectedScreenshotCount = $ScreenshotFrame.Count + $BatchTargetForm.Count
+$sidecarPlanPath = $null
+$sidecarPlanSequenceId = $null
+$sidecarPlanActors = @()
+$sidecarPlanActions = @()
+$sidecarCaptureLabels = @()
+if ($planMode) {
+    if ($SharedMemoryName.Length -gt 180 -or $SharedMemoryName -notmatch '^(Local|Global)\\[A-Za-z0-9._-]+$') {
+        throw "SharedMemoryName must be a Local\\ or Global\\ named-object identifier no longer than 180 characters."
+    }
+    $sidecarPlanPath = Resolve-AbsolutePath $PlanPath
+    if (-not (Test-Path -LiteralPath $sidecarPlanPath -PathType Leaf)) {
+        throw "Missing compiled retail sidecar plan: $sidecarPlanPath"
+    }
+    $sidecarPlanBytes = (Get-Item -LiteralPath $sidecarPlanPath).Length
+    if ($sidecarPlanBytes -le 0 -or $sidecarPlanBytes -gt 16MB) {
+        throw "Compiled retail sidecar plan must be between 1 byte and 16 MiB."
+    }
+    $sidecarLines = @([System.IO.File]::ReadAllLines($sidecarPlanPath))
+    $sidecarRecordPhase = 'header'
+    $sidecarEndRead = $false
+    $sidecarScene = $null
+    $sidecarActionIds = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    $sidecarAuthoredRefs = [System.Collections.Generic.HashSet[uint32]]::new()
+    for ($lineIndex = 0; $lineIndex -lt $sidecarLines.Count; $lineIndex++) {
+        $lineNumber = $lineIndex + 1
+        $line = [string]$sidecarLines[$lineIndex]
+        if ($lineIndex -eq 0) { $line = $line.TrimStart([char]0xFEFF) }
+        if ($line.Length -gt 4096 -or $line.Contains([char]0)) {
+            throw "Compiled retail sidecar plan line $lineNumber exceeds 4096 characters or contains NUL."
+        }
+        if ($line.Length -eq 0) { continue }
+        if ($sidecarEndRead) {
+            throw "Compiled retail sidecar plan has a record after end at line $lineNumber."
+        }
+        if ($line[0] -eq '#') { continue }
+        if ($sidecarRecordPhase -eq 'header') {
+            if ($line -cne 'nikami-fnv-retail-plan-v1') {
+                throw "Compiled retail sidecar plan has the wrong header at line $lineNumber."
+            }
+            $sidecarRecordPhase = 'sequence'
+            continue
+        }
+
+        $fields = @($line -split "`t", -1)
+        switch -CaseSensitive ($fields[0]) {
+            'sequence' {
+                if ($sidecarRecordPhase -ne 'sequence' -or $fields.Count -ne 2 -or
+                    $null -ne $sidecarPlanSequenceId -or
+                    $fields[1] -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$') {
+                    throw "Compiled retail sidecar plan has an invalid sequence record at line $lineNumber."
+                }
+                $sidecarPlanSequenceId = $fields[1]
+                $sidecarRecordPhase = 'scene'
+            }
+            'scene' {
+                if ($sidecarRecordPhase -ne 'scene' -or $fields.Count -ne 17) {
+                    throw "Compiled retail sidecar plan has an invalid scene record at line $lineNumber."
+                }
+                $sceneUInt = @(
+                    ConvertFrom-SidecarPlanUInt $fields[1] "scene.anchorForm"
+                    ConvertFrom-SidecarPlanUInt $fields[2] "scene.weatherForm"
+                    ConvertFrom-SidecarPlanUInt $fields[15] "scene.initializationFrames"
+                    ConvertFrom-SidecarPlanUInt $fields[16] "scene.targetSettleFrames"
+                )
+                $sceneFloat = for ($fieldIndex = 3; $fieldIndex -le 14; $fieldIndex++) {
+                    ConvertFrom-SidecarPlanFloat $fields[$fieldIndex] "scene field $fieldIndex"
+                }
+                if ($sceneUInt[0] -eq 0 -or $sceneUInt[1] -eq 0 -or
+                    $sceneFloat[0] -lt 0 -or $sceneFloat[0] -ge 24 -or
+                    $sceneFloat[1] -lt 0 -or $sceneFloat[1] -gt 10000 -or
+                    $sceneFloat[9] -lt 1.25 -or $sceneFloat[9] -gt 10 -or
+                    $sceneFloat[10] -lt $sceneFloat[11] -or $sceneFloat[11] -lt 0 -or
+                    $sceneUInt[2] -lt 1 -or $sceneUInt[2] -gt 1200 -or
+                    $sceneUInt[3] -lt 1 -or $sceneUInt[3] -gt 600) {
+                    throw "Compiled retail sidecar scene constraints fail at line $lineNumber."
+                }
+                $sidecarScene = [pscustomobject]@{
+                    anchorForm = $sceneUInt[0]
+                    weatherForm = $sceneUInt[1]
+                    gameHour = $sceneFloat[0]
+                    timeScale = $sceneFloat[1]
+                }
+                $sidecarRecordPhase = 'actions'
+            }
+            'action' {
+                if ($sidecarRecordPhase -ne 'actions' -or $fields.Count -ne 5 -or
+                    $sidecarPlanActions.Count -ge 64) {
+                    throw "Compiled retail sidecar plan has an out-of-order action at line $lineNumber."
+                }
+                $actionIndex = ConvertFrom-SidecarPlanUInt $fields[1] "action.index"
+                $actionFrames = ConvertFrom-SidecarPlanUInt $fields[4] "action.frames"
+                if ($actionIndex -ne $sidecarPlanActions.Count -or
+                    $fields[2] -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$' -or
+                    $fields[3] -notmatch '^[A-Za-z0-9_]{1,63}$' -or
+                    $actionFrames -lt 1 -or $actionFrames -gt 36000 -or
+                    -not $sidecarActionIds.Add([string]$fields[2])) {
+                    throw "Compiled retail sidecar plan has an invalid action at line $lineNumber."
+                }
+                $sidecarPlanActions += [pscustomobject]@{
+                    index = [int]$actionIndex
+                    id = [string]$fields[2]
+                    playGroup = [string]$fields[3]
+                    frames = [uint32]$actionFrames
+                }
+            }
+            'actor' {
+                if ($sidecarRecordPhase -notin @('actions', 'actors') -or
+                    $sidecarPlanActions.Count -eq 0 -or $fields.Count -ne 6 -or
+                    $sidecarPlanActors.Count -ge 8192) {
+                    throw "Compiled retail sidecar plan has an out-of-order actor at line $lineNumber."
+                }
+                $actorIndex = ConvertFrom-SidecarPlanUInt $fields[1] "actor.index"
+                $authoredRef = ConvertFrom-SidecarPlanUInt $fields[2] "actor.authoredRefForm"
+                $baseForm = ConvertFrom-SidecarPlanUInt $fields[3] "actor.baseForm"
+                $weaponForm = ConvertFrom-SidecarPlanUInt $fields[4] "actor.weaponForm"
+                $enableParent = ConvertFrom-SidecarPlanUInt $fields[5] "actor.enableParentForm"
+                if ($actorIndex -ne $sidecarPlanActors.Count -or $baseForm -eq 0 -or
+                    ($authoredRef -ne 0 -and -not $sidecarAuthoredRefs.Add($authoredRef))) {
+                    throw "Compiled retail sidecar plan has an invalid actor at line $lineNumber."
+                }
+                $sidecarPlanActors += [pscustomobject]@{
+                    index = [int]$actorIndex
+                    authoredRefForm = [uint32]$authoredRef
+                    baseForm = [uint32]$baseForm
+                    weaponForm = [uint32]$weaponForm
+                    enableParentForm = [uint32]$enableParent
+                }
+                $sidecarRecordPhase = 'actors'
+            }
+            'end' {
+                if ($sidecarRecordPhase -ne 'actors' -or $fields.Count -ne 1 -or
+                    $sidecarPlanActors.Count -eq 0) {
+                    throw "Compiled retail sidecar plan has an invalid end record at line $lineNumber."
+                }
+                $sidecarEndRead = $true
+                $sidecarRecordPhase = 'end'
+            }
+            default {
+                throw "Compiled retail sidecar plan has unknown record '$($fields[0])' at line $lineNumber."
+            }
+        }
+    }
+    if ($null -eq $sidecarPlanSequenceId -or $null -eq $sidecarScene -or
+        $sidecarPlanActions.Count -eq 0 -or $sidecarPlanActors.Count -eq 0 -or
+        -not $sidecarEndRead -or $sidecarRecordPhase -ne 'end') {
+        throw "Compiled retail sidecar plan is incomplete or violates the bounded data-driven v1 contract."
+    }
+    foreach ($actor in $sidecarPlanActors) {
+        foreach ($action in $sidecarPlanActions) {
+            $sidecarCaptureLabels += ('actor-{0:D4}-action-{1:D2}-{2}' -f
+                $actor.index, $action.index, $action.id)
+        }
+    }
+}
+$expectedScreenshotCount = if ($planMode) {
+    $sidecarPlanActors.Count * $sidecarPlanActions.Count
+} else {
+    $ScreenshotFrame.Count + $BatchTargetForm.Count
+}
 if ($expectedScreenshotCount -gt 0 -and [string]::IsNullOrWhiteSpace($ScreenshotDirectory)) {
     $ScreenshotDirectory = "$OutputPath-screens"
 }
@@ -492,6 +771,9 @@ $environment = [ordered]@{
     NIKAMI_NVSE_STEAM_LOADER = $steamLoader
     NIKAMI_NVSE_CORE_DLL = $coreDll
     NIKAMI_ORACLE_OUTPUT = $output
+    NIKAMI_ORACLE_PLAN_PATH = if ($planMode) { $sidecarPlanPath } else { "" }
+    NIKAMI_ORACLE_SHARED_MEMORY_NAME = if ($planMode) { $SharedMemoryName } else { "" }
+    NIKAMI_ORACLE_BARRIER_TIMEOUT_MS = [string]$BarrierTimeoutMilliseconds
     NIKAMI_ORACLE_SAMPLE_EVERY = [string]$SampleEvery
     NIKAMI_ORACLE_MAX_FRAMES = [string]$MaxFrames
     NIKAMI_ORACLE_TARGET_FORM = $TargetForm
@@ -536,14 +818,32 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_BATCH_MOVE_TO_TARGETS = if ($BatchMoveToTargets) { "1" } else { "0" }
     NIKAMI_ORACLE_BATCH_ENABLE_TARGETS = if ($BatchEnableTargets) { "1" } else { "0" }
     NIKAMI_ORACLE_BATCH_ENABLE_PARENT_FORMS = (@($BatchEnableParentForm) -join ",")
+    NIKAMI_ORACLE_BATCH_PROOF_STAGING = if ($BatchProofStaging) { "1" } else { "0" }
+    NIKAMI_ORACLE_BATCH_PROOF_ANCHOR_FORM = $BatchProofAnchorForm
+    NIKAMI_ORACLE_BATCH_PROOF_TARGET_X = [string]$BatchProofTargetX
+    NIKAMI_ORACLE_BATCH_PROOF_TARGET_Y = [string]$BatchProofTargetY
+    NIKAMI_ORACLE_BATCH_PROOF_TARGET_Z = [string]$BatchProofTargetZ
+    NIKAMI_ORACLE_BATCH_PROOF_TARGET_YAW = [string]$BatchProofTargetYaw
+    NIKAMI_ORACLE_BATCH_PROOF_PLAYER_X = [string]$BatchProofPlayerX
+    NIKAMI_ORACLE_BATCH_PROOF_PLAYER_Y = [string]$BatchProofPlayerY
+    NIKAMI_ORACLE_BATCH_PROOF_PLAYER_Z = [string]$BatchProofPlayerZ
+    NIKAMI_ORACLE_BATCH_PROOF_MINIMUM_CAMERA_HEIGHT = [string]$BatchProofMinimumCameraHeight
+    NIKAMI_ORACLE_BATCH_PROOF_MINIMUM_AIM_HEIGHT = [string]$BatchProofMinimumAimHeight
+    NIKAMI_ORACLE_BATCH_PROOF_INITIALIZATION_FRAMES = [string]$BatchProofInitializationFrames
+    NIKAMI_ORACLE_BATCH_PROOF_TARGET_SETTLE_FRAMES = [string]$BatchProofTargetSettleFrames
+    NIKAMI_ORACLE_BATCH_FORCE_WEAPON_OUT = if ($BatchForceWeaponOut) { "1" } else { "0" }
+    NIKAMI_ORACLE_BATCH_WEAPON_PROBE_FRAMES = [string]$BatchWeaponProbeFrames
     NIKAMI_ORACLE_PORTRAIT_CAMERA = if ($PortraitCamera) { "1" } else { "0" }
     NIKAMI_ORACLE_PORTRAIT_DISTANCE = [string]$PortraitDistance
+    NIKAMI_ORACLE_CAMERA_SHOT_KIND = $CameraShotKind
+    NIKAMI_ORACLE_FULL_BODY_DISTANCE_SCALE = [string]$FullBodyDistanceScale
     NIKAMI_ORACLE_EXIT_WHEN_DONE = "1"
 }
 $plannedRootHookMoves = @(if ($isolateRootHookDlls) {
     $rootHookCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
 })
 $loaderArgumentList = @('-altdll', $coreDll)
+$cleanupWarnings = New-Object System.Collections.Generic.List[string]
 if ($DryRun) {
     [pscustomobject][ordered]@{
         schema = 'nikami-fnv-retail-oracle-validation/v1'
@@ -559,6 +859,8 @@ if ($DryRun) {
         ephemeralRunRoot = $ephemeralRunRoot
         isolatedPluginDirectory = $isolatedPluginDirectory
         retailPluginDirectoryUsed = $false
+        ephemeralRunRootRetained = [bool](Test-Path -LiteralPath $ephemeralRunRoot)
+        cleanupWarnings = @($cleanupWarnings)
         rootHookIsolation = $isolateRootHookDlls
         rootHookDlls = @($plannedRootHookMoves)
         launch = [pscustomobject][ordered]@{
@@ -574,12 +876,34 @@ if ($DryRun) {
         }
         output = $output
         runManifest = $runManifest
+        sidecar = if ($planMode) { [pscustomobject][ordered]@{
+            enabled = $true
+            sequenceId = $sidecarPlanSequenceId
+            planPath = $sidecarPlanPath
+            sharedMemoryName = $SharedMemoryName
+            barrierTimeoutMilliseconds = $BarrierTimeoutMilliseconds
+            actors = $sidecarPlanActors.Count
+            actionsPerActor = $sidecarPlanActions.Count
+            expectedCaptures = $expectedScreenshotCount
+        } } else { $null }
         wouldOverwrite = [pscustomobject][ordered]@{
             output = Test-Path -LiteralPath $output
             runManifest = Test-Path -LiteralPath $runManifest
         }
         expectedTargetBaseForm = $ExpectedTargetBaseForm
         batchExpectedBaseForms = @($BatchExpectedBaseForm)
+        cameraShotKind = $CameraShotKind
+        fullBodyDistanceScale = $FullBodyDistanceScale
+        batchForceWeaponOut = [bool]$BatchForceWeaponOut
+        batchWeaponProbeFrames = $BatchWeaponProbeFrames
+        batchProofStaging = [bool]$BatchProofStaging
+        batchProofAnchorForm = Format-FNVFormId $BatchProofAnchorForm
+        batchProofTarget = @($BatchProofTargetX, $BatchProofTargetY, $BatchProofTargetZ, $BatchProofTargetYaw)
+        batchProofPlayer = @($BatchProofPlayerX, $BatchProofPlayerY, $BatchProofPlayerZ)
+        batchProofMinimumCameraHeight = $BatchProofMinimumCameraHeight
+        batchProofMinimumAimHeight = $BatchProofMinimumAimHeight
+        batchProofInitializationFrames = $BatchProofInitializationFrames
+        batchProofTargetSettleFrames = $BatchProofTargetSettleFrames
     }
     return
 }
@@ -626,6 +950,7 @@ $rootHookEvidence = @(
 $previousEnvironment = @{}
 $environmentNamesSet = New-Object System.Collections.Generic.List[string]
 $cleanupFailures = New-Object System.Collections.Generic.List[string]
+$cleanupWarnings = New-Object System.Collections.Generic.List[string]
 $gameProcess = $null
 $launcherProcess = $null
 $runFailure = $null
@@ -720,15 +1045,10 @@ catch {
 }
 finally {
     try {
-        if ($null -ne $gameProcess -and -not $gameProcess.HasExited) {
-            Stop-Process -Id $gameProcess.Id -Force -ErrorAction Stop
-            $gameProcess.WaitForExit()
-        }
+        Complete-FNVProcessHandle -Process $gameProcess -Label 'FalloutNV'
     } catch { $cleanupFailures.Add("Failed to stop FalloutNV: $($_.Exception.Message)") | Out-Null }
     try {
-        if ($null -ne $launcherProcess -and -not $launcherProcess.HasExited) {
-            Stop-Process -Id $launcherProcess.Id -Force -ErrorAction Stop
-        }
+        Complete-FNVProcessHandle -Process $launcherProcess -Label 'isolated nvse_loader'
     } catch { $cleanupFailures.Add("Failed to stop isolated nvse_loader: $($_.Exception.Message)") | Out-Null }
 
     foreach ($name in $environmentNamesSet) {
@@ -768,7 +1088,9 @@ finally {
                     }
                 }, Name)
             for ($index = 0; $index -lt $newScreenshots.Count; $index++) {
-                $frameLabel = if ($index -lt $ScreenshotFrame.Count) {
+                $frameLabel = if ($planMode -and $index -lt $sidecarCaptureLabels.Count) {
+                    $sidecarCaptureLabels[$index]
+                } elseif ($index -lt $ScreenshotFrame.Count) {
                     '{0:D6}' -f $ScreenshotFrame[$index]
                 } elseif (($index - $ScreenshotFrame.Count) -lt $BatchTargetForm.Count) {
                     'target-' + ((Format-FNVFormId $BatchTargetForm[$index - $ScreenshotFrame.Count]) `
@@ -800,8 +1122,14 @@ finally {
             if (-not (Test-PathWithinRoot -Path $ephemeralRunRoot -Root $runtimeRootPath)) {
                 throw "Ephemeral run directory escaped RuntimeRoot: $ephemeralRunRoot"
             }
-            Remove-DirectoryWithRetry -Path $ephemeralRunRoot
-        } catch { $cleanupFailures.Add("Failed to remove ephemeral xNVSE run directory: $($_.Exception.Message)") | Out-Null }
+            Remove-DirectoryWithRetry -Path $ephemeralRunRoot -TimeoutMilliseconds 60000
+        } catch {
+            # This directory contains only the isolated plugin copy after hooks
+            # and fixtures have been restored. A delayed external file lock must
+            # not discard otherwise valid immutable capture evidence.
+            $preserveEphemeralRunRoot = $true
+            $cleanupWarnings.Add("Retained ephemeral xNVSE run directory after cleanup timeout: $ephemeralRunRoot ($($_.Exception.Message))") | Out-Null
+        }
     }
 }
 
@@ -817,7 +1145,24 @@ if (-not (Test-Path -LiteralPath $output -PathType Leaf)) {
     throw "Retail oracle produced no output: $output"
 }
 
-$events = @(Get-Content -LiteralPath $output | ForEach-Object { $_ | ConvertFrom-Json })
+# Actor geometry records intentionally carry complete vertex arrays. Keep them
+# in the immutable JSONL, but do not deserialize those arrays into PowerShell's
+# object graph merely to validate unrelated run events. Event counts still come
+# from the full stream below, and the Goodsprings contract audits geometry by
+# top-level refForm/event keys without discarding the raw payload.
+$validationEvents = New-Object System.Collections.Generic.List[object]
+$streamEventCounts = @{}
+foreach ($eventLine in [System.IO.File]::ReadLines($output)) {
+    $eventName = $null
+    if ($eventLine -match '"event":"(?<eventName>[^"]+)"') {
+        $eventName = [string]$Matches.eventName
+        if (-not $streamEventCounts.ContainsKey($eventName)) { $streamEventCounts[$eventName] = 0 }
+        ++$streamEventCounts[$eventName]
+    }
+    if ($eventName -eq 'actor-geometry') { continue }
+    $validationEvents.Add(($eventLine | ConvertFrom-Json)) | Out-Null
+}
+$events = @($validationEvents.ToArray())
 if ($MaterialShaderCapture -and $capturedScreenshots.Count -eq 0 -and
     $ScreenshotFrame.Count -eq 1 -and $ScreenshotFrame[0] -eq $MaterialShaderFrame) {
     $rawFrames = @($events | Where-Object {
@@ -884,38 +1229,160 @@ if ($MaterialShaderCapture) {
         finalFramebuffer = Get-FNVFileEvidence ([string]$framebuffers[0].path) 'retail-final-framebuffer'
     }
 }
-$eventValidation = Assert-FNVRetailOracleEvidence `
-    -Events $events `
-    -SaveName $SaveName `
-    -TargetForm $TargetForm `
-    -ExpectedTargetBaseForm $ExpectedTargetBaseForm `
-    -BatchTargetForm $BatchTargetForm `
-    -BatchExpectedBaseForm $BatchExpectedBaseForm `
-    -ScreenshotFrame $ScreenshotFrame `
-    -BeforeFrame $BeforeFrame `
-    -CommandFrame $CommandFrame `
-    -AfterFrame $AfterFrame `
-    -MaxFrames $MaxFrames `
-    -BatchSettleFrames $BatchSettleFrames `
-    -BatchAdvanceFrames $BatchAdvanceFrames `
-    -BatchMoveToTargets ([bool]$BatchMoveToTargets) `
-    -BatchEnableTargets ([bool]$BatchEnableTargets) `
-    -BatchEnableParentForm $BatchEnableParentForm `
-    -PortraitCamera ([bool]$PortraitCamera) `
-    -RequireAppearanceTelemetry ([bool]$RequireAppearanceTelemetry) `
-    -BackgroundDataMode ([bool]$BackgroundDataMode)
+if ($planMode) {
+    $sidecarErrors = @($events | Where-Object { $_.event -eq 'sidecar-error' })
+    if ($sidecarErrors.Count -ne 0) {
+        throw "Retail sidecar emitted $($sidecarErrors.Count) error event(s)."
+    }
+    $actionStarts = @($events | Where-Object { $_.event -eq 'sidecar-action-start' })
+    $retailReady = @($events | Where-Object { $_.event -eq 'sidecar-retail-ready' })
+    $screenshotReady = @($events | Where-Object { $_.event -eq 'sidecar-screenshot-ready' })
+    $actorStages = @($events | Where-Object { $_.event -eq 'sidecar-actor-stage' })
+    $sequenceComplete = @($events | Where-Object { $_.event -eq 'sidecar-sequence-complete' })
+    foreach ($pair in @(
+        [pscustomobject]@{ label = 'action-start'; actual = $actionStarts.Count; expected = $expectedScreenshotCount },
+        [pscustomobject]@{ label = 'retail-ready'; actual = $retailReady.Count; expected = $expectedScreenshotCount },
+        [pscustomobject]@{ label = 'screenshot-ready'; actual = $screenshotReady.Count; expected = $expectedScreenshotCount },
+        [pscustomobject]@{ label = 'actor-stage'; actual = $actorStages.Count; expected = $sidecarPlanActors.Count },
+        [pscustomobject]@{ label = 'sequence-complete'; actual = $sequenceComplete.Count; expected = 1 }
+    )) {
+        if ($pair.actual -ne $pair.expected) {
+            throw "Retail sidecar $($pair.label) count is $($pair.actual), expected $($pair.expected)."
+        }
+    }
+    $seenCaptureKeys = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    foreach ($capture in $screenshotReady) {
+        if ([string]$capture.sequenceId -cne $sidecarPlanSequenceId -or
+            [int]$capture.actorIndex -lt 0 -or [int]$capture.actorIndex -ge $sidecarPlanActors.Count -or
+            [int]$capture.actionIndex -lt 0 -or [int]$capture.actionIndex -ge $sidecarPlanActions.Count) {
+            throw "Retail sidecar screenshot-ready has an invalid sequence/actor/action identity."
+        }
+        $key = '{0}/{1}/{2}' -f $capture.sequenceId, $capture.actorIndex, $capture.actionIndex
+        if (-not $seenCaptureKeys.Add($key)) {
+            throw "Retail sidecar duplicated capture key '$key'."
+        }
+        if ($null -eq $capture.telemetry) {
+            throw "Retail sidecar capture '$key' has no telemetry payload."
+        }
+        $plannedActor = $sidecarPlanActors[[int]$capture.actorIndex]
+        $plannedAction = $sidecarPlanActions[[int]$capture.actionIndex]
+        $observedSequences = @(
+            @($capture.telemetry.animation.middleHighSequences) +
+            @($capture.telemetry.animation.animDataSequences) |
+                Where-Object { $null -ne $_ -and [bool]$_.readable }
+        )
+        $hourError = [Math]::Abs([double]$capture.telemetry.environment.gameHour -
+            [double]$sidecarScene.gameHour)
+        if ($hourError -gt 12) { $hourError = 24 - $hourError }
+        $faceTelemetryValid = $null -ne $capture.telemetry.face
+        if ($faceTelemetryValid -and [bool]$capture.telemetry.face.npc) {
+            $faceChannels = @($capture.telemetry.face.faceGenChannels)
+            $faceTelemetryValid = [bool]$capture.telemetry.face.appearanceReadable -and
+                $faceChannels.Count -eq 3 -and
+                @($faceChannels | Where-Object { -not [bool]$_.readable }).Count -eq 0 -and
+                [bool]$capture.telemetry.animation.facialRuntime.animationDataAvailable
+        }
+        if (-not [bool]$capture.telemetry.capture.screenshotReady -or
+            -not [bool]$capture.telemetry.weaponPolicy.exact -or
+            [string]$capture.telemetry.key.sequenceId -cne $sidecarPlanSequenceId -or
+            [int]$capture.telemetry.key.actorIndex -ne [int]$capture.actorIndex -or
+            [int]$capture.telemetry.key.actionIndex -ne [int]$capture.actionIndex -or
+            [uint32]$capture.telemetry.actor.baseForm -ne [uint32]$plannedActor.baseForm -or
+            ([uint32]$plannedActor.authoredRefForm -ne 0 -and
+                [uint32]$capture.telemetry.actor.refForm -ne [uint32]$plannedActor.authoredRefForm) -or
+            [uint32]$capture.telemetry.weaponPolicy.requestedForm -ne [uint32]$plannedActor.weaponForm -or
+            [string]$capture.telemetry.action.id -cne [string]$plannedAction.id -or
+            -not [bool]$capture.telemetry.action.accepted -or
+            -not [bool]$capture.telemetry.animation.processAvailable -or
+            $observedSequences.Count -eq 0 -or -not $faceTelemetryValid -or
+            $null -eq $capture.telemetry.equipment -or
+            [uint32]$capture.telemetry.environment.currentWeatherForm -ne [uint32]$sidecarScene.weatherForm -or
+            $hourError -gt 0.01 -or
+            [uint64]$capture.telemetry.capture.size -lt 54 -or
+            [uint32]$capture.telemetry.capture.width -lt 1 -or
+            [uint32]$capture.telemetry.capture.height -lt 1 -or
+            [uint32]$capture.telemetry.capture.bitsPerPixel -notin @(16, 24, 32) -or
+            [uint32]$capture.telemetry.capture.stableFrames -lt 2 -or
+            $null -eq $capture.telemetry.camera.viewMatrix -or
+            $null -eq $capture.telemetry.camera.projectionMatrix) {
+            throw "Retail sidecar capture '$key' lacks exact actor/action/weapon, evaluated animation/FaceGen/equipment, matched environment/camera, or stable screenshot telemetry."
+        }
+    }
+    if ([string]$sequenceComplete[0].sequenceId -cne $sidecarPlanSequenceId -or
+        [int]$sequenceComplete[0].actors -ne $sidecarPlanActors.Count -or
+        [int]$sequenceComplete[0].actionsPerActor -ne $sidecarPlanActions.Count -or
+        [int]$sequenceComplete[0].captures -ne $expectedScreenshotCount) {
+        throw "Retail sidecar completion summary does not match the compiled plan."
+    }
+    $eventValidation = [pscustomobject][ordered]@{
+        schema = 'nikami-fnv-retail-sidecar-validation/v1'
+        status = 'passed'
+        eventCount = $events.Count
+        sequenceId = $sidecarPlanSequenceId
+        actors = $sidecarPlanActors.Count
+        actionsPerActor = $sidecarPlanActions.Count
+        captures = $expectedScreenshotCount
+        lockstepTransport = 'shared-memory+named-events'
+    }
+} else {
+    $eventValidation = Assert-FNVRetailOracleEvidence `
+        -Events $events `
+        -SaveName $SaveName `
+        -TargetForm $TargetForm `
+        -ExpectedTargetBaseForm $ExpectedTargetBaseForm `
+        -BatchTargetForm $BatchTargetForm `
+        -BatchExpectedBaseForm $BatchExpectedBaseForm `
+        -ScreenshotFrame $ScreenshotFrame `
+        -BeforeFrame $BeforeFrame `
+        -CommandFrame $CommandFrame `
+        -AfterFrame $AfterFrame `
+        -MaxFrames $MaxFrames `
+        -BatchSettleFrames $BatchSettleFrames `
+        -BatchAdvanceFrames $BatchAdvanceFrames `
+        -BatchMoveToTargets ([bool]$BatchMoveToTargets) `
+        -BatchEnableTargets ([bool]$BatchEnableTargets) `
+        -BatchProofStaging ([bool]$BatchProofStaging) `
+        -BatchProofInitializationFrames $BatchProofInitializationFrames `
+        -BatchEnableParentForm $BatchEnableParentForm `
+        -PortraitCamera ([bool]$PortraitCamera) `
+        -RequireAppearanceTelemetry ([bool]$RequireAppearanceTelemetry) `
+        -BackgroundDataMode ([bool]$BackgroundDataMode)
+}
+$validationEventCount = [int]$eventValidation.eventCount
+$totalStreamEventCount = [int](($streamEventCounts.Values | Measure-Object -Sum).Sum)
+$eventValidation.eventCount = $totalStreamEventCount
+$eventValidation | Add-Member -NotePropertyName validationEventCount -NotePropertyValue $validationEventCount
+$eventValidation | Add-Member -NotePropertyName validationPayloadOmissions -NotePropertyValue @('actor-geometry')
 
 $snapshots = @($events | Where-Object { $_.event -eq "behavior-snapshot" })
 $appearanceEvents = @($events | Where-Object { $_.event -in @("npc-appearance", "target-appearance") })
-$expectedScreenshotNames = @(Get-FNVExpectedScreenshotNames `
-    -Frame $ScreenshotFrame -BatchTargetForm $BatchTargetForm)
+$expectedScreenshotNames = if ($planMode) {
+    @($sidecarCaptureLabels | ForEach-Object { "frame-$_.bmp" })
+} else {
+    @(Get-FNVExpectedScreenshotNames -Frame $ScreenshotFrame -BatchTargetForm $BatchTargetForm)
+}
 $screenshotEvidence = @(Assert-FNVRetailScreenshotFiles `
     -Path $capturedScreenshots -ExpectedName $expectedScreenshotNames)
-$expectedPortraitEvents = if ($BatchTargetForm.Count -gt 0) { $BatchTargetForm.Count } elseif ($PortraitCamera) { 1 } else { 0 }
+$expectedPortraitEvents = if ($planMode) { 0 } elseif ($BatchTargetForm.Count -gt 0) {
+    $BatchTargetForm.Count
+} elseif ($PortraitCamera) { 1 } else { 0 }
 if ($expectedPortraitEvents -gt 0) {
     $portraitEvents = @($events | Where-Object { $_.event -eq "portrait-camera-set" })
     if ($portraitEvents.Count -ne $expectedPortraitEvents) {
         throw "Portrait camera resolved $($portraitEvents.Count) actor head(s), expected $expectedPortraitEvents."
+    }
+    foreach ($cameraEvent in $portraitEvents) {
+        if ($cameraEvent.PSObject.Properties.Name -notcontains 'shotKind' -or
+            [string]$cameraEvent.shotKind -ne $CameraShotKind) {
+            throw "Camera shot-kind contract expected '$CameraShotKind' on every portrait-camera-set event."
+        }
+        if ($CameraShotKind -eq 'front-full-body') {
+            if ($cameraEvent.PSObject.Properties.Name -notcontains 'worldBound' -or
+                -not [bool]$cameraEvent.worldBound.valid -or [double]$cameraEvent.worldBound.radius -le 0) {
+                throw "Full-body camera event lacks a valid assembled-actor world bound."
+            }
+        }
     }
     Add-Type -AssemblyName System.Drawing
     foreach ($screenshot in $capturedScreenshots) {
@@ -959,6 +1426,106 @@ if ($expectedPortraitEvents -gt 0) {
     }
 }
 
+if ($BatchForceWeaponOut) {
+    $weaponEvents = @($events | Where-Object { $_.event -eq 'batch-weapon-state' })
+    if ($weaponEvents.Count -ne $BatchTargetForm.Count) {
+        throw "Batch weapon-state contract expected $($BatchTargetForm.Count) terminal events; found $($weaponEvents.Count)."
+    }
+    for ($targetIndex = 0; $targetIndex -lt $BatchTargetForm.Count; ++$targetIndex) {
+        $expectedReference = ConvertTo-FNVFormId $BatchTargetForm[$targetIndex]
+        $matches = @($weaponEvents | Where-Object {
+            $_.targetIndex -eq $targetIndex -and $_.refForm -eq $expectedReference
+        })
+        if ($matches.Count -ne 1) {
+            throw ("Batch weapon-state identity mismatch at index {0} ({1:x8})." -f
+                $targetIndex, $expectedReference)
+        }
+        $weaponEvent = $matches[0]
+        if ([string]$weaponEvent.status -notin @('passed', 'not-applicable')) {
+            throw "Batch weapon-state terminal status is not valid at target index $targetIndex."
+        }
+        if ([bool]$weaponEvent.weaponRequired -and (-not [bool]$weaponEvent.weaponOut -or
+            [uint32]$weaponEvent.weaponForm -eq 0)) {
+            throw "Batch target index $targetIndex has an equipped weapon that was not proven drawn."
+        }
+    }
+}
+
+if ($BatchProofStaging) {
+    $proofLoads = @($events | Where-Object { $_.event -eq 'batch-proof-volume-load-request' })
+    $proofReady = @($events | Where-Object { $_.event -eq 'batch-proof-volume-ready' })
+    $stageRequests = @($events | Where-Object { $_.event -eq 'batch-target-stage-request' })
+    $censusGates = @($events | Where-Object { $_.event -eq 'batch-proof-volume-census' })
+    $occlusionGates = @($events | Where-Object { $_.event -eq 'batch-camera-occlusion-gate' })
+    $visualGates = @($events | Where-Object { $_.event -eq 'batch-visual-stage-gate' })
+    $releaseEvents = @($events | Where-Object { $_.event -eq 'batch-target-release' })
+    if ($proofLoads.Count -ne 1 -or -not [bool]$proofLoads[0].accepted -or
+        [uint32]$proofLoads[0].anchorForm -ne [uint32]$canonicalBatchProofAnchor) {
+        throw "Proof-volume load contract requires one accepted request for the configured authored anchor."
+    }
+    if ($proofReady.Count -ne 1 -or -not [bool]$proofReady[0].passed) {
+        throw "Proof-volume initialization contract requires one passed readiness event."
+    }
+    foreach ($eventSet in @($stageRequests, $censusGates, $occlusionGates, $visualGates, $releaseEvents)) {
+        if ($eventSet.Count -ne $BatchTargetForm.Count) {
+            throw "Proof-staging contract expected $($BatchTargetForm.Count) per-target events; found $($eventSet.Count)."
+        }
+    }
+    for ($targetIndex = 0; $targetIndex -lt $BatchTargetForm.Count; ++$targetIndex) {
+        $expectedReference = ConvertTo-FNVFormId $BatchTargetForm[$targetIndex]
+        $stage = @($stageRequests | Where-Object {
+            [int]$_.targetIndex -eq $targetIndex -and [uint32]$_.targetForm -eq $expectedReference
+        })
+        $gate = @($visualGates | Where-Object {
+            [int]$_.targetIndex -eq $targetIndex -and [uint32]$_.targetForm -eq $expectedReference
+        })
+        $census = @($censusGates | Where-Object {
+            [int]$_.targetIndex -eq $targetIndex -and [uint32]$_.targetForm -eq $expectedReference
+        })
+        $occlusion = @($occlusionGates | Where-Object {
+            [int]$_.targetIndex -eq $targetIndex -and [uint32]$_.targetForm -eq $expectedReference
+        })
+        $release = @($releaseEvents | Where-Object {
+            [int]$_.targetIndex -eq $targetIndex -and [uint32]$_.targetForm -eq $expectedReference
+        })
+        if ($stage.Count -ne 1 -or -not [bool]$stage[0].accepted) {
+            throw "Proof staging was not accepted for target index $targetIndex."
+        }
+        if ($gate.Count -ne 1 -or -not [bool]$gate[0].passed -or
+            -not [bool]$gate[0].rootAvailable -or -not [bool]$gate[0].worldBoundValid -or
+            -not [bool]$gate[0].proofVolumeExclusive -or -not [bool]$gate[0].occlusionGatePassed) {
+            throw "Visual-stage gate did not pass for target index $targetIndex."
+        }
+        if (@($gate[0].camera).Count -ne 3 -or @($gate[0].aim).Count -ne 3 -or
+            [float]$gate[0].camera[2] + 0.01 -lt
+                ([float]$BatchProofTargetZ + [float]$BatchProofMinimumCameraHeight) -or
+            [float]$gate[0].aim[2] + 0.01 -lt
+                ([float]$BatchProofTargetZ + [float]$BatchProofMinimumAimHeight)) {
+            throw "Proof camera ground-clearance contract failed for target index $targetIndex."
+        }
+        if ($census.Count -ne 1 -or -not [bool]$census[0].passed -or
+            [int]$census[0].intruders -ne 0) {
+            throw "Proof volume was not exclusive to target index $targetIndex."
+        }
+        if ($occlusion.Count -ne 1 -or -not [bool]$occlusion[0].passed -or
+            -not [bool]$occlusion[0].invoked -or [bool]$occlusion[0].faulted -or
+            -not [bool]$occlusion[0].fractionValid -or [bool]$occlusion[0].hit) {
+            throw "Camera-to-target corridor is not proven clear for target index $targetIndex."
+        }
+        if ($release.Count -ne 1 -or -not [bool]$release[0].accepted) {
+            throw "Proof target was not released before batch advance at target index $targetIndex."
+        }
+    }
+    $eventValidation | Add-Member -NotePropertyName proofStaging -NotePropertyValue ([pscustomobject][ordered]@{
+        anchorForm = Format-FNVFormId $BatchProofAnchorForm
+        targetsStaged = $stageRequests.Count
+        exclusiveVolumeGatesPassed = $censusGates.Count
+        cameraCorridorsPassed = $occlusionGates.Count
+        visualGatesPassed = $visualGates.Count
+        targetsReleased = $releaseEvents.Count
+    })
+}
+
 foreach ($preLaunchEvidence in @($runtimeEvidence) + @($saveFixtureEvidence) + @($rootHookEvidence)) {
     $currentEvidence = Get-FNVFileEvidence $preLaunchEvidence.path $preLaunchEvidence.kind
     if ($currentEvidence.bytes -ne $preLaunchEvidence.bytes -or
@@ -970,8 +1537,8 @@ $captureEvidence = Get-FNVFileEvidence $output 'oracle-jsonl'
 $proofCropEvidence = @($portraitProofCrops | ForEach-Object {
     Get-FNVFileEvidence $_ 'portrait-proof-crop'
 })
-$eventCounts = @($events | Group-Object event | Sort-Object Name | ForEach-Object {
-    [pscustomobject][ordered]@{ event = $_.Name; count = $_.Count }
+$eventCounts = @($streamEventCounts.GetEnumerator() | Sort-Object Key | ForEach-Object {
+    [pscustomobject][ordered]@{ event = [string]$_.Key; count = [int]$_.Value }
 })
 $finishedAt = Get-Date
 $manifestDocument = [ordered]@{
@@ -1002,6 +1569,16 @@ $manifestDocument = [ordered]@{
     expectedIdentity = [ordered]@{
         eventSchema = 'nikami-retail-oracle/v4'
         runtime = 'FalloutNV-1.4.0.525'
+        sidecar = if ($planMode) { [ordered]@{
+            schema = 'nikami-fnv-sidecar-retail/v1'
+            sequenceId = $sidecarPlanSequenceId
+            planPath = $sidecarPlanPath
+            sharedMemoryName = $SharedMemoryName
+            barrierTimeoutMilliseconds = $BarrierTimeoutMilliseconds
+            actors = $sidecarPlanActors.Count
+            actionsPerActor = $sidecarPlanActions.Count
+            captures = $expectedScreenshotCount
+        } } else { $null }
         targetForm = Format-FNVFormId $TargetForm
         targetBaseForm = Format-FNVFormId $ExpectedTargetBaseForm
         batchTargetForms = @($BatchTargetForm | ForEach-Object { Format-FNVFormId $_ })
@@ -1016,6 +1593,18 @@ $manifestDocument = [ordered]@{
         materialShaderFrame = $MaterialShaderFrame
         batchSettleFrames = $BatchSettleFrames
         batchAdvanceFrames = $BatchAdvanceFrames
+        cameraShotKind = $CameraShotKind
+        fullBodyDistanceScale = $FullBodyDistanceScale
+        batchForceWeaponOut = [bool]$BatchForceWeaponOut
+        batchWeaponProbeFrames = $BatchWeaponProbeFrames
+        batchProofStaging = [bool]$BatchProofStaging
+        batchProofAnchorForm = Format-FNVFormId $BatchProofAnchorForm
+        batchProofTarget = @($BatchProofTargetX, $BatchProofTargetY, $BatchProofTargetZ, $BatchProofTargetYaw)
+        batchProofPlayer = @($BatchProofPlayerX, $BatchProofPlayerY, $BatchProofPlayerZ)
+        batchProofMinimumCameraHeight = $BatchProofMinimumCameraHeight
+        batchProofMinimumAimHeight = $BatchProofMinimumAimHeight
+        batchProofInitializationFrames = $BatchProofInitializationFrames
+        batchProofTargetSettleFrames = $BatchProofTargetSettleFrames
     }
     overlay = [ordered]@{
         upstream = [string]$overlayLock.overlays.xnvse.upstream
@@ -1036,6 +1625,7 @@ $manifestDocument = [ordered]@{
             Get-FNVFileEvidence $_ 'framebuffer-derived-retail-screenshot'
         })
         materialCapture = $materialCaptureEvidence
+        validationPayloadOmissions = @('actor-geometry')
         eventCounts = @($eventCounts)
     }
     validation = $eventValidation
@@ -1045,6 +1635,17 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
 
 [pscustomobject][ordered]@{
     schema = "nikami-fnv-retail-oracle-run/v2"
+    sidecar = if ($planMode) { [pscustomobject][ordered]@{
+        enabled = $true
+        sequenceId = $sidecarPlanSequenceId
+        planPath = $sidecarPlanPath
+        sharedMemoryName = $SharedMemoryName
+        barrierTimeoutMilliseconds = $BarrierTimeoutMilliseconds
+        actors = $sidecarPlanActors.Count
+        actionsPerActor = $sidecarPlanActions.Count
+        expectedCaptures = $expectedScreenshotCount
+        completionEvent = 'sidecar-sequence-complete'
+    } } else { $null }
     output = $output
     bytes = (Get-Item -LiteralPath $output).Length
     runManifest = $writtenRunManifest
@@ -1066,6 +1667,8 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     runtimeManifest = $runtimeManifestPath
     replayedTree = $expectedReplayedTree
     isolatedPluginDirectory = $isolatedPluginDirectory
+    ephemeralRunRootRetained = [bool](Test-Path -LiteralPath $ephemeralRunRoot)
+    cleanupWarnings = @($cleanupWarnings)
     retailPluginDirectoryUsed = $false
     isolatedFromFNVXR = $isolateRootHookDlls
     allowedRootHookDlls = -not $isolateRootHookDlls
@@ -1082,6 +1685,18 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     portraitProofCrops = @($portraitProofCrops)
     portraitCamera = [bool]$PortraitCamera
     portraitDistance = $PortraitDistance
+    cameraShotKind = $CameraShotKind
+    fullBodyDistanceScale = $FullBodyDistanceScale
+    batchForceWeaponOut = [bool]$BatchForceWeaponOut
+    batchWeaponProbeFrames = $BatchWeaponProbeFrames
+    batchProofStaging = [bool]$BatchProofStaging
+    batchProofAnchorForm = Format-FNVFormId $BatchProofAnchorForm
+    batchProofTarget = @($BatchProofTargetX, $BatchProofTargetY, $BatchProofTargetZ, $BatchProofTargetYaw)
+    batchProofPlayer = @($BatchProofPlayerX, $BatchProofPlayerY, $BatchProofPlayerZ)
+    batchProofMinimumCameraHeight = $BatchProofMinimumCameraHeight
+    batchProofMinimumAimHeight = $BatchProofMinimumAimHeight
+    batchProofInitializationFrames = $BatchProofInitializationFrames
+    batchProofTargetSettleFrames = $BatchProofTargetSettleFrames
     materialShaderCapture = [bool]$MaterialShaderCapture
     materialShaderFrame = $MaterialShaderFrame
     materialCaptureEvidence = $materialCaptureEvidence

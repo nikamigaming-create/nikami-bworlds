@@ -1,12 +1,17 @@
 #include "nvse/PluginAPI.h"
 #include "nvse/GameForms.h"
+#include "nvse/GameExtraData.h"
 #include "nvse/GameObjects.h"
 #include "nvse/NiObjects.h"
+
+#include "sidecar_protocol.h"
 
 #include <Windows.h>
 #include <d3d9.h>
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -14,6 +19,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
+#include <limits>
+#include <map>
 #include <set>
 #include <sstream>
 #include <string>
@@ -25,6 +32,82 @@ namespace
     {
         float x = 0.f;
         float y = 0.f;
+    };
+
+    struct SidecarActionPlan
+    {
+        UInt32 index = 0;
+        std::string id;
+        std::string playGroup;
+        UInt32 frames = 1;
+    };
+
+    struct SidecarActorPlan
+    {
+        UInt32 index = 0;
+        UInt32 authoredRefForm = 0;
+        UInt32 baseForm = 0;
+        UInt32 weaponForm = 0;
+        UInt32 enableParentForm = 0;
+    };
+
+    struct SidecarPlan
+    {
+        std::string sequenceId;
+        UInt32 anchorForm = 0;
+        UInt32 weatherForm = 0;
+        float gameHour = 12.f;
+        float timeScale = 0.f;
+        float targetX = 0.f;
+        float targetY = 0.f;
+        float targetZ = 0.f;
+        float targetYaw = 0.f;
+        float playerX = 0.f;
+        float playerY = 0.f;
+        float playerZ = 0.f;
+        float fullBodyDistanceScale = 1.6f;
+        float minimumCameraHeight = 48.f;
+        float minimumAimHeight = 16.f;
+        UInt32 initializationFrames = 30;
+        UInt32 targetSettleFrames = 15;
+        std::vector<SidecarActionPlan> actions;
+        std::vector<SidecarActorPlan> actors;
+    };
+
+    enum class SidecarPhase
+    {
+        Disabled,
+        LoadProofVolume,
+        WaitProofVolume,
+        SelectActor,
+        WaitSpawn,
+        StageActor,
+        WaitActor3D,
+        ApplyWeapon,
+        VerifyWeapon,
+        StartAction,
+        SettleAction,
+        PublishRetailReady,
+        WaitOpenMwReady,
+        RequestScreenshot,
+        WaitScreenshotFile,
+        WaitCaptureAck,
+        AdvanceAction,
+        CleanupActor,
+        Complete,
+        Error,
+    };
+
+    struct SidecarScreenshotFile
+    {
+        bool valid = false;
+        unsigned long ordinal = 0;
+        unsigned long long writeTime = 0;
+        unsigned long long size = 0;
+        UInt32 width = 0;
+        UInt32 height = 0;
+        UInt16 bitsPerPixel = 0;
+        std::string path;
     };
 
     PluginHandle gPluginHandle = kPluginHandle_Invalid;
@@ -85,11 +168,46 @@ namespace
     bool gBatchMoveToTargets = false;
     bool gBatchEnableTargets = false;
     bool gBatchTargetLoadRequested = false;
+    bool gBatchProofStaging = false;
+    UInt32 gBatchProofAnchorForm = 0;
+    float gBatchProofTargetX = 0.f;
+    float gBatchProofTargetY = 0.f;
+    float gBatchProofTargetZ = 0.f;
+    float gBatchProofTargetYaw = 0.f;
+    float gBatchProofPlayerX = 0.f;
+    float gBatchProofPlayerY = 0.f;
+    float gBatchProofPlayerZ = 0.f;
+    float gBatchProofMinimumCameraHeight = 48.f;
+    float gBatchProofMinimumAimHeight = 16.f;
+    unsigned int gBatchProofInitializationFrames = 30;
+    unsigned int gBatchProofTargetSettleFrames = 15;
+    bool gBatchProofLoadRequested = false;
+    UInt32 gBatchProofLoadFrame = 0;
+    bool gBatchProofVolumeReady = false;
+    bool gBatchProofCensusLogged = false;
+    UInt32 gBatchProofEvictionCount = 0;
+    bool gBatchTargetStaged = false;
+    UInt32 gBatchTargetStageFrame = 0;
+    bool gBatchTargetStageWaitingLogged = false;
+    bool gBatchVisualStageGateLogged = false;
+    bool gBatchVisualStageGatePassed = false;
+    bool gBatchTargetReleaseRequested = false;
+    bool gBatchTargetReleased = false;
     std::vector<UInt32> gBatchEnableParentForms;
     bool gBatchEnableParentsRequested = false;
     bool gPortraitCamera = false;
     bool gPortraitCameraRequested = false;
     bool gPortraitCameraLogged = false;
+    bool gPortraitCameraWaitingLogged = false;
+    std::string gCameraShotKind = "front-portrait";
+    bool gFullBodyCamera = false;
+    float gFullBodyDistanceScale = 1.6f;
+    bool gFullBodyBoundsWaitingLogged = false;
+    bool gBatchForceWeaponOut = false;
+    bool gBatchWeaponStateLogged = false;
+    bool gBatchWeaponWaitingLogged = false;
+    UInt32 gBatchWeaponProbeStartFrame = 0;
+    unsigned int gBatchWeaponProbeFrames = 12;
     bool gAppearanceLogged = false;
     bool gRenderEnvironmentLogged = false;
     bool gImageSpaceShaderHookLogged = false;
@@ -113,6 +231,39 @@ namespace
     bool gBoneLodWriterCallsHooked = false;
     bool gHighProcessBoneLodPathHooked = false;
     Actor* gDrivenActor = nullptr;
+
+    bool gSidecarPlanActive = false;
+    std::string gSidecarPlanPath;
+    SidecarPlan gSidecarPlan;
+    SidecarPhase gSidecarPhase = SidecarPhase::Disabled;
+    std::size_t gSidecarActorIndex = 0;
+    std::size_t gSidecarActionIndex = 0;
+    UInt32 gSidecarPhaseFrame = 0;
+    UInt32 gSidecarActionStartFrame = 0;
+    UInt32 gSidecarScreenshotRequestFrame = 0;
+    UInt32 gSidecarWeaponVerifyStartFrame = 0;
+    UInt32 gSidecarSpawnRequestFrame = 0;
+    UInt32 gSidecarResolvedRef = 0;
+    bool gSidecarResolvedSpawned = false;
+    UInt64 gSidecarGeneration = 0;
+    bool gSidecarActionAccepted = false;
+    bool gSidecarScreenshotAccepted = false;
+    bool gSidecarWeaponPolicyApplied = false;
+    bool gSidecarRetailReadyPublished = false;
+    std::set<UInt32> gSidecarSpawnBaselineRefs;
+    SidecarScreenshotFile gSidecarScreenshotBaseline;
+    SidecarScreenshotFile gSidecarScreenshotCandidate;
+    SidecarScreenshotFile gSidecarScreenshotReady;
+    UInt32 gSidecarScreenshotStableFrames = 0;
+    unsigned long long gSidecarBarrierTimeoutMs = 30000;
+    unsigned long long gSidecarBarrierDeadlineMs = 0;
+    std::string gSidecarSharedMemoryName;
+    HANDLE gSidecarMapping = nullptr;
+    HANDLE gSidecarRetailReadyEvent = nullptr;
+    HANDLE gSidecarOpenMwReadyEvent = nullptr;
+    HANDLE gSidecarCaptureAckEvent = nullptr;
+    HANDLE gSidecarErrorEvent = nullptr;
+    NikamiFNVSidecar::SharedBlock* gSidecarShared = nullptr;
 
     using DrawPrimitiveFn = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT, UINT);
     using DrawIndexedPrimitiveFn = HRESULT(STDMETHODCALLTYPE*)(
@@ -141,8 +292,11 @@ namespace
 
     constexpr const char* sSchema = "nikami-retail-oracle/v4";
     constexpr const char* sSchemaJson = "\"nikami-retail-oracle/v4\"";
+    constexpr std::size_t sNiAVObjectWorldBoundOffset = 0x20;
     constexpr std::size_t sNiAVObjectLocalTransformOffset = 0x34;
     constexpr std::size_t sNiAVObjectWorldTransformOffset = 0x68;
+
+    bool runReferenceFloatCommand(TESObjectREFR* reference, const char* commandName, float value);
 
     static_assert(sizeof(NiTransform) == 0x34);
 
@@ -602,6 +756,71 @@ namespace
         float z;
     };
 
+    // Retail NiAVObject::m_kWorldBound is a NiBound pointer at runtime offset
+    // 0x20. Read both the pointer and pointee defensively; treating the pointer
+    // bytes as an inline sphere produces a zero radius on every scene object.
+    struct OracleBound
+    {
+        OracleVector3 center;
+        float radius;
+    };
+
+    struct OracleAssembledBound
+    {
+        OracleVector3 minimum;
+        OracleVector3 maximum;
+        UInt32 visitedObjects;
+        UInt32 readableBoundPointers;
+        UInt32 readableBounds;
+        UInt32 nullBoundPointers;
+        UInt32 boundPointerReadFailures;
+        UInt32 boundDataReadFailures;
+        UInt32 acceptedBounds;
+        UInt32 rejectedNonFinite;
+        UInt32 rejectedRadius;
+        UInt32 rejectedDistance;
+        UInt32 readableChildArrays;
+        UInt32 childArrayReadFailures;
+        UInt32 childPointerReadFailures;
+        bool initialized;
+        bool traversalLimitHit;
+    };
+
+    // Runtime 1.4.0.525 point-to-point query packet consumed by TES::RayCast
+    // at 0x00458440. This is a clean-room, zero-initialized adaptation of the
+    // engine ABI; do not call JIP-LN's naked internal helper from another frame.
+    struct alignas(16) OracleRayCastData
+    {
+        float position0[4];        // 00, Havok units
+        float position1[4];        // 10, Havok units
+        UInt8 byte20;              // 20
+        UInt8 pad21[3];
+        UInt32 collisionFilter;    // 24: layer, flags, group
+        UInt32 unknown28[6];       // 28
+        float hitFraction;         // 40
+        UInt32 unknown44[15];      // 44
+        void* collisionBody;       // 80
+        UInt32 unknown84[3];       // 84
+        float vector90[4];         // 90
+        UInt32 unknownA0[3];       // A0
+        UInt8 byteAC;              // AC
+        UInt8 padAD[3];
+    };
+
+    struct OracleRayCastResult
+    {
+        bool filterAvailable;
+        bool tesAvailable;
+        bool invoked;
+        bool faulted;
+        bool fractionValid;
+        bool hit;
+        bool passed;
+        UInt32 collisionFilter;
+        float hitFraction;
+        NiAVObject* hitObject;
+    };
+
     // MiddleHighProcess::FurnitureMark at 0x148 in the retail 1.4.0.525 runtime.
     // Keep this private to the oracle: the public xNVSE headers deliberately leave
     // the surrounding process members unnamed, while JIP-LN documents this layout.
@@ -622,6 +841,13 @@ namespace
     static_assert(sizeof(OracleTimeController) == 0x34);
     static_assert(sizeof(OracleSetting) == 0x0c);
     static_assert(sizeof(OracleVector3) == 0x0c);
+    static_assert(sizeof(OracleBound) == 0x10);
+    static_assert(alignof(OracleRayCastData) == 0x10);
+    static_assert(sizeof(OracleRayCastData) == 0xB0);
+    static_assert(offsetof(OracleRayCastData, collisionFilter) == 0x24);
+    static_assert(offsetof(OracleRayCastData, hitFraction) == 0x40);
+    static_assert(offsetof(OracleRayCastData, collisionBody) == 0x80);
+    static_assert(offsetof(OracleRayCastData, vector90) == 0x90);
     static_assert(sizeof(OracleFurnitureMark) == 0x10);
     template <class T>
     bool safeRead(const void* address, T& value)
@@ -631,6 +857,304 @@ namespace
         SIZE_T bytesRead = 0;
         return ReadProcessMemory(GetCurrentProcess(), address, &value, sizeof(T), &bytesRead) != FALSE
             && bytesRead == sizeof(T);
+    }
+
+    bool readPlayerRayCastFilter(PlayerCharacter* player, UInt32& filter)
+    {
+        filter = 0;
+        if (player == nullptr)
+            return false;
+        UInt8* process = nullptr;
+        UInt8* controller = nullptr;
+        UInt8* wrapper = nullptr;
+        UInt8* phantom = nullptr;
+        return safeRead(reinterpret_cast<const UInt8*>(player) + 0x68, process)
+            && process != nullptr
+            && safeRead(process + 0x138, controller) && controller != nullptr
+            && safeRead(controller + 0x594, wrapper) && wrapper != nullptr
+            && safeRead(wrapper + 0x08, phantom) && phantom != nullptr
+            && safeRead(phantom + 0x2C, filter);
+    }
+
+    NiAVObject* invokeEngineRayCast(
+        void* tes, OracleRayCastData* data, bool& invoked, bool& faulted)
+    {
+        invoked = false;
+        faulted = false;
+        __try
+        {
+            using RayCastFunction = NiAVObject* (__thiscall*)(void*, OracleRayCastData*, UInt32);
+            invoked = true;
+            return reinterpret_cast<RayCastFunction>(0x00458440)(tes, data, 1);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            faulted = true;
+            return nullptr;
+        }
+    }
+
+    OracleRayCastResult castProofCorridor(PlayerCharacter* player,
+        float startX, float startY, float startZ, float endX, float endY, float endZ)
+    {
+        OracleRayCastResult result = {};
+        UInt32 playerFilter = 0;
+        result.filterAvailable = readPlayerRayCastFilter(player, playerFilter);
+        void* tes = nullptr;
+        result.tesAvailable = safeRead(reinterpret_cast<void*>(0x011DEA10), tes) && tes != nullptr;
+        if (!result.filterAvailable || !result.tesAvailable)
+            return result;
+
+        constexpr float gameToHavok = 0.1428749859f; // exact engine constant 0x3E124DD2
+        OracleRayCastData data = {};
+        data.position0[0] = startX * gameToHavok;
+        data.position0[1] = startY * gameToHavok;
+        data.position0[2] = startZ * gameToHavok;
+        data.position1[0] = endX * gameToHavok;
+        data.position1[1] = endY * gameToHavok;
+        data.position1[2] = endZ * gameToHavok;
+        data.byte20 = 0;
+        // Preserve only the player's collision group; query projectile layer 6.
+        result.collisionFilter = (playerFilter & 0xFFFF0000u) | 6u;
+        data.collisionFilter = result.collisionFilter;
+        data.hitFraction = 1.f;
+        data.unknown44[0] = 0xFFFFFFFFu;
+        data.unknown44[3] = 0xFFFFFFFFu;
+        result.hitObject = invokeEngineRayCast(
+            tes, &data, result.invoked, result.faulted);
+        result.hitFraction = data.hitFraction;
+        result.fractionValid = std::isfinite(data.hitFraction)
+            && data.hitFraction >= 0.f && data.hitFraction <= 1.f;
+        result.hit = result.fractionValid && data.hitFraction < 0.99999f;
+        result.passed = result.invoked && !result.faulted && result.fractionValid && !result.hit;
+        return result;
+    }
+
+    enum class OracleBoundValidation
+    {
+        Accepted,
+        NonFinite,
+        Radius,
+        Distance,
+    };
+
+    bool readObjectWorldBound(
+        const NiAVObject* object, OracleBound*& address, bool& pointerReadable, OracleBound& bound)
+    {
+        address = nullptr;
+        pointerReadable = object != nullptr
+            && safeRead(reinterpret_cast<const UInt8*>(object) + sNiAVObjectWorldBoundOffset, address);
+        return pointerReadable && address != nullptr && safeRead(address, bound);
+    }
+
+    OracleBoundValidation validateActorWorldBound(const OracleBound& bound, const Actor* actor)
+    {
+        if (actor == nullptr || !std::isfinite(bound.center.x) || !std::isfinite(bound.center.y)
+            || !std::isfinite(bound.center.z) || !std::isfinite(bound.radius))
+            return OracleBoundValidation::NonFinite;
+        if (bound.radius < 0.01f || bound.radius > 2048.f)
+            return OracleBoundValidation::Radius;
+        const double dx = static_cast<double>(bound.center.x) - actor->posX;
+        const double dy = static_cast<double>(bound.center.y) - actor->posY;
+        const double dz = static_cast<double>(bound.center.z) - actor->posZ;
+        const double maximumOffset = 4096.0 + bound.radius;
+        if (dx * dx + dy * dy + dz * dz > maximumOffset * maximumOffset)
+            return OracleBoundValidation::Distance;
+        return OracleBoundValidation::Accepted;
+    }
+
+    void expandAssembledBound(OracleAssembledBound& assembled, const OracleBound& bound)
+    {
+        const OracleVector3 minimum = {
+            bound.center.x - bound.radius,
+            bound.center.y - bound.radius,
+            bound.center.z - bound.radius,
+        };
+        const OracleVector3 maximum = {
+            bound.center.x + bound.radius,
+            bound.center.y + bound.radius,
+            bound.center.z + bound.radius,
+        };
+        if (!assembled.initialized)
+        {
+            assembled.minimum = minimum;
+            assembled.maximum = maximum;
+            assembled.initialized = true;
+            return;
+        }
+        assembled.minimum.x = (std::min)(assembled.minimum.x, minimum.x);
+        assembled.minimum.y = (std::min)(assembled.minimum.y, minimum.y);
+        assembled.minimum.z = (std::min)(assembled.minimum.z, minimum.z);
+        assembled.maximum.x = (std::max)(assembled.maximum.x, maximum.x);
+        assembled.maximum.y = (std::max)(assembled.maximum.y, maximum.y);
+        assembled.maximum.z = (std::max)(assembled.maximum.z, maximum.z);
+    }
+
+    void collectActorWorldBounds(
+        Actor* actor, NiAVObject* object, unsigned int depth, OracleAssembledBound& assembled)
+    {
+        constexpr UInt32 maximumObjects = 8192;
+        constexpr unsigned int maximumDepth = 64;
+        constexpr unsigned int maximumChildrenPerNode = 2048;
+        if (actor == nullptr || object == nullptr)
+            return;
+        if (depth > maximumDepth || assembled.visitedObjects >= maximumObjects)
+        {
+            assembled.traversalLimitHit = true;
+            return;
+        }
+        ++assembled.visitedObjects;
+
+        OracleBound* candidateAddress = nullptr;
+        bool candidatePointerReadable = false;
+        OracleBound candidate = {};
+        const bool candidateReadable = readObjectWorldBound(
+            object, candidateAddress, candidatePointerReadable, candidate);
+        if (!candidatePointerReadable)
+            ++assembled.boundPointerReadFailures;
+        else if (candidateAddress == nullptr)
+            ++assembled.nullBoundPointers;
+        else
+            ++assembled.readableBoundPointers;
+        if (!candidateReadable && candidateAddress != nullptr)
+            ++assembled.boundDataReadFailures;
+        if (candidateReadable)
+        {
+            ++assembled.readableBounds;
+            switch (validateActorWorldBound(candidate, actor))
+            {
+                case OracleBoundValidation::Accepted:
+                    ++assembled.acceptedBounds;
+                    expandAssembledBound(assembled, candidate);
+                    break;
+                case OracleBoundValidation::NonFinite: ++assembled.rejectedNonFinite; break;
+                case OracleBoundValidation::Radius: ++assembled.rejectedRadius; break;
+                case OracleBoundValidation::Distance: ++assembled.rejectedDistance; break;
+            }
+        }
+
+        NiNode* node = object->GetAsNiNode();
+        if (node == nullptr)
+            return;
+        NiTArray<NiAVObject*> children = {};
+        if (!safeRead(&node->m_children, children))
+        {
+            ++assembled.childArrayReadFailures;
+            return;
+        }
+        ++assembled.readableChildArrays;
+        const unsigned int count = (std::min)(
+            (std::min)(static_cast<unsigned int>(children.firstFreeEntry),
+                static_cast<unsigned int>(children.capacity)),
+            maximumChildrenPerNode);
+        if (count > 0 && children.data == nullptr)
+        {
+            ++assembled.childArrayReadFailures;
+            return;
+        }
+        for (unsigned int index = 0; index < count; ++index)
+        {
+            NiAVObject* child = nullptr;
+            if (!safeRead(children.data + index, child))
+            {
+                ++assembled.childPointerReadFailures;
+                continue;
+            }
+            if (child != nullptr)
+                collectActorWorldBounds(actor, child, depth + 1, assembled);
+        }
+    }
+
+    bool finalizeAssembledBound(const OracleAssembledBound& assembled, OracleBound& bound)
+    {
+        if (!assembled.initialized || assembled.acceptedBounds == 0 || assembled.traversalLimitHit
+            || assembled.boundPointerReadFailures != 0 || assembled.boundDataReadFailures != 0
+            || assembled.childArrayReadFailures != 0 || assembled.childPointerReadFailures != 0)
+            return false;
+        bound.center.x = (assembled.minimum.x + assembled.maximum.x) * 0.5f;
+        bound.center.y = (assembled.minimum.y + assembled.maximum.y) * 0.5f;
+        bound.center.z = (assembled.minimum.z + assembled.maximum.z) * 0.5f;
+        const float halfX = (assembled.maximum.x - assembled.minimum.x) * 0.5f;
+        const float halfY = (assembled.maximum.y - assembled.minimum.y) * 0.5f;
+        const float halfZ = (assembled.maximum.z - assembled.minimum.z) * 0.5f;
+        bound.radius = std::sqrt(halfX * halfX + halfY * halfY + halfZ * halfZ);
+        return std::isfinite(bound.center.x) && std::isfinite(bound.center.y)
+            && std::isfinite(bound.center.z) && std::isfinite(bound.radius)
+            && bound.radius >= 8.f && bound.radius <= 4096.f && halfZ >= 16.f;
+    }
+
+    void writeFiniteFloat(std::ostream& out, float value)
+    {
+        if (std::isfinite(value))
+            out << value;
+        else
+            out << "null";
+    }
+
+    void writeBoundVector(std::ostream& out, const OracleVector3& value)
+    {
+        out << '[';
+        writeFiniteFloat(out, value.x);
+        out << ',';
+        writeFiniteFloat(out, value.y);
+        out << ',';
+        writeFiniteFloat(out, value.z);
+        out << ']';
+    }
+
+    void writeRawBoundDiagnostics(
+        std::ostream& out, bool pointerReadable, const OracleBound* address, bool readable,
+        OracleBoundValidation validation, const OracleBound& bound)
+    {
+        out << "{\"pointerReadable\":" << (pointerReadable ? "true" : "false")
+            << ",\"address\":";
+        if (address != nullptr)
+            out << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(address));
+        else
+            out << "null";
+        out << ",\"readable\":" << (readable ? "true" : "false")
+            << ",\"validation\":";
+        switch (validation)
+        {
+            case OracleBoundValidation::Accepted: out << "\"accepted\""; break;
+            case OracleBoundValidation::NonFinite: out << "\"nonfinite\""; break;
+            case OracleBoundValidation::Radius: out << "\"radius\""; break;
+            case OracleBoundValidation::Distance: out << "\"distance\""; break;
+        }
+        out << ",\"center\":";
+        writeBoundVector(out, bound.center);
+        out << ",\"radius\":";
+        writeFiniteFloat(out, bound.radius);
+        out << '}';
+    }
+
+    void writeAssembledBoundDiagnostics(
+        std::ostream& out, bool valid, const OracleAssembledBound& assembled, const OracleBound& bound)
+    {
+        out << "{\"valid\":" << (valid ? "true" : "false")
+            << ",\"visitedObjects\":" << assembled.visitedObjects
+            << ",\"readableBoundPointers\":" << assembled.readableBoundPointers
+            << ",\"readableBounds\":" << assembled.readableBounds
+            << ",\"nullBoundPointers\":" << assembled.nullBoundPointers
+            << ",\"boundPointerReadFailures\":" << assembled.boundPointerReadFailures
+            << ",\"boundDataReadFailures\":" << assembled.boundDataReadFailures
+            << ",\"acceptedBounds\":" << assembled.acceptedBounds
+            << ",\"rejectedNonFinite\":" << assembled.rejectedNonFinite
+            << ",\"rejectedRadius\":" << assembled.rejectedRadius
+            << ",\"rejectedDistance\":" << assembled.rejectedDistance
+            << ",\"readableChildArrays\":" << assembled.readableChildArrays
+            << ",\"childArrayReadFailures\":" << assembled.childArrayReadFailures
+            << ",\"childPointerReadFailures\":" << assembled.childPointerReadFailures
+            << ",\"traversalLimitHit\":" << (assembled.traversalLimitHit ? "true" : "false")
+            << ",\"minimum\":";
+        writeBoundVector(out, assembled.minimum);
+        out << ",\"maximum\":";
+        writeBoundVector(out, assembled.maximum);
+        out << ",\"center\":";
+        writeBoundVector(out, bound.center);
+        out << ",\"radius\":";
+        writeFiniteFloat(out, bound.radius);
+        out << '}';
     }
 
     std::string safeRuntimeString(const char* address, std::size_t maximumLength = 512)
@@ -778,6 +1302,497 @@ namespace
         return result;
     }
 
+    std::vector<std::string> splitSidecarPlanLine(const std::string& line)
+    {
+        std::vector<std::string> fields;
+        std::size_t offset = 0;
+        while (offset <= line.size())
+        {
+            const std::size_t separator = line.find('\t', offset);
+            fields.push_back(line.substr(offset,
+                separator == std::string::npos ? std::string::npos : separator - offset));
+            if (separator == std::string::npos)
+                break;
+            offset = separator + 1;
+        }
+        return fields;
+    }
+
+    bool parseSidecarUInt(const std::string& text, UInt32& value)
+    {
+        if (text.empty())
+            return false;
+        char* end = nullptr;
+        const unsigned long parsed = std::strtoul(text.c_str(), &end, 0);
+        if (end == text.c_str() || *end != '\0' || parsed > (std::numeric_limits<UInt32>::max)())
+            return false;
+        value = static_cast<UInt32>(parsed);
+        return true;
+    }
+
+    bool parseSidecarFloat(const std::string& text, float& value)
+    {
+        if (text.empty())
+            return false;
+        char* end = nullptr;
+        const float parsed = std::strtof(text.c_str(), &end);
+        if (end == text.c_str() || *end != '\0' || !std::isfinite(parsed))
+            return false;
+        value = parsed;
+        return true;
+    }
+
+    bool isSidecarToken(const std::string& value)
+    {
+        if (value.empty() || value.size() > 127)
+            return false;
+        for (const unsigned char ch : value)
+        {
+            if (!(std::isalnum(ch) || ch == '_' || ch == '-' || ch == '.'))
+                return false;
+        }
+        return true;
+    }
+
+    bool isSidecarConsoleToken(const std::string& value)
+    {
+        if (value.empty() || value.size() > 63)
+            return false;
+        for (const unsigned char ch : value)
+        {
+            if (!(std::isalnum(ch) || ch == '_'))
+                return false;
+        }
+        return true;
+    }
+
+    bool loadSidecarPlan(const std::string& path, SidecarPlan& result, std::string& error)
+    {
+        std::ifstream input(path, std::ios::in | std::ios::binary);
+        if (!input)
+        {
+            error = "open-failed";
+            return false;
+        }
+
+        input.seekg(0, std::ios::end);
+        const std::streamoff fileBytes = input.tellg();
+        if (fileBytes <= 0 || fileBytes > 16 * 1024 * 1024)
+        {
+            error = "invalid-plan-file-size";
+            return false;
+        }
+        input.seekg(0, std::ios::beg);
+
+        SidecarPlan parsed;
+        std::string line;
+        UInt32 lineNumber = 0;
+        bool headerRead = false;
+        bool endRead = false;
+        enum class RecordPhase
+        {
+            Header,
+            Sequence,
+            Scene,
+            Actions,
+            Actors,
+            End,
+        };
+        RecordPhase recordPhase = RecordPhase::Header;
+        std::set<std::string> actionIds;
+        std::set<UInt32> authoredReferences;
+        while (std::getline(input, line))
+        {
+            ++lineNumber;
+            if (line.size() > 4096 || line.find('\0') != std::string::npos)
+            {
+                error = "invalid-line-size-or-nul-line-" + std::to_string(lineNumber);
+                return false;
+            }
+            if (!line.empty() && line.back() == '\r')
+                line.pop_back();
+            if (lineNumber == 1 && line.size() >= 3
+                && static_cast<unsigned char>(line[0]) == 0xEF
+                && static_cast<unsigned char>(line[1]) == 0xBB
+                && static_cast<unsigned char>(line[2]) == 0xBF)
+                line.erase(0, 3);
+            if (line.empty())
+                continue;
+            if (endRead)
+            {
+                error = "record-after-end-line-" + std::to_string(lineNumber);
+                return false;
+            }
+            if (line[0] == '#')
+                continue;
+            if (!headerRead)
+            {
+                if (line != "nikami-fnv-retail-plan-v1")
+                {
+                    error = "bad-header-line-" + std::to_string(lineNumber);
+                    return false;
+                }
+                headerRead = true;
+                recordPhase = RecordPhase::Sequence;
+                continue;
+            }
+
+            const std::vector<std::string> fields = splitSidecarPlanLine(line);
+            if (fields.empty())
+                continue;
+            if (fields[0] == "sequence")
+            {
+                if (recordPhase != RecordPhase::Sequence || fields.size() != 2
+                    || !parsed.sequenceId.empty() || !isSidecarToken(fields[1]))
+                {
+                    error = "bad-sequence-line-" + std::to_string(lineNumber);
+                    return false;
+                }
+                parsed.sequenceId = fields[1];
+                recordPhase = RecordPhase::Scene;
+            }
+            else if (fields[0] == "scene")
+            {
+                if (recordPhase != RecordPhase::Scene || fields.size() != 17
+                    || parsed.anchorForm != 0
+                    || !parseSidecarUInt(fields[1], parsed.anchorForm)
+                    || !parseSidecarUInt(fields[2], parsed.weatherForm)
+                    || !parseSidecarFloat(fields[3], parsed.gameHour)
+                    || !parseSidecarFloat(fields[4], parsed.timeScale)
+                    || !parseSidecarFloat(fields[5], parsed.targetX)
+                    || !parseSidecarFloat(fields[6], parsed.targetY)
+                    || !parseSidecarFloat(fields[7], parsed.targetZ)
+                    || !parseSidecarFloat(fields[8], parsed.targetYaw)
+                    || !parseSidecarFloat(fields[9], parsed.playerX)
+                    || !parseSidecarFloat(fields[10], parsed.playerY)
+                    || !parseSidecarFloat(fields[11], parsed.playerZ)
+                    || !parseSidecarFloat(fields[12], parsed.fullBodyDistanceScale)
+                    || !parseSidecarFloat(fields[13], parsed.minimumCameraHeight)
+                    || !parseSidecarFloat(fields[14], parsed.minimumAimHeight)
+                    || !parseSidecarUInt(fields[15], parsed.initializationFrames)
+                    || !parseSidecarUInt(fields[16], parsed.targetSettleFrames))
+                {
+                    error = "bad-scene-line-" + std::to_string(lineNumber);
+                    return false;
+                }
+                recordPhase = RecordPhase::Actions;
+            }
+            else if (fields[0] == "action")
+            {
+                SidecarActionPlan action;
+                if (recordPhase != RecordPhase::Actions || parsed.actions.size() >= 64
+                    || fields.size() != 5 || !parseSidecarUInt(fields[1], action.index)
+                    || action.index != parsed.actions.size() || !isSidecarToken(fields[2])
+                    || !isSidecarConsoleToken(fields[3])
+                    || !parseSidecarUInt(fields[4], action.frames)
+                    || action.frames == 0 || action.frames > 36000
+                    || !actionIds.insert(fields[2]).second)
+                {
+                    error = "bad-action-line-" + std::to_string(lineNumber);
+                    return false;
+                }
+                action.id = fields[2];
+                action.playGroup = fields[3];
+                parsed.actions.push_back(action);
+            }
+            else if (fields[0] == "actor")
+            {
+                SidecarActorPlan actor;
+                if ((recordPhase != RecordPhase::Actions && recordPhase != RecordPhase::Actors)
+                    || parsed.actions.empty() || parsed.actors.size() >= 8192
+                    || fields.size() != 6 || !parseSidecarUInt(fields[1], actor.index)
+                    || actor.index != parsed.actors.size()
+                    || !parseSidecarUInt(fields[2], actor.authoredRefForm)
+                    || !parseSidecarUInt(fields[3], actor.baseForm)
+                    || !parseSidecarUInt(fields[4], actor.weaponForm)
+                    || !parseSidecarUInt(fields[5], actor.enableParentForm)
+                    || actor.baseForm == 0
+                    || (actor.authoredRefForm != 0
+                        && !authoredReferences.insert(actor.authoredRefForm).second))
+                {
+                    error = "bad-actor-line-" + std::to_string(lineNumber);
+                    return false;
+                }
+                parsed.actors.push_back(actor);
+                recordPhase = RecordPhase::Actors;
+            }
+            else if (fields[0] == "end")
+            {
+                if (recordPhase != RecordPhase::Actors || parsed.actors.empty()
+                    || fields.size() != 1)
+                {
+                    error = "bad-end-line-" + std::to_string(lineNumber);
+                    return false;
+                }
+                endRead = true;
+                recordPhase = RecordPhase::End;
+            }
+            else
+            {
+                error = "unknown-record-line-" + std::to_string(lineNumber);
+                return false;
+            }
+        }
+
+        if (input.bad())
+        {
+            error = "plan-read-failed";
+            return false;
+        }
+
+        if (!headerRead || !endRead || parsed.sequenceId.empty() || parsed.anchorForm == 0
+            || parsed.weatherForm == 0 || parsed.actions.empty() || parsed.actors.empty()
+            || recordPhase != RecordPhase::End
+            || parsed.gameHour < 0.f || parsed.gameHour >= 24.f || parsed.timeScale < 0.f
+            || parsed.timeScale > 10000.f
+            || parsed.fullBodyDistanceScale < 1.25f || parsed.fullBodyDistanceScale > 10.f
+            || parsed.minimumCameraHeight < parsed.minimumAimHeight
+            || parsed.minimumAimHeight < 0.f || parsed.initializationFrames == 0
+            || parsed.initializationFrames > 1200 || parsed.targetSettleFrames == 0
+            || parsed.targetSettleFrames > 600)
+        {
+            error = "incomplete-plan";
+            return false;
+        }
+        result = std::move(parsed);
+        return true;
+    }
+
+    UInt32 sidecarCrc32(const char* data, std::size_t size)
+    {
+        UInt32 crc = 0xFFFFFFFFu;
+        for (std::size_t index = 0; index < size; ++index)
+        {
+            crc ^= static_cast<unsigned char>(data[index]);
+            for (unsigned int bit = 0; bit < 8; ++bit)
+                crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+        }
+        return ~crc;
+    }
+
+    bool lockSidecarShared()
+    {
+        if (gSidecarShared == nullptr)
+            return false;
+        auto* mutex = reinterpret_cast<volatile LONG*>(&gSidecarShared->header.mutex);
+        for (unsigned int attempt = 0; attempt < 256; ++attempt)
+        {
+            if (InterlockedCompareExchange(mutex, 1, 0) == 0)
+                return true;
+            SwitchToThread();
+        }
+        return false;
+    }
+
+    void unlockSidecarShared()
+    {
+        if (gSidecarShared != nullptr)
+        {
+            MemoryBarrier();
+            InterlockedExchange(reinterpret_cast<volatile LONG*>(&gSidecarShared->header.mutex), 0);
+        }
+    }
+
+    std::string sidecarObjectName(const char* suffix)
+    {
+        return gSidecarSharedMemoryName + suffix;
+    }
+
+    void closeSidecarSharedMemory()
+    {
+        if (gSidecarShared != nullptr)
+        {
+            UnmapViewOfFile(gSidecarShared);
+            gSidecarShared = nullptr;
+        }
+        HANDLE* handles[] = {
+            &gSidecarRetailReadyEvent,
+            &gSidecarOpenMwReadyEvent,
+            &gSidecarCaptureAckEvent,
+            &gSidecarErrorEvent,
+            &gSidecarMapping,
+        };
+        for (HANDLE* handle : handles)
+        {
+            if (*handle != nullptr)
+            {
+                CloseHandle(*handle);
+                *handle = nullptr;
+            }
+        }
+    }
+
+    bool validateSidecarCoordinatorPlanStateLocked(std::string& error)
+    {
+        if (gSidecarShared == nullptr)
+        {
+            error = "shared-memory-unavailable";
+            return false;
+        }
+        const auto& header = gSidecarShared->header;
+        const std::size_t sequenceLength
+            = strnlen_s(header.sequenceId, std::size(header.sequenceId));
+        if (sequenceLength == std::size(header.sequenceId)
+            || sequenceLength == 0
+            || gSidecarPlan.sequenceId != std::string(header.sequenceId, sequenceLength))
+        {
+            error = "shared-memory-sequence-mismatch";
+            return false;
+        }
+        if ((header.flags & NikamiFNVSidecar::ErrorFlag) != 0
+            || header.errorCode != static_cast<UInt32>(NikamiFNVSidecar::ErrorCode::None))
+        {
+            error = "shared-memory-peer-error-active";
+            return false;
+        }
+        if (header.state != static_cast<UInt32>(NikamiFNVSidecar::State::PlanLoaded)
+            || header.actorIndex != 0 || header.actionIndex != 0
+            || header.actionCount != static_cast<UInt32>(gSidecarPlan.actions.size())
+            || header.generation != 0)
+        {
+            error = "shared-memory-initial-state-mismatch";
+            return false;
+        }
+        return true;
+    }
+
+    bool initializeSidecarSharedMemory(std::string& error)
+    {
+        if (gSidecarSharedMemoryName.empty() || gSidecarSharedMemoryName.size() > 180)
+        {
+            error = "invalid-shared-memory-name";
+            return false;
+        }
+        gSidecarMapping = OpenFileMappingA(
+            FILE_MAP_ALL_ACCESS, FALSE, gSidecarSharedMemoryName.c_str());
+        if (gSidecarMapping == nullptr)
+        {
+            error = "open-file-mapping-failed-" + std::to_string(GetLastError());
+            return false;
+        }
+        gSidecarShared = static_cast<NikamiFNVSidecar::SharedBlock*>(MapViewOfFile(
+            gSidecarMapping, FILE_MAP_ALL_ACCESS, 0, 0, NikamiFNVSidecar::SharedBlockBytes));
+        if (gSidecarShared == nullptr)
+        {
+            error = "map-view-failed-" + std::to_string(GetLastError());
+            closeSidecarSharedMemory();
+            return false;
+        }
+        if (gSidecarShared->header.magic != NikamiFNVSidecar::Magic
+            || gSidecarShared->header.version != NikamiFNVSidecar::Version
+            || gSidecarShared->header.headerBytes != NikamiFNVSidecar::SharedHeaderBytes
+            || gSidecarShared->header.totalBytes != NikamiFNVSidecar::SharedBlockBytes)
+        {
+            error = "shared-memory-contract-mismatch";
+            closeSidecarSharedMemory();
+            return false;
+        }
+        if (!lockSidecarShared())
+        {
+            error = "shared-memory-initial-lock-failed";
+            closeSidecarSharedMemory();
+            return false;
+        }
+        const bool initialStateValid = validateSidecarCoordinatorPlanStateLocked(error);
+        unlockSidecarShared();
+        if (!initialStateValid)
+        {
+            closeSidecarSharedMemory();
+            return false;
+        }
+
+        const std::string retailReadyName = sidecarObjectName(".retail-ready");
+        const std::string openMwReadyName = sidecarObjectName(".openmw-ready");
+        const std::string captureAckName = sidecarObjectName(".capture-ack");
+        const std::string errorName = sidecarObjectName(".error");
+        constexpr DWORD eventAccess = EVENT_MODIFY_STATE | SYNCHRONIZE;
+        gSidecarRetailReadyEvent = OpenEventA(eventAccess, FALSE, retailReadyName.c_str());
+        gSidecarOpenMwReadyEvent = OpenEventA(eventAccess, FALSE, openMwReadyName.c_str());
+        gSidecarCaptureAckEvent = OpenEventA(eventAccess, FALSE, captureAckName.c_str());
+        gSidecarErrorEvent = OpenEventA(eventAccess, FALSE, errorName.c_str());
+        if (gSidecarRetailReadyEvent == nullptr || gSidecarOpenMwReadyEvent == nullptr
+            || gSidecarCaptureAckEvent == nullptr || gSidecarErrorEvent == nullptr)
+        {
+            error = "open-shared-event-failed-" + std::to_string(GetLastError());
+            closeSidecarSharedMemory();
+            return false;
+        }
+        return true;
+    }
+
+    bool publishSidecarRetailPlanPayload(const std::string& payload, std::string& error)
+    {
+        if (payload.size() > NikamiFNVSidecar::PayloadBytes
+            || gSidecarShared == nullptr || !lockSidecarShared())
+        {
+            error = "plan-payload-too-large-or-lock-failed";
+            return false;
+        }
+        if (!validateSidecarCoordinatorPlanStateLocked(error))
+        {
+            unlockSidecarShared();
+            return false;
+        }
+        const std::size_t size = payload.size();
+        std::memcpy(gSidecarShared->retailPayload, payload.data(), size);
+        if (size < NikamiFNVSidecar::PayloadBytes)
+            gSidecarShared->retailPayload[size] = '\0';
+        gSidecarShared->header.retailPayloadLength = static_cast<UInt32>(size);
+        gSidecarShared->header.retailPayloadCrc32 = sidecarCrc32(payload.data(), size);
+        gSidecarShared->header.retailFrame = gFrame;
+        unlockSidecarShared();
+        return true;
+    }
+
+    bool publishSidecarRetailPayload(const std::string& payload, NikamiFNVSidecar::State state,
+        UInt32 flagsToSet, bool replaceReadyFlags)
+    {
+        if (payload.size() > NikamiFNVSidecar::PayloadBytes
+            || gSidecarShared == nullptr || !lockSidecarShared())
+            return false;
+        const std::size_t size = payload.size();
+        std::memcpy(gSidecarShared->retailPayload, payload.data(), size);
+        if (size < NikamiFNVSidecar::PayloadBytes)
+            gSidecarShared->retailPayload[size] = '\0';
+        gSidecarShared->header.retailPayloadLength = static_cast<UInt32>(size);
+        gSidecarShared->header.retailPayloadCrc32 = sidecarCrc32(payload.data(), size);
+        gSidecarShared->header.retailFrame = gFrame;
+        gSidecarShared->header.state = static_cast<UInt32>(state);
+        if (replaceReadyFlags)
+        {
+            constexpr UInt32 transient = NikamiFNVSidecar::RetailReadyFlag
+                | NikamiFNVSidecar::OpenMwReadyFlag | NikamiFNVSidecar::RetailCapturedFlag
+                | NikamiFNVSidecar::OpenMwCapturedFlag | NikamiFNVSidecar::CaptureAckFlag;
+            gSidecarShared->header.flags &= ~transient;
+        }
+        gSidecarShared->header.flags |= flagsToSet;
+        unlockSidecarShared();
+        return true;
+    }
+
+    void setSidecarSharedError(NikamiFNVSidecar::ErrorCode code, const std::string& message)
+    {
+        if (gSidecarShared != nullptr && lockSidecarShared())
+        {
+            const bool peerErrorActive
+                = (gSidecarShared->header.flags & NikamiFNVSidecar::ErrorFlag) != 0
+                || gSidecarShared->header.errorCode
+                    != static_cast<UInt32>(NikamiFNVSidecar::ErrorCode::None);
+            if (!peerErrorActive)
+            {
+                gSidecarShared->header.state
+                    = static_cast<UInt32>(NikamiFNVSidecar::State::Error);
+                gSidecarShared->header.flags |= NikamiFNVSidecar::ErrorFlag;
+                gSidecarShared->header.errorCode = static_cast<UInt32>(code);
+                strncpy_s(gSidecarShared->header.errorMessage, message.c_str(), _TRUNCATE);
+                gSidecarShared->header.retailFrame = gFrame;
+            }
+            unlockSidecarShared();
+        }
+        if (gSidecarErrorEvent != nullptr)
+            SetEvent(gSidecarErrorEvent);
+    }
+
     unsigned int handGripIndex(UInt8 value)
     {
         if (value == TESObjectWEAP::eHandGrip_Default)
@@ -826,7 +1841,15 @@ namespace
                        "\"boneLodWriterCallsHooked\":" << (gBoneLodWriterCallsHooked ? "true" : "false") << ','
                     << "\"highProcessBoneLodPathHooked\":"
                     << (gHighProcessBoneLodPathHooked ? "true" : "false") << ','
-                    << "\"niAvObjectTransformLayout\":\"local@0x34/world@0x68/NiTransform@0x34\"}\n";
+                    << "\"niAvObjectTransformLayout\":\"local@0x34/world@0x68/NiTransform@0x34\","
+                    << "\"batchProofStaging\":" << (gBatchProofStaging ? "true" : "false")
+                    << ",\"batchProofAnchorForm\":" << gBatchProofAnchorForm
+                    << ",\"batchProofTarget\":[" << gBatchProofTargetX << ',' << gBatchProofTargetY
+                    << ',' << gBatchProofTargetZ << ',' << gBatchProofTargetYaw << ']'
+                    << ",\"batchProofMinimumCameraHeight\":"
+                    << gBatchProofMinimumCameraHeight
+                    << ",\"batchProofMinimumAimHeight\":"
+                    << gBatchProofMinimumAimHeight << "}\n";
             gOutput.flush();
         }
     }
@@ -1177,6 +2200,25 @@ namespace
         return nullptr;
     }
 
+    NiAVObject* findNodeRecursivePrefix(NiAVObject* object, const char* prefix, unsigned int depth = 0)
+    {
+        if (object == nullptr || prefix == nullptr || depth > 64)
+            return nullptr;
+        const std::size_t prefixLength = std::strlen(prefix);
+        if (object->m_pcName != nullptr && _strnicmp(object->m_pcName, prefix, prefixLength) == 0)
+            return object;
+        NiNode* node = object->GetAsNiNode();
+        if (node == nullptr || node->m_children.data == nullptr)
+            return nullptr;
+        const unsigned int count = std::min<unsigned int>(node->m_children.firstFreeEntry, 2048);
+        for (unsigned int i = 0; i < count; ++i)
+        {
+            if (NiAVObject* found = findNodeRecursivePrefix(node->m_children.data[i], prefix, depth + 1))
+                return found;
+        }
+        return nullptr;
+    }
+
     // Runtime 1.4.0.525 layout documented by the game's NiGeometryData methods.
     // Keep the oracle copy private so a stale public xNVSE class declaration cannot
     // silently move the vertex pointer. The explicit size/offsets are part of the
@@ -1215,26 +2257,95 @@ namespace
             || type.find("TriStrips") != std::string::npos;
     }
 
-    void writeActorGeometryRecursive(Actor* actor, NiAVObject* object, unsigned int depth)
+    struct ActorGeometryCaptureStatus
+    {
+        UInt32 visitedNodes = 0;
+        UInt32 geometryCandidates = 0;
+        UInt32 emittedShapes = 0;
+        UInt32 pointerReadFailures = 0;
+        UInt32 dataReadFailures = 0;
+        UInt32 invalidDataLayouts = 0;
+        UInt32 vertexReadFailures = 0;
+        bool traversalFault = false;
+    };
+
+    void writeActorGeometryNodeStatus(Actor* actor, NiAVObject* object, unsigned int depth,
+        const std::string& type, const char* status, OracleGeometryData* dataAddress,
+        bool shaderPointerRead, bool dataPointerRead, bool skinPointerRead,
+        const OracleGeometryData* data = nullptr)
+    {
+        const std::string name = object != nullptr ? safeRuntimeString(object->m_pcName) : std::string();
+        gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-geometry-node-status\""
+                << ",\"frame\":" << gFrame
+                << ",\"refForm\":" << (actor != nullptr ? actor->refID : 0)
+                << ",\"baseForm\":"
+                << (actor != nullptr && actor->baseForm != nullptr ? actor->baseForm->refID : 0)
+                << ",\"name\":" << jsonString(name.empty() ? nullptr : name.c_str())
+                << ",\"runtimeType\":" << jsonString(type.empty() ? nullptr : type.c_str())
+                << ",\"depth\":" << depth
+                << ",\"status\":" << jsonString(status)
+                << ",\"layout\":\"NiGeometryData@0xb8 vertices@data+0x20\""
+                << ",\"shaderPointerRead\":" << (shaderPointerRead ? "true" : "false")
+                << ",\"dataPointerRead\":" << (dataPointerRead ? "true" : "false")
+                << ",\"skinPointerRead\":" << (skinPointerRead ? "true" : "false")
+                << ",\"geometryDataAddress\":"
+                << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(dataAddress));
+        if (data != nullptr)
+        {
+            gOutput << ",\"vertexCount\":" << data->vertexCount
+                    << ",\"verticesAddress\":"
+                    << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(data->vertices));
+        }
+        else
+            gOutput << ",\"vertexCount\":null,\"verticesAddress\":null";
+        gOutput << "}\n";
+    }
+
+    void writeActorGeometryRecursive(
+        Actor* actor, NiAVObject* object, unsigned int depth, ActorGeometryCaptureStatus& status)
     {
         if (actor == nullptr || object == nullptr || depth > 64)
             return;
 
+        ++status.visitedNodes;
+
         const std::string type = safeRuntimeString(runtimeTypeName(reinterpret_cast<NiObject*>(object)));
         if (isOracleGeometryType(type))
         {
+            ++status.geometryCandidates;
             // FNV NiAVObject is 0x9c bytes. NiGeometry's shader property, model
             // data, and skin instance live at 0xa8, 0xb8, and 0xbc respectively.
             NiObject* shaderProperty = nullptr;
             NiObject* skinInstance = nullptr;
             OracleGeometryData* dataAddress = nullptr;
-            safeRead(reinterpret_cast<const UInt8*>(object) + 0xA8, shaderProperty);
-            safeRead(reinterpret_cast<const UInt8*>(object) + 0xB8, dataAddress);
-            safeRead(reinterpret_cast<const UInt8*>(object) + 0xBC, skinInstance);
+            const bool shaderPointerRead
+                = safeRead(reinterpret_cast<const UInt8*>(object) + 0xA8, shaderProperty);
+            const bool dataPointerRead
+                = safeRead(reinterpret_cast<const UInt8*>(object) + 0xB8, dataAddress);
+            const bool skinPointerRead
+                = safeRead(reinterpret_cast<const UInt8*>(object) + 0xBC, skinInstance);
+            if (!shaderPointerRead || !dataPointerRead || !skinPointerRead)
+            {
+                ++status.pointerReadFailures;
+                writeActorGeometryNodeStatus(actor, object, depth, type, "geometry-pointer-read-failed",
+                    dataAddress, shaderPointerRead, dataPointerRead, skinPointerRead);
+            }
 
             OracleGeometryData data = {};
-            if (safeRead(dataAddress, data) && data.vertexCount > 0 && data.vertexCount <= 32768
-                && data.vertices != nullptr)
+            const bool dataRead = dataPointerRead && dataAddress != nullptr && safeRead(dataAddress, data);
+            if (!dataRead)
+            {
+                ++status.dataReadFailures;
+                writeActorGeometryNodeStatus(actor, object, depth, type, "geometry-data-read-failed",
+                    dataAddress, shaderPointerRead, dataPointerRead, skinPointerRead);
+            }
+            else if (data.vertexCount == 0 || data.vertexCount > 32768 || data.vertices == nullptr)
+            {
+                ++status.invalidDataLayouts;
+                writeActorGeometryNodeStatus(actor, object, depth, type, "geometry-data-invalid",
+                    dataAddress, shaderPointerRead, dataPointerRead, skinPointerRead, &data);
+            }
+            else
             {
                 std::vector<OracleVector3> vertices;
                 vertices.reserve(data.vertexCount);
@@ -1248,6 +2359,7 @@ namespace
                         || !std::isfinite(vertex.x) || !std::isfinite(vertex.y) || !std::isfinite(vertex.z))
                     {
                         complete = false;
+                        ++status.vertexReadFailures;
                         break;
                     }
                     if (vertices.empty())
@@ -1312,6 +2424,10 @@ namespace
                     gOutput << '[' << vertices[index].x << ',' << vertices[index].y << ',' << vertices[index].z << ']';
                 }
                 gOutput << "]}\n";
+                ++status.emittedShapes;
+                writeActorGeometryNodeStatus(actor, object, depth, type,
+                    complete ? "captured" : "vertex-read-incomplete", dataAddress,
+                    shaderPointerRead, dataPointerRead, skinPointerRead, &data);
             }
         }
 
@@ -1321,15 +2437,42 @@ namespace
         const unsigned int count
             = (std::min)(static_cast<unsigned int>(node->m_children.firstFreeEntry), 2048u);
         for (unsigned int index = 0; index < count; ++index)
-            writeActorGeometryRecursive(actor, node->m_children.data[index], depth + 1);
+            writeActorGeometryRecursive(actor, node->m_children.data[index], depth + 1, status);
     }
 
-    void writeActorGeometry(Actor* actor, NiNode* root)
+    bool writeActorGeometry(Actor* actor, NiNode* root)
     {
         if (actor == nullptr || root == nullptr)
-            return;
-        writeActorGeometryRecursive(actor, root, 0);
+            return false;
+        ActorGeometryCaptureStatus status;
+        __try
+        {
+            writeActorGeometryRecursive(actor, root, 0, status);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            status.traversalFault = true;
+            gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-geometry-fault\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"refForm\":" << actor->refID
+                    << ",\"baseForm\":" << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
+                    << ",\"visitedNodes\":" << status.visitedNodes
+                    << ",\"geometryCandidates\":" << status.geometryCandidates << "}\n";
+        }
+        gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-geometry-status\""
+                << ",\"frame\":" << gFrame
+                << ",\"refForm\":" << actor->refID
+                << ",\"baseForm\":" << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
+                << ",\"visitedNodes\":" << status.visitedNodes
+                << ",\"geometryCandidates\":" << status.geometryCandidates
+                << ",\"emittedShapes\":" << status.emittedShapes
+                << ",\"pointerReadFailures\":" << status.pointerReadFailures
+                << ",\"dataReadFailures\":" << status.dataReadFailures
+                << ",\"invalidDataLayouts\":" << status.invalidDataLayouts
+                << ",\"vertexReadFailures\":" << status.vertexReadFailures
+                << ",\"traversalFault\":" << (status.traversalFault ? "true" : "false") << "}\n";
         gOutput.flush();
+        return status.emittedShapes > 0 && !status.traversalFault;
     }
 
     void writeBoneLodProbe(std::ostream& out, NiBSBoneLODController* controllerAddress)
@@ -1809,8 +2952,9 @@ namespace
             HighProcess* hp = process->processLevel == 0 ? static_cast<HighProcess*>(process) : nullptr;
             TESObjectWEAP* weapon = mhp != nullptr && mhp->weaponInfo != nullptr ? mhp->weaponInfo->weapon : nullptr;
             NiNode* root = actor->GetNiNode();
-            if (root != nullptr && gActorGeometryLogged.insert(actor->refID).second)
-                writeActorGeometry(actor, root);
+            if (root != nullptr && gActorGeometryLogged.find(actor->refID) == gActorGeometryLogged.end()
+                && writeActorGeometry(actor, root))
+                gActorGeometryLogged.insert(actor->refID);
             PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
             OracleVector3 cameraPos3rdPerson = {};
             OracleVector3 cameraPos = {};
@@ -2657,7 +3801,7 @@ namespace
         }
     }
 
-    void drivePortraitCamera()
+    void drivePortraitCameraUnsafe()
     {
         if (!gPortraitCamera || gConsole == nullptr || gTargetForm == 0)
             return;
@@ -2674,64 +3818,561 @@ namespace
                     << ",\"event\":\"portrait-camera-request\""
                     << ",\"frame\":" << gFrame
                     << ",\"refForm\":" << actor->refID
+                    << ",\"shotKind\":" << jsonString(gCameraShotKind.c_str())
                     << ",\"tfcAccepted\":" << (tfcAccepted ? "true" : "false")
                     << ",\"toggleMenusAccepted\":" << (menusAccepted ? "true" : "false") << "}\n";
             gOutput.flush();
             return;
         }
 
-        __try
+        if (!gBatchTargetForms.empty() && !gBatchTargetLoadRequested)
+            return;
+        if (gBatchProofStaging)
         {
-            NiNode* root = actor->GetNiNode();
-            NiAVObject* head = findNodeRecursive(root, "Bip01 Head");
-            if (head == nullptr)
+            if (!gBatchTargetStaged)
                 return;
-            const NiTransform headTransform = runtimeTransform(*head, sNiAVObjectWorldTransformOffset);
-            const NiVector3 headWorld = headTransform.translate;
-            const float headDx = headWorld.x - actor->posX;
-            const float headDy = headWorld.y - actor->posY;
-            const float headDz = headWorld.z - actor->posZ;
-            if (headDx * headDx + headDy * headDy + headDz * headDz < 400.f)
-                return;
-            const float aimX = headWorld.x;
-            const float aimY = headWorld.y;
-            const float aimZ = headWorld.z + 20.f;
-            // Bethesda bipeds use local X along the neck/head bone and local Y as the
-            // face-forward axis.  Follow the rendered head rather than the actor root:
-            // seated idles can turn the head far enough to turn an actor-root camera
-            // into an accidental profile shot.
-            float forwardX = headTransform.rotate.data[1];
-            float forwardY = headTransform.rotate.data[4];
-            const float forwardLength = std::sqrt(forwardX * forwardX + forwardY * forwardY);
-            if (forwardLength < 0.25f)
-                return;
-            forwardX /= forwardLength;
-            forwardY /= forwardLength;
-            const float cameraX = aimX + forwardX * gPortraitDistance;
-            const float cameraY = aimY + forwardY * gPortraitDistance;
-            const float cameraZ = aimZ;
-            const float cameraYaw = std::atan2(aimX - cameraX, aimY - cameraY);
-            const float cameraPitch = 0.f;
-            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E0) = cameraYaw;
-            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E4) = cameraPitch;
-            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E8) = cameraX;
-            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7EC) = cameraY;
-            *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7F0) = cameraZ;
-            if (!gPortraitCameraLogged)
+            // AI packages are still live after an authored reference is moved.
+            // Keep the proof root at the canonical transform through the render
+            // frame so pathing cannot yaw or walk it away between stage and shot.
+            const float yawDegrees = gBatchProofTargetYaw * 180.f / 3.14159265358979323846f;
+            const bool transformLocked
+                = runReferenceFloatCommand(actor, "SetPos X", gBatchProofTargetX)
+                && runReferenceFloatCommand(actor, "SetPos Y", gBatchProofTargetY)
+                && runReferenceFloatCommand(actor, "SetPos Z", gBatchProofTargetZ)
+                && runReferenceFloatCommand(actor, "SetAngle X", 0.f)
+                && runReferenceFloatCommand(actor, "SetAngle Y", 0.f)
+                && runReferenceFloatCommand(actor, "SetAngle Z", yawDegrees);
+            if (!transformLocked)
             {
-                gPortraitCameraLogged = true;
-                gOutput << std::setprecision(9)
-                        << "{\"schema\":" << sSchemaJson
-                        << ",\"event\":\"portrait-camera-set\""
+                if (!gBatchTargetStageWaitingLogged)
+                {
+                    gBatchTargetStageWaitingLogged = true;
+                    gOutput << "{\"schema\":" << sSchemaJson
+                            << ",\"event\":\"batch-target-transform-lock-rejected\""
+                            << ",\"frame\":" << gFrame
+                            << ",\"targetIndex\":" << gBatchTargetIndex
+                            << ",\"refForm\":" << actor->refID << "}\n";
+                    gOutput.flush();
+                }
+                return;
+            }
+            if (gFrame < gBatchTargetStageFrame + gBatchProofTargetSettleFrames)
+                return;
+            // Quest enable parents can materialize additional authored or leveled
+            // actors around the road. A target-only bound cannot detect one that
+            // overlaps it, so the proof volume must first be exclusive.
+            ActorProcessManager* manager = reinterpret_cast<ActorProcessManager*>(0x011E0E80);
+            UInt32 intruders = 0;
+            if (manager != nullptr)
+            {
+                std::set<Actor*> proofActors;
+                const auto collectActors = [&proofActors](tList<Actor>& actors)
+                {
+                    auto* node = actors.Head();
+                    for (UInt32 visited = 0; node != nullptr && visited < 4096; ++visited)
+                    {
+                        ListNode<Actor> snapshot = {};
+                        if (!safeRead(node, snapshot))
+                            break;
+                        UInt32 reference = 0;
+                        if (snapshot.data != nullptr && safeRead(&snapshot.data->refID, reference)
+                            && reference != 0)
+                            proofActors.insert(snapshot.data);
+                        node = snapshot.next;
+                    }
+                };
+                collectActors(manager->middleHighActors.head);
+                collectActors(manager->lowActors0C.head);
+                collectActors(manager->lowActors18.head);
+                collectActors(manager->highActors);
+                if (manager->actor64 != nullptr)
+                    proofActors.insert(manager->actor64);
+                for (Actor* candidate : proofActors)
+                {
+                    if (candidate != nullptr && candidate != actor && candidate != player)
+                    {
+                        UInt32 reference = 0;
+                        TESForm* baseForm = nullptr;
+                        UInt32 baseReference = 0;
+                        float originalX = 0.f;
+                        float originalY = 0.f;
+                        float originalZ = 0.f;
+                        if (!safeRead(&candidate->refID, reference)
+                            || !safeRead(&candidate->baseForm, baseForm)
+                            || !safeRead(&candidate->posX, originalX)
+                            || !safeRead(&candidate->posY, originalY)
+                            || !safeRead(&candidate->posZ, originalZ)
+                            || reference == 0)
+                            continue;
+                        if (baseForm != nullptr)
+                            safeRead(&baseForm->refID, baseReference);
+                        const float intruderDx = originalX - gBatchProofTargetX;
+                        const float intruderDy = originalY - gBatchProofTargetY;
+                        const float intruderDz = originalZ - gBatchProofTargetZ;
+                        if (intruderDx * intruderDx + intruderDy * intruderDy <= 1024.f * 1024.f
+                            && std::fabs(intruderDz) <= 512.f)
+                        {
+                            ++intruders;
+                            ++gBatchProofEvictionCount;
+                            const bool moveAccepted = gConsole != nullptr
+                                && gConsole->RunScriptLine2("MoveTo 00000014", candidate, true);
+                            const bool disableAccepted = gConsole != nullptr
+                                && gConsole->RunScriptLine2("Disable", candidate, true);
+                            gOutput << "{\"schema\":" << sSchemaJson
+                                    << ",\"event\":\"batch-proof-intruder-eviction\""
+                                    << ",\"frame\":" << gFrame
+                                    << ",\"targetIndex\":" << gBatchTargetIndex
+                                    << ",\"targetForm\":" << gTargetForm
+                                    << ",\"intruderRef\":" << reference
+                                    << ",\"intruderBase\":" << baseReference
+                                    << ",\"position\":[" << originalX << ',' << originalY
+                                    << ',' << originalZ << ']'
+                                    << ",\"moveAccepted\":" << (moveAccepted ? "true" : "false")
+                                    << ",\"disableAccepted\":"
+                                    << (disableAccepted ? "true" : "false") << "}\n";
+                        }
+                    }
+                }
+            }
+            if (intruders != 0)
+            {
+                gOutput.flush();
+                return;
+            }
+            if (!gBatchProofCensusLogged)
+            {
+                gBatchProofCensusLogged = true;
+                gOutput << "{\"schema\":" << sSchemaJson
+                        << ",\"event\":\"batch-proof-volume-census\""
                         << ",\"frame\":" << gFrame
-                        << ",\"refForm\":" << actor->refID
-                        << ",\"headWorld\":[" << headWorld.x << ',' << headWorld.y << ',' << headWorld.z << ']'
-                        << ",\"headForwardXY\":[" << forwardX << ',' << forwardY << ']'
-                        << ",\"aim\":[" << aimX << ',' << aimY << ',' << aimZ << ']'
-                        << ",\"camera\":[" << cameraX << ',' << cameraY << ',' << cameraZ << ']'
-                        << ",\"rotation\":[" << cameraPitch << ',' << cameraYaw << "]}\n";
+                        << ",\"targetIndex\":" << gBatchTargetIndex
+                        << ",\"targetForm\":" << gTargetForm
+                        << ",\"passed\":true,\"intruders\":0"
+                        << ",\"evictionCount\":" << gBatchProofEvictionCount
+                        << ",\"playerPosition\":[" << player->posX << ',' << player->posY
+                        << ',' << player->posZ << "]}\n";
                 gOutput.flush();
             }
+            const float dx = actor->posX - gBatchProofTargetX;
+            const float dy = actor->posY - gBatchProofTargetY;
+            const float dz = actor->posZ - gBatchProofTargetZ;
+            float yawError = std::fmod(std::fabs(actor->rotZ - gBatchProofTargetYaw),
+                2.f * 3.14159265358979323846f);
+            if (yawError > 3.14159265358979323846f)
+                yawError = 2.f * 3.14159265358979323846f - yawError;
+            const float positionError = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (positionError > 24.f || yawError > 0.08f)
+            {
+                if (!gBatchTargetStageWaitingLogged)
+                {
+                    gBatchTargetStageWaitingLogged = true;
+                    gOutput << "{\"schema\":" << sSchemaJson
+                            << ",\"event\":\"batch-target-stage-waiting\""
+                            << ",\"frame\":" << gFrame
+                            << ",\"targetIndex\":" << gBatchTargetIndex
+                            << ",\"refForm\":" << actor->refID
+                            << ",\"position\":[" << actor->posX << ',' << actor->posY << ','
+                            << actor->posZ << ']'
+                            << ",\"positionError\":" << positionError
+                            << ",\"yaw\":" << actor->rotZ
+                            << ",\"yawError\":" << yawError << "}\n";
+                    gOutput.flush();
+                }
+                return;
+            }
+        }
+
+        NiNode* root = actor->GetNiNode();
+        if (root == nullptr)
+        {
+            bool bootstrapApplied = false;
+            float bootstrapX = 0.f;
+            float bootstrapY = 0.f;
+            float bootstrapZ = 0.f;
+            if (gFullBodyCamera)
+            {
+                // In a one-process TFC batch, player.moveto can cross a streaming
+                // boundary while the free camera remains at the prior target. That
+                // creates a deadlock: the authored actor exists at high process but
+                // cannot acquire its scene root until the camera reaches its cell.
+                // Move only the free camera near the authored reference to activate
+                // retail 3D. This is a bootstrap, never an accepted proof frame;
+                // gPortraitCameraLogged remains false until live bounds are read.
+                const float forwardX = std::sin(actor->rotZ);
+                const float forwardY = std::cos(actor->rotZ);
+                const float aimX = actor->posX;
+                const float aimY = actor->posY;
+                const float aimZ = actor->posZ + 64.f;
+                const float distance = (std::max)(gPortraitDistance, 256.f);
+                bootstrapX = aimX + forwardX * distance;
+                bootstrapY = aimY + forwardY * distance;
+                bootstrapZ = aimZ;
+                const float yaw = std::atan2(aimX - bootstrapX, aimY - bootstrapY);
+                *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E0) = yaw;
+                *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E4) = 0.f;
+                *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E8) = bootstrapX;
+                *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7EC) = bootstrapY;
+                *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7F0) = bootstrapZ;
+                bootstrapApplied = true;
+            }
+            if (!gPortraitCameraWaitingLogged)
+            {
+                gPortraitCameraWaitingLogged = true;
+                gOutput << "{\"schema\":" << sSchemaJson
+                        << ",\"event\":\"portrait-camera-waiting\""
+                        << ",\"frame\":" << gFrame
+                        << ",\"refForm\":" << actor->refID
+                        << ",\"reason\":\"actor-root-missing\""
+                        << ",\"bootstrapApplied\":" << (bootstrapApplied ? "true" : "false")
+                        << ",\"bootstrapCamera\":[" << bootstrapX << ',' << bootstrapY << ','
+                        << bootstrapZ << "]}\n";
+                gOutput.flush();
+            }
+            return;
+        }
+
+        // Robots can retain a humanoid-named Bip01 Head whose +Y axis points out
+        // the back of the chassis. Prefer a rendered screen surface when one is
+        // present. Its local +Y is the authored outward normal in retail assets.
+        NiAVObject* focus = findNodeRecursivePrefix(root, "Screen01");
+        bool screenFocus = focus != nullptr;
+        if (focus == nullptr)
+            focus = findNodeRecursivePrefix(root, "Screenreflection01");
+        screenFocus = screenFocus || focus != nullptr;
+        if (focus == nullptr)
+            focus = findNodeRecursive(root, "Bip01 Head");
+
+        bool rootFallback = focus == nullptr;
+        const char* focusFallbackReason = rootFallback ? "semantic-focus-missing" : nullptr;
+        if (rootFallback)
+            focus = root;
+        // Keep this as a pointer. NiTransform has C++ lifetime semantics in the
+        // xNVSE headers, and copying one inside an SEH-protected function makes
+        // MSVC require C++ unwinding (C2712). The retail object owns the transform.
+        const NiTransform* focusTransform = &runtimeTransform(*focus, sNiAVObjectWorldTransformOffset);
+        NiVector3 focusWorld = focusTransform->translate;
+        if (rootFallback)
+        {
+            focusWorld.x = actor->posX;
+            focusWorld.y = actor->posY;
+            focusWorld.z = actor->posZ + 100.f;
+        }
+        else
+        {
+            const float focusDx = focusWorld.x - actor->posX;
+            const float focusDy = focusWorld.y - actor->posY;
+            const float focusDz = focusWorld.z - actor->posZ;
+            if (focusDx * focusDx + focusDy * focusDy + focusDz * focusDz < 400.f)
+            {
+                // The old fixed 20-unit threshold rejects legitimate small rigs
+                // forever. Full-body aim comes from the live world bound, so use
+                // root yaw for the semantic front instead of stalling the batch.
+                if (gFullBodyCamera)
+                {
+                    rootFallback = true;
+                    screenFocus = false;
+                    focus = root;
+                    focusTransform = &runtimeTransform(*root, sNiAVObjectWorldTransformOffset);
+                    focusWorld.x = actor->posX;
+                    focusWorld.y = actor->posY;
+                    focusWorld.z = actor->posZ + 100.f;
+                    focusFallbackReason = "semantic-focus-near-actor";
+                }
+                else
+                {
+                    if (!gPortraitCameraWaitingLogged)
+                    {
+                        gPortraitCameraWaitingLogged = true;
+                        gOutput << "{\"schema\":" << sSchemaJson
+                                << ",\"event\":\"portrait-camera-waiting\""
+                                << ",\"frame\":" << gFrame
+                                << ",\"refForm\":" << actor->refID
+                                << ",\"reason\":\"semantic-focus-near-actor\"}\n";
+                        gOutput.flush();
+                    }
+                    return;
+                }
+            }
+        }
+        const char* focusNodeLabel
+            = screenFocus ? "Screen01" : (rootFallback ? "<actor-root>" : "Bip01 Head");
+        const char* focusKindLabel = screenFocus ? "screen" : (rootFallback ? "root" : "head");
+
+        OracleBound* rootWorldBoundAddress = nullptr;
+        bool rootWorldBoundPointerReadable = false;
+        OracleBound rootWorldBound = {};
+        const bool rootWorldBoundReadable = readObjectWorldBound(
+            root, rootWorldBoundAddress, rootWorldBoundPointerReadable, rootWorldBound);
+        const OracleBoundValidation rootWorldBoundValidation = rootWorldBoundReadable
+            ? validateActorWorldBound(rootWorldBound, actor)
+            : OracleBoundValidation::NonFinite;
+        OracleAssembledBound assembledWorldBound = {};
+        collectActorWorldBounds(actor, root, 0, assembledWorldBound);
+        OracleBound assembledBound = {};
+        const bool assembledWorldBoundValid = finalizeAssembledBound(assembledWorldBound, assembledBound);
+        OracleBound worldBound = {};
+        const char* worldBoundSource = "none";
+        bool worldBoundValid = false;
+        if (assembledWorldBoundValid)
+        {
+            worldBound = assembledBound;
+            worldBoundSource = "assembled";
+            worldBoundValid = true;
+        }
+        else if (rootWorldBoundReadable
+            && rootWorldBoundValidation == OracleBoundValidation::Accepted)
+        {
+            // Tiny creature trees may not meet the strict assembled-span gate.
+            // The engine's validated live root sphere remains authoritative.
+            worldBound = rootWorldBound;
+            worldBoundSource = "root-fallback";
+            worldBoundValid = true;
+        }
+        if (gFullBodyCamera && !worldBoundValid)
+        {
+            if (!gFullBodyBoundsWaitingLogged)
+            {
+                gFullBodyBoundsWaitingLogged = true;
+                gOutput << "{\"schema\":" << sSchemaJson
+                        << ",\"event\":\"full-body-bounds-waiting\""
+                        << ",\"frame\":" << gFrame
+                        << ",\"refForm\":" << actor->refID
+                        << ",\"rootWorldBound\":";
+                writeRawBoundDiagnostics(
+                    gOutput, rootWorldBoundPointerReadable, rootWorldBoundAddress,
+                    rootWorldBoundReadable, rootWorldBoundValidation, rootWorldBound);
+                gOutput << ",\"assembledWorldBound\":";
+                writeAssembledBoundDiagnostics(
+                    gOutput, assembledWorldBoundValid, assembledWorldBound, assembledBound);
+                gOutput << "}\n";
+                gOutput.flush();
+            }
+            return;
+        }
+        const float aimX = gFullBodyCamera ? worldBound.center.x : focusWorld.x;
+        const float aimY = gFullBodyCamera ? worldBound.center.y : focusWorld.y;
+        const float rawAimZ = gFullBodyCamera
+            ? worldBound.center.z
+            : focusWorld.z + (screenFocus || rootFallback ? 0.f : 20.f);
+        // The proof surface is an explicit part of the shared-volume contract.
+        // Live ragdolls and low creature rigs can author their bound center below
+        // that surface; never put the optical axis back inside the road mesh.
+        const float minimumAimZ = gBatchProofTargetZ + gBatchProofMinimumAimHeight;
+        const float aimZ = gBatchProofStaging && gFullBodyCamera
+            ? (std::max)(rawAimZ, minimumAimZ)
+            : rawAimZ;
+        // Bethesda bipeds and the Securitron screen surface both author local +Y
+        // as face-forward. Follow the rendered semantic surface when it is valid.
+        float forwardX = gBatchProofStaging
+            ? std::sin(gBatchProofTargetYaw)
+            : (rootFallback ? std::sin(actor->rotZ) : focusTransform->rotate.data[1]);
+        float forwardY = gBatchProofStaging
+            ? std::cos(gBatchProofTargetYaw)
+            : (rootFallback ? std::cos(actor->rotZ) : focusTransform->rotate.data[4]);
+        if (gBatchProofStaging)
+            focusFallbackReason = "proof-volume-canonical-yaw";
+        float forwardLength = std::sqrt(forwardX * forwardX + forwardY * forwardY);
+        if (forwardLength < 0.25f)
+        {
+            if (gFullBodyCamera)
+            {
+                forwardX = std::sin(actor->rotZ);
+                forwardY = std::cos(actor->rotZ);
+                forwardLength = 1.f;
+                focusFallbackReason = "semantic-forward-degenerate";
+            }
+            else
+            {
+                if (!gPortraitCameraWaitingLogged)
+                {
+                    gPortraitCameraWaitingLogged = true;
+                    gOutput << "{\"schema\":" << sSchemaJson
+                            << ",\"event\":\"portrait-camera-waiting\""
+                            << ",\"frame\":" << gFrame
+                            << ",\"refForm\":" << actor->refID
+                            << ",\"reason\":\"semantic-forward-degenerate\"}\n";
+                    gOutput.flush();
+                }
+                return;
+            }
+        }
+        forwardX /= forwardLength;
+        forwardY /= forwardLength;
+        const float framingRadius = gFullBodyCamera
+            ? worldBound.radius + (gBatchProofStaging
+                ? std::fabs(aimZ - worldBound.center.z)
+                : 0.f)
+            : 0.f;
+        const float cameraDistance = gFullBodyCamera
+            ? (std::max)(gPortraitDistance, framingRadius * gFullBodyDistanceScale)
+            : gPortraitDistance;
+        const float cameraX = aimX + forwardX * cameraDistance;
+        const float cameraY = aimY + forwardY * cameraDistance;
+        const float minimumCameraZ = gBatchProofTargetZ + gBatchProofMinimumCameraHeight;
+        const float cameraZ = gBatchProofStaging && gFullBodyCamera
+            ? (std::max)(aimZ, minimumCameraZ)
+            : aimZ;
+        const float cameraAimDz = aimZ - cameraZ;
+        const float cameraLineDistance = std::sqrt(
+            cameraDistance * cameraDistance + cameraAimDz * cameraAimDz);
+        const float cameraYaw = std::atan2(aimX - cameraX, aimY - cameraY);
+        // PlayerCharacter::flycamXRot uses positive rotation to look downward,
+        // opposite the signed elevation of the camera-to-aim vector.
+        const float cameraPitch = -std::atan2(cameraAimDz, cameraDistance);
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E0) = cameraYaw;
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E4) = cameraPitch;
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E8) = cameraX;
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7EC) = cameraY;
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7F0) = cameraZ;
+        if (gBatchProofStaging && !gBatchVisualStageGateLogged)
+        {
+            const float corridorStopDistance = (std::min)(
+                cameraLineDistance - 2.f, worldBound.radius + 8.f);
+            const float inverseLineDistance = 1.f / cameraLineDistance;
+            const float corridorEndX = aimX
+                + (cameraX - aimX) * inverseLineDistance * corridorStopDistance;
+            const float corridorEndY = aimY
+                + (cameraY - aimY) * inverseLineDistance * corridorStopDistance;
+            const float corridorEndZ = aimZ
+                + (cameraZ - aimZ) * inverseLineDistance * corridorStopDistance;
+            const OracleRayCastResult corridor = castProofCorridor(player,
+                cameraX, cameraY, cameraZ, corridorEndX, corridorEndY, corridorEndZ);
+            const std::string hitName = safeRuntimeString(
+                corridor.hitObject != nullptr ? corridor.hitObject->m_pcName : nullptr);
+            const std::string hitType = safeRuntimeString(
+                corridor.hitObject != nullptr
+                    ? runtimeTypeName(reinterpret_cast<NiObject*>(corridor.hitObject))
+                    : nullptr);
+            gOutput << std::setprecision(9)
+                    << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"batch-camera-occlusion-gate\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"targetIndex\":" << gBatchTargetIndex
+                    << ",\"targetForm\":" << gTargetForm
+                    << ",\"passed\":" << (corridor.passed ? "true" : "false")
+                    << ",\"filterAvailable\":"
+                    << (corridor.filterAvailable ? "true" : "false")
+                    << ",\"tesAvailable\":" << (corridor.tesAvailable ? "true" : "false")
+                    << ",\"invoked\":" << (corridor.invoked ? "true" : "false")
+                    << ",\"faulted\":" << (corridor.faulted ? "true" : "false")
+                    << ",\"fractionValid\":" << (corridor.fractionValid ? "true" : "false")
+                    << ",\"hit\":" << (corridor.hit ? "true" : "false")
+                    << ",\"hitFraction\":";
+            writeFiniteFloat(gOutput, corridor.hitFraction);
+            gOutput << ",\"collisionFilter\":" << corridor.collisionFilter
+                    << ",\"start\":[" << cameraX << ',' << cameraY << ',' << cameraZ << ']'
+                    << ",\"end\":[" << corridorEndX << ',' << corridorEndY << ','
+                    << corridorEndZ << ']'
+                    << ",\"cameraLineDistance\":" << cameraLineDistance
+                    << ",\"cameraPitch\":" << cameraPitch
+                    << ",\"hitObjectAddress\":"
+                    << static_cast<unsigned long>(
+                        reinterpret_cast<std::uintptr_t>(corridor.hitObject))
+                    << ",\"hitObjectName\":"
+                    << jsonString(hitName.empty() ? nullptr : hitName.c_str())
+                    << ",\"hitObjectType\":"
+                    << jsonString(hitType.empty() ? nullptr : hitType.c_str()) << "}\n";
+            const float positionDx = actor->posX - gBatchProofTargetX;
+            const float positionDy = actor->posY - gBatchProofTargetY;
+            const float positionDz = actor->posZ - gBatchProofTargetZ;
+            const float positionError = std::sqrt(
+                positionDx * positionDx + positionDy * positionDy + positionDz * positionDz);
+            float yawError = std::fmod(std::fabs(actor->rotZ - gBatchProofTargetYaw),
+                2.f * 3.14159265358979323846f);
+            if (yawError > 3.14159265358979323846f)
+                yawError = 2.f * 3.14159265358979323846f - yawError;
+            const bool passed = gBatchTargetStaged && root != nullptr && worldBoundValid
+                && corridor.passed
+                && positionError <= 24.f && yawError <= 0.08f
+                && std::isfinite(cameraX) && std::isfinite(cameraY) && std::isfinite(cameraZ)
+                && std::isfinite(cameraPitch) && cameraLineDistance >= 32.f
+                && cameraZ + 0.01f >= minimumCameraZ
+                && aimZ + 0.01f >= minimumAimZ;
+            gBatchVisualStageGateLogged = true;
+            gBatchVisualStageGatePassed = passed;
+            gOutput << std::setprecision(9)
+                    << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"batch-visual-stage-gate\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"targetIndex\":" << gBatchTargetIndex
+                    << ",\"targetForm\":" << gTargetForm
+                    << ",\"passed\":" << (passed ? "true" : "false")
+                    << ",\"rootAvailable\":" << (root != nullptr ? "true" : "false")
+                    << ",\"worldBoundValid\":" << (worldBoundValid ? "true" : "false")
+                    << ",\"proofVolumeExclusive\":"
+                    << (gBatchProofCensusLogged ? "true" : "false")
+                    << ",\"occlusionGatePassed\":" << (corridor.passed ? "true" : "false")
+                    << ",\"worldBoundSource\":\"" << worldBoundSource << '"'
+                    << ",\"position\":[" << actor->posX << ',' << actor->posY << ',' << actor->posZ << ']'
+                    << ",\"expectedPosition\":[" << gBatchProofTargetX << ','
+                    << gBatchProofTargetY << ',' << gBatchProofTargetZ << ']'
+                    << ",\"positionError\":" << positionError
+                    << ",\"yaw\":" << actor->rotZ
+                    << ",\"expectedYaw\":" << gBatchProofTargetYaw
+                    << ",\"yawError\":" << yawError
+                    << ",\"rawAimZ\":" << rawAimZ
+                    << ",\"minimumAimZ\":" << minimumAimZ
+                    << ",\"minimumCameraZ\":" << minimumCameraZ
+                    << ",\"framingRadius\":" << framingRadius
+                    << ",\"aim\":[" << aimX << ',' << aimY << ',' << aimZ << ']'
+                    << ",\"camera\":[" << cameraX << ',' << cameraY << ',' << cameraZ << ']'
+                    << ",\"cameraDistance\":" << cameraDistance
+                    << ",\"cameraLineDistance\":" << cameraLineDistance
+                    << ",\"cameraPitch\":" << cameraPitch << "}\n";
+            gOutput.flush();
+            if (!passed)
+                return;
+        }
+        if (gBatchProofStaging && !gBatchVisualStageGatePassed)
+            return;
+        if (!gPortraitCameraLogged)
+        {
+            gPortraitCameraLogged = true;
+            gOutput << std::setprecision(9)
+                    << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"portrait-camera-set\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"refForm\":" << actor->refID
+                    << ",\"shotKind\":\"" << gCameraShotKind << '\"'
+                    << ",\"focusNode\":\"" << focusNodeLabel << '\"'
+                    << ",\"focusKind\":\"" << focusKindLabel << '\"'
+                    << ",\"focusFallbackReason\":"
+                    << (focusFallbackReason != nullptr ? jsonString(focusFallbackReason) : "null")
+                    << ",\"headWorld\":[" << focusWorld.x << ',' << focusWorld.y << ',' << focusWorld.z << ']'
+                    << ",\"headForwardXY\":[" << forwardX << ',' << forwardY << ']'
+                    << ",\"rootWorldBound\":";
+            writeRawBoundDiagnostics(
+                gOutput, rootWorldBoundPointerReadable, rootWorldBoundAddress,
+                rootWorldBoundReadable, rootWorldBoundValidation, rootWorldBound);
+            gOutput << ",\"assembledWorldBound\":";
+            writeAssembledBoundDiagnostics(
+                gOutput, assembledWorldBoundValid, assembledWorldBound, assembledBound);
+            gOutput << ",\"worldBound\":{\"valid\":" << (worldBoundValid ? "true" : "false")
+                    << ",\"source\":\"" << worldBoundSource << '\"'
+                    << ",\"center\":[" << worldBound.center.x << ',' << worldBound.center.y << ','
+                    << worldBound.center.z << "]"
+                    << ",\"radius\":" << worldBound.radius << '}'
+                    << ",\"cameraDistance\":" << cameraDistance
+                    << ",\"cameraLineDistance\":" << cameraLineDistance
+                    << ",\"framingRadius\":" << framingRadius
+                    << ",\"rawAimZ\":" << rawAimZ
+                    << ",\"minimumAimZ\":" << minimumAimZ
+                    << ",\"minimumCameraZ\":" << minimumCameraZ
+                    << ",\"aim\":[" << aimX << ',' << aimY << ',' << aimZ << ']'
+                    << ",\"camera\":[" << cameraX << ',' << cameraY << ',' << cameraZ << ']'
+                    << ",\"rotation\":[" << cameraPitch << ',' << cameraYaw << "]}\n";
+            gOutput.flush();
+        }
+    }
+
+    void drivePortraitCamera()
+    {
+        // Keep SEH in a trivial wrapper. The camera implementation uses xNVSE
+        // math types with C++ lifetime semantics, which cannot coexist with
+        // __try in the same MSVC function (C2712).
+        __try
+        {
+            drivePortraitCameraUnsafe();
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
@@ -2776,6 +4417,76 @@ namespace
             succeeded = false;
         }
         return succeeded;
+    }
+
+    void driveBatchWeaponState()
+    {
+        if (gBatchTargetForms.empty() || !gBatchForceWeaponOut || gBatchWeaponStateLogged)
+            return;
+        if (!gBatchTargetLoadRequested || (gBatchProofStaging
+            && (!gBatchTargetStaged
+                || gFrame < gBatchTargetStageFrame + gBatchProofTargetSettleFrames)))
+            return;
+        Actor* actor = findDriveActor();
+        if (actor == nullptr || actor->baseProcess == nullptr || actor->baseProcess->processLevel > 1)
+            return;
+        if (gBatchWeaponProbeStartFrame == 0)
+            gBatchWeaponProbeStartFrame = gFrame;
+
+        MiddleHighProcess* process = static_cast<MiddleHighProcess*>(actor->baseProcess);
+        TESObjectWEAP* weapon
+            = process->weaponInfo != nullptr ? process->weaponInfo->weapon : nullptr;
+        if (weapon == nullptr)
+        {
+            if (gFrame < gBatchWeaponProbeStartFrame + gBatchWeaponProbeFrames)
+                return;
+            gBatchWeaponStateLogged = true;
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"batch-weapon-state\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"targetIndex\":" << gBatchTargetIndex
+                    << ",\"refForm\":" << actor->refID
+                    << ",\"status\":\"not-applicable\""
+                    << ",\"weaponRequired\":false"
+                    << ",\"weaponForm\":0"
+                    << ",\"weaponOut\":false}\n";
+            gOutput.flush();
+            return;
+        }
+
+        const bool before = process->isWeaponOut;
+        const bool accepted = before || setWeaponOutUnsafe(actor);
+        const bool after = process->isWeaponOut;
+        if (!after)
+        {
+            if (!gBatchWeaponWaitingLogged)
+            {
+                gBatchWeaponWaitingLogged = true;
+                gOutput << "{\"schema\":" << sSchemaJson
+                        << ",\"event\":\"batch-weapon-state-waiting\""
+                        << ",\"frame\":" << gFrame
+                        << ",\"targetIndex\":" << gBatchTargetIndex
+                        << ",\"refForm\":" << actor->refID
+                        << ",\"weaponForm\":" << weapon->refID
+                        << ",\"setWeaponOutAccepted\":" << (accepted ? "true" : "false")
+                        << "}\n";
+                gOutput.flush();
+            }
+            return;
+        }
+
+        gBatchWeaponStateLogged = true;
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"batch-weapon-state\""
+                << ",\"frame\":" << gFrame
+                << ",\"targetIndex\":" << gBatchTargetIndex
+                << ",\"refForm\":" << actor->refID
+                << ",\"status\":\"passed\""
+                << ",\"weaponRequired\":true"
+                << ",\"weaponForm\":" << weapon->refID
+                << ",\"weaponOutBefore\":" << (before ? "true" : "false")
+                << ",\"weaponOut\":true}\n";
+        gOutput.flush();
     }
 
     bool equipItemUnsafe(Actor* actor, UInt32 formId)
@@ -2941,11 +4652,1136 @@ namespace
         if (gFinishRequested)
             return;
         gFinishRequested = true;
-        gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"capture-complete\","
-                   "\"frames\":" << gFrame << "}\n";
+        const bool incompleteBatch
+            = !gBatchTargetForms.empty() && gBatchTargetIndex < gBatchTargetForms.size();
+        if (incompleteBatch)
+        {
+            gOutput << "{\"schema\":" << jsonString(sSchema)
+                    << ",\"event\":\"capture-incomplete\""
+                    << ",\"reason\":\"max-frames\""
+                    << ",\"frames\":" << gFrame
+                    << ",\"completedTargets\":" << gBatchTargetIndex
+                    << ",\"expectedTargets\":" << gBatchTargetForms.size()
+                    << ",\"targetIndex\":" << gBatchTargetIndex
+                    << ",\"targetForm\":" << gTargetForm << "}\n";
+        }
+        else
+        {
+            gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"capture-complete\","
+                       "\"frames\":" << gFrame << "}\n";
+        }
         gOutput.flush();
         if (gExitWhenDone && gConsole != nullptr)
             gConsole->RunScriptLine2("QuitGame", nullptr, true);
+    }
+
+    bool runReferenceFloatCommand(TESObjectREFR* reference, const char* commandName, float value)
+    {
+        if (reference == nullptr || commandName == nullptr || gConsole == nullptr)
+            return false;
+        char command[96] = {};
+        sprintf_s(command, "%s %.6f", commandName, value);
+        return gConsole->RunScriptLine2(command, reference, true);
+    }
+
+    struct SidecarInventoryItem
+    {
+        TESForm* form = nullptr;
+        SInt64 count = 0;
+        bool worn = false;
+    };
+
+    struct SidecarExtraDataHeader
+    {
+        void* vtable = nullptr;
+        UInt8 type = 0;
+        UInt8 padding[3] = {};
+        BSExtraData* next = nullptr;
+    };
+
+    static_assert(sizeof(SidecarExtraDataHeader) == 0x0C);
+
+    void sidecarFail(NikamiFNVSidecar::ErrorCode code, const std::string& message)
+    {
+        if (gSidecarPhase == SidecarPhase::Error)
+            return;
+        gSidecarPhase = SidecarPhase::Error;
+        setSidecarSharedError(code, message);
+        openOutput();
+        if (gOutput)
+        {
+            gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\""
+                    << ",\"event\":\"sidecar-error\""
+                    << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                    << ",\"actorIndex\":" << gSidecarActorIndex
+                    << ",\"actionIndex\":" << gSidecarActionIndex
+                    << ",\"generation\":" << gSidecarGeneration
+                    << ",\"frame\":" << gFrame
+                    << ",\"code\":" << static_cast<UInt32>(code)
+                    << ",\"message\":" << jsonString(message.c_str()) << "}\n";
+            gOutput.flush();
+        }
+    }
+
+    void sidecarCollectActorList(tList<Actor>& list, std::set<Actor*>& actors)
+    {
+        ListNode<Actor>* address = list.Head();
+        for (UInt32 visited = 0; address != nullptr && visited < 4096; ++visited)
+        {
+            ListNode<Actor> node;
+            if (!safeRead(address, node))
+                break;
+            UInt32 reference = 0;
+            if (node.data != nullptr && safeRead(&node.data->refID, reference) && reference != 0)
+                actors.insert(node.data);
+            address = node.next;
+        }
+    }
+
+    void sidecarCollectActors(std::set<Actor*>& actors)
+    {
+        ActorProcessManager* manager = reinterpret_cast<ActorProcessManager*>(0x011E0E80);
+        if (manager == nullptr)
+            return;
+        sidecarCollectActorList(manager->middleHighActors.head, actors);
+        sidecarCollectActorList(manager->lowActors0C.head, actors);
+        sidecarCollectActorList(manager->lowActors18.head, actors);
+        sidecarCollectActorList(manager->highActors, actors);
+        Actor* actor64 = nullptr;
+        if (safeRead(&manager->actor64, actor64) && actor64 != nullptr)
+            actors.insert(actor64);
+    }
+
+    bool sidecarReadActorIdentity(Actor* actor, UInt32& reference, UInt32& base)
+    {
+        reference = 0;
+        base = 0;
+        TESForm* baseForm = nullptr;
+        if (actor == nullptr || !safeRead(&actor->refID, reference)
+            || !safeRead(&actor->baseForm, baseForm) || baseForm == nullptr)
+            return false;
+        return safeRead(&baseForm->refID, base) && reference != 0 && base != 0;
+    }
+
+    std::vector<Actor*> sidecarFindSpawnedActors(UInt32 baseForm)
+    {
+        std::set<Actor*> actors;
+        sidecarCollectActors(actors);
+        std::vector<std::pair<UInt32, Actor*>> matches;
+        for (Actor* actor : actors)
+        {
+            UInt32 reference = 0;
+            UInt32 base = 0;
+            if (sidecarReadActorIdentity(actor, reference, base) && base == baseForm
+                && gSidecarSpawnBaselineRefs.find(reference) == gSidecarSpawnBaselineRefs.end())
+                matches.emplace_back(reference, actor);
+        }
+        std::sort(matches.begin(), matches.end(), [](const auto& left, const auto& right) {
+            return left.first < right.first;
+        });
+        std::vector<Actor*> result;
+        result.reserve(matches.size());
+        for (const auto& match : matches)
+            result.push_back(match.second);
+        return result;
+    }
+
+    SidecarScreenshotFile sidecarNewestScreenshot()
+    {
+        SidecarScreenshotFile newest;
+        WIN32_FIND_DATAA data = {};
+        HANDLE search = FindFirstFileA("ScreenShot*.bmp", &data);
+        if (search == INVALID_HANDLE_VALUE)
+            return newest;
+        do
+        {
+            if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+                continue;
+            const char* name = data.cFileName;
+            if (_strnicmp(name, "ScreenShot", 10) != 0)
+                continue;
+            const char* digits = name + 10;
+            char* end = nullptr;
+            const unsigned long ordinal = std::strtoul(digits, &end, 10);
+            if (end == digits || _stricmp(end, ".bmp") != 0)
+                continue;
+            ULARGE_INTEGER writeTime = {};
+            writeTime.LowPart = data.ftLastWriteTime.dwLowDateTime;
+            writeTime.HighPart = data.ftLastWriteTime.dwHighDateTime;
+            ULARGE_INTEGER size = {};
+            size.LowPart = data.nFileSizeLow;
+            size.HighPart = data.nFileSizeHigh;
+            if (size.QuadPart < 54)
+                continue;
+            if (!newest.valid || writeTime.QuadPart > newest.writeTime
+                || (writeTime.QuadPart == newest.writeTime && ordinal > newest.ordinal))
+            {
+                newest.valid = true;
+                newest.ordinal = ordinal;
+                newest.writeTime = writeTime.QuadPart;
+                newest.size = size.QuadPart;
+                newest.path = name;
+            }
+        } while (FindNextFileA(search, &data));
+        FindClose(search);
+        return newest;
+    }
+
+    bool sidecarScreenshotIsNew(
+        const SidecarScreenshotFile& baseline, const SidecarScreenshotFile& candidate)
+    {
+        if (!candidate.valid)
+            return false;
+        if (!baseline.valid)
+            return true;
+        return candidate.writeTime > baseline.writeTime
+            || (candidate.writeTime == baseline.writeTime && candidate.ordinal > baseline.ordinal);
+    }
+
+    UInt16 sidecarReadLe16(const UInt8* bytes)
+    {
+        return static_cast<UInt16>(bytes[0] | (static_cast<UInt16>(bytes[1]) << 8));
+    }
+
+    UInt32 sidecarReadLe32(const UInt8* bytes)
+    {
+        return static_cast<UInt32>(bytes[0]) | (static_cast<UInt32>(bytes[1]) << 8)
+            | (static_cast<UInt32>(bytes[2]) << 16) | (static_cast<UInt32>(bytes[3]) << 24);
+    }
+
+    bool sidecarValidateClosedScreenshot(
+        const SidecarScreenshotFile& candidate, SidecarScreenshotFile& validated)
+    {
+        validated = {};
+        if (!candidate.valid || candidate.path.empty())
+            return false;
+        HANDLE file = CreateFileA(candidate.path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+            return false;
+
+        BY_HANDLE_FILE_INFORMATION info = {};
+        std::array<UInt8, 54> header = {};
+        DWORD bytesRead = 0;
+        const bool read = GetFileInformationByHandle(file, &info)
+            && ReadFile(file, header.data(), static_cast<DWORD>(header.size()), &bytesRead, nullptr)
+            && bytesRead == header.size();
+        CloseHandle(file);
+        if (!read)
+            return false;
+
+        ULARGE_INTEGER actualSize = {};
+        actualSize.LowPart = info.nFileSizeLow;
+        actualSize.HighPart = info.nFileSizeHigh;
+        ULARGE_INTEGER actualWriteTime = {};
+        actualWriteTime.LowPart = info.ftLastWriteTime.dwLowDateTime;
+        actualWriteTime.HighPart = info.ftLastWriteTime.dwHighDateTime;
+        if (actualSize.QuadPart != candidate.size || actualWriteTime.QuadPart != candidate.writeTime
+            || header[0] != 'B' || header[1] != 'M')
+            return false;
+
+        const UInt32 declaredSize = sidecarReadLe32(header.data() + 2);
+        const UInt32 pixelOffset = sidecarReadLe32(header.data() + 10);
+        const UInt32 dibBytes = sidecarReadLe32(header.data() + 14);
+        const SInt32 signedWidth = static_cast<SInt32>(sidecarReadLe32(header.data() + 18));
+        const SInt32 signedHeight = static_cast<SInt32>(sidecarReadLe32(header.data() + 22));
+        const UInt16 planes = sidecarReadLe16(header.data() + 26);
+        const UInt16 bitsPerPixel = sidecarReadLe16(header.data() + 28);
+        const UInt32 compression = sidecarReadLe32(header.data() + 30);
+        if (declaredSize != actualSize.QuadPart || pixelOffset < header.size()
+            || pixelOffset >= actualSize.QuadPart || dibBytes < 40 || signedWidth <= 0
+            || signedWidth > 32768 || signedHeight == 0 || signedHeight == (std::numeric_limits<SInt32>::min)()
+            || std::abs(signedHeight) > 32768 || planes != 1
+            || (bitsPerPixel != 16 && bitsPerPixel != 24 && bitsPerPixel != 32)
+            || (compression != BI_RGB && compression != BI_BITFIELDS))
+            return false;
+
+        validated = candidate;
+        validated.width = static_cast<UInt32>(signedWidth);
+        validated.height = static_cast<UInt32>(std::abs(signedHeight));
+        validated.bitsPerPixel = bitsPerPixel;
+        return true;
+    }
+
+    bool sidecarScreenshotStableAndComplete(
+        const SidecarScreenshotFile& candidate, SidecarScreenshotFile& validated)
+    {
+        SidecarScreenshotFile complete;
+        if (!sidecarValidateClosedScreenshot(candidate, complete))
+        {
+            gSidecarScreenshotCandidate = {};
+            gSidecarScreenshotStableFrames = 0;
+            return false;
+        }
+        const bool sameCandidate = gSidecarScreenshotCandidate.valid
+            && gSidecarScreenshotCandidate.ordinal == complete.ordinal
+            && gSidecarScreenshotCandidate.writeTime == complete.writeTime
+            && gSidecarScreenshotCandidate.size == complete.size
+            && gSidecarScreenshotCandidate.path == complete.path;
+        gSidecarScreenshotCandidate = complete;
+        gSidecarScreenshotStableFrames = sameCandidate ? gSidecarScreenshotStableFrames + 1 : 1;
+        if (gSidecarScreenshotStableFrames < 2)
+            return false;
+        validated = complete;
+        return true;
+    }
+
+    bool sidecarExtraListHasType(const ExtraDataList* list, UInt8 type)
+    {
+        ExtraDataList snapshot;
+        if (!safeRead(list, snapshot))
+            return false;
+        const UInt32 byteIndex = type >> 3;
+        return byteIndex < std::size(snapshot.m_presenceBitfield)
+            && (snapshot.m_presenceBitfield[byteIndex] & (1u << (type & 7))) != 0;
+    }
+
+    bool sidecarEntryIsWorn(const ExtraContainerChanges::ExtendDataList* extendData)
+    {
+        if (extendData == nullptr)
+            return false;
+        auto* address = const_cast<ListNode<ExtraDataList>*>(&extendData->m_listHead);
+        for (UInt32 visited = 0; address != nullptr && visited < 256; ++visited)
+        {
+            ListNode<ExtraDataList> node;
+            if (!safeRead(address, node))
+                break;
+            if (node.data != nullptr
+                && (sidecarExtraListHasType(node.data, kExtraData_Worn)
+                    || sidecarExtraListHasType(node.data, kExtraData_WornLeft)))
+                return true;
+            address = node.next;
+        }
+        return false;
+    }
+
+    ExtraContainerChanges* sidecarFindContainerChanges(Actor* actor)
+    {
+        BSExtraData* address = nullptr;
+        if (actor == nullptr || !safeRead(&actor->extraDataList.m_data, address))
+            return nullptr;
+        for (UInt32 visited = 0; address != nullptr && visited < 256; ++visited)
+        {
+            SidecarExtraDataHeader snapshot;
+            if (!safeRead(address, snapshot))
+                break;
+            if (snapshot.type == kExtraData_ContainerChanges)
+                return reinterpret_cast<ExtraContainerChanges*>(address);
+            address = snapshot.next;
+        }
+        return nullptr;
+    }
+
+    bool sidecarReadInventory(Actor* actor, std::map<UInt32, SidecarInventoryItem>& result)
+    {
+        result.clear();
+        TESForm* baseForm = nullptr;
+        if (actor == nullptr || !safeRead(&actor->baseForm, baseForm) || baseForm == nullptr)
+            return false;
+        UInt8 baseType = 0;
+        if (!safeRead(&baseForm->typeID, baseType)
+            || (baseType != kFormType_TESNPC && baseType != kFormType_TESCreature))
+            return false;
+
+        TESActorBase* actorBase = static_cast<TESActorBase*>(baseForm);
+        auto* baseAddress = actorBase->container.formCountList.Head();
+        for (UInt32 visited = 0; baseAddress != nullptr && visited < 4096; ++visited)
+        {
+            ListNode<TESContainer::FormCount> node;
+            if (!safeRead(baseAddress, node))
+                break;
+            TESContainer::FormCount entry = {};
+            if (node.data != nullptr && safeRead(node.data, entry) && entry.form != nullptr)
+            {
+                UInt32 form = 0;
+                if (safeRead(&entry.form->refID, form) && form != 0)
+                {
+                    SidecarInventoryItem& item = result[form];
+                    item.form = entry.form;
+                    item.count += entry.count;
+                }
+            }
+            baseAddress = node.next;
+        }
+
+        ExtraContainerChanges* changes = sidecarFindContainerChanges(actor);
+        ExtraContainerChanges::Data* changesData = nullptr;
+        if (changes == nullptr
+            || !safeRead(reinterpret_cast<const UInt8*>(changes) + 0x0C, changesData)
+            || changesData == nullptr)
+            return true;
+        ExtraContainerChanges::Data data = {};
+        if (!safeRead(changesData, data) || data.objList == nullptr)
+            return true;
+        auto* changeAddress = &data.objList->m_listHead;
+        for (UInt32 visited = 0; changeAddress != nullptr && visited < 4096; ++visited)
+        {
+            ListNode<ExtraContainerChanges::EntryData> node;
+            if (!safeRead(changeAddress, node))
+                break;
+            ExtraContainerChanges::EntryData entry = {};
+            if (node.data != nullptr && safeRead(node.data, entry) && entry.type != nullptr)
+            {
+                UInt32 form = 0;
+                if (safeRead(&entry.type->refID, form) && form != 0)
+                {
+                    SidecarInventoryItem& item = result[form];
+                    item.form = entry.type;
+                    item.count += entry.countDelta;
+                    item.worn = item.worn || sidecarEntryIsWorn(entry.extendData);
+                }
+            }
+            changeAddress = node.next;
+        }
+        return true;
+    }
+
+    UInt32 sidecarEquippedWeaponForm(Actor* actor)
+    {
+        if (actor == nullptr)
+            return 0;
+        BaseProcess* process = nullptr;
+        if (!safeRead(&actor->baseProcess, process) || process == nullptr)
+            return 0;
+        UInt8 processLevel = 0xff;
+        if (!safeRead(&process->processLevel, processLevel) || processLevel > 1)
+            return 0;
+        MiddleHighProcess* middleHigh = static_cast<MiddleHighProcess*>(process);
+        MiddleHighProcess::WeaponInfo* weaponInfo = nullptr;
+        if (!safeRead(&middleHigh->weaponInfo, weaponInfo) || weaponInfo == nullptr)
+            return 0;
+        TESObjectWEAP* weapon = nullptr;
+        if (!safeRead(&weaponInfo->weapon, weapon) || weapon == nullptr)
+            return 0;
+        UInt32 result = 0;
+        safeRead(&weapon->refID, result);
+        return result;
+    }
+
+    bool sidecarAddAndEquipUnsafe(Actor* actor, TESForm* requested)
+    {
+        bool applied = false;
+        __try
+        {
+            actor->AddItem(requested, nullptr, 1);
+            using ItemAction = void(__thiscall*)(
+                Actor*, TESForm*, UInt32, ExtraDataList*, UInt32, bool, UInt32);
+            reinterpret_cast<ItemAction>(0x0088C650)(actor, requested, 1, nullptr, 1, false, 1);
+            applied = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            applied = false;
+        }
+        return applied;
+    }
+
+    bool sidecarApplyExactWeapon(Actor* actor, UInt32 requestedForm)
+    {
+        std::map<UInt32, SidecarInventoryItem> inventory;
+        if (actor == nullptr || gConsole == nullptr || !sidecarReadInventory(actor, inventory))
+            return false;
+        bool accepted = true;
+        for (const auto& pair : inventory)
+        {
+            UInt8 type = 0;
+            if (pair.second.form != nullptr && safeRead(&pair.second.form->typeID, type)
+                && type == kFormType_TESObjectWEAP)
+            {
+                char command[96] = {};
+                sprintf_s(command, "RemoveItem %08X 2147483647", pair.first);
+                accepted = gConsole->RunScriptLine2(command, actor, true) && accepted;
+            }
+        }
+        if (requestedForm == 0)
+            return accepted;
+        TESForm* requested = lookupForm(requestedForm);
+        UInt8 requestedType = 0;
+        if (requested == nullptr || !safeRead(&requested->typeID, requestedType)
+            || requestedType != kFormType_TESObjectWEAP)
+            return false;
+        return accepted && sidecarAddAndEquipUnsafe(actor, requested);
+    }
+
+    bool sidecarVerifyExactWeapon(Actor* actor, UInt32 requestedForm,
+        std::map<UInt32, SidecarInventoryItem>* inventoryOut = nullptr)
+    {
+        std::map<UInt32, SidecarInventoryItem> inventory;
+        if (!sidecarReadInventory(actor, inventory))
+            return false;
+        UInt32 positiveWeapons = 0;
+        bool requestedExactlyOne = requestedForm == 0;
+        for (const auto& pair : inventory)
+        {
+            UInt8 type = 0;
+            if (pair.second.form == nullptr || !safeRead(&pair.second.form->typeID, type)
+                || type != kFormType_TESObjectWEAP || pair.second.count <= 0)
+                continue;
+            ++positiveWeapons;
+            if (pair.first == requestedForm && pair.second.count == 1)
+                requestedExactlyOne = true;
+        }
+        const UInt32 equipped = sidecarEquippedWeaponForm(actor);
+        if (inventoryOut != nullptr)
+            *inventoryOut = inventory;
+        return requestedForm == 0
+            ? positiveWeapons == 0 && equipped == 0
+            : positiveWeapons == 1 && requestedExactlyOne && equipped == requestedForm;
+    }
+
+    UInt32 sidecarHashAppend(UInt32 hash, const void* bytes, std::size_t size)
+    {
+        const UInt8* data = static_cast<const UInt8*>(bytes);
+        for (std::size_t index = 0; index < size; ++index)
+        {
+            hash ^= data[index];
+            hash *= 16777619u;
+        }
+        return hash;
+    }
+
+    bool sidecarReadFaceGenChannel(const TESNPC::FaceGenData* address,
+        UInt32& count, UInt32& size, UInt32& hash, std::vector<float>& values, bool& truncated)
+    {
+        TESNPC::FaceGenData channel = {};
+        count = 0;
+        size = 0;
+        hash = 2166136261u;
+        values.clear();
+        truncated = false;
+        if (!safeRead(address, channel) || channel.count > 256 || channel.size > 64
+            || static_cast<UInt64>(channel.count) * channel.size > 4096)
+            return false;
+        count = channel.count;
+        size = channel.size;
+        if (count == 0 || size == 0)
+            return true;
+        if (channel.values == nullptr)
+            return false;
+        // Keep the shared JSON payload bounded while hashing every value. Typical FNV
+        // NPC channels are 30/50 single-float rows, so they remain fully enumerated;
+        // unusually large channels are explicitly marked truncated but retain a full hash.
+        constexpr std::size_t maximumReportedValues = 256;
+        for (UInt32 rowIndex = 0; rowIndex < count; ++rowIndex)
+        {
+            float* row = nullptr;
+            if (!safeRead(channel.values + rowIndex, row) || row == nullptr)
+                return false;
+            for (UInt32 column = 0; column < size; ++column)
+            {
+                float value = 0.f;
+                if (!safeRead(row + column, value) || !std::isfinite(value))
+                    return false;
+                hash = sidecarHashAppend(hash, &value, sizeof(value));
+                if (values.size() < maximumReportedValues)
+                    values.push_back(value);
+                else
+                    truncated = true;
+            }
+        }
+        return true;
+    }
+
+    void* sidecarGetSceneCameraUnsafe()
+    {
+        void* result = nullptr;
+        __try
+        {
+            void* owner = reinterpret_cast<void*(__cdecl*)()>(0x0045C670)();
+            result = owner != nullptr
+                ? reinterpret_cast<void*(__thiscall*)(void*)>(0x006629F0)(owner) : nullptr;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            result = nullptr;
+        }
+        return result;
+    }
+
+    void sidecarWriteFinite(std::ostringstream& out, float value)
+    {
+        if (std::isfinite(value))
+            out << value;
+        else
+            out << "null";
+    }
+
+    void sidecarWriteAnimationSequence(
+        std::ostringstream& out, const BSAnimGroupSequence* address)
+    {
+        if (address == nullptr)
+        {
+            out << "null";
+            return;
+        }
+        const UInt8* sequenceBytes = reinterpret_cast<const UInt8*>(address);
+        char* fileAddress = nullptr;
+        UInt32 state = 0;
+        UInt32 cycle = 0;
+        float weight = 0.f;
+        float frequency = 0.f;
+        float begin = 0.f;
+        float end = 0.f;
+        float last = 0.f;
+        float lastScaled = 0.f;
+        TESAnimGroup* animationGroup = nullptr;
+        if (!safeRead(sequenceBytes + 0x08, fileAddress)
+            || !safeRead(sequenceBytes + 0x1C, weight)
+            || !safeRead(sequenceBytes + 0x24, cycle)
+            || !safeRead(sequenceBytes + 0x28, frequency)
+            || !safeRead(sequenceBytes + 0x2C, begin)
+            || !safeRead(sequenceBytes + 0x30, end)
+            || !safeRead(sequenceBytes + 0x34, last)
+            || !safeRead(sequenceBytes + 0x3C, lastScaled)
+            || !safeRead(sequenceBytes + 0x44, state)
+            || !safeRead(sequenceBytes + 0x68, animationGroup))
+        {
+            out << "{\"readable\":false}";
+            return;
+        }
+        UInt8 group = 0xff;
+        if (animationGroup != nullptr)
+            safeRead(&animationGroup->animGroup, group);
+        const std::string file = safeRuntimeString(fileAddress);
+        out << "{\"readable\":true,\"address\":"
+            << reinterpret_cast<std::uintptr_t>(address)
+            << ",\"file\":" << jsonString(file.c_str())
+            << ",\"fileHash\":"
+            << sidecarHashAppend(2166136261u, file.data(), file.size())
+            << ",\"group\":" << static_cast<UInt32>(group)
+            << ",\"state\":" << state
+            << ",\"cycle\":" << cycle
+            << ",\"weight\":";
+        sidecarWriteFinite(out, weight);
+        out << ",\"frequency\":";
+        sidecarWriteFinite(out, frequency);
+        out << ",\"begin\":";
+        sidecarWriteFinite(out, begin);
+        out << ",\"end\":";
+        sidecarWriteFinite(out, end);
+        out << ",\"last\":";
+        sidecarWriteFinite(out, last);
+        out << ",\"lastScaled\":";
+        sidecarWriteFinite(out, lastScaled);
+        out << '}';
+    }
+
+    void sidecarWriteAnimationTelemetry(std::ostringstream& out, Actor* actor)
+    {
+        BaseProcess* process = nullptr;
+        UInt8 processLevel = 0xff;
+        UInt8 lifeState = 0xff;
+        UInt32 actorSitSleepState = 0;
+        if (actor != nullptr)
+        {
+            safeRead(&actor->baseProcess, process);
+            safeRead(&actor->lifeState, lifeState);
+            safeRead(reinterpret_cast<const UInt8*>(actor) + 0x1AC, actorSitSleepState);
+        }
+        if (process != nullptr)
+            safeRead(&process->processLevel, processLevel);
+        const bool middleHigh = process != nullptr && processLevel <= 1;
+        MiddleHighProcess* middle = middleHigh ? static_cast<MiddleHighProcess*>(process) : nullptr;
+        HighProcess* high = processLevel == 0 ? static_cast<HighProcess*>(process) : nullptr;
+        bool weaponOut = false;
+        bool aiming = false;
+        UInt8 processSitSleepState = 0xff;
+        BSFaceGenAnimationData* faceAnimation = nullptr;
+        BSFaceGenNiNode* faceNodeA = nullptr;
+        BSFaceGenNiNode* faceNodeB = nullptr;
+        NiTriShape* faceShape = nullptr;
+        AnimData* animationData = nullptr;
+        if (middle != nullptr)
+        {
+            safeRead(&middle->isWeaponOut, weaponOut);
+            safeRead(&middle->isAiming, aiming);
+            safeRead(reinterpret_cast<const UInt8*>(middle) + 0x13D, processSitSleepState);
+            safeRead(&middle->unk178, faceAnimation);
+            safeRead(&middle->unk248, faceNodeA);
+            safeRead(&middle->unk24C, faceNodeB);
+            safeRead(&middle->unk250, faceShape);
+            safeRead(&middle->animData, animationData);
+        }
+        out << ",\"animation\":{";
+        out << "\"processAvailable\":" << (process != nullptr ? "true" : "false")
+            << ",\"processLevel\":" << static_cast<UInt32>(processLevel)
+            << ",\"lifeState\":" << static_cast<UInt32>(lifeState)
+            << ",\"actorSitSleepState\":" << actorSitSleepState
+            << ",\"processSitSleepState\":" << static_cast<UInt32>(processSitSleepState)
+            << ",\"weaponOut\":" << (weaponOut ? "true" : "false")
+            << ",\"aiming\":" << (aiming ? "true" : "false")
+            << ",\"facialRuntime\":{";
+        out << "\"animationDataAvailable\":" << (faceAnimation != nullptr ? "true" : "false")
+            << ",\"animationDataAddress\":" << reinterpret_cast<std::uintptr_t>(faceAnimation)
+            << ",\"faceNodeAAddress\":" << reinterpret_cast<std::uintptr_t>(faceNodeA)
+            << ",\"faceNodeBAddress\":" << reinterpret_cast<std::uintptr_t>(faceNodeB)
+            << ",\"faceShapeAddress\":" << reinterpret_cast<std::uintptr_t>(faceShape) << '}';
+        out << ",\"middleHighSequences\":[";
+        for (UInt32 index = 0; index < 3; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            BSAnimGroupSequence* sequence = nullptr;
+            if (middle != nullptr)
+                safeRead(&middle->animSequence[index], sequence);
+            sidecarWriteAnimationSequence(out, sequence);
+        }
+        out << "],\"animDataSequences\":[";
+        for (UInt32 index = 0; index < 8; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            BSAnimGroupSequence* sequence = nullptr;
+            if (high != nullptr && animationData != nullptr)
+                safeRead(&animationData->animSequence[index], sequence);
+            sidecarWriteAnimationSequence(out, sequence);
+        }
+        out << "]}";
+    }
+
+    bool sidecarHasEvaluatedAnimation(Actor* actor)
+    {
+        BaseProcess* process = nullptr;
+        UInt8 processLevel = 0xff;
+        if (actor == nullptr || !safeRead(&actor->baseProcess, process) || process == nullptr
+            || !safeRead(&process->processLevel, processLevel) || processLevel > 1)
+            return false;
+        MiddleHighProcess* middle = static_cast<MiddleHighProcess*>(process);
+        for (UInt32 index = 0; index < 3; ++index)
+        {
+            BSAnimGroupSequence* sequence = nullptr;
+            if (safeRead(&middle->animSequence[index], sequence) && sequence != nullptr)
+                return true;
+        }
+        AnimData* animationData = nullptr;
+        if (!safeRead(&middle->animData, animationData) || animationData == nullptr)
+            return false;
+        for (UInt32 index = 0; index < 8; ++index)
+        {
+            BSAnimGroupSequence* sequence = nullptr;
+            if (safeRead(&animationData->animSequence[index], sequence) && sequence != nullptr)
+                return true;
+        }
+        return false;
+    }
+
+    std::string sidecarBuildTelemetry(Actor* actor, bool screenshotReady,
+        const SidecarScreenshotFile* screenshot)
+    {
+        std::ostringstream out;
+        out << std::setprecision(9)
+            << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\""
+            << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+            << ",\"key\":{\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+            << ",\"actorIndex\":" << gSidecarActorIndex
+            << ",\"actionIndex\":" << gSidecarActionIndex << '}'
+            << ",\"generation\":" << gSidecarGeneration
+            << ",\"frame\":" << gFrame;
+
+        UInt32 reference = 0;
+        UInt32 base = 0;
+        sidecarReadActorIdentity(actor, reference, base);
+        out << ",\"actor\":{\"refForm\":" << reference
+            << ",\"baseForm\":" << base
+            << ",\"spawned\":" << (gSidecarResolvedSpawned ? "true" : "false");
+        if (actor != nullptr)
+        {
+            float position[3] = {};
+            float rotation[3] = {};
+            const bool hasTransform = safeRead(&actor->posX, position[0])
+                && safeRead(&actor->posY, position[1]) && safeRead(&actor->posZ, position[2])
+                && safeRead(&actor->rotX, rotation[0]) && safeRead(&actor->rotY, rotation[1])
+                && safeRead(&actor->rotZ, rotation[2]);
+            if (hasTransform)
+                out << ",\"position\":[" << position[0] << ',' << position[1] << ',' << position[2]
+                    << "],\"rotation\":[" << rotation[0] << ',' << rotation[1] << ',' << rotation[2] << ']';
+        }
+        out << '}';
+
+        if (gSidecarActionIndex < gSidecarPlan.actions.size())
+        {
+            const SidecarActionPlan& action = gSidecarPlan.actions[gSidecarActionIndex];
+            out << ",\"action\":{\"id\":" << jsonString(action.id.c_str())
+                << ",\"retailPlayGroup\":" << jsonString(action.playGroup.c_str())
+                << ",\"requestedFrames\":" << action.frames
+                << ",\"elapsedFrames\":" << (gFrame - gSidecarActionStartFrame)
+                << ",\"accepted\":" << (gSidecarActionAccepted ? "true" : "false") << '}';
+        }
+        sidecarWriteAnimationTelemetry(out, actor);
+
+        std::map<UInt32, SidecarInventoryItem> inventory;
+        const UInt32 requestedWeapon = gSidecarActorIndex < gSidecarPlan.actors.size()
+            ? gSidecarPlan.actors[gSidecarActorIndex].weaponForm : 0;
+        const bool exactWeapon = sidecarVerifyExactWeapon(actor, requestedWeapon, &inventory);
+        out << ",\"weaponPolicy\":{\"requestedForm\":" << requestedWeapon
+            << ",\"equippedForm\":" << sidecarEquippedWeaponForm(actor)
+            << ",\"exact\":" << (exactWeapon ? "true" : "false")
+            << ",\"requestedMetadata\":";
+        TESObjectWEAP* requestedWeaponObject = nullptr;
+        if (requestedWeapon != 0)
+        {
+            TESForm* requestedForm = lookupForm(requestedWeapon);
+            UInt8 requestedType = 0;
+            if (requestedForm != nullptr && safeRead(&requestedForm->typeID, requestedType)
+                && requestedType == kFormType_TESObjectWEAP)
+                requestedWeaponObject = static_cast<TESObjectWEAP*>(requestedForm);
+        }
+        if (requestedWeaponObject == nullptr)
+            out << "null";
+        else
+        {
+            UInt8 weaponType = 0xff;
+            UInt8 grip = 0xff;
+            UInt8 reload = 0xff;
+            UInt8 attack = 0xff;
+            char* modelAddress = nullptr;
+            safeRead(&requestedWeaponObject->eWeaponType, weaponType);
+            safeRead(&requestedWeaponObject->handGrip, grip);
+            safeRead(&requestedWeaponObject->reloadAnim, reload);
+            safeRead(&requestedWeaponObject->attackAnim, attack);
+            safeRead(&requestedWeaponObject->textureSwap.nifPath.m_data, modelAddress);
+            const std::string modelPath = safeRuntimeString(modelAddress);
+            out << "{\"animationType\":" << static_cast<UInt32>(weaponType)
+                << ",\"handGripRaw\":" << static_cast<UInt32>(grip)
+                << ",\"handGripIndex\":" << handGripIndex(grip)
+                << ",\"reloadAnimation\":" << static_cast<UInt32>(reload)
+                << ",\"attackAnimationRaw\":" << static_cast<UInt32>(attack)
+                << ",\"attackAnimationIndex\":" << attackAnimationIndex(attack)
+                << ",\"model\":" << jsonString(modelPath.c_str()) << '}';
+        }
+        out << ",\"effectiveWeapons\":[";
+        bool firstWeapon = true;
+        for (const auto& pair : inventory)
+        {
+            UInt8 type = 0;
+            if (pair.second.form == nullptr || !safeRead(&pair.second.form->typeID, type)
+                || type != kFormType_TESObjectWEAP || pair.second.count <= 0)
+                continue;
+            if (!firstWeapon)
+                out << ',';
+            firstWeapon = false;
+            out << "{\"form\":" << pair.first << ",\"count\":" << pair.second.count
+                << ",\"worn\":" << (pair.second.worn ? "true" : "false") << '}';
+        }
+        out << "]}";
+
+        out << ",\"equipment\":{\"worn\":[";
+        bool firstWorn = true;
+        for (const auto& pair : inventory)
+        {
+            UInt8 type = 0;
+            if (!pair.second.worn || pair.second.form == nullptr
+                || !safeRead(&pair.second.form->typeID, type)
+                || (type != kFormType_TESObjectARMO && type != kFormType_TESObjectCLOT))
+                continue;
+            const TESBipedModelForm* biped = type == kFormType_TESObjectARMO
+                ? &static_cast<TESObjectARMO*>(pair.second.form)->bipedModel
+                : &static_cast<TESObjectCLOT*>(pair.second.form)->bipedModel;
+            UInt32 mask = 0;
+            UInt8 flags = 0;
+            const bool readable = safeRead(&biped->partMask, mask) && safeRead(&biped->bipedFlags, flags)
+                ;
+            if (!firstWorn)
+                out << ',';
+            firstWorn = false;
+            out << "{\"form\":" << pair.first << ",\"type\":" << static_cast<UInt32>(type)
+                << ",\"readable\":" << (readable ? "true" : "false");
+            if (readable)
+            {
+                char* maleAddress = nullptr;
+                char* femaleAddress = nullptr;
+                safeRead(&biped->bipedModel[0].nifPath.m_data, maleAddress);
+                safeRead(&biped->bipedModel[1].nifPath.m_data, femaleAddress);
+                const std::string malePath = safeRuntimeString(maleAddress);
+                const std::string femalePath = safeRuntimeString(femaleAddress);
+                out << ",\"partMask\":" << mask << ",\"bipedFlags\":" << static_cast<UInt32>(flags)
+                    << ",\"maleModel\":" << jsonString(malePath.c_str())
+                    << ",\"femaleModel\":" << jsonString(femalePath.c_str());
+            }
+            out << '}';
+        }
+        out << "],\"evaluatedSlots\":[";
+        bool firstSlot = true;
+        TESForm* actorBaseForm = nullptr;
+        UInt8 actorBaseType = 0;
+        if (actor != nullptr && safeRead(&actor->baseForm, actorBaseForm) && actorBaseForm != nullptr)
+            safeRead(&actorBaseForm->typeID, actorBaseType);
+        if (actorBaseType == kFormType_TESNPC)
+        {
+            ValidBip01Names* slots = nullptr;
+            if (safeRead(&static_cast<Character*>(actor)->validBip01Names, slots) && slots != nullptr)
+            {
+                for (UInt32 slot = 0; slot < 20; ++slot)
+                {
+                    ValidBip01Names::Data data = {};
+                    if (!safeRead(&slots->unk002C[slot], data))
+                        continue;
+                    UInt32 modelForm = 0;
+                    if (data.model != nullptr)
+                        safeRead(&data.model->refID, modelForm);
+                    if (modelForm == 0 && data.texture == nullptr && data.bones == nullptr)
+                        continue;
+                    std::string modelPath;
+                    if (data.texture != nullptr)
+                    {
+                        char* modelAddress = nullptr;
+                        if (safeRead(&data.texture->nifPath.m_data, modelAddress))
+                            modelPath = safeRuntimeString(modelAddress);
+                    }
+                    if (!firstSlot)
+                        out << ',';
+                    firstSlot = false;
+                    out << "{\"slot\":" << slot << ",\"modelForm\":" << modelForm
+                        << ",\"modelPath\":" << jsonString(modelPath.c_str())
+                        << ",\"bonesAddress\":" << reinterpret_cast<std::uintptr_t>(data.bones)
+                        << ",\"state\":" << data.unk00C << '}';
+                }
+            }
+        }
+        out << "]}";
+
+        out << ",\"face\":";
+        if (actorBaseType != kFormType_TESNPC)
+            out << "{\"npc\":false}";
+        else
+        {
+            TESNPC* npc = static_cast<TESNPC*>(actorBaseForm);
+            NpcAppearanceSnapshot appearance = {};
+            const bool appearanceReadable = readNpcAppearanceUnsafe(actor, appearance);
+            UInt32 hairForm = 0;
+            UInt32 eyesForm = 0;
+            UInt32 hairColor = 0;
+            float hairLength = 0.f;
+            TESHair* hair = nullptr;
+            TESEyes* eyes = nullptr;
+            safeRead(&npc->hair, hair);
+            safeRead(&npc->eyes, eyes);
+            safeRead(&npc->hairColor, hairColor);
+            safeRead(&npc->hairLength, hairLength);
+            if (hair != nullptr)
+                safeRead(&hair->refID, hairForm);
+            if (eyes != nullptr)
+                safeRead(&eyes->refID, eyesForm);
+            out << "{\"npc\":true,\"appearanceReadable\":"
+                << (appearanceReadable ? "true" : "false")
+                << ",\"female\":"
+                << (appearanceReadable && appearance.female ? "true" : "false")
+                << ",\"raceForm\":" << (appearanceReadable ? appearance.raceForm : 0)
+                << ",\"raceFieldForm\":" << (appearanceReadable ? appearance.raceFieldForm : 0)
+                << ",\"runtimeRaceForm\":" << (appearanceReadable ? appearance.runtimeRaceForm : 0)
+                << ",\"copyFromForm\":" << (appearanceReadable ? appearance.copyFromForm : 0)
+                << ",\"hairForm\":" << hairForm
+                << ",\"eyesForm\":" << eyesForm << ",\"hairColor\":" << hairColor
+                << ",\"hairColorBytes\":["
+                << static_cast<UInt32>(appearanceReadable ? appearance.hairColor[0] : 0) << ','
+                << static_cast<UInt32>(appearanceReadable ? appearance.hairColor[1] : 0) << ','
+                << static_cast<UInt32>(appearanceReadable ? appearance.hairColor[2] : 0) << ','
+                << static_cast<UInt32>(appearanceReadable ? appearance.hairColor[3] : 0) << ']'
+                << ",\"hairLength\":" << hairLength
+                << ",\"hairModel\":"
+                << jsonString(appearanceReadable
+                        ? safeRuntimeString(appearance.hairModel).c_str() : nullptr)
+                << ",\"eyeTexture\":"
+                << jsonString(appearanceReadable
+                        ? safeRuntimeString(appearance.eyeTexture).c_str() : nullptr)
+                << ",\"raceFaceSlots\":[";
+            if (appearanceReadable)
+            {
+                for (UInt32 slot = 0; slot < appearance.raceFaceSlotCount; ++slot)
+                {
+                    if (slot != 0)
+                        out << ',';
+                    const std::string model
+                        = safeRuntimeString(appearance.raceFaceSlots[slot].model);
+                    const std::string texture
+                        = safeRuntimeString(appearance.raceFaceSlots[slot].texture);
+                    out << "{\"slot\":" << slot << ",\"model\":" << jsonString(model.c_str())
+                        << ",\"texture\":" << jsonString(texture.c_str()) << '}';
+                }
+            }
+            out << "],\"headParts\":[";
+            UInt32 headHash = 2166136261u;
+            bool firstPart = true;
+            auto* partAddress = npc->headPart.Head();
+            for (UInt32 visited = 0; partAddress != nullptr && visited < 128; ++visited)
+            {
+                ListNode<BGSHeadPart> node;
+                if (!safeRead(partAddress, node))
+                    break;
+                if (node.data != nullptr)
+                {
+                    UInt32 form = 0;
+                    safeRead(&node.data->refID, form);
+                    std::string path;
+                    char* modelAddress = nullptr;
+                    if (safeRead(&node.data->texSwap.nifPath.m_data, modelAddress))
+                        path = safeRuntimeString(modelAddress);
+                    headHash = sidecarHashAppend(headHash, &form, sizeof(form));
+                    headHash = sidecarHashAppend(headHash, path.data(), path.size());
+                    if (!firstPart)
+                        out << ',';
+                    firstPart = false;
+                    out << "{\"form\":" << form << ",\"model\":" << jsonString(path.c_str()) << '}';
+                }
+                partAddress = node.next;
+            }
+            out << "],\"headPartsHash\":" << headHash << ",\"faceGenChannels\":[";
+            for (UInt32 channelIndex = 0; channelIndex < 3; ++channelIndex)
+            {
+                UInt32 count = 0;
+                UInt32 size = 0;
+                UInt32 hash = 0;
+                bool truncated = false;
+                std::vector<float> values;
+                const bool readable = sidecarReadFaceGenChannel(&npc->faceGenData[channelIndex],
+                    count, size, hash, values, truncated);
+                if (channelIndex != 0)
+                    out << ',';
+                out << "{\"index\":" << channelIndex << ",\"count\":" << count
+                    << ",\"size\":" << size << ",\"readable\":" << (readable ? "true" : "false")
+                    << ",\"hash\":" << hash << ",\"truncated\":" << (truncated ? "true" : "false")
+                    << ",\"values\":[";
+                for (std::size_t valueIndex = 0; valueIndex < values.size(); ++valueIndex)
+                {
+                    if (valueIndex != 0)
+                        out << ',';
+                    out << values[valueIndex];
+                }
+                out << "]}";
+            }
+            out << "]}";
+        }
+
+        PlayerCharacter* player = nullptr;
+        safeRead(reinterpret_cast<const void*>(0x011DEA3C), player);
+        float fly[5] = {};
+        const bool hasFly = player != nullptr
+            && safeRead(reinterpret_cast<const UInt8*>(player) + 0x7E0, fly[0])
+            && safeRead(reinterpret_cast<const UInt8*>(player) + 0x7E4, fly[1])
+            && safeRead(reinterpret_cast<const UInt8*>(player) + 0x7E8, fly[2])
+            && safeRead(reinterpret_cast<const UInt8*>(player) + 0x7EC, fly[3])
+            && safeRead(reinterpret_cast<const UInt8*>(player) + 0x7F0, fly[4]);
+        void* sceneCamera = sidecarGetSceneCameraUnsafe();
+        NiTransform world = {};
+        NiFrustum frustum = {};
+        NiViewport viewport = {};
+        const bool hasCamera = sceneCamera != nullptr
+            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + sNiAVObjectWorldTransformOffset, world)
+            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0xEC, frustum)
+            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x110, viewport);
+        out << ",\"camera\":{\"fly\":";
+        if (hasFly)
+            out << '[' << fly[0] << ',' << fly[1] << ',' << fly[2] << ',' << fly[3] << ',' << fly[4] << ']';
+        else
+            out << "null";
+        if (hasCamera)
+        {
+            const float height = std::fabs(frustum.t - frustum.b);
+            const float fovY = frustum.n > 0.f ? 2.f * std::atan(height / (2.f * frustum.n)) : 0.f;
+            float view[16] = { world.rotate.data[0], world.rotate.data[3], world.rotate.data[6], 0.f,
+                world.rotate.data[1], world.rotate.data[4], world.rotate.data[7], 0.f,
+                world.rotate.data[2], world.rotate.data[5], world.rotate.data[8], 0.f, 0.f, 0.f, 0.f, 1.f };
+            view[12] = -(view[0] * world.translate.x + view[4] * world.translate.y + view[8] * world.translate.z);
+            view[13] = -(view[1] * world.translate.x + view[5] * world.translate.y + view[9] * world.translate.z);
+            view[14] = -(view[2] * world.translate.x + view[6] * world.translate.y + view[10] * world.translate.z);
+            float projection[16] = {};
+            if (frustum.r != frustum.l && frustum.t != frustum.b && frustum.f != frustum.n)
+            {
+                projection[0] = 2.f * frustum.n / (frustum.r - frustum.l);
+                projection[5] = 2.f * frustum.n / (frustum.t - frustum.b);
+                projection[8] = (frustum.l + frustum.r) / (frustum.l - frustum.r);
+                projection[9] = (frustum.t + frustum.b) / (frustum.b - frustum.t);
+                projection[10] = frustum.f / (frustum.f - frustum.n);
+                projection[11] = 1.f;
+                projection[14] = -frustum.n * frustum.f / (frustum.f - frustum.n);
+            }
+            out << ",\"fovYRadians\":" << fovY
+                << ",\"world\":{\"rotation\":[";
+            for (UInt32 i = 0; i < 9; ++i)
+            {
+                if (i != 0)
+                    out << ',';
+                out << world.rotate.data[i];
+            }
+            out << "],\"translation\":[" << world.translate.x << ',' << world.translate.y << ','
+                << world.translate.z << "],\"scale\":" << world.scale << "}"
+                << ",\"frustum\":[" << frustum.l << ',' << frustum.r << ',' << frustum.t << ','
+                << frustum.b << ',' << frustum.n << ',' << frustum.f << ',' << static_cast<UInt32>(frustum.o) << ']'
+                << ",\"viewport\":[" << viewport.l << ',' << viewport.r << ',' << viewport.t << ',' << viewport.b << ']'
+                << ",\"viewMatrix\":[";
+            for (UInt32 i = 0; i < 16; ++i)
+            {
+                if (i != 0)
+                    out << ',';
+                out << view[i];
+            }
+            out << "],\"projectionMatrix\":[";
+            for (UInt32 i = 0; i < 16; ++i)
+            {
+                if (i != 0)
+                    out << ',';
+                out << projection[i];
+            }
+            out << ']';
+        }
+        out << '}';
+
+        const UInt8* sky = nullptr;
+        safeRead(reinterpret_cast<const void*>(0x011DEA20), sky);
+        TESWeather* currentWeather = nullptr;
+        TESWeather* previousWeather = nullptr;
+        float hour = 0.f;
+        float transition = 0.f;
+        UInt32 skyMode = 0;
+        if (sky != nullptr)
+        {
+            safeRead(sky + 0x10, currentWeather);
+            safeRead(sky + 0x14, previousWeather);
+            safeRead(sky + 0xEC, hour);
+            safeRead(sky + 0xF4, transition);
+            safeRead(sky + 0xF8, skyMode);
+        }
+        UInt32 currentWeatherForm = 0;
+        UInt32 previousWeatherForm = 0;
+        if (currentWeather != nullptr)
+            safeRead(&currentWeather->refID, currentWeatherForm);
+        if (previousWeather != nullptr)
+            safeRead(&previousWeather->refID, previousWeatherForm);
+        out << ",\"environment\":{\"currentWeatherForm\":" << currentWeatherForm
+            << ",\"previousWeatherForm\":" << previousWeatherForm
+            << ",\"gameHour\":" << hour << ",\"transition\":" << transition
+            << ",\"skyMode\":" << skyMode << '}';
+
+        out << ",\"capture\":{\"screenshotReady\":" << (screenshotReady ? "true" : "false");
+        if (screenshot != nullptr && screenshot->valid)
+            out << ",\"ordinal\":" << screenshot->ordinal << ",\"writeTime\":" << screenshot->writeTime
+                << ",\"size\":" << screenshot->size << ",\"width\":" << screenshot->width
+                << ",\"height\":" << screenshot->height
+                << ",\"bitsPerPixel\":" << screenshot->bitsPerPixel
+                << ",\"stableFrames\":" << gSidecarScreenshotStableFrames
+                << ",\"file\":" << jsonString(screenshot->path.c_str());
+        out << "}}";
+        return out.str();
+    }
+
+    void bootstrapProofFreeCamera(PlayerCharacter* player)
+    {
+        if (player == nullptr)
+            return;
+        const float forwardX = std::sin(gBatchProofTargetYaw);
+        const float forwardY = std::cos(gBatchProofTargetYaw);
+        const float aimX = gBatchProofTargetX;
+        const float aimY = gBatchProofTargetY;
+        const float aimZ = gBatchProofTargetZ + 96.f;
+        const float distance = 400.f;
+        const float cameraX = aimX + forwardX * distance;
+        const float cameraY = aimY + forwardY * distance;
+        const float cameraYaw = std::atan2(aimX - cameraX, aimY - cameraY);
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E0) = cameraYaw;
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E4) = 0.f;
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7E8) = cameraX;
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7EC) = cameraY;
+        *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7F0) = aimZ;
     }
 
     void driveBatchTargetLoading()
@@ -2971,6 +5807,86 @@ namespace
             }
             gOutput.flush();
         }
+
+        PlayerCharacter* player = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
+        if (gBatchProofStaging && !gBatchProofVolumeReady)
+        {
+            if (!gBatchProofLoadRequested)
+            {
+                TESForm* anchorForm = lookupForm(gBatchProofAnchorForm);
+                TESObjectREFR* anchor = anchorForm != nullptr && anchorForm->GetIsReference()
+                    ? static_cast<TESObjectREFR*>(anchorForm)
+                    : nullptr;
+                char command[64] = {};
+                sprintf_s(command, "player.moveto %08X", gBatchProofAnchorForm);
+                const bool accepted = anchor != nullptr && gConsole->RunScriptLine2(command, nullptr, true);
+                gBatchProofLoadRequested = true;
+                gBatchProofLoadFrame = gFrame;
+                bootstrapProofFreeCamera(player);
+                gOutput << "{\"schema\":" << sSchemaJson
+                        << ",\"event\":\"batch-proof-volume-load-request\""
+                        << ",\"frame\":" << gFrame
+                        << ",\"anchorForm\":" << gBatchProofAnchorForm
+                        << ",\"referenceAvailable\":" << (anchor != nullptr ? "true" : "false")
+                        << ",\"accepted\":" << (accepted ? "true" : "false")
+                        << ",\"targetPosition\":[" << gBatchProofTargetX << ',' << gBatchProofTargetY
+                        << ',' << gBatchProofTargetZ << ']'
+                        << ",\"targetYaw\":" << gBatchProofTargetYaw << "}\n";
+                gOutput.flush();
+                return;
+            }
+            if (gFrame < gBatchProofLoadFrame + gBatchProofInitializationFrames || player == nullptr)
+            {
+                bootstrapProofFreeCamera(player);
+                return;
+            }
+
+            const bool playerX = runReferenceFloatCommand(player, "SetPos X", gBatchProofPlayerX);
+            const bool playerY = runReferenceFloatCommand(player, "SetPos Y", gBatchProofPlayerY);
+            const bool playerZ = runReferenceFloatCommand(player, "SetPos Z", gBatchProofPlayerZ);
+            UInt32 disabledTargets = 0;
+            UInt32 disableFailures = 0;
+            UInt32 relocatedTargets = 0;
+            UInt32 relocationFailures = 0;
+            std::vector<UInt32> stagingReferences = gBatchTargetForms;
+            if (std::find(stagingReferences.begin(), stagingReferences.end(), gBatchProofAnchorForm)
+                == stagingReferences.end())
+                stagingReferences.push_back(gBatchProofAnchorForm);
+            for (const UInt32 targetFormId : stagingReferences)
+            {
+                TESForm* form = lookupForm(targetFormId);
+                TESObjectREFR* reference = form != nullptr && form->GetIsReference()
+                    ? static_cast<TESObjectREFR*>(form)
+                    : nullptr;
+                if (reference != nullptr
+                    && gConsole->RunScriptLine2("MoveTo 00000014", reference, true))
+                    ++relocatedTargets;
+                else
+                    ++relocationFailures;
+                if (reference != nullptr && gConsole->RunScriptLine2("Disable", reference, true))
+                    ++disabledTargets;
+                else
+                    ++disableFailures;
+            }
+            gBatchProofVolumeReady = playerX && playerY && playerZ
+                && disableFailures == 0 && relocationFailures == 0;
+            bootstrapProofFreeCamera(player);
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"batch-proof-volume-ready\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"passed\":" << (gBatchProofVolumeReady ? "true" : "false")
+                    << ",\"playerParkingAccepted\":[" << (playerX ? "true" : "false") << ','
+                    << (playerY ? "true" : "false") << ',' << (playerZ ? "true" : "false") << ']'
+                    << ",\"stagingReferences\":" << stagingReferences.size()
+                    << ",\"relocatedTargets\":" << relocatedTargets
+                    << ",\"relocationFailures\":" << relocationFailures
+                    << ",\"disabledTargets\":" << disabledTargets
+                    << ",\"disableFailures\":" << disableFailures << "}\n";
+            gOutput.flush();
+            if (!gBatchProofVolumeReady)
+                return;
+        }
+
         gBatchTargetLoadRequested = true;
         TESForm* targetForm = lookupForm(gTargetForm);
         TESObjectREFR* target = targetForm != nullptr && targetForm->GetIsReference()
@@ -2980,7 +5896,47 @@ namespace
         if (gBatchEnableTargets && target != nullptr)
             enableAccepted = gConsole->RunScriptLine2("Enable", target, true);
         bool moveAccepted = !gBatchMoveToTargets;
-        if (gBatchMoveToTargets)
+        bool stageAccepted = !gBatchProofStaging;
+        bool positionXAccepted = !gBatchProofStaging;
+        bool positionYAccepted = !gBatchProofStaging;
+        bool positionZAccepted = !gBatchProofStaging;
+        bool angleXAccepted = !gBatchProofStaging;
+        bool angleYAccepted = !gBatchProofStaging;
+        bool angleZAccepted = !gBatchProofStaging;
+        if (gBatchProofStaging)
+        {
+            moveAccepted = target != nullptr
+                && gConsole->RunScriptLine2("MoveTo 00000014", target, true);
+            positionXAccepted = runReferenceFloatCommand(target, "SetPos X", gBatchProofTargetX);
+            positionYAccepted = runReferenceFloatCommand(target, "SetPos Y", gBatchProofTargetY);
+            positionZAccepted = runReferenceFloatCommand(target, "SetPos Z", gBatchProofTargetZ);
+            angleXAccepted = runReferenceFloatCommand(target, "SetAngle X", 0.f);
+            angleYAccepted = runReferenceFloatCommand(target, "SetAngle Y", 0.f);
+            const float yawDegrees = gBatchProofTargetYaw * 180.f / 3.14159265358979323846f;
+            angleZAccepted = runReferenceFloatCommand(target, "SetAngle Z", yawDegrees);
+            stageAccepted = enableAccepted && moveAccepted && positionXAccepted && positionYAccepted
+                && positionZAccepted && angleXAccepted && angleYAccepted && angleZAccepted;
+            gBatchTargetStaged = stageAccepted;
+            gBatchTargetStageFrame = gFrame;
+            bootstrapProofFreeCamera(player);
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"batch-target-stage-request\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"targetIndex\":" << gBatchTargetIndex
+                    << ",\"targetForm\":" << gTargetForm
+                    << ",\"accepted\":" << (stageAccepted ? "true" : "false")
+                    << ",\"moveToPlayerAccepted\":" << (moveAccepted ? "true" : "false")
+                    << ",\"positionAccepted\":[" << (positionXAccepted ? "true" : "false") << ','
+                    << (positionYAccepted ? "true" : "false") << ','
+                    << (positionZAccepted ? "true" : "false") << ']'
+                    << ",\"angleAccepted\":[" << (angleXAccepted ? "true" : "false") << ','
+                    << (angleYAccepted ? "true" : "false") << ','
+                    << (angleZAccepted ? "true" : "false") << ']'
+                    << ",\"position\":[" << gBatchProofTargetX << ',' << gBatchProofTargetY << ','
+                    << gBatchProofTargetZ << ']'
+                    << ",\"yaw\":" << gBatchProofTargetYaw << "}\n";
+        }
+        else if (gBatchMoveToTargets)
         {
             char command[64] = {};
             sprintf_s(command, "player.moveto %08X", gTargetForm);
@@ -2993,8 +5949,10 @@ namespace
                 << ",\"referenceAvailable\":" << (target != nullptr ? "true" : "false")
                 << ",\"enableRequested\":" << (gBatchEnableTargets ? "true" : "false")
                 << ",\"enableAccepted\":" << (enableAccepted ? "true" : "false")
-                << ",\"moveRequested\":" << (gBatchMoveToTargets ? "true" : "false")
-                << ",\"moveAccepted\":" << (moveAccepted ? "true" : "false") << "}\n";
+                << ",\"moveRequested\":" << (gBatchMoveToTargets || gBatchProofStaging ? "true" : "false")
+                << ",\"moveAccepted\":" << (moveAccepted ? "true" : "false")
+                << ",\"proofStaging\":" << (gBatchProofStaging ? "true" : "false")
+                << ",\"stageAccepted\":" << (stageAccepted ? "true" : "false") << "}\n";
         gOutput.flush();
     }
 
@@ -3002,7 +5960,8 @@ namespace
     {
         if (gBatchTargetForms.empty() || gFinishRequested)
             return;
-        if (!gPortraitCameraLogged || !gAppearanceLogged)
+        if (!gPortraitCameraLogged || !gAppearanceLogged
+            || (gBatchForceWeaponOut && !gBatchWeaponStateLogged))
             return;
         if (gBatchTargetReadyFrame == 0)
         {
@@ -3012,11 +5971,15 @@ namespace
                     << ",\"targetIndex\":" << gBatchTargetIndex
                     << ",\"targetForm\":" << gTargetForm << "}\n";
             gOutput.flush();
+            if (gCaptureAnimation)
+                writeActor(findDriveActor());
         }
         const UInt32 screenshotFrame = gBatchTargetReadyFrame + gBatchSettleFrames;
         if (!gBatchScreenshotRequested && gFrame >= screenshotFrame)
         {
             gBatchScreenshotRequested = true;
+            if (gCaptureAnimation)
+                writeActor(findDriveActor());
             const bool accepted = gConsole != nullptr && gConsole->RunScriptLine2("TapKey 183", nullptr, true);
             gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"batch-screenshot-request\""
                     << ",\"frame\":" << gFrame
@@ -3026,6 +5989,33 @@ namespace
             gOutput.flush();
         }
         if (!gBatchScreenshotRequested || gFrame < screenshotFrame + gBatchAdvanceFrames)
+            return;
+
+        if (gBatchProofStaging && !gBatchTargetReleaseRequested)
+        {
+            gBatchTargetReleaseRequested = true;
+            TESForm* completedForm = lookupForm(gTargetForm);
+            TESObjectREFR* completedReference = completedForm != nullptr && completedForm->GetIsReference()
+                ? static_cast<TESObjectREFR*>(completedForm)
+                : nullptr;
+            const bool moveAccepted = completedReference != nullptr && gConsole != nullptr
+                && gConsole->RunScriptLine2("MoveTo 00000014", completedReference, true);
+            const bool disableAccepted = completedReference != nullptr && gConsole != nullptr
+                && gConsole->RunScriptLine2("Disable", completedReference, true);
+            gBatchTargetReleased = moveAccepted && disableAccepted;
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"batch-target-release\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"targetIndex\":" << gBatchTargetIndex
+                    << ",\"targetForm\":" << gTargetForm
+                    << ",\"referenceAvailable\":"
+                    << (completedReference != nullptr ? "true" : "false")
+                    << ",\"moveToPlayerAccepted\":" << (moveAccepted ? "true" : "false")
+                    << ",\"disableAccepted\":" << (disableAccepted ? "true" : "false")
+                    << ",\"accepted\":" << (gBatchTargetReleased ? "true" : "false") << "}\n";
+            gOutput.flush();
+        }
+        if (gBatchProofStaging && !gBatchTargetReleased)
             return;
 
         gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"batch-target-complete\""
@@ -3042,17 +6032,835 @@ namespace
         gTargetForm = gBatchTargetForms[gBatchTargetIndex];
         gAppearanceLogged = false;
         gPortraitCameraLogged = false;
+        gPortraitCameraWaitingLogged = false;
+        gFullBodyBoundsWaitingLogged = false;
+        gBatchWeaponStateLogged = false;
+        gBatchWeaponWaitingLogged = false;
+        gBatchWeaponProbeStartFrame = 0;
         gBatchTargetReadyFrame = 0;
         gBatchScreenshotRequested = false;
         gBatchTargetLoadRequested = false;
+        gBatchTargetStaged = false;
+        gBatchTargetStageFrame = 0;
+        gBatchTargetStageWaitingLogged = false;
+        gBatchVisualStageGateLogged = false;
+        gBatchVisualStageGatePassed = false;
+        gBatchTargetReleaseRequested = false;
+        gBatchTargetReleased = false;
+        gBatchProofCensusLogged = false;
+        gBatchProofEvictionCount = 0;
+    }
+
+    void sidecarSetPhase(SidecarPhase phase, bool withDeadline = false)
+    {
+        gSidecarPhase = phase;
+        gSidecarPhaseFrame = gFrame;
+        gSidecarBarrierDeadlineMs = withDeadline ? GetTickCount64() + gSidecarBarrierTimeoutMs : 0;
+    }
+
+    bool sidecarDeadlineExpired()
+    {
+        return gSidecarBarrierDeadlineMs != 0 && GetTickCount64() >= gSidecarBarrierDeadlineMs;
+    }
+
+    Actor* sidecarResolvedActor()
+    {
+        if (gSidecarResolvedRef == 0)
+            return nullptr;
+        TESForm* form = lookupForm(gSidecarResolvedRef);
+        return form != nullptr && form->IsActor_Runtime() ? static_cast<Actor*>(form) : nullptr;
+    }
+
+    NiNode* sidecarActorRootUnsafe(Actor* actor)
+    {
+        NiNode* root = nullptr;
+        __try
+        {
+            root = actor != nullptr ? actor->GetNiNode() : nullptr;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            root = nullptr;
+        }
+        return root;
+    }
+
+    void sidecarResetCameraForActor()
+    {
+        gAppearanceLogged = false;
+        gPortraitCameraLogged = false;
+        gPortraitCameraWaitingLogged = false;
+        gFullBodyBoundsWaitingLogged = false;
+        gBatchTargetStageWaitingLogged = false;
+        gBatchVisualStageGateLogged = false;
+        gBatchVisualStageGatePassed = false;
+        gBatchProofCensusLogged = false;
+        gBatchProofEvictionCount = 0;
+        gActorGeometryLogged.erase(gSidecarResolvedRef);
+    }
+
+    void sidecarUpdateShared(NikamiFNVSidecar::State state, UInt32 flagsToSet)
+    {
+        if (gSidecarShared == nullptr || !lockSidecarShared())
+        {
+            sidecarFail(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                "shared-memory-lock-failed");
+            return;
+        }
+        gSidecarShared->header.state = static_cast<UInt32>(state);
+        gSidecarShared->header.flags |= flagsToSet;
+        gSidecarShared->header.retailFrame = gFrame;
+        gSidecarShared->header.deadlineTickMs = gSidecarBarrierDeadlineMs;
+        unlockSidecarShared();
+    }
+
+    bool sidecarBeginSharedAction()
+    {
+        if (gSidecarShared == nullptr || gSidecarRetailReadyEvent == nullptr
+            || gSidecarOpenMwReadyEvent == nullptr || gSidecarCaptureAckEvent == nullptr
+            || gSidecarErrorEvent == nullptr)
+            return false;
+        if (!lockSidecarShared())
+            return false;
+        if ((gSidecarShared->header.flags & NikamiFNVSidecar::ErrorFlag) != 0
+            || gSidecarShared->header.state
+                == static_cast<UInt32>(NikamiFNVSidecar::State::Error))
+        {
+            unlockSidecarShared();
+            return false;
+        }
+        constexpr UInt32 transient = NikamiFNVSidecar::RetailReadyFlag
+            | NikamiFNVSidecar::OpenMwReadyFlag | NikamiFNVSidecar::RetailCapturedFlag
+            | NikamiFNVSidecar::OpenMwCapturedFlag | NikamiFNVSidecar::CaptureAckFlag;
+        const UInt64 now = GetTickCount64();
+        gSidecarGeneration = gSidecarShared->header.generation + 1;
+        gSidecarShared->header.generation = gSidecarGeneration;
+        gSidecarShared->header.actorIndex = static_cast<UInt32>(gSidecarActorIndex);
+        gSidecarShared->header.actionIndex = static_cast<UInt32>(gSidecarActionIndex);
+        gSidecarShared->header.actionCount = static_cast<UInt32>(gSidecarPlan.actions.size());
+        gSidecarShared->header.captureOrdinal
+            = static_cast<UInt64>(gSidecarActorIndex) * gSidecarPlan.actions.size()
+            + gSidecarActionIndex;
+        gSidecarShared->header.deadlineTickMs = now + gSidecarBarrierTimeoutMs;
+        gSidecarShared->header.flags &= ~transient;
+        gSidecarShared->header.errorCode = static_cast<UInt32>(NikamiFNVSidecar::ErrorCode::None);
+        gSidecarShared->header.errorMessage[0] = '\0';
+        gSidecarShared->header.retailPayloadLength = 0;
+        gSidecarShared->header.retailPayloadCrc32 = sidecarCrc32(nullptr, 0);
+        gSidecarShared->header.openmwPayloadLength = 0;
+        gSidecarShared->header.openmwPayloadCrc32 = sidecarCrc32(nullptr, 0);
+        gSidecarShared->retailPayload[0] = '\0';
+        gSidecarShared->openmwPayload[0] = '\0';
+        gSidecarShared->header.openmwFrame = 0;
+        gSidecarShared->header.state = static_cast<UInt32>(NikamiFNVSidecar::State::RetailPreparing);
+        gSidecarShared->header.retailFrame = gFrame;
+        unlockSidecarShared();
+        if (!ResetEvent(gSidecarRetailReadyEvent) || !ResetEvent(gSidecarOpenMwReadyEvent)
+            || !ResetEvent(gSidecarCaptureAckEvent))
+            return false;
+        gSidecarBarrierDeadlineMs = now + gSidecarBarrierTimeoutMs;
+        gSidecarScreenshotCandidate = {};
+        gSidecarScreenshotReady = {};
+        gSidecarScreenshotStableFrames = 0;
+        return true;
+    }
+
+    bool sidecarSharedHas(UInt32 requiredFlag)
+    {
+        if (gSidecarShared == nullptr)
+            return false;
+        HANDLE requiredEvent = nullptr;
+        if (requiredFlag == NikamiFNVSidecar::OpenMwReadyFlag)
+            requiredEvent = gSidecarOpenMwReadyEvent;
+        else if (requiredFlag == NikamiFNVSidecar::CaptureAckFlag)
+            requiredEvent = gSidecarCaptureAckEvent;
+        if (requiredEvent != nullptr && WaitForSingleObject(requiredEvent, 0) != WAIT_OBJECT_0)
+            return false;
+        if (!lockSidecarShared())
+            return false;
+        const UInt32 flags = gSidecarShared->header.flags;
+        const UInt32 actorIndex = gSidecarShared->header.actorIndex;
+        const UInt32 actionIndex = gSidecarShared->header.actionIndex;
+        const UInt64 generation = gSidecarShared->header.generation;
+        const UInt32 errorCode = gSidecarShared->header.errorCode;
+        const std::size_t sequenceLength = strnlen_s(
+            gSidecarShared->header.sequenceId, std::size(gSidecarShared->header.sequenceId));
+        char sequenceId[128] = {};
+        std::memcpy(sequenceId, gSidecarShared->header.sequenceId, sizeof(sequenceId) - 1);
+        char errorMessage[256] = {};
+        std::memcpy(errorMessage, gSidecarShared->header.errorMessage, sizeof(errorMessage) - 1);
+        const UInt32 payloadLength = gSidecarShared->header.openmwPayloadLength;
+        const UInt32 payloadCrc = gSidecarShared->header.openmwPayloadCrc32;
+        std::string payload;
+        if (payloadLength <= NikamiFNVSidecar::PayloadBytes)
+            payload.assign(gSidecarShared->openmwPayload,
+                gSidecarShared->openmwPayload + payloadLength);
+        unlockSidecarShared();
+        if ((flags & NikamiFNVSidecar::ErrorFlag) != 0)
+        {
+            sidecarFail(errorCode <= static_cast<UInt32>(NikamiFNVSidecar::ErrorCode::InternalFault)
+                    ? static_cast<NikamiFNVSidecar::ErrorCode>(errorCode)
+                    : NikamiFNVSidecar::ErrorCode::InternalFault,
+                std::string("peer-error-") + errorMessage);
+            return false;
+        }
+        if ((flags & requiredFlag) == 0)
+            return false;
+        if (sequenceLength == sizeof(sequenceId)
+            || gSidecarPlan.sequenceId != std::string(sequenceId, sequenceLength)
+            || actorIndex != gSidecarActorIndex || actionIndex != gSidecarActionIndex
+            || generation != gSidecarGeneration)
+        {
+            sidecarFail(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                "peer-ready-identity-mismatch");
+            return false;
+        }
+        if ((requiredFlag == NikamiFNVSidecar::OpenMwReadyFlag
+                || requiredFlag == NikamiFNVSidecar::CaptureAckFlag)
+            && (payloadLength == 0 || payloadLength > NikamiFNVSidecar::PayloadBytes
+                || sidecarCrc32(payload.data(), payload.size()) != payloadCrc
+                || payload.front() != '{' || payload.back() != '}'))
+        {
+            sidecarFail(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                "openmw-payload-contract-failed");
+            return false;
+        }
+        if (requiredFlag == NikamiFNVSidecar::OpenMwReadyFlag
+            && (flags & NikamiFNVSidecar::RetailReadyFlag) == 0)
+        {
+            sidecarFail(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                "openmw-ready-before-retail-ready");
+            return false;
+        }
+        constexpr UInt32 capturedFlags = NikamiFNVSidecar::RetailCapturedFlag
+            | NikamiFNVSidecar::OpenMwCapturedFlag;
+        if (requiredFlag == NikamiFNVSidecar::CaptureAckFlag
+            && (flags & capturedFlags) != capturedFlags)
+        {
+            sidecarFail(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                "capture-ack-before-both-files");
+            return false;
+        }
+        return true;
+    }
+
+    bool sidecarReadSceneState(UInt32& weather, float& hour)
+    {
+        weather = 0;
+        hour = 0.f;
+        const UInt8* sky = nullptr;
+        if (!safeRead(reinterpret_cast<const void*>(0x011DEA20), sky) || sky == nullptr)
+            return false;
+        TESWeather* current = nullptr;
+        if (!safeRead(sky + 0x10, current) || current == nullptr
+            || !safeRead(&current->refID, weather) || !safeRead(sky + 0xEC, hour))
+            return false;
+        return std::isfinite(hour);
+    }
+
+    bool sidecarValidateRuntimePlan(std::string& error)
+    {
+        TESForm* anchor = lookupForm(gSidecarPlan.anchorForm);
+        TESForm* weather = lookupForm(gSidecarPlan.weatherForm);
+        UInt8 weatherType = 0;
+        if (anchor == nullptr || !anchor->GetIsReference())
+        {
+            error = "proof-anchor-is-not-a-reference";
+            return false;
+        }
+        if (weather == nullptr || !safeRead(&weather->typeID, weatherType)
+            || weatherType != kFormType_TESWeather)
+        {
+            error = "weather-form-is-not-weather";
+            return false;
+        }
+        for (std::size_t index = 0; index < gSidecarPlan.actors.size(); ++index)
+        {
+            const SidecarActorPlan& actorPlan = gSidecarPlan.actors[index];
+            TESForm* base = lookupForm(actorPlan.baseForm);
+            UInt8 baseType = 0;
+            if (base == nullptr || !safeRead(&base->typeID, baseType)
+                || (baseType != kFormType_TESNPC && baseType != kFormType_TESCreature))
+            {
+                error = "actor-base-form-type-invalid-index-" + std::to_string(index);
+                return false;
+            }
+            if (actorPlan.authoredRefForm != 0)
+            {
+                TESForm* authored = lookupForm(actorPlan.authoredRefForm);
+                Actor* actor = authored != nullptr && authored->IsActor_Runtime()
+                    ? static_cast<Actor*>(authored) : nullptr;
+                UInt32 reference = 0;
+                UInt32 actualBase = 0;
+                if (!sidecarReadActorIdentity(actor, reference, actualBase)
+                    || reference != actorPlan.authoredRefForm || actualBase != actorPlan.baseForm)
+                {
+                    error = "authored-reference-correlation-invalid-index-" + std::to_string(index);
+                    return false;
+                }
+            }
+            if (actorPlan.weaponForm != 0)
+            {
+                TESForm* weapon = lookupForm(actorPlan.weaponForm);
+                UInt8 weaponType = 0;
+                if (weapon == nullptr || !safeRead(&weapon->typeID, weaponType)
+                    || weaponType != kFormType_TESObjectWEAP)
+                {
+                    error = "weapon-form-type-invalid-index-" + std::to_string(index);
+                    return false;
+                }
+            }
+            if (actorPlan.enableParentForm != 0)
+            {
+                TESForm* parent = lookupForm(actorPlan.enableParentForm);
+                if (parent == nullptr || !parent->GetIsReference())
+                {
+                    error = "enable-parent-is-not-reference-index-" + std::to_string(index);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    void sidecarRequestSceneState()
+    {
+        if (gConsole == nullptr)
+            return;
+        char command[96] = {};
+        sprintf_s(command, "Set GameHour To %.6f", gSidecarPlan.gameHour);
+        gConsole->RunScriptLine2(command, nullptr, true);
+        sprintf_s(command, "Set TimeScale To %.6f", gSidecarPlan.timeScale);
+        gConsole->RunScriptLine2(command, nullptr, true);
+        sprintf_s(command, "fw %08X", gSidecarPlan.weatherForm);
+        gConsole->RunScriptLine2(command, nullptr, true);
+    }
+
+    bool sidecarStageResolvedActor(Actor* actor)
+    {
+        if (actor == nullptr || gConsole == nullptr)
+            return false;
+        const bool enabled = gConsole->RunScriptLine2("Enable", actor, true);
+        const bool moved = gConsole->RunScriptLine2("MoveTo 00000014", actor, true);
+        const bool x = runReferenceFloatCommand(actor, "SetPos X", gSidecarPlan.targetX);
+        const bool y = runReferenceFloatCommand(actor, "SetPos Y", gSidecarPlan.targetY);
+        const bool z = runReferenceFloatCommand(actor, "SetPos Z", gSidecarPlan.targetZ);
+        const bool rx = runReferenceFloatCommand(actor, "SetAngle X", 0.f);
+        const bool ry = runReferenceFloatCommand(actor, "SetAngle Y", 0.f);
+        const float yawDegrees = gSidecarPlan.targetYaw * 180.f / 3.14159265358979323846f;
+        const bool rz = runReferenceFloatCommand(actor, "SetAngle Z", yawDegrees);
+        gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-actor-stage\""
+                << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                << ",\"actorIndex\":" << gSidecarActorIndex << ",\"refForm\":" << gSidecarResolvedRef
+                << ",\"baseForm\":" << gSidecarPlan.actors[gSidecarActorIndex].baseForm
+                << ",\"spawned\":" << (gSidecarResolvedSpawned ? "true" : "false")
+                << ",\"accepted\":[" << (enabled ? "true" : "false") << ','
+                << (moved ? "true" : "false") << ',' << (x ? "true" : "false") << ','
+                << (y ? "true" : "false") << ',' << (z ? "true" : "false") << ','
+                << (rx ? "true" : "false") << ',' << (ry ? "true" : "false") << ','
+                << (rz ? "true" : "false") << "]}\n";
+        gOutput.flush();
+        return enabled && moved && x && y && z && rx && ry && rz;
+    }
+
+    float sidecarAngleDistance(float left, float right)
+    {
+        constexpr float pi = 3.14159265358979323846f;
+        constexpr float tau = 2.f * pi;
+        float delta = std::fmod(std::fabs(left - right), tau);
+        return delta > pi ? tau - delta : delta;
+    }
+
+    bool sidecarActorMatchesStage(Actor* actor, float& positionError, float& yawError)
+    {
+        positionError = (std::numeric_limits<float>::infinity)();
+        yawError = (std::numeric_limits<float>::infinity)();
+        float x = 0.f;
+        float y = 0.f;
+        float z = 0.f;
+        float rx = 0.f;
+        float ry = 0.f;
+        float rz = 0.f;
+        if (actor == nullptr || !safeRead(&actor->posX, x) || !safeRead(&actor->posY, y)
+            || !safeRead(&actor->posZ, z) || !safeRead(&actor->rotX, rx)
+            || !safeRead(&actor->rotY, ry) || !safeRead(&actor->rotZ, rz))
+            return false;
+        const float dx = x - gSidecarPlan.targetX;
+        const float dy = y - gSidecarPlan.targetY;
+        const float dz = z - gSidecarPlan.targetZ;
+        positionError = std::sqrt(dx * dx + dy * dy + dz * dz);
+        yawError = sidecarAngleDistance(rz, gSidecarPlan.targetYaw);
+        return std::isfinite(positionError) && std::isfinite(yawError)
+            && positionError <= 0.05f && std::fabs(rx) <= 0.001f
+            && std::fabs(ry) <= 0.001f && yawError <= 0.001f;
+    }
+
+    void sidecarCleanupResolvedActor()
+    {
+        Actor* actor = sidecarResolvedActor();
+        if (actor != nullptr && gConsole != nullptr)
+        {
+            gConsole->RunScriptLine2("MoveTo 00000014", actor, true);
+            gConsole->RunScriptLine2("Disable", actor, true);
+            if (gSidecarResolvedSpawned)
+                gConsole->RunScriptLine2("MarkForDelete", actor, true);
+        }
+        gTargetForm = 0;
+        gDrivenActor = nullptr;
+        gSidecarResolvedRef = 0;
+        gSidecarResolvedSpawned = false;
+        gBatchTargetStaged = false;
+        gPortraitCameraLogged = false;
+    }
+
+    void driveSidecarPlan()
+    {
+        if (!gSidecarPlanActive || gSidecarPhase == SidecarPhase::Disabled)
+            return;
+        PlayerCharacter* player = nullptr;
+        safeRead(reinterpret_cast<const void*>(0x011DEA3C), player);
+
+        switch (gSidecarPhase)
+        {
+            case SidecarPhase::LoadProofVolume:
+            {
+                std::string runtimePlanError;
+                if (!sidecarValidateRuntimePlan(runtimePlanError))
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::InvalidPlan, runtimePlanError);
+                    break;
+                }
+                TESForm* anchorForm = lookupForm(gSidecarPlan.anchorForm);
+                TESObjectREFR* anchor = anchorForm != nullptr && anchorForm->GetIsReference()
+                    ? static_cast<TESObjectREFR*>(anchorForm) : nullptr;
+                if (gConsole == nullptr || player == nullptr || anchor == nullptr)
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::InvalidPlan,
+                        "proof-anchor-or-player-unavailable");
+                    break;
+                }
+                char command[64] = {};
+                sprintf_s(command, "player.moveto %08X", gSidecarPlan.anchorForm);
+                if (!gConsole->RunScriptLine2(command, nullptr, true))
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::InvalidPlan,
+                        "proof-anchor-move-rejected");
+                    break;
+                }
+                sidecarRequestSceneState();
+                gBatchProofLoadFrame = gFrame;
+                bootstrapProofFreeCamera(player);
+                gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-proof-volume-request\""
+                        << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                        << ",\"frame\":" << gFrame << ",\"anchorForm\":" << gSidecarPlan.anchorForm
+                        << ",\"weatherForm\":" << gSidecarPlan.weatherForm
+                        << ",\"gameHour\":" << gSidecarPlan.gameHour << "}\n";
+                gOutput.flush();
+                sidecarSetPhase(SidecarPhase::WaitProofVolume, true);
+                break;
+            }
+            case SidecarPhase::WaitProofVolume:
+            {
+                bootstrapProofFreeCamera(player);
+                if (gFrame < gSidecarPhaseFrame + gSidecarPlan.initializationFrames || player == nullptr)
+                    break;
+                const bool x = runReferenceFloatCommand(player, "SetPos X", gSidecarPlan.playerX);
+                const bool y = runReferenceFloatCommand(player, "SetPos Y", gSidecarPlan.playerY);
+                const bool z = runReferenceFloatCommand(player, "SetPos Z", gSidecarPlan.playerZ);
+                UInt32 weather = 0;
+                float hour = 0.f;
+                const bool sceneReadable = sidecarReadSceneState(weather, hour);
+                float hourError = sceneReadable ? std::fabs(hour - gSidecarPlan.gameHour) : 24.f;
+                if (hourError > 12.f)
+                    hourError = 24.f - hourError;
+                if (x && y && z && sceneReadable && weather == gSidecarPlan.weatherForm && hourError <= 0.01f)
+                {
+                    gBatchProofVolumeReady = true;
+                    gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-proof-volume-ready\""
+                            << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                            << ",\"frame\":" << gFrame << ",\"weatherForm\":" << weather
+                            << ",\"gameHour\":" << hour << "}\n";
+                    gOutput.flush();
+                    sidecarSetPhase(SidecarPhase::SelectActor);
+                }
+                else if (sidecarDeadlineExpired())
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::RetailReadyTimeout,
+                        "proof-volume-time-weather-timeout");
+                else if ((gFrame - gSidecarPhaseFrame) % 30 == 0)
+                    sidecarRequestSceneState();
+                break;
+            }
+            case SidecarPhase::SelectActor:
+            {
+                if (gSidecarActorIndex >= gSidecarPlan.actors.size())
+                {
+                    sidecarSetPhase(SidecarPhase::Complete);
+                    break;
+                }
+                const SidecarActorPlan& plan = gSidecarPlan.actors[gSidecarActorIndex];
+                gSidecarActionIndex = 0;
+                gSidecarResolvedRef = 0;
+                gSidecarResolvedSpawned = false;
+                gSidecarWeaponPolicyApplied = false;
+                if (plan.enableParentForm != 0)
+                {
+                    TESForm* parentForm = lookupForm(plan.enableParentForm);
+                    TESObjectREFR* parent = parentForm != nullptr && parentForm->GetIsReference()
+                        ? static_cast<TESObjectREFR*>(parentForm) : nullptr;
+                    if (parent == nullptr || gConsole == nullptr
+                        || !gConsole->RunScriptLine2("Enable", parent, true))
+                    {
+                        sidecarFail(NikamiFNVSidecar::ErrorCode::ActorUnavailable,
+                            "enable-parent-unavailable-or-rejected");
+                        break;
+                    }
+                }
+                if (plan.authoredRefForm != 0)
+                {
+                    TESForm* form = lookupForm(plan.authoredRefForm);
+                    Actor* actor = form != nullptr && form->IsActor_Runtime()
+                        ? static_cast<Actor*>(form) : nullptr;
+                    UInt32 reference = 0;
+                    UInt32 base = 0;
+                    if (!sidecarReadActorIdentity(actor, reference, base)
+                        || reference != plan.authoredRefForm || base != plan.baseForm)
+                    {
+                        sidecarFail(NikamiFNVSidecar::ErrorCode::ActorUnavailable,
+                            "authored-reference-base-correlation-failed");
+                        break;
+                    }
+                    gSidecarResolvedRef = reference;
+                    sidecarSetPhase(SidecarPhase::StageActor, true);
+                    break;
+                }
+                gSidecarSpawnBaselineRefs.clear();
+                std::set<Actor*> actors;
+                sidecarCollectActors(actors);
+                for (Actor* actor : actors)
+                {
+                    UInt32 reference = 0;
+                    UInt32 base = 0;
+                    if (sidecarReadActorIdentity(actor, reference, base))
+                        gSidecarSpawnBaselineRefs.insert(reference);
+                }
+                char command[96] = {};
+                sprintf_s(command, "player.placeatme %08X 1", plan.baseForm);
+                if (gConsole == nullptr || !gConsole->RunScriptLine2(command, nullptr, true))
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::ActorSpawnFailed,
+                        "spawn-command-rejected");
+                    break;
+                }
+                gSidecarSpawnRequestFrame = gFrame;
+                sidecarSetPhase(SidecarPhase::WaitSpawn, true);
+                break;
+            }
+            case SidecarPhase::WaitSpawn:
+            {
+                const std::vector<Actor*> actors = sidecarFindSpawnedActors(
+                    gSidecarPlan.actors[gSidecarActorIndex].baseForm);
+                if (actors.size() > 1)
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::ActorSpawnFailed,
+                        "spawn-correlation-ambiguous");
+                }
+                else if (actors.size() == 1)
+                {
+                    UInt32 base = 0;
+                    sidecarReadActorIdentity(actors.front(), gSidecarResolvedRef, base);
+                    gSidecarResolvedSpawned = true;
+                    sidecarSetPhase(SidecarPhase::StageActor, true);
+                }
+                else if (sidecarDeadlineExpired())
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::ActorSpawnFailed,
+                        "spawn-correlation-timeout");
+                break;
+            }
+            case SidecarPhase::StageActor:
+            {
+                Actor* actor = sidecarResolvedActor();
+                UInt32 reference = 0;
+                UInt32 base = 0;
+                if (!sidecarReadActorIdentity(actor, reference, base)
+                    || base != gSidecarPlan.actors[gSidecarActorIndex].baseForm)
+                {
+                    if (sidecarDeadlineExpired())
+                        sidecarFail(NikamiFNVSidecar::ErrorCode::ActorUnavailable,
+                            "resolved-actor-lost-before-stage");
+                    break;
+                }
+                if (!sidecarStageResolvedActor(actor))
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::ActorUnavailable,
+                        "actor-stage-command-rejected");
+                    break;
+                }
+                gTargetForm = reference;
+                gDrivenActor = actor;
+                gBatchTargetStaged = true;
+                gBatchTargetStageFrame = gFrame;
+                sidecarResetCameraForActor();
+                bootstrapProofFreeCamera(player);
+                sidecarSetPhase(SidecarPhase::WaitActor3D, true);
+                break;
+            }
+            case SidecarPhase::WaitActor3D:
+            {
+                Actor* actor = sidecarResolvedActor();
+                float positionError = 0.f;
+                float yawError = 0.f;
+                if (actor != nullptr && sidecarActorRootUnsafe(actor) != nullptr
+                    && sidecarActorMatchesStage(actor, positionError, yawError)
+                    && gFrame >= gSidecarPhaseFrame + gSidecarPlan.targetSettleFrames)
+                    sidecarSetPhase(SidecarPhase::ApplyWeapon, true);
+                else if (sidecarDeadlineExpired())
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::ActorUnavailable,
+                        "actor-3d-generation-timeout");
+                break;
+            }
+            case SidecarPhase::ApplyWeapon:
+            {
+                Actor* actor = sidecarResolvedActor();
+                const UInt32 weapon = gSidecarPlan.actors[gSidecarActorIndex].weaponForm;
+                gSidecarWeaponPolicyApplied = sidecarApplyExactWeapon(actor, weapon);
+                gSidecarWeaponVerifyStartFrame = gFrame;
+                if (!gSidecarWeaponPolicyApplied)
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::WeaponPolicyFailed,
+                        "exact-weapon-application-rejected");
+                    break;
+                }
+                sidecarSetPhase(SidecarPhase::VerifyWeapon, true);
+                break;
+            }
+            case SidecarPhase::VerifyWeapon:
+            {
+                Actor* actor = sidecarResolvedActor();
+                const UInt32 weapon = gSidecarPlan.actors[gSidecarActorIndex].weaponForm;
+                if (gFrame >= gSidecarWeaponVerifyStartFrame + 2
+                    && sidecarVerifyExactWeapon(actor, weapon))
+                {
+                    if (weapon != 0)
+                        setWeaponOutUnsafe(actor);
+                    sidecarSetPhase(SidecarPhase::StartAction);
+                }
+                else if (sidecarDeadlineExpired())
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::WeaponPolicyFailed,
+                        "exact-weapon-verification-timeout");
+                break;
+            }
+            case SidecarPhase::StartAction:
+            {
+                if (gSidecarActionIndex >= gSidecarPlan.actions.size())
+                {
+                    sidecarSetPhase(SidecarPhase::CleanupActor);
+                    break;
+                }
+                Actor* actor = sidecarResolvedActor();
+                const SidecarActionPlan& action = gSidecarPlan.actions[gSidecarActionIndex];
+                char command[256] = {};
+                sprintf_s(command, "PlayGroup %s 1", action.playGroup.c_str());
+                gSidecarActionAccepted = actor != nullptr && gConsole != nullptr
+                    && gConsole->RunScriptLine2(command, actor, true);
+                if (!gSidecarActionAccepted)
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::ActionRejected,
+                        std::string("play-group-rejected-") + action.id);
+                    break;
+                }
+                if (gSidecarPlan.actors[gSidecarActorIndex].weaponForm != 0)
+                    setWeaponOutUnsafe(actor);
+                if (!sidecarBeginSharedAction())
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                        "shared-action-initialization-failed");
+                    break;
+                }
+                gSidecarActionStartFrame = gFrame;
+                gSidecarRetailReadyPublished = false;
+                gSidecarScreenshotAccepted = false;
+                sidecarResetCameraForActor();
+                const std::string telemetry = sidecarBuildTelemetry(actor, false, nullptr);
+                if (!publishSidecarRetailPayload(
+                        telemetry, NikamiFNVSidecar::State::RetailPreparing, 0, false))
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                        "retail-preparing-payload-too-large-or-lock-failed");
+                    break;
+                }
+                gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-action-start\""
+                        << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                        << ",\"actorIndex\":" << gSidecarActorIndex
+                        << ",\"actionIndex\":" << gSidecarActionIndex
+                        << ",\"generation\":" << gSidecarGeneration
+                        << ",\"id\":" << jsonString(action.id.c_str()) << "}\n";
+                gOutput.flush();
+                sidecarSetPhase(SidecarPhase::SettleAction, true);
+                break;
+            }
+            case SidecarPhase::SettleAction:
+            {
+                Actor* actor = sidecarResolvedActor();
+                const SidecarActionPlan& action = gSidecarPlan.actions[gSidecarActionIndex];
+                if (!sidecarVerifyExactWeapon(actor,
+                        gSidecarPlan.actors[gSidecarActorIndex].weaponForm))
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::WeaponPolicyFailed,
+                        "weapon-policy-lost-during-action");
+                    break;
+                }
+                if (gFrame >= gSidecarActionStartFrame + action.frames && gPortraitCameraLogged
+                    && sidecarHasEvaluatedAnimation(actor))
+                    sidecarSetPhase(SidecarPhase::PublishRetailReady, true);
+                else if (sidecarDeadlineExpired())
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::RetailReadyTimeout,
+                        "action-animation-or-camera-settle-timeout");
+                break;
+            }
+            case SidecarPhase::PublishRetailReady:
+            {
+                Actor* actor = sidecarResolvedActor();
+                const std::string telemetry = sidecarBuildTelemetry(actor, false, nullptr);
+                if (!publishSidecarRetailPayload(telemetry, NikamiFNVSidecar::State::RetailReady,
+                        NikamiFNVSidecar::RetailReadyFlag, false))
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                        "retail-ready-payload-too-large-or-lock-failed");
+                    break;
+                }
+                SetEvent(gSidecarRetailReadyEvent);
+                gSidecarRetailReadyPublished = true;
+                gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-retail-ready\""
+                        << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                        << ",\"actorIndex\":" << gSidecarActorIndex
+                        << ",\"actionIndex\":" << gSidecarActionIndex
+                        << ",\"generation\":" << gSidecarGeneration
+                        << ",\"telemetry\":" << telemetry << "}\n";
+                gOutput.flush();
+                sidecarSetPhase(SidecarPhase::WaitOpenMwReady, true);
+                break;
+            }
+            case SidecarPhase::WaitOpenMwReady:
+                if (sidecarSharedHas(NikamiFNVSidecar::OpenMwReadyFlag))
+                {
+                    sidecarUpdateShared(NikamiFNVSidecar::State::BothReady, 0);
+                    sidecarSetPhase(SidecarPhase::RequestScreenshot, true);
+                }
+                else if (sidecarDeadlineExpired())
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::OpenMwReadyTimeout,
+                        "openmw-ready-timeout");
+                break;
+            case SidecarPhase::RequestScreenshot:
+            {
+                gSidecarScreenshotBaseline = sidecarNewestScreenshot();
+                gSidecarScreenshotCandidate = {};
+                gSidecarScreenshotReady = {};
+                gSidecarScreenshotStableFrames = 0;
+                gSidecarScreenshotRequestFrame = gFrame;
+                gSidecarScreenshotAccepted = gConsole != nullptr
+                    && gConsole->RunScriptLine2("TapKey 183", nullptr, true);
+                if (!gSidecarScreenshotAccepted)
+                {
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::ScreenshotTimeout,
+                        "screenshot-request-rejected");
+                    break;
+                }
+                sidecarUpdateShared(NikamiFNVSidecar::State::CaptureIssued, 0);
+                sidecarSetPhase(SidecarPhase::WaitScreenshotFile, true);
+                break;
+            }
+            case SidecarPhase::WaitScreenshotFile:
+            {
+                const SidecarScreenshotFile candidate = sidecarNewestScreenshot();
+                SidecarScreenshotFile validated;
+                if (sidecarScreenshotIsNew(gSidecarScreenshotBaseline, candidate)
+                    && sidecarScreenshotStableAndComplete(candidate, validated))
+                {
+                    gSidecarScreenshotReady = validated;
+                    const std::string telemetry = sidecarBuildTelemetry(
+                        sidecarResolvedActor(), true, &gSidecarScreenshotReady);
+                    if (!publishSidecarRetailPayload(telemetry,
+                            NikamiFNVSidecar::State::WaitingCaptureAck,
+                            NikamiFNVSidecar::RetailCapturedFlag, false))
+                    {
+                        sidecarFail(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                            "retail-captured-payload-too-large-or-lock-failed");
+                        break;
+                    }
+                    gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-screenshot-ready\""
+                            << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                            << ",\"actorIndex\":" << gSidecarActorIndex
+                            << ",\"actionIndex\":" << gSidecarActionIndex
+                            << ",\"generation\":" << gSidecarGeneration
+                            << ",\"telemetry\":" << telemetry << "}\n";
+                    gOutput.flush();
+                    sidecarSetPhase(SidecarPhase::WaitCaptureAck, true);
+                }
+                else if (sidecarDeadlineExpired())
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::ScreenshotTimeout,
+                        "screenshot-file-timeout");
+                break;
+            }
+            case SidecarPhase::WaitCaptureAck:
+                if (sidecarSharedHas(NikamiFNVSidecar::CaptureAckFlag))
+                    sidecarSetPhase(SidecarPhase::AdvanceAction);
+                else if (sidecarDeadlineExpired())
+                    sidecarFail(NikamiFNVSidecar::ErrorCode::CaptureAckTimeout,
+                        "capture-ack-timeout");
+                break;
+            case SidecarPhase::AdvanceAction:
+                sidecarUpdateShared(NikamiFNVSidecar::State::Advancing, 0);
+                ++gSidecarActionIndex;
+                sidecarSetPhase(gSidecarActionIndex < gSidecarPlan.actions.size()
+                        ? SidecarPhase::StartAction : SidecarPhase::CleanupActor);
+                break;
+            case SidecarPhase::CleanupActor:
+                sidecarCleanupResolvedActor();
+                ++gSidecarActorIndex;
+                sidecarSetPhase(gSidecarActorIndex < gSidecarPlan.actors.size()
+                        ? SidecarPhase::SelectActor : SidecarPhase::Complete);
+                break;
+            case SidecarPhase::Complete:
+                sidecarUpdateShared(NikamiFNVSidecar::State::Complete,
+                    NikamiFNVSidecar::RetailCompleteFlag);
+                gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-sequence-complete\""
+                        << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                        << ",\"actors\":" << gSidecarPlan.actors.size()
+                        << ",\"actionsPerActor\":" << gSidecarPlan.actions.size()
+                        << ",\"captures\":" << gSidecarPlan.actors.size() * gSidecarPlan.actions.size()
+                        << ",\"frame\":" << gFrame << "}\n";
+                gOutput.flush();
+                gSidecarPhase = SidecarPhase::Disabled;
+                finishCapture();
+                break;
+            case SidecarPhase::Error:
+                finishCapture();
+                break;
+            default:
+                break;
+        }
     }
 
     void captureFrame()
     {
         openOutput();
-        if (!gOutput || !gWorldReady || gFrame >= gMaxFrames)
+        if (!gOutput || !gWorldReady)
             return;
+        if (gFrame >= gMaxFrames)
+        {
+            if (gSidecarPlanActive)
+                sidecarFail(NikamiFNVSidecar::ErrorCode::RetailReadyTimeout,
+                    "sidecar-max-frames-exhausted");
+            finishCapture();
+            return;
+        }
         ++gFrame;
+        if (gSidecarPlanActive)
+        {
+            driveSidecarPlan();
+            gOutput.flush();
+            return;
+        }
         driveBatchTargetLoading();
         captureTargetAppearance();
         captureAppearanceBatch();
@@ -3175,15 +6983,20 @@ namespace
                     }
                 }
                 driveObserverApproach();
+                driveBatchWeaponState();
                 drivePortraitCamera();
-                if (gCaptureAnimation && !gPrepareRequested && gWorldLoopFrame >= gPrepareActorFrame)
+                const bool passiveBatchCapture = gSidecarPlanActive || !gBatchTargetForms.empty();
+                if (gCaptureAnimation && !passiveBatchCapture && !gPrepareRequested
+                    && gWorldLoopFrame >= gPrepareActorFrame)
                     prepareActor();
-                if (gCaptureAnimation && !gEquipRequested && gWorldLoopFrame >= gEquipActorFrame)
+                if (gCaptureAnimation && !passiveBatchCapture && !gEquipRequested
+                    && gWorldLoopFrame >= gEquipActorFrame)
                     equipActor();
-                if (gCaptureAnimation && (!gPlayGroup.empty() || !gDriveCommand.empty()) && !gDriveRequested
+                if (gCaptureAnimation && !passiveBatchCapture
+                    && (!gPlayGroup.empty() || !gDriveCommand.empty()) && !gDriveRequested
                     && gWorldLoopFrame >= gDriveActorFrame)
                     driveActor();
-                if (gCaptureAnimation && !gFootIkToggleRequested && gFootIkToggleFrame > 0
+                if (gCaptureAnimation && !passiveBatchCapture && !gFootIkToggleRequested && gFootIkToggleFrame > 0
                     && gWorldLoopFrame >= gFootIkToggleFrame)
                     toggleActorFootIk();
             }
@@ -3212,6 +7025,7 @@ namespace
                 gOutput.flush();
                 gOutput.close();
             }
+            closeSidecarSharedMemory();
         }
     }
 }
@@ -3255,6 +7069,17 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gCloseMenusDuringCapture = envUInt("NIKAMI_ORACLE_CLOSE_MENUS", 0) != 0;
     gPortraitCamera = envUInt("NIKAMI_ORACLE_PORTRAIT_CAMERA", 0) != 0;
     gPortraitDistance = (std::max)(32.f, envFloat("NIKAMI_ORACLE_PORTRAIT_DISTANCE", 110.f));
+    gCameraShotKind = envString("NIKAMI_ORACLE_CAMERA_SHOT_KIND");
+    if (gCameraShotKind.empty())
+        gCameraShotKind = "front-portrait";
+    if (gCameraShotKind != "front-portrait" && gCameraShotKind != "front-full-body")
+        return false;
+    gFullBodyCamera = gCameraShotKind == "front-full-body";
+    gFullBodyDistanceScale
+        = (std::max)(1.25f, envFloat("NIKAMI_ORACLE_FULL_BODY_DISTANCE_SCALE", 1.6f));
+    gBatchForceWeaponOut = envUInt("NIKAMI_ORACLE_BATCH_FORCE_WEAPON_OUT", 0) != 0;
+    gBatchWeaponProbeFrames
+        = (std::max)(1u, envUInt("NIKAMI_ORACLE_BATCH_WEAPON_PROBE_FRAMES", 12));
     gSaveName = envString("NIKAMI_ORACLE_SAVE");
     gPlayGroup = envString("NIKAMI_ORACLE_PLAY_GROUP");
     gDriveCommand = envString("NIKAMI_ORACLE_DRIVE_COMMAND");
@@ -3275,6 +7100,36 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gBatchMoveToTargets = envUInt("NIKAMI_ORACLE_BATCH_MOVE_TO_TARGETS", 0) != 0;
     gBatchEnableTargets = envUInt("NIKAMI_ORACLE_BATCH_ENABLE_TARGETS", 0) != 0;
     gBatchEnableParentForms = envUIntList("NIKAMI_ORACLE_BATCH_ENABLE_PARENT_FORMS");
+    gBatchProofStaging = envUInt("NIKAMI_ORACLE_BATCH_PROOF_STAGING", 0) != 0;
+    gBatchProofAnchorForm = envUInt("NIKAMI_ORACLE_BATCH_PROOF_ANCHOR_FORM", 0);
+    gBatchProofTargetX = envFloat("NIKAMI_ORACLE_BATCH_PROOF_TARGET_X", 0.f);
+    gBatchProofTargetY = envFloat("NIKAMI_ORACLE_BATCH_PROOF_TARGET_Y", 0.f);
+    gBatchProofTargetZ = envFloat("NIKAMI_ORACLE_BATCH_PROOF_TARGET_Z", 0.f);
+    gBatchProofTargetYaw = envFloat("NIKAMI_ORACLE_BATCH_PROOF_TARGET_YAW", 0.f);
+    gBatchProofPlayerX = envFloat("NIKAMI_ORACLE_BATCH_PROOF_PLAYER_X", 0.f);
+    gBatchProofPlayerY = envFloat("NIKAMI_ORACLE_BATCH_PROOF_PLAYER_Y", 0.f);
+    gBatchProofPlayerZ = envFloat("NIKAMI_ORACLE_BATCH_PROOF_PLAYER_Z", 0.f);
+    gBatchProofMinimumCameraHeight = envFloat(
+        "NIKAMI_ORACLE_BATCH_PROOF_MINIMUM_CAMERA_HEIGHT", 48.f);
+    gBatchProofMinimumAimHeight = envFloat(
+        "NIKAMI_ORACLE_BATCH_PROOF_MINIMUM_AIM_HEIGHT", 16.f);
+    gBatchProofInitializationFrames = (std::max)(
+        1u, envUInt("NIKAMI_ORACLE_BATCH_PROOF_INITIALIZATION_FRAMES", 30));
+    gBatchProofTargetSettleFrames = (std::max)(
+        1u, envUInt("NIKAMI_ORACLE_BATCH_PROOF_TARGET_SETTLE_FRAMES", 15));
+    if (gBatchProofStaging
+        && (gBatchTargetForms.empty() || gBatchProofAnchorForm == 0 || !gBatchEnableTargets
+            || !gFullBodyCamera
+            || !std::isfinite(gBatchProofTargetX) || !std::isfinite(gBatchProofTargetY)
+            || !std::isfinite(gBatchProofTargetZ) || !std::isfinite(gBatchProofTargetYaw)
+            || !std::isfinite(gBatchProofPlayerX) || !std::isfinite(gBatchProofPlayerY)
+            || !std::isfinite(gBatchProofPlayerZ)
+            || !std::isfinite(gBatchProofMinimumCameraHeight)
+            || !std::isfinite(gBatchProofMinimumAimHeight)
+            || gBatchProofMinimumCameraHeight < 0.f
+            || gBatchProofMinimumAimHeight < 0.f
+            || gBatchProofMinimumCameraHeight < gBatchProofMinimumAimHeight))
+        return false;
     if (!gBatchTargetForms.empty())
     {
         gTargetForm = gBatchTargetForms.front();
@@ -3293,6 +7148,63 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gSetStageIndex = envUInt("NIKAMI_ORACLE_SET_STAGE_INDEX", 0xffff);
     gExitWhenDone = envUInt("NIKAMI_ORACLE_EXIT_WHEN_DONE", gSaveName.empty() ? 0 : 1) != 0;
     gWorldReady = gSaveName.empty();
+
+    gSidecarPlanPath = envString("NIKAMI_ORACLE_PLAN_PATH");
+    if (!gSidecarPlanPath.empty())
+    {
+        std::string planError;
+        if (!loadSidecarPlan(gSidecarPlanPath, gSidecarPlan, planError))
+            return false;
+        gSidecarSharedMemoryName = envString("NIKAMI_ORACLE_SHARED_MEMORY_NAME");
+        gSidecarBarrierTimeoutMs = (std::max)(1000u,
+            envUInt("NIKAMI_ORACLE_BARRIER_TIMEOUT_MS", 30000));
+        if (!initializeSidecarSharedMemory(planError))
+            return false;
+
+        gBatchTargetForms.clear();
+        gBatchEnableParentForms.clear();
+        gScreenshotFrames.clear();
+        gTargetForm = 0;
+        gEquipForm = 0;
+        gAllHighActors = false;
+        gCaptureAnimation = true;
+        gPortraitCamera = true;
+        gCameraShotKind = "front-full-body";
+        gFullBodyCamera = true;
+        gFullBodyDistanceScale = gSidecarPlan.fullBodyDistanceScale;
+        gBatchProofStaging = true;
+        gBatchProofAnchorForm = gSidecarPlan.anchorForm;
+        gBatchProofTargetX = gSidecarPlan.targetX;
+        gBatchProofTargetY = gSidecarPlan.targetY;
+        gBatchProofTargetZ = gSidecarPlan.targetZ;
+        gBatchProofTargetYaw = gSidecarPlan.targetYaw;
+        gBatchProofPlayerX = gSidecarPlan.playerX;
+        gBatchProofPlayerY = gSidecarPlan.playerY;
+        gBatchProofPlayerZ = gSidecarPlan.playerZ;
+        gBatchProofMinimumCameraHeight = gSidecarPlan.minimumCameraHeight;
+        gBatchProofMinimumAimHeight = gSidecarPlan.minimumAimHeight;
+        gBatchProofInitializationFrames = gSidecarPlan.initializationFrames;
+        gBatchProofTargetSettleFrames = gSidecarPlan.targetSettleFrames;
+        gBatchProofVolumeReady = false;
+        gMaxFrames = (std::max)(gMaxFrames, 1000000000u);
+        gSidecarActorIndex = 0;
+        gSidecarActionIndex = 0;
+        gSidecarPhase = SidecarPhase::LoadProofVolume;
+        gSidecarPlanActive = true;
+
+        std::ostringstream planPayload;
+        planPayload << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\""
+                    << ",\"event\":\"plan-loaded\""
+                    << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                    << ",\"actors\":" << gSidecarPlan.actors.size()
+                    << ",\"actions\":" << gSidecarPlan.actions.size() << '}';
+        if (!publishSidecarRetailPlanPayload(planPayload.str(), planError))
+        {
+            setSidecarSharedError(NikamiFNVSidecar::ErrorCode::SharedMemoryFault,
+                planError);
+            return false;
+        }
+    }
     gBoneLodWriterCallsHooked = hookBoneLodWriterCalls();
     gHighProcessBoneLodPathHooked = hookHighProcessBoneLodPath();
     if (!gBoneLodWriterCallsHooked || !gHighProcessBoneLodPathHooked)

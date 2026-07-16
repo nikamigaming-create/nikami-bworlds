@@ -10,6 +10,7 @@ $runtimeRoot = Join-Path $repoRoot "local\xnvse-isolation-contract-$token"
 $gameRoot = Join-Path ([System.IO.Path]::GetTempPath()) "nikami-fnv-game-$token"
 $output = Join-Path ([System.IO.Path]::GetTempPath()) "nikami-fnv-output-$token.jsonl"
 $runManifest = $output + '.manifest.json'
+$sidecarPlanPaths = [System.Collections.Generic.List[string]]::new()
 $failures = New-Object System.Collections.Generic.List[string]
 
 function Assert-Contract([bool]$Condition, [string]$Message) {
@@ -29,6 +30,8 @@ function Assert-ThrowsLike([scriptblock]$Action, [string]$Pattern, [string]$Mess
 
 try {
     $runnerSource = Get-Content -LiteralPath $runner -Raw
+    $oracleSource = Get-Content -LiteralPath (
+        Join-Path $repoRoot 'oracles\xnvse\nvse_retail_oracle\main.cpp') -Raw
     $furnitureWrapperSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'Invoke-FNVEasyPeteFurnitureOracle.ps1') -Raw
     $appearanceWrapperSource = Get-Content -LiteralPath (
@@ -41,6 +44,26 @@ try {
         'Runner does not invoke the exact evidence validator.'
     Assert-Contract ($runnerSource -match 'Write-FNVImmutableJsonManifest') `
         'Runner does not write an immutable run manifest.'
+    Assert-Contract ($oracleSource -notmatch 'CreateFileMappingA|CreateEventA') `
+        'Retail sidecar endpoint can still create coordinator-owned transport objects.'
+    Assert-Contract ($oracleSource -match 'OpenFileMappingA\s*\(\s*FILE_MAP_ALL_ACCESS') `
+        'Retail sidecar endpoint does not open the coordinator-owned mapping.'
+    Assert-Contract (
+        $oracleSource -match 'OpenEventA\s*\(\s*eventAccess\s*,\s*FALSE' -and
+        $oracleSource -match 'EVENT_MODIFY_STATE\s*\|\s*SYNCHRONIZE') `
+        'Retail sidecar endpoint does not open coordinator-owned events with strict access.'
+    Assert-Contract ($oracleSource -match 'shared-memory-initial-state-mismatch') `
+        'Retail sidecar endpoint does not validate the coordinator initial state.'
+    Assert-Contract ($oracleSource -match 'shared-memory-peer-error-active') `
+        'Retail sidecar endpoint does not preserve an existing coordinator/peer error.'
+    Assert-Contract ($oracleSource -notmatch 'header\.flags\s*=\s*0') `
+        'Retail sidecar endpoint still clears coordinator-owned flags during startup.'
+    Assert-Contract ($oracleSource -notmatch 'header\.errorCode\s*=\s*0') `
+        'Retail sidecar endpoint still clears a coordinator/peer error code during startup.'
+    Assert-Contract ($oracleSource -notmatch 'expectedActionIds|seven-action') `
+        'Retail sidecar endpoint still hardcodes a fixed action identity list.'
+    Assert-Contract ($runnerSource -notmatch 'expectedSidecarActions|seven-action') `
+        'Retail sidecar runner still hardcodes a fixed action identity list.'
     $manifestGuardIndex = $runnerSource.IndexOf('if (Test-Path -LiteralPath $runManifest)')
     $launchIndex = $runnerSource.IndexOf('$launcherProcess = Start-Process')
     Assert-Contract ($manifestGuardIndex -ge 0 -and $launchIndex -gt $manifestGuardIndex) `
@@ -165,6 +188,96 @@ try {
     Assert-Contract ((Get-FileHash -LiteralPath $dinput8 -Algorithm SHA256).Hash -eq $dinput8Hash) `
         'DryRun modified root dinput8.dll.'
 
+    $validSidecarLines = @(
+        'nikami-fnv-retail-plan-v1'
+        "sequence`tcontract-$token"
+        "scene`t0x00104c72`t0x001237d7`t14`t0`t-65306.375`t-2088.550537109375`t8384`t5.639382839202881`t-63668`t-860`t8384`t1.6`t48`t16`t30`t15"
+        "action`t0`tinspect`tIdle`t24"
+        "action`t1`tadvance`tForward`t24"
+        "action`t2`tgesture`tIdle`t24"
+        "actor`t0`t0x00104e85`t0x00104e84`t0x0007ea24`t0"
+        'end'
+    )
+    $validSidecarPlan = Join-Path ([System.IO.Path]::GetTempPath()) `
+        "nikami-fnv-sidecar-plan-valid-$token.tsv"
+    $sidecarPlanPaths.Add($validSidecarPlan)
+    [System.IO.File]::WriteAllLines($validSidecarPlan, $validSidecarLines)
+    $sidecarArguments = @{}
+    foreach ($key in $arguments.Keys) { $sidecarArguments[$key] = $arguments[$key] }
+    $sidecarArguments.PlanPath = $validSidecarPlan
+    $sidecarArguments.SharedMemoryName = "Local\NikamiFNVSidecar.contract-$token"
+    $sidecarValidation = & $runner @sidecarArguments
+    Assert-Contract ($sidecarValidation.status -eq 'validated-no-launch') `
+        'Sidecar DryRun did not return validated-no-launch.'
+    Assert-Contract ([bool]$sidecarValidation.sidecar.enabled) `
+        'Sidecar DryRun did not enable the sidecar plan.'
+    Assert-Contract ($sidecarValidation.sidecar.sequenceId -eq "contract-$token") `
+        'Sidecar DryRun did not preserve the sequence identity.'
+    Assert-Contract ($sidecarValidation.sidecar.sharedMemoryName -eq $sidecarArguments.SharedMemoryName) `
+        'Sidecar DryRun did not preserve the shared-memory identity.'
+    Assert-Contract ($sidecarValidation.sidecar.actors -eq 1) `
+        'Sidecar DryRun did not retain the actor count.'
+    Assert-Contract ($sidecarValidation.sidecar.actionsPerActor -eq 3) `
+        'Sidecar DryRun did not retain the data-driven three-action contract.'
+    Assert-Contract ($sidecarValidation.sidecar.expectedCaptures -eq 3) `
+        'Sidecar DryRun did not derive the exact capture count.'
+
+    $invalidPlans = @(
+        [pscustomobject]@{
+            label = 'trailing-record'
+            lines = @($validSidecarLines) + "actor`t1`t0`t0x00104e84`t0`t0"
+            expected = 'record after end'
+        }
+        [pscustomobject]@{
+            label = 'action-index-gap'
+            lines = @($validSidecarLines | ForEach-Object {
+                if ($_ -ceq "action`t1`tadvance`tForward`t24") {
+                    "action`t2`tadvance`tForward`t24"
+                }
+                else { $_ }
+            })
+            expected = 'invalid action'
+        }
+        [pscustomobject]@{
+            label = 'duplicate-action-id'
+            lines = @($validSidecarLines | ForEach-Object {
+                if ($_ -ceq "action`t1`tadvance`tForward`t24") {
+                    "action`t1`tinspect`tForward`t24"
+                }
+                else { $_ }
+            })
+            expected = 'invalid action'
+        }
+        [pscustomobject]@{
+            label = 'duplicate-authored-ref'
+            lines = @($validSidecarLines[0..6]) +
+                "actor`t1`t0x00104e85`t0x00104e84`t0`t0" + 'end'
+            expected = 'invalid actor'
+        }
+        [pscustomobject]@{
+            label = 'console-injection'
+            lines = @($validSidecarLines | ForEach-Object {
+                if ($_ -ceq "action`t0`tinspect`tIdle`t24") {
+                    "action`t0`tinspect`tIdle;Quit`t24"
+                }
+                else { $_ }
+            })
+            expected = 'invalid action'
+        }
+    )
+    foreach ($invalidPlan in $invalidPlans) {
+        $invalidPath = Join-Path ([System.IO.Path]::GetTempPath()) `
+            "nikami-fnv-sidecar-plan-$($invalidPlan.label)-$token.tsv"
+        $sidecarPlanPaths.Add($invalidPath)
+        [System.IO.File]::WriteAllLines($invalidPath, [string[]]$invalidPlan.lines)
+        $invalidArguments = @{}
+        foreach ($key in $sidecarArguments.Keys) { $invalidArguments[$key] = $sidecarArguments[$key] }
+        $invalidArguments.PlanPath = $invalidPath
+        Assert-ThrowsLike {
+            & $runner @invalidArguments
+        } $invalidPlan.expected "Runner accepted the $($invalidPlan.label) sidecar plan."
+    }
+
     [System.IO.File]::WriteAllText($output, "immutable-output-$token")
     [System.IO.File]::WriteAllText($runManifest, "immutable-manifest-$token")
     $overwriteValidation = & $runner @arguments
@@ -248,6 +361,16 @@ finally {
     }
     if (Test-Path -LiteralPath $runManifest) {
         Remove-Item -LiteralPath $runManifest -Force
+    }
+    foreach ($sidecarPlanPath in $sidecarPlanPaths) {
+        if (-not $sidecarPlanPath.StartsWith(
+            (Join-Path ([System.IO.Path]::GetTempPath()) 'nikami-fnv-sidecar-plan-'),
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to remove unexpected sidecar contract plan: $sidecarPlanPath"
+        }
+        if (Test-Path -LiteralPath $sidecarPlanPath) {
+            Remove-Item -LiteralPath $sidecarPlanPath -Force
+        }
     }
 }
 
