@@ -4796,6 +4796,192 @@ namespace
         return result;
     }
 
+    bool sidecarWriteExact(HANDLE file, const void* data, DWORD size)
+    {
+        DWORD written = 0;
+        return WriteFile(file, data, size, &written, nullptr) != FALSE && written == size;
+    }
+
+    bool sidecarCaptureBackBuffer(std::string& outputPath, long& captureResult)
+    {
+        outputPath.clear();
+        captureResult = E_FAIL;
+        IDirect3DSurface9* backBuffer = nullptr;
+        IDirect3DSurface9* resolved = nullptr;
+        IDirect3DSurface9* systemSurface = nullptr;
+        HANDLE file = INVALID_HANDLE_VALUE;
+        bool surfaceLocked = false;
+        bool complete = false;
+        std::string temporaryPath;
+        D3DSURFACE_DESC description = {};
+        D3DLOCKED_RECT locked = {};
+        unsigned long ordinal = 0;
+        char name[64] = {};
+        DWORD rowBytes = 0;
+        unsigned long long imageBytes64 = 0;
+        BITMAPFILEHEADER fileHeader = {};
+        BITMAPINFOHEADER infoHeader = {};
+
+        UInt8* renderer = nullptr;
+        IDirect3DDevice9* device = nullptr;
+        if (!safeRead(reinterpret_cast<const void*>(0x011F4748), renderer)
+            || renderer == nullptr || !safeRead(renderer + 0x288, device) || device == nullptr)
+        {
+            captureResult = E_POINTER;
+            return false;
+        }
+
+        HRESULT result = device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer);
+        if (FAILED(result) || backBuffer == nullptr)
+        {
+            captureResult = result;
+            goto cleanup;
+        }
+        result = backBuffer->GetDesc(&description);
+        if (FAILED(result) || description.Width == 0 || description.Height == 0
+            || description.Width > static_cast<UINT>(LONG_MAX)
+            || description.Height > static_cast<UINT>(LONG_MAX)
+            || (description.Format != D3DFMT_X8R8G8B8
+                && description.Format != D3DFMT_A8R8G8B8))
+        {
+            captureResult = FAILED(result) ? result : D3DERR_INVALIDCALL;
+            goto cleanup;
+        }
+
+        if (description.MultiSampleType != D3DMULTISAMPLE_NONE)
+        {
+            result = device->CreateRenderTarget(description.Width, description.Height,
+                description.Format, D3DMULTISAMPLE_NONE, 0, FALSE, &resolved, nullptr);
+            if (FAILED(result) || resolved == nullptr)
+            {
+                captureResult = result;
+                goto cleanup;
+            }
+            result = device->StretchRect(backBuffer, nullptr, resolved, nullptr, D3DTEXF_NONE);
+            if (FAILED(result))
+            {
+                captureResult = result;
+                goto cleanup;
+            }
+        }
+
+        result = device->CreateOffscreenPlainSurface(description.Width, description.Height,
+            description.Format, D3DPOOL_SYSTEMMEM, &systemSurface, nullptr);
+        if (FAILED(result) || systemSurface == nullptr)
+        {
+            captureResult = result;
+            goto cleanup;
+        }
+        result = device->GetRenderTargetData(resolved != nullptr ? resolved : backBuffer, systemSurface);
+        if (FAILED(result))
+        {
+            captureResult = result;
+            goto cleanup;
+        }
+        result = systemSurface->LockRect(&locked, nullptr, D3DLOCK_READONLY);
+        if (FAILED(result) || locked.pBits == nullptr
+            || locked.Pitch < static_cast<INT>(description.Width * 4u))
+        {
+            captureResult = FAILED(result) ? result : D3DERR_INVALIDCALL;
+            goto cleanup;
+        }
+        surfaceLocked = true;
+
+        ordinal = gSidecarScreenshotBaseline.valid
+            ? gSidecarScreenshotBaseline.ordinal + 1 : 0;
+        for (unsigned int attempt = 0; attempt < 100000; ++attempt, ++ordinal)
+        {
+            sprintf_s(name, "ScreenShot%lu.bmp", ordinal);
+            if (GetFileAttributesA(name) == INVALID_FILE_ATTRIBUTES
+                && GetLastError() == ERROR_FILE_NOT_FOUND)
+                break;
+            name[0] = '\0';
+        }
+        if (name[0] == '\0')
+        {
+            captureResult = HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
+            goto cleanup;
+        }
+        outputPath = name;
+        temporaryPath = outputPath + ".tmp";
+        DeleteFileA(temporaryPath.c_str());
+        file = CreateFileA(temporaryPath.c_str(), GENERIC_WRITE, 0, nullptr,
+            CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+        {
+            captureResult = HRESULT_FROM_WIN32(GetLastError());
+            goto cleanup;
+        }
+
+        rowBytes = description.Width * 4u;
+        imageBytes64 = static_cast<unsigned long long>(rowBytes) * description.Height;
+        if (imageBytes64 > MAXDWORD)
+        {
+            captureResult = HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+            goto cleanup;
+        }
+        fileHeader.bfType = 0x4D42;
+        fileHeader.bfOffBits = sizeof(fileHeader) + sizeof(infoHeader);
+        fileHeader.bfSize = fileHeader.bfOffBits + static_cast<DWORD>(imageBytes64);
+        infoHeader.biSize = sizeof(infoHeader);
+        infoHeader.biWidth = static_cast<LONG>(description.Width);
+        infoHeader.biHeight = -static_cast<LONG>(description.Height);
+        infoHeader.biPlanes = 1;
+        infoHeader.biBitCount = 32;
+        infoHeader.biCompression = BI_RGB;
+        infoHeader.biSizeImage = static_cast<DWORD>(imageBytes64);
+        if (!sidecarWriteExact(file, &fileHeader, sizeof(fileHeader))
+            || !sidecarWriteExact(file, &infoHeader, sizeof(infoHeader)))
+        {
+            captureResult = HRESULT_FROM_WIN32(GetLastError());
+            goto cleanup;
+        }
+        for (UINT row = 0; row < description.Height; ++row)
+        {
+            const UInt8* source = static_cast<const UInt8*>(locked.pBits)
+                + static_cast<std::size_t>(row) * locked.Pitch;
+            if (!sidecarWriteExact(file, source, rowBytes))
+            {
+                captureResult = HRESULT_FROM_WIN32(GetLastError());
+                goto cleanup;
+            }
+        }
+
+        systemSurface->UnlockRect();
+        surfaceLocked = false;
+        if (FlushFileBuffers(file) == FALSE)
+        {
+            captureResult = HRESULT_FROM_WIN32(GetLastError());
+            goto cleanup;
+        }
+        CloseHandle(file);
+        file = INVALID_HANDLE_VALUE;
+        if (MoveFileExA(temporaryPath.c_str(), outputPath.c_str(), MOVEFILE_WRITE_THROUGH) == FALSE)
+        {
+            captureResult = HRESULT_FROM_WIN32(GetLastError());
+            goto cleanup;
+        }
+        complete = true;
+        captureResult = S_OK;
+
+    cleanup:
+        if (surfaceLocked && systemSurface != nullptr)
+            systemSurface->UnlockRect();
+        if (file != INVALID_HANDLE_VALUE)
+            CloseHandle(file);
+        if (!complete && !temporaryPath.empty())
+            DeleteFileA(temporaryPath.c_str());
+        if (systemSurface != nullptr)
+            systemSurface->Release();
+        if (resolved != nullptr)
+            resolved->Release();
+        if (backBuffer != nullptr)
+            backBuffer->Release();
+        if (!complete)
+            outputPath.clear();
+        return complete;
+    }
+
     SidecarScreenshotFile sidecarNewestScreenshot()
     {
         SidecarScreenshotFile newest;
@@ -5151,11 +5337,14 @@ namespace
     }
 
     bool sidecarReadFaceGenChannel(const TESNPC::FaceGenData* address,
-        UInt32& count, UInt32& size, UInt32& hash, std::vector<float>& values, bool& truncated)
+        UInt32& count, UInt32& size, UInt32& usedBytes, UInt32& capacityBytes,
+        UInt32& hash, std::vector<float>& values, bool& truncated)
     {
         TESNPC::FaceGenData channel = {};
         count = 0;
         size = 0;
+        usedBytes = 0;
+        capacityBytes = 0;
         hash = 2166136261u;
         values.clear();
         truncated = false;
@@ -5166,21 +5355,35 @@ namespace
         size = channel.size;
         if (count == 0 || size == 0)
             return true;
-        if (channel.values == nullptr)
+        const UInt64 valueCount = static_cast<UInt64>(count) * size;
+        const UInt64 requiredBytes = valueCount * sizeof(float);
+        if (channel.values == nullptr || requiredBytes > 16384)
             return false;
-        // Keep the shared JSON payload bounded while hashing every value. Typical FNV
-        // NPC channels are 30/50 single-float rows, so they remain fully enumerated;
-        // unusually large channels are explicitly marked truncated but retain a full hash.
+        const std::uintptr_t usedEndAddress = static_cast<std::uintptr_t>(channel.useOffset);
+        const std::uintptr_t capacityEndAddress = static_cast<std::uintptr_t>(channel.maxOffset);
+        const std::uintptr_t valuesBaseAddress = reinterpret_cast<std::uintptr_t>(channel.values);
+        if (usedEndAddress < valuesBaseAddress || capacityEndAddress < usedEndAddress)
+            return false;
+        const std::uintptr_t usedByteCount = usedEndAddress - valuesBaseAddress;
+        const std::uintptr_t capacityByteCount = capacityEndAddress - valuesBaseAddress;
+        if (usedByteCount < requiredBytes || capacityByteCount > 16384)
+            return false;
+        usedBytes = static_cast<UInt32>(usedByteCount);
+        capacityBytes = static_cast<UInt32>(capacityByteCount);
+        // Retail FGGS/FGGA/FGTS are contiguous float buffers. xNVSE's historical
+        // reverse-engineered declaration calls this field float**, while useOffset/maxOffset
+        // are absolute end pointers. Subtract the buffer base to recover Sunny's
+        // 200/120/200 used bytes for 50/30/50 floats. Hash every authored value and
+        // bound only the JSON enumeration.
+        const float* contiguousValues = reinterpret_cast<const float*>(channel.values);
         constexpr std::size_t maximumReportedValues = 256;
         for (UInt32 rowIndex = 0; rowIndex < count; ++rowIndex)
         {
-            float* row = nullptr;
-            if (!safeRead(channel.values + rowIndex, row) || row == nullptr)
-                return false;
             for (UInt32 column = 0; column < size; ++column)
             {
                 float value = 0.f;
-                if (!safeRead(row + column, value) || !std::isfinite(value))
+                const UInt64 valueIndex = static_cast<UInt64>(rowIndex) * size + column;
+                if (!safeRead(contiguousValues + valueIndex, value) || !std::isfinite(value))
                     return false;
                 hash = sidecarHashAppend(hash, &value, sizeof(value));
                 if (values.size() < maximumReportedValues)
@@ -5640,15 +5843,20 @@ namespace
             {
                 UInt32 count = 0;
                 UInt32 size = 0;
+                UInt32 usedBytes = 0;
+                UInt32 capacityBytes = 0;
                 UInt32 hash = 0;
                 bool truncated = false;
                 std::vector<float> values;
                 const bool readable = sidecarReadFaceGenChannel(&npc->faceGenData[channelIndex],
-                    count, size, hash, values, truncated);
+                    count, size, usedBytes, capacityBytes, hash, values, truncated);
                 if (channelIndex != 0)
                     out << ',';
                 out << "{\"index\":" << channelIndex << ",\"count\":" << count
-                    << ",\"size\":" << size << ",\"readable\":" << (readable ? "true" : "false")
+                    << ",\"size\":" << size << ",\"usedBytes\":" << usedBytes
+                    << ",\"capacityBytes\":" << capacityBytes
+                    << ",\"layout\":\"contiguous-float\",\"readable\":"
+                    << (readable ? "true" : "false")
                     << ",\"hash\":" << hash << ",\"truncated\":" << (truncated ? "true" : "false")
                     << ",\"values\":[";
                 for (std::size_t valueIndex = 0; valueIndex < values.size(); ++valueIndex)
@@ -6841,8 +7049,21 @@ namespace
                 gSidecarScreenshotReady = {};
                 gSidecarScreenshotStableFrames = 0;
                 gSidecarScreenshotRequestFrame = gFrame;
-                gSidecarScreenshotAccepted = gConsole != nullptr
-                    && gConsole->RunScriptLine2("TapKey 183", nullptr, true);
+                std::string screenshotPath;
+                long captureResult = E_FAIL;
+                gSidecarScreenshotAccepted
+                    = sidecarCaptureBackBuffer(screenshotPath, captureResult);
+                gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-screenshot-request\""
+                        << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                        << ",\"actorIndex\":" << gSidecarActorIndex
+                        << ",\"actionIndex\":" << gSidecarActionIndex
+                        << ",\"generation\":" << gSidecarGeneration
+                        << ",\"frame\":" << gFrame << ",\"mode\":\"d3d9-backbuffer\""
+                        << ",\"path\":" << jsonString(screenshotPath.c_str())
+                        << ",\"result\":" << captureResult
+                        << ",\"accepted\":" << (gSidecarScreenshotAccepted ? "true" : "false")
+                        << "}\n";
+                gOutput.flush();
                 if (!gSidecarScreenshotAccepted)
                 {
                     sidecarFail(NikamiFNVSidecar::ErrorCode::ScreenshotTimeout,

@@ -1,0 +1,55 @@
+{
+  "schema": "nikami-fnv-actor-parity-sidecar/v1",
+  "sequenceId": "sunny-smiles-sidecar-example",
+  "scene": {
+    "cell": "Goodsprings",
+    "camera": {
+      "stateId": "goodsprings-proof-road-front-full-body-v1",
+      "shotKind": "front-full-body",
+      "proofAnchorFormId": "0x00104c72",
+      "targetPosition": [-65306.375, -2088.550537109375, 8384.0],
+      "targetYawRadians": 5.639382839202881,
+      "playerPosition": [-63668.0, -860.0, 8384.0],
+      "fullBodyDistanceScale": 1.6,
+      "minimumCameraHeight": 48.0,
+      "minimumAimHeight": 16.0,
+      "initializationFrames": 30,
+      "targetSettleFrames": 15
+    },
+    "time": {
+      "gameHour": 14.0,
+      "timeScale": 0.0
+    },
+    "weather": {
+      "editorId": "NVDefaultClear",
+      "retailFormId": "0x001237d7",
+      "openMwId": "FormId:0x11237d7"
+    }
+  },
+  "actions": [
+    { "id": "idle-front", "openMwPoseGroup": "idle", "retailPlayGroup": "Idle", "frames": 18 },
+    { "id": "locomotion-forward", "openMwPoseGroup": "walk", "retailPlayGroup": "Forward", "frames": 27 },
+    { "id": "dialogue-request", "openMwPoseGroup": "talk", "retailPlayGroup": "Talking", "frames": 33 },
+    { "id": "main-weapon-fire", "openMwPoseGroup": "shoot", "retailPlayGroup": "AttackRight", "frames": 21 }
+  ],
+  "openMw": {
+    "representativeOffset": 73
+  },
+  "actors": [
+    {
+      "captureIndex": 0,
+      "openMwRepresentativeIndex": 73,
+      "actorFormId": "0x00104e85",
+      "actorBaseId": "0x00104e84",
+      "openMwBaseId": "FormId:0x1104e84",
+      "editorId": "GSSunnySmiles",
+      "displayName": "Sunny Smiles",
+      "visualTypeKey": "NPC_|body=armor:armor/leatherarmor/f/outfitf.nif|powerArmor=0",
+      "selectedMainWeapon": {
+        "editorId": "WeapNVVarmintRifle",
+        "formId": "0x0007ea24"
+      },
+      "enableParentFormId": null
+    }
+  ]
+}

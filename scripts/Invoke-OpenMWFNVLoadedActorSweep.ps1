@@ -28,6 +28,9 @@ param(
     [switch]$IncludeRawPlayerBase,
     [switch]$RepresentativeVisualTypes,
     [switch]$AllLoadedActorBases,
+    [switch]$SidecarMode,
+    [string]$SidecarSharedMemoryName = '',
+    [string[]]$SidecarActionIds = @(),
     [string[]]$SetEnv = @()
 )
 
@@ -63,8 +66,75 @@ if ($PoseFrames -lt 1) { throw 'PoseFrames must be at least one.' }
 if ($PoseStartDelayFrames -lt 0) { throw 'PoseStartDelayFrames must be zero or greater.' }
 if ($NeutralFrames -lt 1) { throw 'NeutralFrames must be at least one.' }
 if ($TimeoutMinutes -lt 1) { throw 'TimeoutMinutes must be at least one.' }
-$PoseGroups = @($PoseGroups | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+$rawPoseGroups = @($PoseGroups)
+if ($SidecarMode -and @($rawPoseGroups | Where-Object {
+    [string]::IsNullOrWhiteSpace($_)
+}).Count -gt 0) {
+    throw 'Sidecar PoseGroups must not contain blank entries.'
+}
+$PoseGroups = if ($SidecarMode) { $rawPoseGroups } else {
+    @($rawPoseGroups | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
 if ($PoseGroups.Count -eq 0) { throw 'At least one pose group is required.' }
+if ($SidecarMode) {
+    if ($SidecarSharedMemoryName.Length -gt 180 -or
+        $SidecarSharedMemoryName -notmatch '^Local\\[A-Za-z0-9][A-Za-z0-9._-]*$') {
+        throw 'SidecarSharedMemoryName must name the coordinator-owned Local\\ NKSC mapping.'
+    }
+    $SidecarActionIds = @($SidecarActionIds)
+    if ($SidecarActionIds.Count -lt 1 -or $SidecarActionIds.Count -gt 64 -or
+        $SidecarActionIds.Count -ne $PoseGroups.Count) {
+        throw 'SidecarActionIds must contain 1..64 entries and match PoseGroups exactly.'
+    }
+    $seenActionIds = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($actionId in $SidecarActionIds) {
+        if ($actionId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$' -or
+            -not $seenActionIds.Add($actionId)) {
+            throw "SidecarActionIds contains an unsafe or duplicate id '$actionId'."
+        }
+    }
+    foreach ($poseGroup in $PoseGroups) {
+        if ($poseGroup -notmatch '^[A-Za-z0-9_.-]{1,127}$') {
+            throw "Sidecar PoseGroups contains an unsafe group token '$poseGroup'."
+        }
+    }
+    $reservedSidecarEnvironment = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    [void]$reservedSidecarEnvironment.Add('OPENMW_FNV_SIDECAR_SHARED_MEMORY_NAME')
+    [void]$reservedSidecarEnvironment.Add('OPENMW_FNV_SIDECAR_ACTION_IDS')
+    foreach ($name in @(
+        'OPENMW_PROOF_ACTOR_BATCH_ALL_LOADED',
+        'OPENMW_PROOF_ACTOR_BATCH_AUTO_FRAMES',
+        'OPENMW_PROOF_ACTOR_BATCH_OFFSET',
+        'OPENMW_PROOF_ACTOR_BATCH_LIMIT',
+        'OPENMW_PROOF_ACTOR_ROSTER_JSON',
+        'OPENMW_PROOF_ACTOR_BATCH_FIRST_FRAME',
+        'OPENMW_PROOF_ACTOR_BATCH_FRAMES_PER_ACTOR',
+        'OPENMW_PROOF_ACTOR_BATCH_WARMUP_FRAMES',
+        'OPENMW_PROOF_ACTOR_BATCH_EXIT_AFTER_COMPLETE',
+        'OPENMW_PROOF_ACTOR_BATCH_EXIT_DELAY_FRAMES',
+        'OPENMW_PROOF_ACTOR_BATCH_REPRESENTATIVE_VISUAL_TYPES',
+        'OPENMW_PROOF_ACTOR_REPRESENTATIVE_POSES',
+        'OPENMW_PROOF_ACTOR_BATCH_EXCLUDE_RAW_PLAYER_BASE',
+        'OPENMW_PROOF_ACTOR_POSE_GROUPS',
+        'OPENMW_PROOF_ACTOR_POSE_FRAMES',
+        'OPENMW_PROOF_ACTOR_POSE_START_DELAY_FRAMES',
+        'OPENMW_PROOF_ACTOR_POSE_NEUTRAL_FRAMES'
+    )) { [void]$reservedSidecarEnvironment.Add($name) }
+    foreach ($entry in $SetEnv) {
+        if ([string]::IsNullOrWhiteSpace($entry)) {
+            throw 'SetEnv entries must be nonempty NAME=value strings.'
+        }
+        $separator = $entry.IndexOf('=')
+        if ($separator -lt 1) {
+            throw "SetEnv entry '$entry' must use NAME=value syntax."
+        }
+        $name = $entry.Substring(0, $separator)
+        if ($reservedSidecarEnvironment.Contains($name)) {
+            throw "SetEnv must not override coordinator-owned sidecar variable '$name'."
+        }
+    }
+}
 
 # The engine excludes the raw ESM4 `Player` base before representative grouping and offset/limit slicing.
 # This keeps offsets deterministic in both complete-roster and representative-visual-type modes.
@@ -150,10 +220,16 @@ $env = @(
 ) + @($SetEnv)
 if ($representativeMode) {
     $env += 'OPENMW_PROOF_ACTOR_BATCH_REPRESENTATIVE_VISUAL_TYPES=1'
-    $env += 'OPENMW_PROOF_ACTOR_REPRESENTATIVE_POSES=1'
+    if (-not $SidecarMode) {
+        $env += 'OPENMW_PROOF_ACTOR_REPRESENTATIVE_POSES=1'
+    }
 }
 if (-not $IncludeRawPlayerBase) {
     $env += 'OPENMW_PROOF_ACTOR_BATCH_EXCLUDE_RAW_PLAYER_BASE=1'
+}
+if ($SidecarMode) {
+    $env += "OPENMW_FNV_SIDECAR_SHARED_MEMORY_NAME=$SidecarSharedMemoryName"
+    $env += "OPENMW_FNV_SIDECAR_ACTION_IDS=$($SidecarActionIds -join ',')"
 }
 
 $runner = Join-Path $PSScriptRoot 'Invoke-RealWorldScreenshots.ps1'
@@ -161,6 +237,9 @@ Write-Host "Launching one OpenMW actor process. offset=$Offset effectiveOffset=$
 $runnerArgs = @{
     WorldId = 'fallout_new_vegas'
     Mode = 'flat'
+    SeedPath = Join-Path $repoRoot 'catalog\world-walker.seed.json'
+    StartsPath = Join-Path $repoRoot 'catalog\flat-world-proof-starts.json'
+    ActorAnimationPolicyPath = Join-Path $repoRoot 'catalog\actor-animation-policy.json'
     NoCatalogStart = $true
     SkipMenu = $true
     StartCell = 'Goodsprings'
@@ -187,21 +266,29 @@ $lastSelected = -1
 $lastPoseComplete = -1
 $lastScreenshotCount = 0
 $roster = $null
+$sidecarCompleteLogged = $false
+$sidecarCompleteGeneration = $null
+$sidecarFailureLogLine = $null
+$sidecarCompletionObservedAt = $null
+$sidecarForcedStop = $false
 Write-Host "OpenMW PID $processId is running; waiting for its completion contract."
 
+try {
 while ($true) {
-    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
-    if ($null -eq $process) { break }
-    if (((Get-Date) - $startedAt).TotalMinutes -ge $TimeoutMinutes) {
-        throw "Actor sweep exceeded its $TimeoutMinutes minute watchdog. PID $processId remains available for inspection."
-    }
-
     if ($null -eq $roster -and (Test-Path -LiteralPath $rosterPath -PathType Leaf)) {
         try { $roster = Get-Content -LiteralPath $rosterPath -Raw | ConvertFrom-Json } catch { $roster = $null }
     }
     if (Test-Path -LiteralPath $profileLogPath -PathType Leaf) {
         $tail = @(Get-Content -LiteralPath $profileLogPath -Tail 500)
         foreach ($line in $tail) {
+            if ($SidecarMode -and $line -match 'FNV sidecar OpenMW: sequence complete generation=([0-9]+)') {
+                $sidecarCompleteLogged = $true
+                $sidecarCompleteGeneration = [uint64]$Matches[1]
+                if ($null -eq $sidecarCompletionObservedAt) { $sidecarCompletionObservedAt = Get-Date }
+            }
+            if ($SidecarMode -and $line -match 'FNV sidecar OpenMW: fail-closed code=') {
+                $sidecarFailureLogLine = [string]$line
+            }
             if ($line -match 'proof batch: selected actor index=([0-9]+)') {
                 $index = [int]$Matches[1]
                 if ($index -gt $lastSelected) {
@@ -220,6 +307,28 @@ while ($true) {
         $savedCount = @($tail | Where-Object { $_ -match 'screenshot[0-9]+\.(?:png|jpg|jpeg|tga|bmp) has been saved' }).Count
         if ($savedCount -gt $lastScreenshotCount) { $lastScreenshotCount = $savedCount }
     }
+    if ($null -ne $sidecarFailureLogLine) {
+        throw "OpenMW endpoint published a fail-closed sidecar error: $sidecarFailureLogLine"
+    }
+    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($null -eq $process) { break }
+    if (((Get-Date) - $startedAt).TotalMinutes -ge $TimeoutMinutes) {
+        throw "Actor sweep exceeded its $TimeoutMinutes minute watchdog. PID $processId remains available for inspection."
+    }
+    if ($SidecarMode -and $sidecarCompleteLogged -and
+        ((Get-Date) - $sidecarCompletionObservedAt).TotalSeconds -ge 30) {
+        # NKSC completion is proven by the coordinator from the shared header.
+        # OPENMW_PROOF_ACTOR_BATCH_EXIT_AFTER_COMPLETE promises a natural exit.
+        # A process still alive after this grace period is cleaned up, but the
+        # runner records that fact and the coordinator remains the evidence gate.
+        Stop-Process -Id $processId -ErrorAction SilentlyContinue
+        Wait-Process -Id $processId -Timeout 30 -ErrorAction SilentlyContinue
+        if ($null -ne (Get-Process -Id $processId -ErrorAction SilentlyContinue)) {
+            throw "OpenMW did not exit after NKSC completion and resisted bounded cleanup; PID $processId remains alive."
+        }
+        $sidecarForcedStop = $true
+        break
+    }
     [pscustomobject][ordered]@{
         schema = 'nikami-fnv-actor-sweep-progress/v1'
         updatedAt = (Get-Date).ToString('o')
@@ -236,12 +345,57 @@ while ($true) {
 if (-not (Test-Path -LiteralPath $profileLogPath -PathType Leaf)) {
     throw "The completed actor sweep has no runtime log: $profileLogPath"
 }
+# The process can exit between the final polling intervals. Re-scan the durable
+# log before deciding whether the endpoint published its completion contract.
+if ($SidecarMode -and -not $sidecarCompleteLogged) {
+    $completionMatches = @(Select-String -LiteralPath $profileLogPath `
+        -Pattern 'FNV sidecar OpenMW: sequence complete generation=([0-9]+)')
+    if ($completionMatches.Count -gt 0 -and
+        $completionMatches[-1].Line -match 'generation=([0-9]+)') {
+        $sidecarCompleteLogged = $true
+        $sidecarCompleteGeneration = [uint64]$Matches[1]
+    }
+}
+if ($SidecarMode -and $null -eq $sidecarFailureLogLine) {
+    $failureMatch = Select-String -LiteralPath $profileLogPath `
+        -Pattern 'FNV sidecar OpenMW: fail-closed code=' | Select-Object -Last 1
+    if ($null -ne $failureMatch) { $sidecarFailureLogLine = [string]$failureMatch.Line }
+}
 Copy-Item -LiteralPath $profileLogPath -Destination $finalLogPath -Force
 if (-not (Test-Path -LiteralPath $rosterPath -PathType Leaf)) {
     throw "The completed actor sweep did not write its roster contract: $rosterPath"
 }
 $roster = Get-Content -LiteralPath $rosterPath -Raw | ConvertFrom-Json
 $actors = @($roster.actors)
+
+if ($SidecarMode) {
+    if ($null -ne $sidecarFailureLogLine) {
+        throw "OpenMW endpoint published a fail-closed sidecar error: $sidecarFailureLogLine"
+    }
+    if (-not $sidecarCompleteLogged) {
+        throw 'The OpenMW process exited before its NKSC completion publication was logged.'
+    }
+    $expectedGeneration = [uint64]$actors.Count * [uint64]$SidecarActionIds.Count
+    if ([uint64]$sidecarCompleteGeneration -ne $expectedGeneration) {
+        throw "OpenMW completion generation is $sidecarCompleteGeneration; expected $expectedGeneration."
+    }
+    [pscustomobject][ordered]@{
+        schema = 'nikami-openmw-fnv-sidecar-lane/v1'
+        sidecarMode = $true
+        pid = $processId
+        roster = $rosterPath
+        log = $finalLogPath
+        selectedCount = [int]$roster.selectedCount
+        actionIds = @($SidecarActionIds)
+        processCount = 1
+        runtimeContractProvenByRunner = $false
+        forcedStopAfterCompletionLog = $sidecarForcedStop
+        status = if ($sidecarForcedStop) {
+            'endpoint-complete-log-observed-forced-process-cleanup-awaiting-coordinator-header-gate'
+        } else { 'endpoint-complete-log-observed-natural-exit-awaiting-coordinator-header-gate' }
+    }
+    return
+}
 
 $captures = [System.Collections.Generic.List[object]]::new()
 $poseByIndex = @{}
@@ -349,4 +503,18 @@ $indexPath = Join-Path $outputRootAbs ("actor-sweep-index-$sessionTag.json")
     count = $rows.Count
     processCount = 1
     status = 'complete'
+}
+}
+finally {
+    # KeepRunning deliberately transfers ownership of this exact PID to this
+    # wrapper. Any exception or Stop-Job cancellation must not orphan OpenMW or
+    # leave the proof profile locked for the next one-launch run.
+    $remainingProcess = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($null -ne $remainingProcess) {
+        Stop-Process -Id $processId -ErrorAction SilentlyContinue
+        Wait-Process -Id $processId -Timeout 30 -ErrorAction SilentlyContinue
+        if ($null -ne (Get-Process -Id $processId -ErrorAction SilentlyContinue)) {
+            Write-Warning "OpenMW PID $processId resisted runner-owned cleanup."
+        }
+    }
 }
