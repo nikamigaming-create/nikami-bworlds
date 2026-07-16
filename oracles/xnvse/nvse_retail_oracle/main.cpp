@@ -79,6 +79,7 @@ namespace
         Disabled,
         LoadProofVolume,
         WaitProofVolume,
+        FreezeTime,
         SelectActor,
         WaitSpawn,
         StageActor,
@@ -249,6 +250,10 @@ namespace
     bool gSidecarActionAccepted = false;
     bool gSidecarScreenshotAccepted = false;
     bool gSidecarWeaponPolicyApplied = false;
+    bool gSidecarSceneStateRequested = false;
+    UInt32 gSidecarSceneStateCommandIndex = 0;
+    bool gSidecarTimeFreezeRequested = false;
+    UInt32 gSidecarTimeFreezeRequestFrame = 0;
     bool gSidecarRetailReadyPublished = false;
     std::set<UInt32> gSidecarSpawnBaselineRefs;
     SidecarScreenshotFile gSidecarScreenshotBaseline;
@@ -560,12 +565,17 @@ namespace
             mov ecx, dword ptr [ebp - 4]
             mov eax, 0x008E5730
             call eax
+            // The replaced thiscall returns a value in EAX. Preserve it across
+            // the diagnostic callback so the patched call sites observe the
+            // exact same ABI as the retail function.
+            push eax
             mov eax, dword ptr [ebp + 8]
             push eax
             mov eax, dword ptr [ebp - 4]
             push eax
             call recordBoneLodWriterCall
             add esp, 8
+            pop eax
             mov esp, ebp
             pop ebp
             ret 4
@@ -6323,17 +6333,35 @@ namespace
         return true;
     }
 
-    void sidecarRequestSceneState()
+    bool sidecarRequestSceneStateCommand(UInt32 commandIndex, const char*& commandName)
     {
         if (gConsole == nullptr)
-            return;
+            return false;
         char command[96] = {};
-        sprintf_s(command, "Set GameHour To %.6f", gSidecarPlan.gameHour);
-        gConsole->RunScriptLine2(command, nullptr, true);
+        switch (commandIndex)
+        {
+            case 0:
+                commandName = "game-hour";
+                sprintf_s(command, "Set GameHour To %.6f", gSidecarPlan.gameHour);
+                break;
+            case 1:
+                commandName = "weather";
+                sprintf_s(command, "fw %08X", gSidecarPlan.weatherForm);
+                break;
+            default:
+                commandName = "invalid";
+                return false;
+        }
+        return gConsole->RunScriptLine2(command, nullptr, true);
+    }
+
+    bool sidecarRequestTimeFreeze()
+    {
+        if (gConsole == nullptr)
+            return false;
+        char command[96] = {};
         sprintf_s(command, "Set TimeScale To %.6f", gSidecarPlan.timeScale);
-        gConsole->RunScriptLine2(command, nullptr, true);
-        sprintf_s(command, "fw %08X", gSidecarPlan.weatherForm);
-        gConsole->RunScriptLine2(command, nullptr, true);
+        return gConsole->RunScriptLine2(command, nullptr, true);
     }
 
     bool sidecarStageResolvedActor(Actor* actor)
@@ -6424,6 +6452,10 @@ namespace
         {
             case SidecarPhase::LoadProofVolume:
             {
+                gSidecarSceneStateRequested = false;
+                gSidecarSceneStateCommandIndex = 0;
+                gSidecarTimeFreezeRequested = false;
+                gSidecarTimeFreezeRequestFrame = 0;
                 std::string runtimePlanError;
                 if (!sidecarValidateRuntimePlan(runtimePlanError))
                 {
@@ -6447,7 +6479,6 @@ namespace
                         "proof-anchor-move-rejected");
                     break;
                 }
-                sidecarRequestSceneState();
                 gBatchProofLoadFrame = gFrame;
                 bootstrapProofFreeCamera(player);
                 gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-proof-volume-request\""
@@ -6462,6 +6493,31 @@ namespace
             case SidecarPhase::WaitProofVolume:
             {
                 bootstrapProofFreeCamera(player);
+                if (!gSidecarSceneStateRequested)
+                {
+                    if (gFrame < gSidecarPhaseFrame + gSidecarPlan.initializationFrames)
+                        break;
+                    const char* commandName = nullptr;
+                    const UInt32 commandIndex = gSidecarSceneStateCommandIndex;
+                    const bool accepted = sidecarRequestSceneStateCommand(commandIndex, commandName);
+                    gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-scene-command-request\""
+                            << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                            << ",\"frame\":" << gFrame << ",\"commandIndex\":" << commandIndex
+                            << ",\"command\":" << jsonString(commandName)
+                            << ",\"accepted\":"
+                            << (accepted ? "true" : "false") << "}\n";
+                    gOutput.flush();
+                    if (!accepted)
+                    {
+                        sidecarFail(NikamiFNVSidecar::ErrorCode::InternalFault,
+                            "scene-state-command-rejected");
+                        break;
+                    }
+                    ++gSidecarSceneStateCommandIndex;
+                    if (gSidecarSceneStateCommandIndex < 2)
+                        break;
+                    gSidecarSceneStateRequested = true;
+                }
                 if (gFrame < gSidecarPhaseFrame + gSidecarPlan.initializationFrames || player == nullptr)
                     break;
                 const bool x = runReferenceFloatCommand(player, "SetPos X", gSidecarPlan.playerX);
@@ -6481,13 +6537,41 @@ namespace
                             << ",\"frame\":" << gFrame << ",\"weatherForm\":" << weather
                             << ",\"gameHour\":" << hour << "}\n";
                     gOutput.flush();
-                    sidecarSetPhase(SidecarPhase::SelectActor);
+                    sidecarSetPhase(SidecarPhase::FreezeTime);
                 }
                 else if (sidecarDeadlineExpired())
                     sidecarFail(NikamiFNVSidecar::ErrorCode::RetailReadyTimeout,
                         "proof-volume-time-weather-timeout");
                 else if ((gFrame - gSidecarPhaseFrame) % 30 == 0)
-                    sidecarRequestSceneState();
+                {
+                    gSidecarSceneStateRequested = false;
+                    gSidecarSceneStateCommandIndex = 0;
+                }
+                break;
+            }
+            case SidecarPhase::FreezeTime:
+            {
+                bootstrapProofFreeCamera(player);
+                if (gFrame < gSidecarPhaseFrame + gSidecarPlan.targetSettleFrames)
+                    break;
+                if (!gSidecarTimeFreezeRequested)
+                {
+                    const bool accepted = sidecarRequestTimeFreeze();
+                    gSidecarTimeFreezeRequested = true;
+                    gSidecarTimeFreezeRequestFrame = gFrame;
+                    gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-time-freeze-request\""
+                            << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                            << ",\"frame\":" << gFrame << ",\"accepted\":"
+                            << (accepted ? "true" : "false") << "}\n";
+                    gOutput.flush();
+                    if (!accepted)
+                        sidecarFail(NikamiFNVSidecar::ErrorCode::InternalFault,
+                            "time-freeze-command-rejected");
+                    break;
+                }
+                if (gFrame < gSidecarTimeFreezeRequestFrame + gSidecarPlan.targetSettleFrames)
+                    break;
+                sidecarSetPhase(SidecarPhase::SelectActor);
                 break;
             }
             case SidecarPhase::SelectActor:
@@ -7205,10 +7289,18 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
             return false;
         }
     }
-    gBoneLodWriterCallsHooked = hookBoneLodWriterCalls();
-    gHighProcessBoneLodPathHooked = hookHighProcessBoneLodPath();
-    if (!gBoneLodWriterCallsHooked || !gHighProcessBoneLodPathHooked)
-        return false;
+    // The lockstep sidecar reads the actor state it needs at its explicit
+    // barriers.  The legacy bone-LOD probes execute inside hot retail engine
+    // paths and synchronously call back into the engine/CRT, so they must not
+    // perturb a sidecar run before its first barrier.  Keep them available for
+    // the dedicated legacy telemetry mode only.
+    if (!gSidecarPlanActive)
+    {
+        gBoneLodWriterCallsHooked = hookBoneLodWriterCalls();
+        gHighProcessBoneLodPathHooked = hookHighProcessBoneLodPath();
+        if (!gBoneLodWriterCallsHooked || !gHighProcessBoneLodPathHooked)
+            return false;
+    }
     gMessaging->RegisterListener(gPluginHandle, "NVSE", messageHandler);
     return true;
 }
