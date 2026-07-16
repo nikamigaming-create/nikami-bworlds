@@ -866,6 +866,31 @@ function ConvertFrom-SidecarPayload(
     }
 }
 
+function Assert-SidecarObservedStateParity([object]$Retail, [object]$OpenMw) {
+    $retailAnimation = Get-RequiredProperty $Retail.document 'animation' 'Retail payload'
+    $openMwAnimation = Get-RequiredProperty $OpenMw.document 'animation' 'OpenMW payload'
+    $retailWeaponOut = Get-RequiredProperty $retailAnimation 'weaponOut' 'Retail payload.animation'
+    $openMwRetailWeaponOut = Get-RequiredProperty $openMwAnimation 'retailWeaponOut' 'OpenMW payload.animation'
+    $openMwWeaponOut = Get-RequiredProperty $openMwAnimation 'weaponOut' 'OpenMW payload.animation'
+    foreach ($entry in @(
+        @('retail weaponOut', $retailWeaponOut),
+        @('OpenMW retailWeaponOut', $openMwRetailWeaponOut),
+        @('OpenMW weaponOut', $openMwWeaponOut)
+    )) {
+        if ($entry[1] -isnot [bool]) {
+            throw "NKSC $($entry[0]) must be a JSON boolean."
+        }
+    }
+    if ([bool]$openMwRetailWeaponOut -ne [bool]$retailWeaponOut -or
+        [bool]$openMwWeaponOut -ne [bool]$retailWeaponOut) {
+        throw ("NKSC weapon draw-state mismatch: retail=$retailWeaponOut, " +
+            "OpenMW-consumed=$openMwRetailWeaponOut, OpenMW-observed=$openMwWeaponOut.")
+    }
+    return [pscustomobject][ordered]@{
+        weaponOut = [bool]$retailWeaponOut
+    }
+}
+
 function Assert-SidecarCaptureSnapshot(
     [object]$Snapshot,
     [object]$Manifest,
@@ -902,6 +927,7 @@ function Assert-SidecarCaptureSnapshot(
     $openMw = ConvertFrom-SidecarPayload -Snapshot $Snapshot -Lane OpenMW -Manifest $Manifest `
         -ActorIndex ([int]$expected.actorIndex) -ActionIndex ([int]$expected.actionIndex) `
         -Generation $expectedGeneration -AllowedScreenshotRoots $OpenMwScreenshotRoots
+    $observedState = Assert-SidecarObservedStateParity -Retail $retail -OpenMw $openMw
     return [pscustomobject][ordered]@{
         captureOrdinal = $ExpectedOrdinal
         captureId = [string]$expected.captureId
@@ -912,6 +938,7 @@ function Assert-SidecarCaptureSnapshot(
         header = ConvertTo-SidecarHeaderEvidence $Snapshot
         retail = $retail
         openMw = $openMw
+        observedState = $observedState
     }
 }
 

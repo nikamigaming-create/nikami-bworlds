@@ -118,6 +118,31 @@ try {
         $failures.Add("CRC32 rejected the canonical test vector: $($_.Exception.Message)") | Out-Null
     }
 
+    $retailHolstered = [pscustomobject]@{
+        document = [pscustomobject]@{ animation = [pscustomobject]@{ weaponOut = $false } }
+    }
+    $openMwHolstered = [pscustomobject]@{
+        document = [pscustomobject]@{
+            animation = [pscustomobject]@{ retailWeaponOut = $false; weaponOut = $false }
+        }
+    }
+    try {
+        $drawState = Assert-SidecarObservedStateParity -Retail $retailHolstered -OpenMw $openMwHolstered
+        Assert-Contract (-not [bool]$drawState.weaponOut) `
+            'Observed-state parity did not retain the shared holstered state.'
+    }
+    catch {
+        $failures.Add("Observed-state parity rejected matching holstered state: $($_.Exception.Message)") | Out-Null
+    }
+    $openMwDrawn = [pscustomobject]@{
+        document = [pscustomobject]@{
+            animation = [pscustomobject]@{ retailWeaponOut = $false; weaponOut = $true }
+        }
+    }
+    Assert-ThrowsLike {
+        Assert-SidecarObservedStateParity -Retail $retailHolstered -OpenMw $openMwDrawn
+    } 'weapon draw-state mismatch' 'Coordinator accepted mismatched retail/OpenMW weapon draw state.'
+
     $validationRows = @(& $coordinator -ManifestPath $fixture -ValidateOnly)
     Assert-Contract ($validationRows.Count -eq 1) 'ValidateOnly did not return exactly one plan object.'
     $validation = $validationRows[0]
@@ -263,6 +288,7 @@ if ($failures.Count -gt 0) {
         'crc32-canonical-vector'
         'unsigned-protocol-literals'
         'strict-empty-defect-collection'
+        'observed-weapon-draw-state-parity'
         'retail-contiguous-facegen-channels'
         'retail-facegen-end-pointer-deltas'
     )
