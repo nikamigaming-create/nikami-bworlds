@@ -906,6 +906,16 @@ function ConvertTo-SidecarRenderPartIndex(
 ) {
     $document = Get-RequiredProperty $Evidence 'document' "$Lane evidence"
     $appearance = Get-RequiredProperty $document 'appearance' "$Lane payload"
+    $complete = Get-JsonBoolean (Get-RequiredProperty $appearance 'complete' "$Lane payload.appearance") `
+        "$Lane payload.appearance.complete"
+    $truncated = Get-JsonBoolean (Get-RequiredProperty $appearance 'truncated' "$Lane payload.appearance") `
+        "$Lane payload.appearance.truncated"
+    if (-not $complete) {
+        throw "NKSC $Lane appearance evidence is incomplete."
+    }
+    if ($truncated) {
+        throw "NKSC $Lane appearance evidence is truncated."
+    }
     $renderPartsProperty = $appearance.PSObject.Properties['renderParts']
     if ($null -eq $renderPartsProperty) {
         throw "$Lane payload.appearance is missing required property 'renderParts'."

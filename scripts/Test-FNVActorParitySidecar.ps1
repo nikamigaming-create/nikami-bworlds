@@ -220,12 +220,20 @@ try {
     }
     $retailAppearance = [pscustomobject]@{
         document = [pscustomobject]@{
-            appearance = [pscustomobject]@{ renderParts = $retailRenderParts }
+            appearance = [pscustomobject]@{
+                complete = $true
+                truncated = $false
+                renderParts = $retailRenderParts
+            }
         }
     }
     $openMwAppearance = [pscustomobject]@{
         document = [pscustomobject]@{
-            appearance = [pscustomobject]@{ renderParts = $openMwRenderParts }
+            appearance = [pscustomobject]@{
+                complete = $true
+                truncated = $false
+                renderParts = $openMwRenderParts
+            }
         }
     }
     try {
@@ -237,6 +245,20 @@ try {
     catch {
         $failures.Add("Appearance parity rejected reordered equivalent records: $($_.Exception.Message)") | Out-Null
     }
+
+    $incompleteRetailAppearance = Copy-JsonDocument $retailAppearance
+    $incompleteRetailAppearance.document.appearance.complete = $false
+    Assert-ThrowsLike {
+        Assert-SidecarAppearanceParity -Retail $incompleteRetailAppearance -OpenMw $openMwAppearance
+    } 'Retail appearance evidence is incomplete' `
+        'Appearance parity accepted incomplete retail evidence.'
+
+    $truncatedOpenMwAppearance = Copy-JsonDocument $openMwAppearance
+    $truncatedOpenMwAppearance.document.appearance.truncated = $true
+    Assert-ThrowsLike {
+        Assert-SidecarAppearanceParity -Retail $retailAppearance -OpenMw $truncatedOpenMwAppearance
+    } 'OpenMW appearance evidence is truncated' `
+        'Appearance parity accepted truncated OpenMW evidence.'
 
     $missingRightHand = Copy-JsonDocument $openMwAppearance
     $missingRightHand.document.appearance.renderParts = @(

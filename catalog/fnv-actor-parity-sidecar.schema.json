@@ -94,8 +94,16 @@
       "description": "Post-frame actor appearance evidence. Endpoint-specific diagnostic fields remain allowed, but render-part parity uses only the generic fields declared here.",
       "type": "object",
       "additionalProperties": true,
-      "required": ["renderParts"],
+      "required": ["complete", "truncated", "renderParts"],
       "properties": {
+        "complete": {
+          "description": "True only when every required post-frame attachment and binding was inspected successfully.",
+          "type": "boolean"
+        },
+        "truncated": {
+          "description": "True when an endpoint omitted evidence because a bounded collector reached its limit.",
+          "type": "boolean"
+        },
         "renderParts": {
           "type": "array",
           "minItems": 1,
