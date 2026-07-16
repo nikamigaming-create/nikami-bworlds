@@ -380,6 +380,7 @@ class ESM4Catalog:
                     "id": form_hex(rec_form),
                     "openmwId": openmw_form_id(rec_form),
                     "type": rtype,
+                    "recordFlags": flags,
                 }
                 if "editorId" in fields:
                     record["editorId"] = fields["editorId"]
@@ -502,6 +503,9 @@ class ESM4Catalog:
                     record["pos"] = fields.get("pos")
                     record["rot"] = fields.get("rot")
                     record["scale"] = fields.get("scale", 1.0)
+                    record["enableParent"] = form_hex(fields.get("enableParent"))
+                    record["openmwEnableParent"] = openmw_form_id(fields.get("enableParent"))
+                    record["enableParentFlags"] = fields.get("enableParentFlags", 0)
                     record["destDoor"] = form_hex(fields.get("destDoor"))
                     record["openmwDestDoor"] = openmw_form_id(fields.get("destDoor"))
                     record["destPos"] = fields.get("destPos")
