@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nikami.local/schemas/fnv-paired-proof-manifest.schema.json",
+  "title": "Fallout New Vegas paired retail/OpenMW proof manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "actors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "nikami-fnv-paired-proof-manifest/v1"
+    },
+    "defaults": {
+      "$ref": "#/$defs/comparison"
+    },
+    "actors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/actor"
+      }
+    }
+  },
+  "$defs": {
+    "comparison": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "matchedCameraState": {
+          "type": "boolean",
+          "description": "True only when camera/FOV, actor transform, pose/frame, equipment, world time/weather, lighting, post-processing, resolution, and crop match."
+        },
+        "matchedStateFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "retailAuthorityFields": {
+          "type": "array",
+          "description": "Retail telemetry fields that must be present; absent authority is UNKNOWN, never PASS.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "retailState": {
+          "type": "object",
+          "description": "Authoritative expected retail values keyed by telemetry field.",
+          "additionalProperties": true
+        },
+        "expectedParts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "comparisonRoi": {
+          "oneOf": [
+            {
+              "type": "array",
+              "prefixItems": [
+                { "type": "number" },
+                { "type": "number" },
+                { "type": "number", "exclusiveMinimum": 0 },
+                { "type": "number", "exclusiveMinimum": 0 }
+              ],
+              "minItems": 4,
+              "maxItems": 4
+            },
+            {
+              "type": "object",
+              "required": ["x", "y", "width", "height"],
+              "properties": {
+                "x": { "type": "number" },
+                "y": { "type": "number" },
+                "width": { "type": "number", "exclusiveMinimum": 0 },
+                "height": { "type": "number", "exclusiveMinimum": 0 }
+              }
+            }
+          ]
+        },
+        "thresholds": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "silhouetteIouMinimum": { "type": "number", "minimum": 0, "maximum": 1 },
+            "silhouetteRecallMinimum": { "type": "number", "minimum": 0, "maximum": 1 },
+            "silhouettePrecisionMinimum": { "type": "number", "minimum": 0, "maximum": 1 },
+            "silhouetteCentroidDeltaPercentMaximum": { "type": "number", "minimum": 0 },
+            "partRecallMinimum": { "type": "number", "minimum": 0, "maximum": 1 },
+            "partIouMinimum": { "type": "number", "minimum": 0, "maximum": 1 },
+            "opaqueAlphaMinimum": { "type": "number", "minimum": 0, "maximum": 1 },
+            "partAlphaDeltaMaximum": { "type": "number", "minimum": 0, "maximum": 1 },
+            "pixelMaeMaximum": { "type": "number", "minimum": 0 },
+            "pixelRmseMaximum": { "type": "number", "minimum": 0 },
+            "meanLumaDeltaMaximum": { "type": "number", "minimum": 0 },
+            "headBlackPixelExcessPercentMaximum": { "type": "number", "minimum": 0 },
+            "headLumaRatioMinimum": { "type": "number", "minimum": 0 },
+            "faceOverlayLayerDeficitMaximum": { "type": "number", "minimum": 0 },
+            "skinRelationColorDeltaMaximum": { "type": "number", "minimum": 0 }
+          }
+        },
+        "faceParts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "requireFaceOverlayEvidence": { "type": "boolean" },
+        "requireSkinColorEvidence": { "type": "boolean" },
+        "skinColorGroups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["reference", "peers"],
+            "properties": {
+              "reference": {
+                "oneOf": [
+                  { "type": "string" },
+                  { "type": "array", "items": { "type": "string" } }
+                ]
+              },
+              "peers": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    { "type": "string" },
+                    { "type": "array", "items": { "type": "string" } }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "expectedSlots": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            { "type": "object", "additionalProperties": { "type": "boolean" } }
+          ]
+        },
+        "actorIntact": { "type": "boolean" },
+        "goreCapParts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "requireGoreCapEvidence": { "type": "boolean" }
+        }
+      },
+    "actor": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/comparison"
+        }
+      ],
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "actorId"
+      ],
+      "anyOf": [
+        { "required": ["captureId"] },
+        { "required": ["retailCaptureId", "openmwCaptureId"] }
+      ],
+      "properties": {
+        "actorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retailCaptureId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "openmwCaptureId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identityFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}
