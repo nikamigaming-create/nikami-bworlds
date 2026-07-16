@@ -90,6 +90,85 @@
   "$defs": {
     "retailFormId": { "type": "string", "pattern": "^0[xX][0-9a-fA-F]{1,8}$" },
     "openMwFormId": { "type": "string", "pattern": "^(FormId|formid):0[xX][0-9a-fA-F]{1,8}$" },
+    "appearance": {
+      "description": "Post-frame actor appearance evidence. Endpoint-specific diagnostic fields remain allowed, but render-part parity uses only the generic fields declared here.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["renderParts"],
+      "properties": {
+        "renderParts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/renderPart" }
+        }
+      }
+    },
+    "renderPart": {
+      "description": "One post-frame render part. role/sourceFormId/sourceSlot/ordinal is its stable cross-engine identity; addresses and traversal order are diagnostics only.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "role", "sourceFormId", "sourceSlot", "ordinal", "required",
+        "attached", "drawable", "visible", "textureBindings"
+      ],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "sourceFormId": {
+          "oneOf": [
+            { "$ref": "#/$defs/retailFormId" },
+            { "$ref": "#/$defs/openMwFormId" },
+            { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          ]
+        },
+        "sourceSlot": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "ordinal": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "required": { "type": "boolean" },
+        "attached": { "type": "boolean" },
+        "drawable": { "type": "boolean" },
+        "visible": { "type": "boolean" },
+        "alphaBits": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "materialId": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          ]
+        },
+        "shaderId": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          ]
+        },
+        "modelHash": { "type": "string", "minLength": 1 },
+        "nodeHash": { "type": "string", "minLength": 1 },
+        "textureBindings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/textureBinding" }
+        }
+      }
+    },
+    "textureBinding": {
+      "description": "One resolved texture semantic. semantic/stage is stable identity and path comparison uses coordinator normalization.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "semantic", "path", "contentHash", "width", "height", "format",
+        "sourceKind", "stage"
+      ],
+      "properties": {
+        "semantic": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "minLength": 1 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "format": { "type": "string", "minLength": 1 },
+        "sourceKind": {
+          "type": "string",
+          "enum": ["authored", "generated", "runtime", "fallback", "neutral"]
+        },
+        "stage": { "type": "integer", "minimum": 0 }
+      }
+    },
     "vector3": {
       "type": "array",
       "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],

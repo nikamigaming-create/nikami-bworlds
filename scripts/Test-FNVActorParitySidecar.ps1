@@ -29,6 +29,55 @@ function Copy-JsonDocument([object]$Value) {
     return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)
 }
 
+function New-TestTextureBinding(
+    [string]$Semantic,
+    [string]$Path,
+    [int]$Stage = 0
+) {
+    return [pscustomobject][ordered]@{
+        semantic = $Semantic
+        path = $Path
+        contentHash = 'sha256:0123456789abcdef'
+        width = 1024
+        height = 1024
+        format = 'BC1_UNORM'
+        sourceKind = 'authored'
+        stage = $Stage
+    }
+}
+
+function New-TestRenderPart(
+    [string]$Role,
+    [string]$SourceFormId,
+    [int]$SourceSlot,
+    [int]$Ordinal,
+    [string]$TextureSemantic,
+    [string]$TexturePath,
+    [int]$TraversalOrder
+) {
+    return [pscustomobject][ordered]@{
+        role = $Role
+        sourceFormId = $SourceFormId
+        sourceSlot = $SourceSlot
+        ordinal = $Ordinal
+        required = $true
+        attached = $true
+        drawable = $true
+        visible = $true
+        alphaBits = [uint32]1065353216
+        materialId = 'lighting-material'
+        shaderId = 'default-shader'
+        modelHash = "model-$Role"
+        nodeHash = "node-$Role"
+        textureBindings = @(
+            New-TestTextureBinding -Semantic $TextureSemantic -Path $TexturePath
+        )
+        nodeAddress = "0x$('{0:X8}' -f (0x1000 + $TraversalOrder))"
+        materialAddress = "0x$('{0:X8}' -f (0x2000 + $TraversalOrder))"
+        traversalOrder = $TraversalOrder
+    }
+}
+
 try {
     foreach ($scriptPath in @($coordinator, $openMwRunner)) {
         $tokens = $null
@@ -105,7 +154,15 @@ try {
     Assert-Contract ($faceGenReader -match
         'capacityEndAddress[\s\S]*valuesBaseAddress[\s\S]*capacityEndAddress - valuesBaseAddress') `
         'Retail FaceGen telemetry does not convert its absolute end pointer into a capacity-byte count.'
-    [void](Get-Content -LiteralPath $schema -Raw | ConvertFrom-Json)
+    $schemaDocument = Get-Content -LiteralPath $schema -Raw | ConvertFrom-Json
+    Assert-Contract ($null -ne $schemaDocument.'$defs'.appearance) `
+        'Schema does not declare generic post-frame appearance evidence.'
+    Assert-Contract ($null -ne $schemaDocument.'$defs'.renderPart) `
+        'Schema does not declare generic render-part evidence.'
+    Assert-Contract ($null -ne $schemaDocument.'$defs'.textureBinding) `
+        'Schema does not declare generic texture-binding evidence.'
+    Assert-Contract ([bool]$schemaDocument.'$defs'.renderPart.additionalProperties) `
+        'Render-part schema does not permit later endpoint diagnostics.'
 
     # Load only function declarations from the coordinator. This exercises its
     # actual normalizer and plan writer without executing either game lane.
@@ -130,6 +187,115 @@ try {
         $failures.Add("CRC32 rejected the canonical test vector: $($_.Exception.Message)") | Out-Null
     }
 
+    $retailRenderParts = @(
+        New-TestRenderPart -Role 'body' -SourceFormId '0x00001001' -SourceSlot 0 `
+            -Ordinal 0 -TextureSemantic 'bodyColor' `
+            -TexturePath 'Data\Textures\Characters\Raul\body_d.dds' -TraversalOrder 0
+        New-TestRenderPart -Role 'leftHand' -SourceFormId '0x00001001' -SourceSlot 3 `
+            -Ordinal 0 -TextureSemantic 'bodyColor' `
+            -TexturePath 'Data\Textures\Characters\Raul\hand_d.dds' -TraversalOrder 1
+        New-TestRenderPart -Role 'rightHand' -SourceFormId '0x00001001' -SourceSlot 3 `
+            -Ordinal 1 -TextureSemantic 'bodyColor' `
+            -TexturePath 'Data\Textures\Characters\Raul\hand_d.dds' -TraversalOrder 2
+        New-TestRenderPart -Role 'equipment' -SourceFormId '0x00002002' -SourceSlot 2 `
+            -Ordinal 0 -TextureSemantic 'gearColor' `
+            -TexturePath 'Data\Textures\Armor\Wastelander\outfit_d.dds' -TraversalOrder 3
+    )
+    $openMwRenderParts = Copy-JsonDocument @(
+        $retailRenderParts[3], $retailRenderParts[1],
+        $retailRenderParts[0], $retailRenderParts[2]
+    )
+    for ($index = 0; $index -lt @($openMwRenderParts).Count; ++$index) {
+        $part = $openMwRenderParts[$index]
+        $part.sourceFormId = "FormId:$($part.sourceFormId)"
+        $part.textureBindings[0].path = `
+            ([string]$part.textureBindings[0].path).Replace('Data\', './').Replace('\', '/').ToUpperInvariant()
+        $part.textureBindings[0].contentHash = `
+            ([string]$part.textureBindings[0].contentHash).ToUpperInvariant()
+        $part.textureBindings[0].format = `
+            ([string]$part.textureBindings[0].format).ToLowerInvariant()
+        $part.nodeAddress = "0x$('{0:X8}' -f (0x9000 + $index))"
+        $part.materialAddress = "0x$('{0:X8}' -f (0xA000 + $index))"
+        $part.traversalOrder = 100 - $index
+    }
+    $retailAppearance = [pscustomobject]@{
+        document = [pscustomobject]@{
+            appearance = [pscustomobject]@{ renderParts = $retailRenderParts }
+        }
+    }
+    $openMwAppearance = [pscustomobject]@{
+        document = [pscustomobject]@{
+            appearance = [pscustomobject]@{ renderParts = $openMwRenderParts }
+        }
+    }
+    try {
+        $appearanceState = Assert-SidecarAppearanceParity `
+            -Retail $retailAppearance -OpenMw $openMwAppearance
+        Assert-Contract ([int]$appearanceState.renderPartCount -eq 4) `
+            'Appearance parity did not retain the four unordered render parts.'
+    }
+    catch {
+        $failures.Add("Appearance parity rejected reordered equivalent records: $($_.Exception.Message)") | Out-Null
+    }
+
+    $missingRightHand = Copy-JsonDocument $openMwAppearance
+    $missingRightHand.document.appearance.renderParts = @(
+        $missingRightHand.document.appearance.renderParts | Where-Object role -ne 'rightHand'
+    )
+    Assert-ThrowsLike {
+        Assert-SidecarAppearanceParity -Retail $retailAppearance -OpenMw $missingRightHand
+    } 'missing required render part.*righthand' `
+        'Appearance parity accepted a missing right hand.'
+
+    $hiddenEquipment = Copy-JsonDocument $openMwAppearance
+    ($hiddenEquipment.document.appearance.renderParts | Where-Object role -eq 'equipment').visible = $false
+    Assert-ThrowsLike {
+        Assert-SidecarAppearanceParity -Retail $retailAppearance -OpenMw $hiddenEquipment
+    } 'required render part.*equipment.*not visible' `
+        'Appearance parity accepted hidden required equipment.'
+
+    $alphaZeroEquipment = Copy-JsonDocument $openMwAppearance
+    ($alphaZeroEquipment.document.appearance.renderParts | Where-Object role -eq 'equipment').alphaBits = 0
+    Assert-ThrowsLike {
+        Assert-SidecarAppearanceParity -Retail $retailAppearance -OpenMw $alphaZeroEquipment
+    } 'required render part.*equipment.*alpha-zero' `
+        'Appearance parity accepted alpha-zero required equipment.'
+
+    $handWithoutBodyColor = Copy-JsonDocument $openMwAppearance
+    ($handWithoutBodyColor.document.appearance.renderParts | Where-Object role -eq 'rightHand').textureBindings = @()
+    Assert-ThrowsLike {
+        Assert-SidecarAppearanceParity -Retail $retailAppearance -OpenMw $handWithoutBodyColor
+    } 'righthand.*required bodyColor texture semantic' `
+        'Appearance parity accepted a hand without the bodyColor texture semantic.'
+
+    $textureSemanticMismatch = Copy-JsonDocument $openMwAppearance
+    (($textureSemanticMismatch.document.appearance.renderParts | Where-Object role -eq 'equipment').textureBindings[0]).semantic = 'gearNormal'
+    Assert-ThrowsLike {
+        Assert-SidecarAppearanceParity -Retail $retailAppearance -OpenMw $textureSemanticMismatch
+    } 'texture binding mismatch.*gearcolor' `
+        'Appearance parity accepted different retail/OpenMW texture semantics.'
+
+    $neutralFallback = Copy-JsonDocument $openMwAppearance
+    (($neutralFallback.document.appearance.renderParts | Where-Object role -eq 'rightHand').textureBindings[0]).path = `
+        'Runtime\FalloutNV\neutral-facegen-female.dds'
+    Assert-ThrowsLike {
+        Assert-SidecarAppearanceParity -Retail $retailAppearance -OpenMw $neutralFallback
+    } 'neutral FaceGen fallback' `
+        'Appearance parity accepted a normalized neutral FaceGen fallback.'
+
+    $extraVisiblePart = Copy-JsonDocument $openMwAppearance
+    $extraVisiblePart.document.appearance.renderParts = @(
+        @($extraVisiblePart.document.appearance.renderParts) + @(
+            New-TestRenderPart -Role 'equipment' -SourceFormId 'FormId:0x00003003' `
+                -SourceSlot 6 -Ordinal 0 -TextureSemantic 'gearColor' `
+                -TexturePath 'textures/armor/extra/extra_d.dds' -TraversalOrder 4
+        )
+    )
+    Assert-ThrowsLike {
+        Assert-SidecarAppearanceParity -Retail $retailAppearance -OpenMw $extraVisiblePart
+    } 'extra visible render part.*equipment' `
+        'Appearance parity accepted an extra visible part.'
+
     [uint32[]]$holsterRotationBits = @(
         3210826934, 3203525720, 1026989424,
         3189668151, 1045015346, 3212302068,
@@ -151,6 +317,7 @@ try {
     $retailHolstered = [pscustomobject]@{
         document = [pscustomobject]@{
             animation = [pscustomobject]@{ weaponOut = $false }
+            appearance = Copy-JsonDocument $retailAppearance.document.appearance
             weaponPolicy = [pscustomobject]@{
                 requestedForm = 518692
                 attachment = $retailHolsterAttachment
@@ -160,6 +327,7 @@ try {
     $openMwHolstered = [pscustomobject]@{
         document = [pscustomobject]@{
             animation = [pscustomobject]@{ retailWeaponOut = $false; weaponOut = $false }
+            appearance = Copy-JsonDocument $openMwAppearance.document.appearance
             weaponPolicy = [pscustomobject]@{
                 attachment = [pscustomobject]@{
                     consumed = Copy-JsonDocument $retailHolsterAttachment
@@ -355,6 +523,7 @@ if ($failures.Count -gt 0) {
         'unsigned-protocol-literals'
         'strict-empty-defect-collection'
         'observed-weapon-draw-state-parity'
+        'post-frame-appearance-render-parts-parity'
         'retail-contiguous-facegen-channels'
         'retail-facegen-end-pointer-deltas'
     )

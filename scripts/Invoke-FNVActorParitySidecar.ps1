@@ -866,6 +866,288 @@ function ConvertFrom-SidecarPayload(
     }
 }
 
+function ConvertTo-NormalizedSidecarFormId([object]$Value, [string]$Context) {
+    [long]$numeric = 0
+    if ($Value -is [string]) {
+        $text = (Get-JsonString $Value $Context).Trim()
+        if ($text.StartsWith('FormId:', [StringComparison]::OrdinalIgnoreCase)) {
+            $text = $text.Substring(7)
+        }
+        if ($text -notmatch '^0[xX][0-9a-fA-F]{1,8}$') {
+            throw "$Context must be a retail or OpenMW hexadecimal FormID."
+        }
+        $numeric = [Convert]::ToInt64($text.Substring(2), 16)
+    }
+    else {
+        $numeric = Get-JsonInteger $Value $Context 0 ([uint32]::MaxValue)
+    }
+    return ('0x{0:x8}' -f [uint32]$numeric)
+}
+
+function ConvertTo-NormalizedSidecarAssetPath([object]$Value, [string]$Context) {
+    $path = (Get-JsonString $Value $Context).Trim().Replace('\', '/')
+    $path = $path -replace '/+', '/'
+    while ($path.StartsWith('./', [StringComparison]::Ordinal)) {
+        $path = $path.Substring(2)
+    }
+    $path = $path.TrimStart('/')
+    if ($path.StartsWith('data/', [StringComparison]::OrdinalIgnoreCase)) {
+        $path = $path.Substring(5)
+    }
+    if ([string]::IsNullOrWhiteSpace($path) -or $path.EndsWith('/', [StringComparison]::Ordinal)) {
+        throw "$Context must name an asset file."
+    }
+    return $path.ToLowerInvariant()
+}
+
+function ConvertTo-SidecarRenderPartIndex(
+    [object]$Evidence,
+    [ValidateSet('Retail', 'OpenMW')][string]$Lane
+) {
+    $document = Get-RequiredProperty $Evidence 'document' "$Lane evidence"
+    $appearance = Get-RequiredProperty $document 'appearance' "$Lane payload"
+    $renderPartsProperty = $appearance.PSObject.Properties['renderParts']
+    if ($null -eq $renderPartsProperty) {
+        throw "$Lane payload.appearance is missing required property 'renderParts'."
+    }
+    $renderPartsValue = $renderPartsProperty.Value
+    if ($renderPartsValue -isnot [System.Array]) {
+        throw "$Lane payload.appearance.renderParts must be a JSON array."
+    }
+    $renderParts = @($renderPartsValue)
+    if ($renderParts.Count -eq 0) {
+        throw "$Lane payload.appearance.renderParts must not be empty."
+    }
+
+    $partIndex = [System.Collections.Generic.Dictionary[string, object]]::new(
+        [StringComparer]::Ordinal)
+    $skinRoles = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::Ordinal)
+    foreach ($role in @('body', 'exposedbody', 'face', 'head', 'lefthand', 'righthand')) {
+        $skinRoles.Add($role) | Out-Null
+    }
+
+    for ($partOrdinal = 0; $partOrdinal -lt $renderParts.Count; ++$partOrdinal) {
+        $part = $renderParts[$partOrdinal]
+        $context = "$Lane payload.appearance.renderParts[$partOrdinal]"
+        $role = (Get-JsonString (Get-RequiredProperty $part 'role' $context) `
+            "$context.role").Trim().ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($role)) {
+            throw "$context.role must not be empty."
+        }
+        $sourceFormId = ConvertTo-NormalizedSidecarFormId `
+            (Get-RequiredProperty $part 'sourceFormId' $context) "$context.sourceFormId"
+        $sourceSlot = Get-JsonInteger (Get-RequiredProperty $part 'sourceSlot' $context) `
+            "$context.sourceSlot" 0 ([uint32]::MaxValue)
+        $ordinal = Get-JsonInteger (Get-RequiredProperty $part 'ordinal' $context) `
+            "$context.ordinal" 0 ([uint32]::MaxValue)
+        $identity = "$role|$sourceFormId|$sourceSlot|$ordinal"
+        if ($partIndex.ContainsKey($identity)) {
+            throw "$Lane payload duplicates render-part identity '$identity'."
+        }
+
+        $required = Get-JsonBoolean (Get-RequiredProperty $part 'required' $context) `
+            "$context.required"
+        $attached = Get-JsonBoolean (Get-RequiredProperty $part 'attached' $context) `
+            "$context.attached"
+        $drawable = Get-JsonBoolean (Get-RequiredProperty $part 'drawable' $context) `
+            "$context.drawable"
+        $visible = Get-JsonBoolean (Get-RequiredProperty $part 'visible' $context) `
+            "$context.visible"
+        if ($required -and -not $attached) {
+            throw "NKSC $Lane required render part '$identity' is not attached."
+        }
+        if ($required -and -not $drawable) {
+            throw "NKSC $Lane required render part '$identity' is not drawable."
+        }
+        if ($required -and -not $visible) {
+            throw "NKSC $Lane required render part '$identity' is not visible."
+        }
+
+        $optional = [System.Collections.Generic.Dictionary[string, string]]::new(
+            [StringComparer]::Ordinal)
+        $alphaProperty = $part.PSObject.Properties['alphaBits']
+        if ($null -ne $alphaProperty) {
+            [uint32]$alphaBits = Get-JsonInteger $alphaProperty.Value "$context.alphaBits" `
+                0 ([uint32]::MaxValue)
+            if ($required -and (($alphaBits -band [uint32]2147483647) -eq 0)) {
+                throw "NKSC $Lane required render part '$identity' is alpha-zero."
+            }
+            $optional.Add('alphaBits', [string]$alphaBits)
+        }
+        foreach ($name in @('materialId', 'shaderId')) {
+            $property = $part.PSObject.Properties[$name]
+            if ($null -eq $property) { continue }
+            if ($property.Value -is [string]) {
+                $identifier = [string]$property.Value
+                if ([string]::IsNullOrWhiteSpace($identifier)) {
+                    throw "$context.$name must not be empty."
+                }
+                $optional.Add($name, 'string:' + $identifier)
+            }
+            else {
+                $identifier = Get-JsonInteger $property.Value "$context.$name" `
+                    0 ([uint32]::MaxValue)
+                $optional.Add($name, 'integer:' + [string]$identifier)
+            }
+        }
+        foreach ($name in @('modelHash', 'nodeHash')) {
+            $property = $part.PSObject.Properties[$name]
+            if ($null -eq $property) { continue }
+            $hash = (Get-JsonString $property.Value "$context.$name").Trim().ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($hash)) {
+                throw "$context.$name must not be empty."
+            }
+            $optional.Add($name, $hash)
+        }
+
+        $bindingsProperty = $part.PSObject.Properties['textureBindings']
+        if ($null -eq $bindingsProperty) {
+            throw "$context is missing required property 'textureBindings'."
+        }
+        $bindingsValue = $bindingsProperty.Value
+        if ($bindingsValue -isnot [System.Array]) {
+            throw "$context.textureBindings must be a JSON array."
+        }
+        $bindings = @($bindingsValue)
+        $bindingIndex = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [StringComparer]::Ordinal)
+        for ($bindingOrdinal = 0; $bindingOrdinal -lt $bindings.Count; ++$bindingOrdinal) {
+            $binding = $bindings[$bindingOrdinal]
+            $bindingContext = "$context.textureBindings[$bindingOrdinal]"
+            $semantic = (Get-JsonString `
+                (Get-RequiredProperty $binding 'semantic' $bindingContext) `
+                "$bindingContext.semantic").Trim().ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($semantic)) {
+                throw "$bindingContext.semantic must not be empty."
+            }
+            $stage = Get-JsonInteger (Get-RequiredProperty $binding 'stage' $bindingContext) `
+                "$bindingContext.stage" 0 ([uint32]::MaxValue)
+            $bindingIdentity = "$semantic|$stage"
+            if ($bindingIndex.ContainsKey($bindingIdentity)) {
+                throw "$Lane render part '$identity' duplicates texture binding '$bindingIdentity'."
+            }
+            $path = ConvertTo-NormalizedSidecarAssetPath `
+                (Get-RequiredProperty $binding 'path' $bindingContext) "$bindingContext.path"
+            $sourceKind = (Get-JsonString `
+                (Get-RequiredProperty $binding 'sourceKind' $bindingContext) `
+                "$bindingContext.sourceKind").Trim().ToLowerInvariant()
+            $leaf = @($path.Split('/'))[-1]
+            $neutralFallback = $sourceKind -in @('neutral', 'fallback') -or
+                $path.IndexOf('/neutral-facegen', [StringComparison]::Ordinal) -ge 0 -or
+                $leaf.StartsWith('neutral-facegen', [StringComparison]::Ordinal) -or
+                $path.StartsWith('runtime/falloutnv/neutral-', [StringComparison]::Ordinal)
+            if ($neutralFallback) {
+                throw "NKSC $Lane render part '$identity' uses neutral FaceGen fallback '$path'."
+            }
+            $contentHash = (Get-JsonString `
+                (Get-RequiredProperty $binding 'contentHash' $bindingContext) `
+                "$bindingContext.contentHash").Trim().ToLowerInvariant()
+            $format = (Get-JsonString (Get-RequiredProperty $binding 'format' $bindingContext) `
+                "$bindingContext.format").Trim().ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($contentHash) -or
+                [string]::IsNullOrWhiteSpace($format) -or
+                [string]::IsNullOrWhiteSpace($sourceKind)) {
+                throw "$bindingContext contentHash, format, and sourceKind must not be empty."
+            }
+            $width = Get-JsonInteger (Get-RequiredProperty $binding 'width' $bindingContext) `
+                "$bindingContext.width" 1 ([uint32]::MaxValue)
+            $height = Get-JsonInteger (Get-RequiredProperty $binding 'height' $bindingContext) `
+                "$bindingContext.height" 1 ([uint32]::MaxValue)
+            $bindingIndex.Add($bindingIdentity, [pscustomobject][ordered]@{
+                semantic = $semantic
+                stage = $stage
+                path = $path
+                contentHash = $contentHash
+                width = $width
+                height = $height
+                format = $format
+                sourceKind = $sourceKind
+            })
+        }
+        if ($visible -and $skinRoles.Contains($role)) {
+            $hasBodyColor = $false
+            foreach ($binding in $bindingIndex.Values) {
+                if ([string]$binding.semantic -ceq 'bodycolor') {
+                    $hasBodyColor = $true
+                    break
+                }
+            }
+            if (-not $hasBodyColor) {
+                throw "NKSC $Lane render part '$identity' lacks required bodyColor texture semantic."
+            }
+        }
+
+        $partIndex.Add($identity, [pscustomobject][ordered]@{
+            identity = $identity
+            role = $role
+            required = $required
+            attached = $attached
+            drawable = $drawable
+            visible = $visible
+            optional = $optional
+            textureBindings = $bindingIndex
+        })
+    }
+    return [pscustomobject][ordered]@{ parts = $partIndex }
+}
+
+function Assert-SidecarAppearanceParity([object]$Retail, [object]$OpenMw) {
+    $retailParts = (ConvertTo-SidecarRenderPartIndex -Evidence $Retail -Lane Retail).parts
+    $openMwParts = (ConvertTo-SidecarRenderPartIndex -Evidence $OpenMw -Lane OpenMW).parts
+    $identities = @($retailParts.Keys | Sort-Object)
+    foreach ($identity in $identities) {
+        $expected = $retailParts[$identity]
+        if (-not $openMwParts.ContainsKey($identity)) {
+            $kind = if ([bool]$expected.required) { 'required ' } else { '' }
+            throw "NKSC OpenMW is missing ${kind}render part '$identity'."
+        }
+        $actual = $openMwParts[$identity]
+        foreach ($name in @('required', 'attached', 'drawable', 'visible')) {
+            if ([bool]$actual.$name -ne [bool]$expected.$name) {
+                throw "NKSC render part state mismatch for '$identity' field '$name'."
+            }
+        }
+        foreach ($name in $expected.optional.Keys) {
+            if (-not $actual.optional.ContainsKey($name) -or
+                [string]$actual.optional[$name] -cne [string]$expected.optional[$name]) {
+                throw "NKSC render part semantic mismatch for '$identity' field '$name'."
+            }
+        }
+        foreach ($bindingIdentity in @($expected.textureBindings.Keys | Sort-Object)) {
+            if (-not $actual.textureBindings.ContainsKey($bindingIdentity)) {
+                throw ("NKSC texture binding mismatch for render part '$identity': " +
+                    "OpenMW is missing retail semantic/stage '$bindingIdentity'.")
+            }
+            $expectedBinding = $expected.textureBindings[$bindingIdentity]
+            $actualBinding = $actual.textureBindings[$bindingIdentity]
+            foreach ($name in @('path', 'contentHash', 'width', 'height', 'format', 'sourceKind')) {
+                if ([string]$actualBinding.$name -cne [string]$expectedBinding.$name) {
+                    throw ("NKSC texture binding mismatch for render part '$identity' " +
+                        "semantic/stage '$bindingIdentity' field '$name'.")
+                }
+            }
+        }
+        foreach ($bindingIdentity in $actual.textureBindings.Keys) {
+            if (-not $expected.textureBindings.ContainsKey($bindingIdentity)) {
+                throw ("NKSC texture binding mismatch for render part '$identity': " +
+                    "OpenMW has extra semantic/stage '$bindingIdentity'.")
+            }
+        }
+    }
+    foreach ($identity in $openMwParts.Keys) {
+        if ($retailParts.ContainsKey($identity)) { continue }
+        if ([bool]$openMwParts[$identity].visible) {
+            throw "NKSC OpenMW has extra visible render part '$identity'."
+        }
+        throw "NKSC OpenMW has extra render part '$identity'."
+    }
+    return [pscustomobject][ordered]@{
+        renderPartCount = $retailParts.Count
+        matchedIdentities = $identities
+    }
+}
+
 function Assert-SidecarObservedStateParity([object]$Retail, [object]$OpenMw) {
     $retailAnimation = Get-RequiredProperty $Retail.document 'animation' 'Retail payload'
     $openMwAnimation = Get-RequiredProperty $OpenMw.document 'animation' 'OpenMW payload'
@@ -1049,9 +1331,11 @@ function Assert-SidecarObservedStateParity([object]$Retail, [object]$OpenMw) {
             $attachmentEvidence.visible = [bool]$visible
         }
     }
+    $appearanceEvidence = Assert-SidecarAppearanceParity -Retail $Retail -OpenMw $OpenMw
     return [pscustomobject][ordered]@{
         weaponOut = [bool]$retailWeaponOut
         weaponAttachment = [pscustomobject]$attachmentEvidence
+        appearance = $appearanceEvidence
     }
 }
 
