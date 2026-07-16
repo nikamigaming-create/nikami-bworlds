@@ -427,17 +427,18 @@ foreach ($line in [System.IO.File]::ReadLines($finalLogPath)) {
         $currentActorIndex = [int]$Matches[1]
         continue
     }
-    if ($line -match 'actor pose cycle: actorIndex=([0-9]+).*requested=([0-9]+) played=([0-9]+) skipped=([0-9]+).*status=complete') {
+    if ($line -match 'actor pose cycle: actorIndex=([0-9]+).*requested=([0-9]+) played=([0-9]+) deferred=([0-9]+) skipped=([0-9]+).*status=complete') {
         $poseByIndex[[int]$Matches[1]] = [pscustomobject][ordered]@{
             requested = [int]$Matches[2]
             played = [int]$Matches[3]
-            skipped = [int]$Matches[4]
+            deferred = [int]$Matches[4]
+            skipped = [int]$Matches[5]
             status = 'pass'
             reason = ''
         }
         continue
     }
-    if ($line -match 'actor pose transport gate: actorIndex=([0-9]+) target="([^"]+)" poseIndex=([0-9]+) group="([^"]*)" resolvedGroup="([^"]*)" available=([01]) played=([01]) exact=1 gate=transport-only status=(pass|fail)') {
+    if ($line -match 'actor pose transport gate: actorIndex=([0-9]+) target="([^"]+)" poseIndex=([0-9]+) group="([^"]*)" resolvedGroup="([^"]*)" available=([01]) played=([01]) controllerMask=0x([0-9a-fA-F]+) activeMask=0x([0-9a-fA-F]+) start=([^ ]+) stop=([^ ]+) role=(standalone|composite-only) exact=1 gate=transport-only status=(pass|fail)') {
         $actionGates.Add([pscustomobject][ordered]@{
             schema = 'nikami-fnv-actor-action-transport-gate/v1'
             gateKind = 'transport-only'
@@ -448,20 +449,27 @@ foreach ($line in [System.IO.File]::ReadLines($finalLogPath)) {
             resolvedGroup = [string]$Matches[5]
             available = $Matches[6] -eq '1'
             playAccepted = $Matches[7] -eq '1'
+            controllerMask = [Convert]::ToInt32($Matches[8], 16)
+            activeMask = [Convert]::ToInt32($Matches[9], 16)
+            startTime = [double]::Parse($Matches[10], [Globalization.CultureInfo]::InvariantCulture)
+            stopTime = [double]::Parse($Matches[11], [Globalization.CultureInfo]::InvariantCulture)
+            role = [string]$Matches[12]
+            transportAccepted = $Matches[13] -eq 'pass'
             exact = $true
-            status = [string]$Matches[8]
+            status = [string]$Matches[13]
         }) | Out-Null
         continue
     }
-    if ($line -match 'actor phase gate: actorIndex=([0-9]+) target="([^"]+)".*requested=([0-9]+) played=([0-9]+) skipped=([0-9]+) status=fail reason=([a-z0-9-]+)') {
+    if ($line -match 'actor phase gate: actorIndex=([0-9]+) target="([^"]+)".*requested=([0-9]+) played=([0-9]+) deferred=([0-9]+) skipped=([0-9]+) status=fail reason=([a-z0-9-]+)') {
         $phase = [pscustomobject][ordered]@{
             actorIndex = [int]$Matches[1]
             target = [string]$Matches[2]
             requested = [int]$Matches[3]
             played = [int]$Matches[4]
-            skipped = [int]$Matches[5]
+            deferred = [int]$Matches[5]
+            skipped = [int]$Matches[6]
             status = 'fail'
-            reason = [string]$Matches[6]
+            reason = [string]$Matches[7]
         }
         $phaseGates[$phase.actorIndex] = $phase
         $poseByIndex[$phase.actorIndex] = $phase
@@ -555,6 +563,7 @@ for ($index = 0; $index -lt $actors.Count; ++$index) {
         nativeScreenshot = [string]$capture[0].nativePath
         posesRequested = [int]$pose.requested
         posesPlayed = [int]$pose.played
+        posesDeferred = [int]$pose.deferred
         posesSkipped = [int]$pose.skipped
         phaseStatus = [string]$pose.status
         phaseFailure = [string]$pose.reason
