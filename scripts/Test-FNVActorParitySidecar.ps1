@@ -45,9 +45,21 @@ try {
         '\$defects\s*=\s*@\(\)\s*\r?\n\s*if\s*\(\$null -ne \$openMwEvidence\)') `
         'Coordinator does not preserve an empty defect collection under strict mode.'
     $openMwRunnerSource = Get-Content -LiteralPath $openMwRunner -Raw
+    Assert-Contract ($openMwRunnerSource -notmatch
+        'OPENMW_PROOF_ACTOR_REPRESENTATIVE_POSES') `
+        'OpenMW actor sweep still enables the removed semantic representative-pose surrogate.'
     Assert-Contract ($openMwRunnerSource -match
-        'if \(-not \$SidecarMode\)[\s\S]{0,120}OPENMW_PROOF_ACTOR_REPRESENTATIVE_POSES=1') `
-        'SidecarMode still enables the semantic representative-pose surrogate.'
+        '\[switch\]\$AllAvailablePoses[\s\S]*OPENMW_PROOF_ACTOR_POSE_ALL_AVAILABLE=1') `
+        'OpenMW actor sweep does not expose exact authored animation inventory traversal.'
+    Assert-Contract ($openMwRunnerSource -match
+        '\[switch\]\$PriorityOrder[\s\S]*OPENMW_PROOF_ACTOR_BATCH_PRIORITY_ORDER=1') `
+        'OpenMW actor sweep does not expose fanout-priority ordering.'
+    Assert-Contract ($openMwRunnerSource -match
+        'actor native state gate:[\s\S]*nikami-fnv-actor-native-state-gate/v1') `
+        'OpenMW actor sweep does not require a post-sweep native-state gate.'
+    Assert-Contract ($openMwRunnerSource -match
+        'OPENMW_PROOF_ACTOR_PHASE_TIMEOUT_FRAMES[\s\S]*complete-with-failures') `
+        'OpenMW actor sweep cannot advance and report bounded per-actor failures.'
     $retailOracleSource = Get-Content -LiteralPath $retailOracle -Raw
     $loadProofVolume = [regex]::Match($retailOracleSource,
         'case SidecarPhase::LoadProofVolume:[\s\S]*?case SidecarPhase::WaitProofVolume:').Value

@@ -5,6 +5,7 @@ param(
     [int]$PoseFrames = 12,
     [int]$PoseStartDelayFrames = 12,
     [int]$NeutralFrames = 18,
+    [int]$ActorTimeoutFrames = 1200,
     [string[]]$PoseGroups = @(
         'idle',
         'walkforward',
@@ -28,6 +29,8 @@ param(
     [switch]$IncludeRawPlayerBase,
     [switch]$RepresentativeVisualTypes,
     [switch]$AllLoadedActorBases,
+    [switch]$AllAvailablePoses,
+    [switch]$PriorityOrder,
     [switch]$SidecarMode,
     [string]$SidecarSharedMemoryName = '',
     [string[]]$SidecarActionIds = @(),
@@ -57,6 +60,12 @@ $representativeMode = -not $AllLoadedActorBases
 if ($RepresentativeVisualTypes -and $AllLoadedActorBases) {
     throw 'RepresentativeVisualTypes and AllLoadedActorBases are mutually exclusive.'
 }
+if ($AllAvailablePoses -and $SidecarMode) {
+    throw 'AllAvailablePoses cannot be combined with SidecarMode; sidecar actions are an explicit retail cross-product.'
+}
+if ($AllAvailablePoses -and $PSBoundParameters.ContainsKey('PoseGroups')) {
+    throw 'AllAvailablePoses and PoseGroups are mutually exclusive.'
+}
 if ($representativeMode -and -not $PSBoundParameters.ContainsKey('PoseGroups')) {
     $PoseGroups = @('stand', 'kneel', 'prone', 'walk', 'talk', 'shoot', 'wave')
 }
@@ -65,6 +74,7 @@ if ($Limit -lt 0) { throw 'Limit must be zero or greater; zero means every loade
 if ($PoseFrames -lt 1) { throw 'PoseFrames must be at least one.' }
 if ($PoseStartDelayFrames -lt 0) { throw 'PoseStartDelayFrames must be zero or greater.' }
 if ($NeutralFrames -lt 1) { throw 'NeutralFrames must be at least one.' }
+if ($ActorTimeoutFrames -lt 1) { throw 'ActorTimeoutFrames must be at least one.' }
 if ($TimeoutMinutes -lt 1) { throw 'TimeoutMinutes must be at least one.' }
 $rawPoseGroups = @($PoseGroups)
 if ($SidecarMode -and @($rawPoseGroups | Where-Object {
@@ -72,10 +82,16 @@ if ($SidecarMode -and @($rawPoseGroups | Where-Object {
 }).Count -gt 0) {
     throw 'Sidecar PoseGroups must not contain blank entries.'
 }
-$PoseGroups = if ($SidecarMode) { $rawPoseGroups } else {
-    @($rawPoseGroups | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+if ($AllAvailablePoses) {
+    $PoseGroups = @()
+} elseif ($SidecarMode) {
+    $PoseGroups = @($rawPoseGroups)
+} else {
+    $PoseGroups = @($rawPoseGroups | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
-if ($PoseGroups.Count -eq 0) { throw 'At least one pose group is required.' }
+if (-not $AllAvailablePoses -and $PoseGroups.Count -eq 0) {
+    throw 'At least one pose group is required unless AllAvailablePoses is selected.'
+}
 if ($SidecarMode) {
     if ($SidecarSharedMemoryName.Length -gt 180 -or
         $SidecarSharedMemoryName -notmatch '^Local\\[A-Za-z0-9][A-Za-z0-9._-]*$') {
@@ -114,12 +130,14 @@ if ($SidecarMode) {
         'OPENMW_PROOF_ACTOR_BATCH_EXIT_AFTER_COMPLETE',
         'OPENMW_PROOF_ACTOR_BATCH_EXIT_DELAY_FRAMES',
         'OPENMW_PROOF_ACTOR_BATCH_REPRESENTATIVE_VISUAL_TYPES',
-        'OPENMW_PROOF_ACTOR_REPRESENTATIVE_POSES',
+        'OPENMW_PROOF_ACTOR_BATCH_PRIORITY_ORDER',
+        'OPENMW_PROOF_ACTOR_POSE_ALL_AVAILABLE',
         'OPENMW_PROOF_ACTOR_BATCH_EXCLUDE_RAW_PLAYER_BASE',
         'OPENMW_PROOF_ACTOR_POSE_GROUPS',
         'OPENMW_PROOF_ACTOR_POSE_FRAMES',
         'OPENMW_PROOF_ACTOR_POSE_START_DELAY_FRAMES',
-        'OPENMW_PROOF_ACTOR_POSE_NEUTRAL_FRAMES'
+        'OPENMW_PROOF_ACTOR_POSE_NEUTRAL_FRAMES',
+        'OPENMW_PROOF_ACTOR_PHASE_TIMEOUT_FRAMES'
     )) { [void]$reservedSidecarEnvironment.Add($name) }
     foreach ($entry in $SetEnv) {
         if ([string]::IsNullOrWhiteSpace($entry)) {
@@ -170,6 +188,7 @@ $env = @(
     "OPENMW_PROOF_ACTOR_POSE_FRAMES=$PoseFrames",
     "OPENMW_PROOF_ACTOR_POSE_START_DELAY_FRAMES=$PoseStartDelayFrames",
     "OPENMW_PROOF_ACTOR_POSE_NEUTRAL_FRAMES=$NeutralFrames",
+    "OPENMW_PROOF_ACTOR_PHASE_TIMEOUT_FRAMES=$ActorTimeoutFrames",
     'OPENMW_PROOF_HIDE_GUI=1',
     'OPENMW_PROOF_HIDE_PLAYER_VISUAL=1',
     'OPENMW_FNV_PROOF_DISABLE_HEAD_TRACKING=1',
@@ -220,10 +239,9 @@ $env = @(
 ) + @($SetEnv)
 if ($representativeMode) {
     $env += 'OPENMW_PROOF_ACTOR_BATCH_REPRESENTATIVE_VISUAL_TYPES=1'
-    if (-not $SidecarMode) {
-        $env += 'OPENMW_PROOF_ACTOR_REPRESENTATIVE_POSES=1'
-    }
 }
+if ($AllAvailablePoses) { $env += 'OPENMW_PROOF_ACTOR_POSE_ALL_AVAILABLE=1' }
+if ($PriorityOrder) { $env += 'OPENMW_PROOF_ACTOR_BATCH_PRIORITY_ORDER=1' }
 if (-not $IncludeRawPlayerBase) {
     $env += 'OPENMW_PROOF_ACTOR_BATCH_EXCLUDE_RAW_PLAYER_BASE=1'
 }
@@ -233,7 +251,7 @@ if ($SidecarMode) {
 }
 
 $runner = Join-Path $PSScriptRoot 'Invoke-RealWorldScreenshots.ps1'
-Write-Host "Launching one OpenMW actor process. offset=$Offset effectiveOffset=$effectiveOffset limit=$Limit poseGroups=$($PoseGroups.Count) representativeVisualTypes=$representativeMode rawPlayerIncluded=$([bool]$IncludeRawPlayerBase)"
+Write-Host "Launching one OpenMW actor process. offset=$Offset effectiveOffset=$effectiveOffset limit=$Limit poseGroups=$($PoseGroups.Count) allAvailablePoses=$([bool]$AllAvailablePoses) priorityOrder=$([bool]$PriorityOrder) representativeVisualTypes=$representativeMode rawPlayerIncluded=$([bool]$IncludeRawPlayerBase)"
 $runnerArgs = @{
     WorldId = 'fallout_new_vegas'
     Mode = 'flat'
@@ -399,6 +417,9 @@ if ($SidecarMode) {
 
 $captures = [System.Collections.Generic.List[object]]::new()
 $poseByIndex = @{}
+$actionGates = [System.Collections.Generic.List[object]]::new()
+$phaseGates = @{}
+$nativeStateByIndex = @{}
 $currentActorIndex = $null
 $pendingCapture = $null
 foreach ($line in [System.IO.File]::ReadLines($finalLogPath)) {
@@ -411,6 +432,58 @@ foreach ($line in [System.IO.File]::ReadLines($finalLogPath)) {
             requested = [int]$Matches[2]
             played = [int]$Matches[3]
             skipped = [int]$Matches[4]
+            status = 'pass'
+            reason = ''
+        }
+        continue
+    }
+    if ($line -match 'actor pose transport gate: actorIndex=([0-9]+) target="([^"]+)" poseIndex=([0-9]+) group="([^"]*)" resolvedGroup="([^"]*)" available=([01]) played=([01]) exact=1 gate=transport-only status=(pass|fail)') {
+        $actionGates.Add([pscustomobject][ordered]@{
+            schema = 'nikami-fnv-actor-action-transport-gate/v1'
+            gateKind = 'transport-only'
+            actorIndex = [int]$Matches[1]
+            target = [string]$Matches[2]
+            actionIndex = [int]$Matches[3]
+            group = [string]$Matches[4]
+            resolvedGroup = [string]$Matches[5]
+            available = $Matches[6] -eq '1'
+            playAccepted = $Matches[7] -eq '1'
+            exact = $true
+            status = [string]$Matches[8]
+        }) | Out-Null
+        continue
+    }
+    if ($line -match 'actor phase gate: actorIndex=([0-9]+) target="([^"]+)".*requested=([0-9]+) played=([0-9]+) skipped=([0-9]+) status=fail reason=([a-z0-9-]+)') {
+        $phase = [pscustomobject][ordered]@{
+            actorIndex = [int]$Matches[1]
+            target = [string]$Matches[2]
+            requested = [int]$Matches[3]
+            played = [int]$Matches[4]
+            skipped = [int]$Matches[5]
+            status = 'fail'
+            reason = [string]$Matches[6]
+        }
+        $phaseGates[$phase.actorIndex] = $phase
+        $poseByIndex[$phase.actorIndex] = $phase
+        continue
+    }
+    if ($line -match 'actor native state gate: actorIndex=([0-9]+) target="([^"]+)" type=(NPC_|CREA) lower="([^"]*)" torso="([^"]*)" leftArm="([^"]*)" rightArm="([^"]*)" visibleDrawables=([0-9]+) visibleRigs=([0-9]+) resolvedRigs=([0-9]+) bonesResolved=([01]) bonesFinite=([01]) uprightRatio=([^ ]+) status=(pass|fail) reason=([a-z0-9-]+)') {
+        $nativeStateByIndex[[int]$Matches[1]] = [pscustomobject][ordered]@{
+            schema = 'nikami-fnv-actor-native-state-gate/v1'
+            target = [string]$Matches[2]
+            type = [string]$Matches[3]
+            lowerGroup = [string]$Matches[4]
+            torsoGroup = [string]$Matches[5]
+            leftArmGroup = [string]$Matches[6]
+            rightArmGroup = [string]$Matches[7]
+            visibleDrawables = [int]$Matches[8]
+            visibleRigs = [int]$Matches[9]
+            resolvedRigs = [int]$Matches[10]
+            bonesResolved = $Matches[11] -eq '1'
+            bonesFinite = $Matches[12] -eq '1'
+            uprightRatio = [double]::Parse($Matches[13], [Globalization.CultureInfo]::InvariantCulture)
+            status = [string]$Matches[14]
+            reason = [string]$Matches[15]
         }
         continue
     }
@@ -439,6 +512,9 @@ if ($captures.Count -ne $actors.Count) {
 if ($poseByIndex.Count -ne $actors.Count) {
     throw "Actor pose contract expected $($actors.Count) completed cycles and found $($poseByIndex.Count)."
 }
+if ($nativeStateByIndex.Count -ne $actors.Count) {
+    throw "Actor native-state contract expected $($actors.Count) gates and found $($nativeStateByIndex.Count)."
+}
 
 $rows = [System.Collections.Generic.List[object]]::new()
 for ($index = 0; $index -lt $actors.Count; ++$index) {
@@ -453,6 +529,14 @@ for ($index = 0; $index -lt $actors.Count; ++$index) {
     $destination = Join-Path $screenRoot ('{0:D5}-{1}-front-full-body{2}' -f ($index + 1), $nameToken, $extension)
     Copy-Item -LiteralPath ([string]$capture[0].nativePath) -Destination $destination -Force
     $pose = $poseByIndex[$index]
+    $nativeState = $nativeStateByIndex[$index]
+    $actions = @($actionGates | Where-Object { [int]$_.actorIndex -eq $index } |
+        Sort-Object actionIndex)
+    if ($actions.Count -ne [int]$pose.requested -and $pose.status -eq 'pass') {
+        throw "Actor index $index action-gate contract expected $($pose.requested) rows and found $($actions.Count)."
+    }
+    $priorityRankProperty = $actor.PSObject.Properties['priorityRank']
+    $priorityScoreProperty = $actor.PSObject.Properties['priorityScore']
     $rows.Add([pscustomobject][ordered]@{
         index = $index
         type = [string]$actor.type
@@ -463,6 +547,8 @@ for ($index = 0; $index -lt $actors.Count; ++$index) {
         selectedWeapon = [string]$actor.selectedWeapon
         representativeOfCount = [int]$actor.representativeOfCount
         representativeScore = [int]$actor.representativeScore
+        priorityRank = if ($null -ne $priorityRankProperty) { [int]$priorityRankProperty.Value } else { 0 }
+        priorityScore = if ($null -ne $priorityScoreProperty) { [long]$priorityScoreProperty.Value } else { 0 }
         shotKind = 'front-full-body'
         frame = [int]$capture[0].frame
         screenshot = $destination
@@ -470,19 +556,35 @@ for ($index = 0; $index -lt $actors.Count; ++$index) {
         posesRequested = [int]$pose.requested
         posesPlayed = [int]$pose.played
         posesSkipped = [int]$pose.skipped
+        phaseStatus = [string]$pose.status
+        phaseFailure = [string]$pose.reason
+        nativeStateStatus = [string]$nativeState.status
+        nativeStateFailure = [string]$nativeState.reason
+        nativeState = $nativeState
+        actionFailures = @($actions | Where-Object { $_.status -ne 'pass' }).Count
+        actions = $actions
     }) | Out-Null
 }
 
 $indexPath = Join-Path $outputRootAbs ("actor-sweep-index-$sessionTag.json")
+$actionGatePath = Join-Path $outputRootAbs ("actor-action-gates-$sessionTag.jsonl")
+$actionGateLines = @($actionGates | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 6 })
+[System.IO.File]::WriteAllLines($actionGatePath, $actionGateLines, [Text.UTF8Encoding]::new($false))
+$failedActorCount = @($rows | Where-Object {
+    $_.phaseStatus -ne 'pass' -or $_.nativeStateStatus -ne 'pass' -or $_.actionFailures -gt 0
+}).Count
 [pscustomobject][ordered]@{
-    schema = 'nikami-openmw-fnv-loaded-actor-sweep/v1'
+    schema = 'nikami-openmw-fnv-loaded-actor-sweep/v2'
     createdAt = (Get-Date).ToString('o')
     processCount = 1
     pid = $processId
     roster = $rosterPath
     log = $finalLogPath
     screens = $screenRoot
+    actionGates = $actionGatePath
     poseGroups = @($PoseGroups)
+    allAvailablePoses = [bool]$AllAvailablePoses
+    priorityOrder = [bool]$PriorityOrder
     offset = $Offset
     effectiveOffset = $effectiveOffset
     representativeVisualTypes = $representativeMode
@@ -492,7 +594,8 @@ $indexPath = Join-Path $outputRootAbs ("actor-sweep-index-$sessionTag.json")
     rawPlayerBasePolicy = if ($IncludeRawPlayerBase) { 'included-explicitly' } else { 'excluded-form-0x00000007' }
     limit = $Limit
     rows = @($rows)
-    status = 'complete'
+    failedActorCount = $failedActorCount
+    status = if ($failedActorCount -eq 0) { 'complete' } else { 'complete-with-failures' }
 } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $indexPath -Encoding UTF8
 
 [pscustomobject][ordered]@{
@@ -500,9 +603,11 @@ $indexPath = Join-Path $outputRootAbs ("actor-sweep-index-$sessionTag.json")
     roster = $rosterPath
     log = $finalLogPath
     screens = $screenRoot
+    actionGates = $actionGatePath
     count = $rows.Count
+    failedActorCount = $failedActorCount
     processCount = 1
-    status = 'complete'
+    status = if ($failedActorCount -eq 0) { 'complete' } else { 'complete-with-failures' }
 }
 }
 finally {
