@@ -85,13 +85,13 @@ if ($worldStart.PSObject.Properties.Name -contains "environment") {
     }
 }
 
-# The catalog default of 0 is useful to exercise the loader but does not name a
-# real FNV weather. Use the retail-observed Goodsprings weather for exploration
-# so the sun, four cloud layers, colors, and motion are active together.
+# Keep the walkaround on the authored region-weather path. A deterministic hour
+# is useful for a repeatable spawn, but forcing WTHR or image space here would
+# stop this from representing ordinary gameplay and can thrash the weather state.
 if ($WorldId -eq "fallout_new_vegas") {
     $environment["OPENMW_FNV_BOOTSTRAP_HOUR"] = "14.45"
-    $environment["OPENMW_FNV_PROOF_WEATHER_ID"] = "FormId:0x11237d7"
-    $environment["OPENMW_FNV_PROOF_IMAGE_SPACE_ID"] = "FormId:0x108809d"
+    $environment.Remove("OPENMW_FNV_PROOF_WEATHER_ID")
+    $environment.Remove("OPENMW_FNV_PROOF_IMAGE_SPACE_ID")
 }
 
 # Proof slices enable high-volume actor telemetry in the shared catalog. Keep
@@ -111,7 +111,7 @@ Write-Host "Interactive Fallout world session"
 Write-Host "World:   $($world.displayName) [$WorldId]"
 Write-Host "Spawn:   $startCell at ($($position.x), $($position.y), $($position.z)); neighboring cells stream normally"
 Write-Host "Camera:  $($camera.mode); live keyboard and mouse input"
-Write-Host "Weather: explicit exterior bootstrap (sun plus Fallout cloud layers)"
+Write-Host "Weather: natural authored region weather (no forced WTHR or image space)"
 Write-Host "Exe:     $binary"
 Write-Host "Profile: $($world.profileDirectory)"
 Write-Host "Command: $(Quote-CommandArg $binary) $argumentLine"

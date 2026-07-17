@@ -76,7 +76,7 @@ Flat-test a generated profile with the existing OpenMW binary:
 ```
 
 Start a persistent interactive Fallout walkaround with the proven player anchor,
-first-person camera, and weather/cloud bootstrap:
+first-person camera, and natural authored region weather:
 
 ```powershell
 .\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout_new_vegas

@@ -1146,7 +1146,6 @@
       "esm4GridRadius": 1,
       "environment": {
         "OPENMW_FNV_BOOTSTRAP_HOUR": "12",
-        "OPENMW_FNV_PROOF_WEATHER_ID": "0",
         "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY": "1"
       },
       "anchor": {

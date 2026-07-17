@@ -285,8 +285,22 @@ $doorActivation = [Regex]::Match($logText,
 $doorPreloadPass = $doorPreloadRequested.Success -and $doorPreloadComplete.Success -and
     $doorActivation.Success -and $doorPreloadRequested.Index -lt $doorPreloadComplete.Index -and
     $doorPreloadComplete.Index -lt $doorActivation.Index
+$naturalWeatherSelection = [Regex]::Match($logText,
+    'selected authored weather source=region .*editorId=GSWeatherRegion .*weather=FormId:0x11237d7 .*runtimeSlot=33 selected=1')
+$naturalSkyChecks = [ordered]@{
+    authoredRegionWeather = $naturalWeatherSelection.Success
+    noWeatherForce = $logText -notmatch 'force-weather'
+    fourCloudLayersMapped = $logText -match 'mapped Fallout cloud geometry layers=4'
+    authoredCloudTextureActive = $logText -match
+        'active cloud sampler contract image=textures/sky/nvcloudlight\.dds'
+    atmosphereActive = $logText -match 'atmosphere vertical colors runtime-supported'
+}
+$naturalSkyFailures = @($naturalSkyChecks.GetEnumerator() | Where-Object { -not [bool]$_.Value } |
+    ForEach-Object { [string]$_.Key })
+$naturalSkyPass = $naturalSkyFailures.Count -eq 0
 $passed = -not $timedOut -and $exitCode -eq 0 -and $null -ne $resultMatch `
-    -and $resultMatch.Groups["result"].Value -eq "pass" -and $pixelPass -and $doorPreloadPass
+    -and $resultMatch.Groups["result"].Value -eq "pass" -and $pixelPass -and $doorPreloadPass `
+    -and $naturalSkyPass
 $manifest = [ordered]@{
     schema = "nikami-fnv-interaction-audit/v1"
     status = if ($passed) { "pass" } else { "fail" }
@@ -333,6 +347,15 @@ $manifest = [ordered]@{
             $doorPreloadRequested.Index -lt $doorPreloadComplete.Index
         completeBeforeActivation = $doorPreloadComplete.Success -and $doorActivation.Success -and
             $doorPreloadComplete.Index -lt $doorActivation.Index
+    }
+    naturalSkyState = [ordered]@{
+        status = if ($naturalSkyPass) { "pass" } else { "fail" }
+        weather = "FormId:0x11237d7"
+        runtimeSlot = 33
+        forcedWeather = $false
+        exteriorReturnPassed = [bool]$gates.doorOut
+        checks = $naturalSkyChecks
+        failures = $naturalSkyFailures
     }
     screenshotSceneMeasurements = $pixelMeasurements
     screenshots = @($copiedScreenshots | ForEach-Object { $_ -replace "\\", "/" })
