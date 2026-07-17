@@ -1,0 +1,26 @@
+setlinecap round
+
+// Warm outer glow around the supersonic tracer.
+setrgba 1 0.32 0.05 0.28
+setlinewidth 16
+M 535 252
+L 920 266
+stroke
+
+// Hot core of the tracer.
+setrgba 1 0.92 0.62 0.96
+setlinewidth 4
+M 535 252
+L 920 266
+stroke
+
+// Two concentric impact rings centered on the Fiend's torso.
+setrgba 1 0.08 0.03 0.58
+setlinewidth 10
+ellipse 927 270 30 30
+stroke
+
+setrgba 1 0.72 0.24 0.95
+setlinewidth 3
+ellipse 927 270 19 19
+stroke
