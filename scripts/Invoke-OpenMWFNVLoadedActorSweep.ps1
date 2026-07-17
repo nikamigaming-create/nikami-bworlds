@@ -460,6 +460,28 @@ foreach ($line in [System.IO.File]::ReadLines($finalLogPath)) {
         }) | Out-Null
         continue
     }
+    if ($line -match 'actor mechanics action gate: actorIndex=([0-9]+) target="([^"]+)" poseIndex=([0-9]+) semantic=primary group="([^"]*)" control=attackingOrSpell directGroupInjection=0 exact=1 gate=production-character-controller status=(pass|fail)') {
+        $actionGates.Add([pscustomobject][ordered]@{
+            schema = 'nikami-fnv-actor-action-mechanics-gate/v1'
+            gateKind = 'production-character-controller'
+            actorIndex = [int]$Matches[1]
+            target = [string]$Matches[2]
+            actionIndex = [int]$Matches[3]
+            group = [string]$Matches[4]
+            resolvedGroup = [string]$Matches[4]
+            available = $Matches[5] -eq 'pass'
+            playAccepted = $Matches[5] -eq 'pass'
+            controllerMask = 0
+            activeMask = 0
+            startTime = 0.0
+            stopTime = 0.0
+            role = 'production-mechanics'
+            transportAccepted = $Matches[5] -eq 'pass'
+            exact = $true
+            status = [string]$Matches[5]
+        }) | Out-Null
+        continue
+    }
     if ($line -match 'actor phase gate: actorIndex=([0-9]+) target="([^"]+)".*requested=([0-9]+) played=([0-9]+) deferred=([0-9]+) skipped=([0-9]+) status=fail reason=([a-z0-9-]+)') {
         $phase = [pscustomobject][ordered]@{
             actorIndex = [int]$Matches[1]
