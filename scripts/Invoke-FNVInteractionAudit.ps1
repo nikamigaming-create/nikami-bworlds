@@ -298,9 +298,59 @@ $naturalSkyChecks = [ordered]@{
 $naturalSkyFailures = @($naturalSkyChecks.GetEnumerator() | Where-Object { -not [bool]$_.Value } |
     ForEach-Object { [string]$_.Key })
 $naturalSkyPass = $naturalSkyFailures.Count -eq 0
+
+$nightEnd = 5.5
+$dayStart = 8.0
+$dayEnd = 18.0
+$nightStart = 20.5
+$fogDayStrength = if ($StartHour -le $nightEnd -or $StartHour -ge $nightStart) {
+    0.0
+} elseif ($StartHour -lt $dayStart) {
+    ($StartHour - $nightEnd) / ($dayStart - $nightEnd)
+} elseif ($StartHour -le $dayEnd) {
+    1.0
+} else {
+    ($nightStart - $StartHour) / ($nightStart - $dayEnd)
+}
+$expectedFogNear = 10.0 * $fogDayStrength
+$expectedFogFar = 150000.0 + ((120000.0 - 150000.0) * $fogDayStrength)
+$expectedFogPower = 0.5
+$expectedFogRange = $expectedFogFar - $expectedFogNear
+$authoredFogMatch = [Regex]::Match($logText,
+    'FNV/ESM4 fog proof: mode=authored-fnam near=(?<near>[-+0-9.eE]+) far=(?<far>[-+0-9.eE]+) power=(?<power>[-+0-9.eE]+) range=(?<range>[-+0-9.eE]+) denominator=(?<denominator>[-+0-9.eE]+)')
+$actualFogNear = $null
+$actualFogFar = $null
+$actualFogPower = $null
+$actualFogRange = $null
+$actualFogDenominator = $null
+if ($authoredFogMatch.Success) {
+    $culture = [Globalization.CultureInfo]::InvariantCulture
+    $actualFogNear = [double]::Parse($authoredFogMatch.Groups['near'].Value, $culture)
+    $actualFogFar = [double]::Parse($authoredFogMatch.Groups['far'].Value, $culture)
+    $actualFogPower = [double]::Parse($authoredFogMatch.Groups['power'].Value, $culture)
+    $actualFogRange = [double]::Parse($authoredFogMatch.Groups['range'].Value, $culture)
+    $actualFogDenominator = [double]::Parse($authoredFogMatch.Groups['denominator'].Value, $culture)
+}
+$fogTolerance = 0.02
+$authoredFogChecks = [ordered]@{
+    authoredFnamActive = $authoredFogMatch.Success
+    nearMatchesGoodsprings = $authoredFogMatch.Success -and
+        [Math]::Abs($actualFogNear - $expectedFogNear) -le $fogTolerance
+    farMatchesGoodsprings = $authoredFogMatch.Success -and
+        [Math]::Abs($actualFogFar - $expectedFogFar) -le $fogTolerance
+    powerMatchesGoodsprings = $authoredFogMatch.Success -and
+        [Math]::Abs($actualFogPower - $expectedFogPower) -le 0.000001
+    rangeMatchesGoodsprings = $authoredFogMatch.Success -and
+        [Math]::Abs($actualFogRange - $expectedFogRange) -le $fogTolerance
+    denominatorMatchesRange = $authoredFogMatch.Success -and
+        [Math]::Abs($actualFogDenominator - $actualFogRange) -le 0.000001
+}
+$authoredFogFailures = @($authoredFogChecks.GetEnumerator() | Where-Object { -not [bool]$_.Value } |
+    ForEach-Object { [string]$_.Key })
+$authoredFogPass = $authoredFogFailures.Count -eq 0
 $passed = -not $timedOut -and $exitCode -eq 0 -and $null -ne $resultMatch `
     -and $resultMatch.Groups["result"].Value -eq "pass" -and $pixelPass -and $doorPreloadPass `
-    -and $naturalSkyPass
+    -and $naturalSkyPass -and $authoredFogPass
 $manifest = [ordered]@{
     schema = "nikami-fnv-interaction-audit/v1"
     status = if ($passed) { "pass" } else { "fail" }
@@ -356,6 +406,27 @@ $manifest = [ordered]@{
         exteriorReturnPassed = [bool]$gates.doorOut
         checks = $naturalSkyChecks
         failures = $naturalSkyFailures
+    }
+    authoredFogState = [ordered]@{
+        status = if ($authoredFogPass) { "pass" } else { "fail" }
+        weather = "FormId:0x11237d7"
+        source = "WTHR/FNAM"
+        hour = $StartHour
+        expected = [ordered]@{
+            near = $expectedFogNear
+            far = $expectedFogFar
+            power = $expectedFogPower
+            range = $expectedFogRange
+        }
+        actual = [ordered]@{
+            near = $actualFogNear
+            far = $actualFogFar
+            power = $actualFogPower
+            range = $actualFogRange
+            denominator = $actualFogDenominator
+        }
+        checks = $authoredFogChecks
+        failures = $authoredFogFailures
     }
     screenshotSceneMeasurements = $pixelMeasurements
     screenshots = @($copiedScreenshots | ForEach-Object { $_ -replace "\\", "/" })
