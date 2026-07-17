@@ -1,6 +1,6 @@
 {
   "schema": "nikami-fnv-flat-acceptance-ledger/v1",
-  "asOf": "2026-07-12",
+  "asOf": "2026-07-17",
   "scope": "Complete retail Fallout: New Vegas data in flat OpenMW, beginning with a normal level-one Goodsprings session and ending with the retail intro and Doc Mitchell character creation.",
   "overallStatus": "fail",
   "vrGate": "blocked",
@@ -121,7 +121,7 @@
     {
       "id": "terrain-sky-clouds-weather-lighting-image-space",
       "status": "fail",
-      "reason": "The natural session removes forced proof IDs and exposes visibly non-retail sky, lighting, final color and a black facade material."
+      "reason": "Post-promoted local gates now pass natural Goodsprings WTHR FormId:0x11237d7 selection without a force, four cardinal cloud captures, exterior-interior-exterior weather retention, and authored FNAM near/far/power 10/120000/0.5 on runtime SHA-256 183CFC672F984CB041492567B6009176C46576C102213C2712AF1ACC0123BA19. The promoted queue and full surface remain red: same-frame retail pixels, broader weather/time coverage, precipitation, lightning, lighting/image-space parity and the black facade material are unresolved."
     },
     {
       "id": "sound-music-ambience",
@@ -131,7 +131,7 @@
     {
       "id": "activation-dialogue-voice-lip-result-scripts-quests",
       "status": "unproven",
-      "reason": "A bounded driven audit exists; natural quest progression and exhaustive retail dialogue/result coverage do not."
+      "reason": "Post-promoted local slices unit-prove direct-dialogue facing policy and runtime-prove Easy Pete INFO FormId:0x1106635 responses 1 then 2 with matching per-line LIP playback. Facing still lacks a native pose/differential gate, and broad dialogue selection, interruption behavior, result scripts and natural quest progression remain unproven."
     },
     {
       "id": "inventory-hud-pip-boy-equipment",
