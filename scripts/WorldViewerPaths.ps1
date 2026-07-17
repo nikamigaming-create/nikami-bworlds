@@ -169,6 +169,20 @@ function Resolve-NikamiOpenMWRuntimeRoot {
         throw "Missing repo-local OpenMW binary: $binary"
     }
 
+    # A build-tree openmw.exe is not a runnable Windows deployment by itself.
+    # Reject incomplete runtime directories before Windows displays a loader
+    # dialog (which is both opaque to the harness and easy to mistake for an
+    # engine crash).
+    $requiredRuntimeFiles = @(
+        "MyGUIEngine.dll"
+    )
+    foreach ($requiredRuntimeFile in $requiredRuntimeFiles) {
+        $requiredRuntimePath = Join-Path $candidateRoot $requiredRuntimeFile
+        if (-not (Test-Path -LiteralPath $requiredRuntimePath -PathType Leaf)) {
+            throw "Incomplete repo-local OpenMW runtime: missing $requiredRuntimeFile beside $binary. Launch the packaged runtime under local, not a build-tree openmw.exe."
+        }
+    }
+
     return $candidateRoot
 }
 
