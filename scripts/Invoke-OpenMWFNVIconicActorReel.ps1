@@ -3,7 +3,7 @@ param(
     [int]$PoseFrames = 12,
     [int]$PoseStartDelayFrames = 12,
     [int]$NeutralFrames = 18,
-    [string[]]$PoseGroups = @('stand', 'kneel', 'walk', 'talk', 'shoot', 'wave'),
+    [string[]]$PoseGroups = @('stand', 'walk', 'talk', 'shoot', 'wave'),
     [int]$TimeoutMinutes = 15,
     [switch]$BackgroundWindow,
     [string[]]$SetEnv = @()
@@ -32,8 +32,8 @@ if ($NeutralFrames -lt 1) { throw 'NeutralFrames must be at least one.' }
 if ($TimeoutMinutes -lt 1) { throw 'TimeoutMinutes must be at least one.' }
 $PoseGroups = @($PoseGroups | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 if ($PoseGroups.Count -eq 0) { throw 'At least one pose group is required.' }
-if ($PoseGroups -contains 'prone') {
-    throw 'The proof reel refuses the old floor-sleep surrogate. A real prone animation must be proven before prone can be requested.'
+if ($PoseGroups -contains 'prone' -or $PoseGroups -contains 'kneel') {
+    throw 'The proof reel refuses the unverified floor-sleep and 2hrcrouch surrogates. Retail-authored prone/kneel controllers must be proven before either can be requested.'
 }
 
 $actors = @(

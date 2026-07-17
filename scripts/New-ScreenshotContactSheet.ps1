@@ -42,7 +42,12 @@ if (-not (Test-Path -LiteralPath $resolvedManifest -PathType Leaf)) {
 }
 
 $manifest = Get-Content -LiteralPath $resolvedManifest -Raw | ConvertFrom-Json
-$screenshotPaths = @((Get-PropertyValue $manifest "screenshots") | ForEach-Object {
+$screenshotEntries = Get-PropertyValue $manifest "screenshots"
+if ($null -eq $screenshotEntries) {
+    $evidence = Get-PropertyValue $manifest "evidence"
+    $screenshotEntries = Get-PropertyValue $evidence "screenshots"
+}
+$screenshotPaths = @($screenshotEntries | ForEach-Object {
     [string](Get-PropertyValue $_ "path")
 } | Where-Object {
     -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Leaf)
