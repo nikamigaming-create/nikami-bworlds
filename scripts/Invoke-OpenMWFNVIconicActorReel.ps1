@@ -223,8 +223,13 @@ foreach ($line in [System.IO.File]::ReadLines($finalLogPath)) {
         $currentActorIndex = [int]$Matches[1]
         continue
     }
-    if ($line -match 'actor pose cycle: actorIndex=([0-9]+).*requested=([0-9]+) played=([0-9]+) skipped=([0-9]+).*status=complete') {
-        $poseByIndex[[int]$Matches[1]] = [pscustomobject]@{ requested=[int]$Matches[2]; played=[int]$Matches[3]; skipped=[int]$Matches[4] }
+    if ($line -match 'actor pose cycle: actorIndex=(?<actor>[0-9]+).*requested=(?<requested>[0-9]+) played=(?<played>[0-9]+)(?: deferred=(?<deferred>[0-9]+))? skipped=(?<skipped>[0-9]+).*status=complete') {
+        $poseByIndex[[int]$Matches.actor] = [pscustomobject]@{
+            requested = [int]$Matches.requested
+            played = [int]$Matches.played
+            deferred = if ($Matches.deferred) { [int]$Matches.deferred } else { 0 }
+            skipped = [int]$Matches.skipped
+        }
         continue
     }
     if ($line -match 'queuing GUI-inclusive native screenshot at frame ([0-9]+)') {
@@ -274,6 +279,7 @@ for ($index = 0; $index -lt $actors.Count; ++$index) {
         nativeScreenshot = [string]$capture[0].nativePath
         posesRequested = [int]$pose.requested
         posesPlayed = [int]$pose.played
+        posesDeferred = [int]$pose.deferred
         posesSkipped = [int]$pose.skipped
     }) | Out-Null
 }
