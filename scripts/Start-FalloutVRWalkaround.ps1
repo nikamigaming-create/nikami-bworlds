@@ -54,9 +54,15 @@ $binary = Join-Path $runtimeRoot "openmw_vr.exe"
 $profile = [IO.Path]::GetFullPath([string]$world.profileDirectory)
 $playableBaseline = Join-Path $repoRoot "config/playable-baseline"
 $doorPreload = Join-Path $repoRoot "config/door-preload"
-foreach ($required in @($binary, $resourcesRoot, $profile, $playableBaseline, $doorPreload)) {
+$resourcesVersion = Join-Path $resourcesRoot "version"
+foreach ($required in @($binary, $resourcesRoot, $resourcesVersion, $profile, $playableBaseline, $doorPreload)) {
     if (-not (Test-Path -LiteralPath $required)) { throw "Missing VR walkaround dependency: $required" }
 }
+
+$sessionStamp = [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss-fff", [Globalization.CultureInfo]::InvariantCulture)
+$sessionRoot = Join-Path $repoRoot ("run/interactive-fallout-vr/{0}/{1}-{2}" -f $WorldId, $sessionStamp, $PID)
+$sessionConfig = Join-Path $sessionRoot "config"
+$sessionUserData = Join-Path $sessionRoot "user-data"
 
 $morrowindConfig = Join-Path $repoRoot "profiles/morrowind/openmw.cfg"
 $morrowindData = Get-ProfileValue $morrowindConfig "data"
@@ -112,6 +118,8 @@ $arguments = @(
     "--config", $profile,
     "--config", $playableBaseline,
     "--config", $doorPreload,
+    "--config", $sessionConfig,
+    "--user-data", $sessionUserData,
     "--resources", $resourcesRoot,
     "--data", $morrowindData,
     "--fallback-archive", "Morrowind.bsa",
@@ -126,6 +134,7 @@ Write-Host "Spawn:   $($worldStart.startCell) at ($($anchor.position.x), $($anch
 Write-Host "Exe:     $binary"
 Write-Host "Profile: $profile"
 Write-Host "OpenXR:  $openXrRuntime"
+Write-Host "Session: $sessionRoot"
 Write-Host "Command: $(Quote-CommandArg $binary) $argumentLine"
 Write-Host "Diagnostics: $(if ($Diagnostics) { 'on' } else { 'off' })"
 
@@ -137,6 +146,30 @@ if ($DryRun) {
 if (-not $AllowDuplicate -and (Get-Process -Name openmw,openmw_vr -ErrorAction SilentlyContinue)) {
     throw "OpenMW is already running. Close it first or pass -AllowDuplicate."
 }
+
+# The profile, baseline, and door-preload directories are immutable inputs. Put every writable OpenMW artifact in a
+# unique run directory so a headset session cannot poison the next run or dirty a shared repository config.
+New-Item -ItemType Directory -Path $sessionConfig, $sessionUserData -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $sessionConfig "openmw.cfg") `
+    -Value ('user-data="{0}"' -f ($sessionUserData -replace '\\', '/')) -Encoding utf8
+$resourceVersionLines = @(Get-Content -LiteralPath $resourcesVersion)
+$sessionManifest = [ordered]@{
+    schema = "nikami-fallout-vr-session/v1"
+    worldId = $WorldId
+    world = [string]$world.displayName
+    startCell = [string]$worldStart.startCell
+    createdAtUtc = [DateTime]::UtcNow.ToString("o", [Globalization.CultureInfo]::InvariantCulture)
+    executable = $binary -replace "\\", "/"
+    executableSha256 = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
+    resources = $resourcesRoot -replace "\\", "/"
+    resourcesVersion = $resourceVersionLines
+    openXrRuntime = $openXrRuntime -replace "\\", "/"
+    diagnostics = [bool]$Diagnostics
+    configDirectory = $sessionConfig -replace "\\", "/"
+    userDataDirectory = $sessionUserData -replace "\\", "/"
+    command = @($binary) + $arguments
+}
+$sessionManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $sessionRoot "session.json") -Encoding utf8
 
 # A playable session must not inherit any proof-only actor selection, pose,
 # AI suppression, or authored-audit mutation from a previous harness run.
