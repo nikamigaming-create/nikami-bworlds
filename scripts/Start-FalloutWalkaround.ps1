@@ -3,6 +3,7 @@ param(
     [string]$WorldId = "fallout_new_vegas",
     [switch]$DryRun,
     [switch]$Wait,
+    [switch]$Diagnostics,
     [switch]$AllowDuplicate,
     [string]$BinaryRoot = ""
 )
@@ -92,6 +93,10 @@ if ($WorldId -eq "fallout_new_vegas") {
     $environment["OPENMW_FNV_PROOF_WEATHER_ID"] = "FormId:0x11237d7"
     $environment["OPENMW_FNV_PROOF_IMAGE_SPACE_ID"] = "FormId:0x108809d"
 }
+
+# Proof slices enable high-volume actor telemetry in the shared catalog. Keep
+# normal interactive play clean and make diagnostics an explicit opt-in.
+$environment["OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY"] = if ($Diagnostics) { "1" } else { "0" }
 
 $argsList = @(
     "--replace", "config",
