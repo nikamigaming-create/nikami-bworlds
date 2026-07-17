@@ -9,7 +9,8 @@ param(
     [ValidateRange(30, 360)][int]$TimeoutSeconds = 180,
     [ValidateRange(60, 3600)][int]$SettleFrames = 240,
     [ValidateRange(0.0, 23.9999)][double]$StartHour = 12.0,
-    [ValidateRange(-128.0, 128.0)][double]$EyeOffsetZ = -40.0
+    [ValidateRange(-128.0, 128.0)][double]$EyeOffsetZ = -40.0,
+    [switch]$ActorTelemetry
 )
 
 Set-StrictMode -Version Latest
@@ -158,7 +159,7 @@ $environment = [ordered]@{
     OPENMW_PROOF_DELAY_STARTUP_SCRIPT = "1"
     OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI = "1"
     OPENMW_WORLD_VIEWER_TELEMETRY = "0"
-    OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY = "0"
+    OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY = if ($ActorTelemetry) { "1" } else { "0" }
     OPENMW_WORLD_VIEWER_DOOR_PRELOAD_TELEMETRY = "1"
     OPENMW_DEBUG_LEVEL = "INFO"
 }
