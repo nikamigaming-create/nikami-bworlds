@@ -54,8 +54,10 @@ $binary = Join-Path $runtimeRoot "openmw_vr.exe"
 $profile = [IO.Path]::GetFullPath([string]$world.profileDirectory)
 $playableBaseline = Join-Path $repoRoot "config/playable-baseline"
 $doorPreload = Join-Path $repoRoot "config/door-preload"
+$fnvPlayableGraphics = Join-Path $repoRoot "config/fnv-playable-graphics"
 $resourcesVersion = Join-Path $resourcesRoot "version"
-foreach ($required in @($binary, $resourcesRoot, $resourcesVersion, $profile, $playableBaseline, $doorPreload)) {
+foreach ($required in @($binary, $resourcesRoot, $resourcesVersion, $profile, $playableBaseline, $doorPreload,
+    $fnvPlayableGraphics)) {
     if (-not (Test-Path -LiteralPath $required)) { throw "Missing VR walkaround dependency: $required" }
 }
 
@@ -116,7 +118,12 @@ $environment = [ordered]@{
 $arguments = @(
     "--replace", "config",
     "--config", $profile,
-    "--config", $playableBaseline,
+    "--config", $playableBaseline
+)
+if ($WorldId -eq "fallout_new_vegas") {
+    $arguments += @("--config", $fnvPlayableGraphics)
+}
+$arguments += @(
     "--config", $doorPreload,
     "--config", $sessionConfig,
     "--user-data", $sessionUserData,

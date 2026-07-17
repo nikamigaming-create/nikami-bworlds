@@ -85,10 +85,11 @@ $startup = Resolve-RepoPath $StartupScript
 $outputBase = Resolve-RepoPath $OutputRoot
 $baselineConfig = Resolve-RepoPath "config/playable-baseline"
 $doorPreloadConfig = Resolve-RepoPath "config/door-preload"
+$fnvPlayableGraphicsConfig = Resolve-RepoPath "config/fnv-playable-graphics"
 $profileConfig = Join-Path $profile "openmw.cfg"
 
 foreach ($requiredFile in @($exe, $profileConfig, $startup, (Join-Path $baselineConfig "settings.cfg"),
-    (Join-Path $doorPreloadConfig "settings.cfg"))) {
+    (Join-Path $doorPreloadConfig "settings.cfg"), (Join-Path $fnvPlayableGraphicsConfig "settings.cfg"))) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
         throw "Missing required interaction-audit file: $requiredFile"
     }
@@ -132,6 +133,7 @@ $arguments = @(
     "--replace", "config",
     "--config", $profile,
     "--config", $baselineConfig,
+    "--config", $fnvPlayableGraphicsConfig,
     "--config", $doorPreloadConfig,
     "--config", $sessionConfig,
     "--user-data", $sessionUserData,

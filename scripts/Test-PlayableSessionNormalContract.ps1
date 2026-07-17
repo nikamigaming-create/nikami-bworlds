@@ -63,6 +63,10 @@ foreach ($required in @(
 }
 Assert-Contract ($runnerSource.Contains('config/door-preload')) `
     "Normal-session runner does not apply the authored door-preload config layer."
+Assert-Contract ($runnerSource.Contains('config/fnv-playable-graphics')) `
+    "Normal-session runner does not apply the FNV distant-world graphics layer."
+Assert-Contract ($runnerSource -match 'if \(\$id -eq "fallout_new_vegas"\)[\s\S]*?\$argsList \+= @\("--config", \$fnvPlayableGraphicsConfig\)') `
+    "FNV graphics layer is not scoped to the FNV session."
 Assert-Contract ($runnerSource -match '\$argsList \+= @\("--config", \$sessionConfigDirectory\)') `
     "Playable-session runner does not finish with an isolated per-run writable config."
 Assert-Contract ($runnerSource -match '\$argsList \+= @\("--user-data", \$sessionUserData\)') `

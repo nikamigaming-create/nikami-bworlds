@@ -243,7 +243,14 @@
       "preset": "esm4_world_viewer_first_frame",
       "sections": {
         "Camera": {
-          "field of view": 75
+          "field of view": 75,
+          "viewing distance": 32768
+        },
+        "Terrain": {
+          "distant terrain": true,
+          "object paging": true,
+          "object paging active grid": false,
+          "object paging min size": 0.01
         },
         "Saves": {
           "character": "world-viewer-fnv"

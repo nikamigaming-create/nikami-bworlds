@@ -221,6 +221,7 @@ $contractPath = Join-Path $repoRoot "catalog/playable-session-baselines.json"
 $startsPath = Join-Path $repoRoot "catalog/flat-world-proof-starts.json"
 $playableConfigTemplate = Join-Path $repoRoot "config/playable-baseline"
 $doorPreloadConfig = Join-Path $repoRoot "config/door-preload"
+$fnvPlayableGraphicsConfig = Join-Path $repoRoot "config/fnv-playable-graphics"
 $starfieldMaterialMap = Join-Path $repoRoot "config/proofs/starfield-new-atlantis-material-map.tsv"
 $starfieldTextureCacheScript = Join-Path $repoRoot "scripts/initialize_starfield_texture_cache.py"
 if (-not (Test-Path -LiteralPath $contractPath)) {
@@ -234,6 +235,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $playableConfigTemplate "settings.cf
 }
 if (-not (Test-Path -LiteralPath (Join-Path $doorPreloadConfig "settings.cfg"))) {
     throw "Missing authored door-preload settings: $doorPreloadConfig"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $fnvPlayableGraphicsConfig "settings.cfg"))) {
+    throw "Missing FNV normal-play graphics settings: $fnvPlayableGraphicsConfig"
 }
 
 $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json
@@ -453,16 +457,21 @@ foreach ($id in $requested) {
     $argsList = @(
         "--replace", "config",
         "--config", $profileDirectory,
-        "--config", $playableConfigTemplate,
-        "--resources", $resourcesRoot,
-        "--skip-menu",
-        "--start", $startCell
+        "--config", $playableConfigTemplate
     )
+    if ($id -eq "fallout_new_vegas") {
+        $argsList += @("--config", $fnvPlayableGraphicsConfig)
+    }
     if ($normalSession) {
         $argsList += @("--config", $doorPreloadConfig)
     }
     $argsList += @("--config", $sessionConfigDirectory)
     $argsList += @("--user-data", $sessionUserData)
+    $argsList += @(
+        "--resources", $resourcesRoot,
+        "--skip-menu",
+        "--start", $startCell
+    )
     if ($id -ne "morrowind") {
         $argsList += @(
             "--data", $morrowindUiDataPath,
