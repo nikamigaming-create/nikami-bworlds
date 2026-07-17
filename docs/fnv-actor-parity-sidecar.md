@@ -104,6 +104,43 @@ The run writes `normalized-manifest.json`, `retail-sidecar-plan.tsv`,
 The result records the final NKSC snapshot and labels lockstep true only when
 the protocol completion contract passes.
 
+### Retail post-frame appearance evidence
+
+The retail ready/captured payload now adds
+`appearance.schema = nikami-fnv-sidecar-appearance/v1`. Its bounded
+`renderParts` projection is collected from the settled actor scene graph, not
+from a screenshot or an actor-specific override. A part's only comparison
+identity is `role/sourceFormId/sourceSlot/ordinal`; node addresses and child
+traversal order are not emitted or used as identity. Retail FormIDs use fixed
+`0x%08X` strings and a part without a biped source slot uses the unsigned
+sentinel `4294967295`.
+
+The retail role vocabulary is `face`, `leftHand`, `rightHand`, `exposedBody`,
+`hair`, `eyes`, `headPart`, `equipment`, `weapon`, and `actor`. Every record
+reports `required`, `attached`, `drawable`, and `visible`, plus raw effective
+`alphaBits`. The v1 effective alpha is
+`clamp(material.alpha * shader.alpha * shader.fadeAlpha, 0, 1)` and
+`alphaBits` is the raw IEEE-754 bit pattern of that result. `modelHash`,
+`nodeHash`, `materialId`, and `shaderId` remain absent from v1 until both
+engines share canonical algorithms for those optional fields; retail wrapper
+or scene-node paths are not treated as cross-engine identity.
+
+Resolved shader bindings are ordered by stage and carry semantic, normalized
+`textures/...` path, dimensions, D3D9 format, source kind, and
+`d3d9-fnv1a32:%08x`. That content hash covers canonical D3D9 subresource bytes
+in mip order (and fixed face order for cube textures), excluding pitch padding
+and container headers. Face/body-mod cache paths are labeled `generated`;
+ordinary texture-set paths are `authored` and pathless runtime resolutions are
+`runtime`. Skin stages are `baseColor`, `normal`,
+`faceGenDetail`, `bodyColor`, `skinScatter`, and `environmentMask`; equipment
+and weapon stages use role-prefixed color/normal semantics.
+
+Collection is capped at 8,192 scene nodes, 128 geometry candidates, 48 emitted
+parts, 64 MiB of canonical bytes per texture, and a dynamically reduced
+23,000-byte render-part budget inside the existing NKSC payload. The payload
+reports `complete`, `truncated`, `visitedNodes`, and `candidateCount`, so a
+limit or unreadable runtime resource cannot silently become parity evidence.
+
 ## Explicit static fallback
 
 `-AllowStaticRetailProof` intentionally bypasses NKSC. It runs the legacy
@@ -133,9 +170,11 @@ requires an engine-side explicit actor list.
 An NKSC v1 `transport-complete` result proves that both endpoints published every
 planned identity under the same monotonically increasing generation, with valid
 payload CRCs and durable screenshots. It deliberately does **not** claim observed
-animation, bone, material, FaceGen, dialogue, camera-matrix, or pixel parity;
-those require the per-frame telemetry protocol and comparators described by the
-remaining proof boundary.
+animation, bone, material, FaceGen, dialogue, camera-matrix, or pixel parity.
+The additive `appearance.renderParts` projection becomes evidence only when the
+coordinator validates both endpoint payloads and its deterministic appearance
+comparator passes; transport completion or screenshots alone do not establish
+appearance parity.
 
 The source capability preflight reports individual missing runner parameters,
 retail endpoint tokens, and OpenMW integration calls. Execution refuses to

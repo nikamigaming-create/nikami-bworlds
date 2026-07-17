@@ -5603,6 +5603,1175 @@ namespace
         return bits;
     }
 
+    constexpr UInt32 sSidecarNoSourceSlot = 0xFFFFFFFFu;
+    constexpr UInt32 sSidecarAppearanceMaximumNodes = 8192;
+    constexpr UInt32 sSidecarAppearanceMaximumCandidates = 128;
+    constexpr UInt32 sSidecarAppearanceMaximumParts = 48;
+    constexpr std::size_t sSidecarAppearanceMaximumJsonBytes = 23000;
+    constexpr UInt64 sSidecarTextureMaximumCanonicalBytes = 64ull * 1024ull * 1024ull;
+    const std::string sSidecarEmptyNodePath;
+
+    struct SidecarTextureResource
+    {
+        bool valid = false;
+        UInt32 width = 0;
+        UInt32 height = 0;
+        D3DFORMAT format = D3DFMT_UNKNOWN;
+        UInt32 contentHash = 2166136261u;
+    };
+
+    struct SidecarTextureBinding
+    {
+        std::string semantic;
+        std::string path;
+        std::string contentHash;
+        UInt32 width = 0;
+        UInt32 height = 0;
+        std::string format;
+        std::string sourceKind;
+        UInt32 stage = 0;
+    };
+
+    struct SidecarAppearanceAttachment
+    {
+        NiAVObject* root = nullptr;
+        UInt32 sourceForm = 0;
+        UInt8 sourceType = kFormType_None;
+        UInt32 sourceSlot = sSidecarNoSourceSlot;
+        std::string role;
+        std::string modelPath;
+        bool required = false;
+        bool reached = false;
+        bool emitted = false;
+    };
+
+    struct SidecarAppearanceSources
+    {
+        UInt32 actorBaseForm = 0;
+        UInt32 raceForm = 0;
+        UInt32 hairForm = 0;
+        UInt32 eyesForm = 0;
+    };
+
+    struct SidecarRenderPart
+    {
+        std::string role;
+        UInt32 sourceForm = 0;
+        UInt32 sourceSlot = sSidecarNoSourceSlot;
+        UInt32 ordinal = 0;
+        bool required = false;
+        bool attached = false;
+        bool drawable = false;
+        bool visible = false;
+        bool skinSurface = false;
+        UInt32 alphaBits = 0x3F800000u;
+        std::string modelHash;
+        std::string nodeHash;
+        std::string geometryHash;
+        std::vector<SidecarTextureBinding> textureBindings;
+        std::string stableKey;
+        std::string deterministicKey;
+    };
+
+    struct SidecarAppearanceCapture
+    {
+        SidecarAppearanceSources sources;
+        std::vector<SidecarAppearanceAttachment> attachments;
+        std::vector<SidecarRenderPart> parts;
+        std::map<const NiTexture*, SidecarTextureResource> textureCache;
+        std::set<const NiAVObject*> visitedObjects;
+        UInt32 visitedNodes = 0;
+        UInt32 geometryCandidates = 0;
+        bool traversalTruncated = false;
+        bool evidenceComplete = true;
+    };
+
+    NiNode* sidecarActorRootUnsafe(Actor* actor);
+
+    std::string sidecarLowerAscii(std::string value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        return value;
+    }
+
+    std::string sidecarNormalizeAssetPath(std::string value)
+    {
+        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())))
+            value.erase(value.begin());
+        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())))
+            value.pop_back();
+        for (char& character : value)
+        {
+            if (character == '\\')
+                character = '/';
+            else
+                character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+        }
+        std::string normalized;
+        normalized.reserve(value.size());
+        bool previousSlash = false;
+        for (char character : value)
+        {
+            const bool slash = character == '/';
+            if (!slash || !previousSlash)
+                normalized.push_back(character);
+            previousSlash = slash;
+        }
+        while (normalized.rfind("./", 0) == 0)
+            normalized.erase(0, 2);
+        while (!normalized.empty() && normalized.front() == '/')
+            normalized.erase(normalized.begin());
+        if (normalized.rfind("data/", 0) == 0)
+            normalized.erase(0, 5);
+        return normalized;
+    }
+
+    std::string sidecarNormalizeNodeToken(std::string value)
+    {
+        value = sidecarLowerAscii(value);
+        std::string normalized;
+        normalized.reserve(value.size());
+        bool previousSpace = false;
+        for (const unsigned char character : value)
+        {
+            const bool space = std::isspace(character) != 0;
+            if (!space || !previousSpace)
+                normalized.push_back(space ? ' ' : static_cast<char>(character));
+            previousSpace = space;
+        }
+        while (!normalized.empty() && normalized.front() == ' ')
+            normalized.erase(normalized.begin());
+        while (!normalized.empty() && normalized.back() == ' ')
+            normalized.pop_back();
+        return normalized;
+    }
+
+    std::string sidecarHashLabel(const char* prefix, UInt32 hash)
+    {
+        std::ostringstream out;
+        out << prefix << std::hex << std::nouppercase << std::setw(8) << std::setfill('0') << hash;
+        return out.str();
+    }
+
+    std::string sidecarHashText(const std::string& value)
+    {
+        return sidecarHashLabel("fnv1a32:",
+            sidecarHashAppend(2166136261u, value.data(), value.size()));
+    }
+
+    std::string sidecarFormatFormId(UInt32 form)
+    {
+        std::ostringstream out;
+        out << "0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0') << form;
+        return out.str();
+    }
+
+    bool sidecarHashReadableBytes(
+        UInt32& hash, const UInt8* address, std::size_t byteCount, UInt64& canonicalBytes)
+    {
+        if (address == nullptr || canonicalBytes + byteCount > sSidecarTextureMaximumCanonicalBytes)
+            return false;
+        std::array<UInt8, 4096> buffer = {};
+        std::size_t offset = 0;
+        while (offset < byteCount)
+        {
+            const std::size_t chunk = (std::min)(buffer.size(), byteCount - offset);
+            SIZE_T bytesRead = 0;
+            if (ReadProcessMemory(GetCurrentProcess(), address + offset, buffer.data(), chunk,
+                    &bytesRead) == FALSE || bytesRead != chunk)
+                return false;
+            hash = sidecarHashAppend(hash, buffer.data(), chunk);
+            offset += chunk;
+        }
+        canonicalBytes += byteCount;
+        return true;
+    }
+
+    bool sidecarTextureRowLayout(
+        D3DFORMAT format, UInt32 width, UInt32 height, UInt32& rowBytes, UInt32& rowCount)
+    {
+        if (width == 0 || height == 0 || width > 32768 || height > 32768)
+            return false;
+        switch (format)
+        {
+            case D3DFMT_DXT1:
+            case static_cast<D3DFORMAT>(MAKEFOURCC('A', 'T', 'I', '1')):
+            case static_cast<D3DFORMAT>(MAKEFOURCC('B', 'C', '4', 'U')):
+                rowBytes = (std::max)(static_cast<UInt32>(1),
+                    (width + static_cast<UInt32>(3)) / static_cast<UInt32>(4))
+                    * static_cast<UInt32>(8);
+                rowCount = (std::max)(static_cast<UInt32>(1),
+                    (height + static_cast<UInt32>(3)) / static_cast<UInt32>(4));
+                return true;
+            case D3DFMT_DXT2:
+            case D3DFMT_DXT3:
+            case D3DFMT_DXT4:
+            case D3DFMT_DXT5:
+            case static_cast<D3DFORMAT>(MAKEFOURCC('A', 'T', 'I', '2')):
+            case static_cast<D3DFORMAT>(MAKEFOURCC('B', 'C', '5', 'U')):
+                rowBytes = (std::max)(static_cast<UInt32>(1),
+                    (width + static_cast<UInt32>(3)) / static_cast<UInt32>(4))
+                    * static_cast<UInt32>(16);
+                rowCount = (std::max)(static_cast<UInt32>(1),
+                    (height + static_cast<UInt32>(3)) / static_cast<UInt32>(4));
+                return true;
+            case D3DFMT_R8G8B8:
+                rowBytes = width * 3u;
+                rowCount = height;
+                return true;
+            case D3DFMT_A8R8G8B8:
+            case D3DFMT_X8R8G8B8:
+            case D3DFMT_A8B8G8R8:
+            case D3DFMT_X8B8G8R8:
+            case D3DFMT_G16R16:
+            case D3DFMT_R32F:
+            case D3DFMT_G16R16F:
+                rowBytes = width * 4u;
+                rowCount = height;
+                return true;
+            case D3DFMT_R5G6B5:
+            case D3DFMT_X1R5G5B5:
+            case D3DFMT_A1R5G5B5:
+            case D3DFMT_A4R4G4B4:
+            case D3DFMT_A8L8:
+            case D3DFMT_V8U8:
+            case D3DFMT_L6V5U5:
+            case D3DFMT_R16F:
+                rowBytes = width * 2u;
+                rowCount = height;
+                return true;
+            case D3DFMT_A8:
+            case D3DFMT_L8:
+            case D3DFMT_P8:
+            case D3DFMT_A4L4:
+                rowBytes = width;
+                rowCount = height;
+                return true;
+            case D3DFMT_A16B16G16R16:
+            case D3DFMT_Q16W16V16U16:
+            case D3DFMT_A16B16G16R16F:
+            case D3DFMT_G32R32F:
+                rowBytes = width * 8u;
+                rowCount = height;
+                return true;
+            case D3DFMT_A32B32G32R32F:
+                rowBytes = width * 16u;
+                rowCount = height;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool sidecarHashLockedRows(UInt32& hash, const void* bits, SInt32 pitch,
+        UInt32 rowBytes, UInt32 rowCount, UInt64& canonicalBytes)
+    {
+        if (bits == nullptr || pitch <= 0 || static_cast<UInt32>(pitch) < rowBytes)
+            return false;
+        for (UInt32 row = 0; row < rowCount; ++row)
+        {
+            const UInt8* address = static_cast<const UInt8*>(bits)
+                + static_cast<std::size_t>(row) * static_cast<UInt32>(pitch);
+            if (!sidecarHashReadableBytes(hash, address, rowBytes, canonicalBytes))
+                return false;
+        }
+        return true;
+    }
+
+    bool sidecarObserveTexture2D(IDirect3DTexture9* texture, SidecarTextureResource& observed)
+    {
+        if (texture == nullptr)
+            return false;
+        const UINT levels = texture->GetLevelCount();
+        if (levels == 0 || levels > 32)
+            return false;
+        UInt32 hash = 2166136261u;
+        UInt64 canonicalBytes = 0;
+        for (UINT level = 0; level < levels; ++level)
+        {
+            D3DSURFACE_DESC description = {};
+            if (FAILED(texture->GetLevelDesc(level, &description)))
+                return false;
+            UInt32 rowBytes = 0;
+            UInt32 rowCount = 0;
+            if (!sidecarTextureRowLayout(description.Format, description.Width,
+                    description.Height, rowBytes, rowCount))
+                return false;
+            if (level == 0)
+            {
+                observed.width = description.Width;
+                observed.height = description.Height;
+                observed.format = description.Format;
+            }
+            else if (description.Format != observed.format)
+                return false;
+            D3DLOCKED_RECT locked = {};
+            if (FAILED(texture->LockRect(level, &locked, nullptr, D3DLOCK_READONLY)))
+                return false;
+            const bool hashed = sidecarHashLockedRows(hash, locked.pBits, locked.Pitch,
+                rowBytes, rowCount, canonicalBytes);
+            const HRESULT unlocked = texture->UnlockRect(level);
+            if (!hashed || FAILED(unlocked))
+                return false;
+        }
+        observed.contentHash = hash;
+        observed.valid = true;
+        return true;
+    }
+
+    bool sidecarObserveTextureCube(
+        IDirect3DCubeTexture9* texture, SidecarTextureResource& observed)
+    {
+        if (texture == nullptr)
+            return false;
+        const UINT levels = texture->GetLevelCount();
+        if (levels == 0 || levels > 32)
+            return false;
+        UInt32 hash = 2166136261u;
+        UInt64 canonicalBytes = 0;
+        for (UINT level = 0; level < levels; ++level)
+        {
+            D3DSURFACE_DESC description = {};
+            if (FAILED(texture->GetLevelDesc(level, &description)))
+                return false;
+            UInt32 rowBytes = 0;
+            UInt32 rowCount = 0;
+            if (!sidecarTextureRowLayout(description.Format, description.Width,
+                    description.Height, rowBytes, rowCount))
+                return false;
+            if (level == 0)
+            {
+                observed.width = description.Width;
+                observed.height = description.Height;
+                observed.format = description.Format;
+            }
+            else if (description.Format != observed.format)
+                return false;
+            for (UInt32 face = 0; face < 6; ++face)
+            {
+                D3DLOCKED_RECT locked = {};
+                if (FAILED(texture->LockRect(static_cast<D3DCUBEMAP_FACES>(face), level,
+                        &locked, nullptr, D3DLOCK_READONLY)))
+                    return false;
+                const bool hashed = sidecarHashLockedRows(hash, locked.pBits, locked.Pitch,
+                    rowBytes, rowCount, canonicalBytes);
+                const HRESULT unlocked = texture->UnlockRect(
+                    static_cast<D3DCUBEMAP_FACES>(face), level);
+                if (!hashed || FAILED(unlocked))
+                    return false;
+            }
+        }
+        observed.contentHash = hash;
+        observed.valid = true;
+        return true;
+    }
+
+    bool sidecarObserveTextureVolume(
+        IDirect3DVolumeTexture9* texture, SidecarTextureResource& observed)
+    {
+        if (texture == nullptr)
+            return false;
+        const UINT levels = texture->GetLevelCount();
+        if (levels == 0 || levels > 32)
+            return false;
+        UInt32 hash = 2166136261u;
+        UInt64 canonicalBytes = 0;
+        for (UINT level = 0; level < levels; ++level)
+        {
+            D3DVOLUME_DESC description = {};
+            if (FAILED(texture->GetLevelDesc(level, &description)))
+                return false;
+            UInt32 rowBytes = 0;
+            UInt32 rowCount = 0;
+            if (!sidecarTextureRowLayout(description.Format, description.Width,
+                    description.Height, rowBytes, rowCount)
+                || description.Depth == 0 || description.Depth > 2048)
+                return false;
+            if (level == 0)
+            {
+                observed.width = description.Width;
+                observed.height = description.Height;
+                observed.format = description.Format;
+            }
+            else if (description.Format != observed.format)
+                return false;
+            D3DLOCKED_BOX locked = {};
+            if (FAILED(texture->LockBox(level, &locked, nullptr, D3DLOCK_READONLY)))
+                return false;
+            bool hashed = locked.pBits != nullptr && locked.RowPitch > 0 && locked.SlicePitch > 0
+                && static_cast<UInt32>(locked.RowPitch) >= rowBytes;
+            if (hashed)
+            {
+                for (UInt32 slice = 0; slice < description.Depth && hashed; ++slice)
+                {
+                    const UInt8* sliceAddress = static_cast<const UInt8*>(locked.pBits)
+                        + static_cast<std::size_t>(slice) * static_cast<UInt32>(locked.SlicePitch);
+                    hashed = sidecarHashLockedRows(hash, sliceAddress, locked.RowPitch,
+                        rowBytes, rowCount, canonicalBytes);
+                }
+            }
+            const HRESULT unlocked = texture->UnlockBox(level);
+            if (!hashed || FAILED(unlocked))
+                return false;
+        }
+        observed.contentHash = hash;
+        observed.valid = true;
+        return true;
+    }
+
+    bool sidecarObserveTextureResourceUnsafe(
+        NiTexture* texture, SidecarTextureResource& observed)
+    {
+        observed = {};
+        UInt8* textureData = nullptr;
+        IDirect3DBaseTexture9* resource = nullptr;
+        if (texture == nullptr
+            || !safeRead(reinterpret_cast<const UInt8*>(texture) + 0x24, textureData)
+            || textureData == nullptr
+            || !safeRead(textureData + 0x64, resource) || resource == nullptr)
+            return false;
+        switch (resource->GetType())
+        {
+            case D3DRTYPE_TEXTURE:
+                return sidecarObserveTexture2D(
+                    static_cast<IDirect3DTexture9*>(resource), observed);
+            case D3DRTYPE_CUBETEXTURE:
+                return sidecarObserveTextureCube(
+                    static_cast<IDirect3DCubeTexture9*>(resource), observed);
+            case D3DRTYPE_VOLUMETEXTURE:
+                return sidecarObserveTextureVolume(
+                    static_cast<IDirect3DVolumeTexture9*>(resource), observed);
+            default:
+                return false;
+        }
+    }
+
+    bool sidecarObserveTextureResource(
+        NiTexture* texture, SidecarTextureResource& observed)
+    {
+        bool result = false;
+        __try
+        {
+            result = sidecarObserveTextureResourceUnsafe(texture, observed);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            observed = {};
+            result = false;
+        }
+        return result;
+    }
+
+    std::string sidecarTextureFormat(D3DFORMAT format)
+    {
+        return "d3d9:" + std::to_string(static_cast<UInt32>(format));
+    }
+
+    bool sidecarLooksLikeAssetPath(const std::string& path)
+    {
+        if (path.empty() || path.size() > 512 || path.back() == '/'
+            || (path.find('.') == std::string::npos && path.find('/') == std::string::npos))
+            return false;
+        for (const unsigned char character : path)
+        {
+            if (character < 0x20 || character >= 0x7F)
+                return false;
+        }
+        return true;
+    }
+
+    std::string sidecarNormalizeTexturePath(std::string value)
+    {
+        value = sidecarNormalizeAssetPath(std::move(value));
+        const std::size_t embedded = value.find("/textures/");
+        if (embedded != std::string::npos)
+            value.erase(0, embedded + 1);
+        else if (value.rfind("textures/", 0) != 0 && value.rfind("runtime/", 0) != 0
+            && value.find('.') != std::string::npos && sidecarLooksLikeAssetPath(value))
+            value.insert(0, "textures/");
+        return value;
+    }
+
+    std::string sidecarRuntimeTexturePath(NiTexture* texture)
+    {
+        if (texture == nullptr)
+            return {};
+        for (const std::size_t offset : { std::size_t(0x30), std::size_t(0x34),
+                 std::size_t(0x38) })
+        {
+            char* address = nullptr;
+            if (!safeRead(reinterpret_cast<const UInt8*>(texture) + offset, address))
+                continue;
+            const std::string path = sidecarNormalizeTexturePath(safeRuntimeString(address));
+            if (sidecarLooksLikeAssetPath(path))
+                return path;
+        }
+        return {};
+    }
+
+    std::string sidecarTextureSemantic(
+        const std::string& role, bool skinSurface, UInt32 stage)
+    {
+        if (skinSurface)
+        {
+            constexpr const char* semantics[6]
+                = { "baseColor", "normal", "faceGenDetail", "bodyColor",
+                    "skinScatter", "environmentMask" };
+            return semantics[stage < 6 ? stage : 5];
+        }
+        const char* prefix = "actor";
+        if (role == "equipment") prefix = "gear";
+        else if (role == "weapon") prefix = "weapon";
+        else if (role == "hair") prefix = "hair";
+        else if (role == "eyes") prefix = "eye";
+        else if (role == "headPart") prefix = "headPart";
+        constexpr const char* suffixes[6]
+            = { "Color", "Normal", "Glow", "Parallax", "Environment", "EnvironmentMask" };
+        return std::string(prefix) + suffixes[stage < 6 ? stage : 5];
+    }
+
+    void sidecarAppendTextureBinding(SidecarAppearanceCapture& capture,
+        SidecarRenderPart& part, UInt32 stage, std::string path, NiTexture* texture,
+        const char* pathSourceKind)
+    {
+        path = sidecarNormalizeTexturePath(std::move(path));
+        if (path.empty())
+            path = sidecarRuntimeTexturePath(texture);
+        if (!sidecarLooksLikeAssetPath(path) || texture == nullptr)
+        {
+            if (!path.empty() || texture != nullptr)
+                capture.evidenceComplete = false;
+            return;
+        }
+
+        auto found = capture.textureCache.find(texture);
+        if (found == capture.textureCache.end())
+        {
+            SidecarTextureResource observed;
+            sidecarObserveTextureResource(texture, observed);
+            found = capture.textureCache.emplace(texture, observed).first;
+        }
+        const SidecarTextureResource& observed = found->second;
+        if (!observed.valid)
+        {
+            capture.evidenceComplete = false;
+            return;
+        }
+
+        SidecarTextureBinding binding;
+        binding.semantic = sidecarTextureSemantic(part.role, part.skinSurface, stage);
+        binding.path = std::move(path);
+        binding.contentHash = sidecarHashLabel("d3d9-fnv1a32:", observed.contentHash);
+        binding.width = observed.width;
+        binding.height = observed.height;
+        binding.format = sidecarTextureFormat(observed.format);
+        const bool generated = binding.path.find("/facemods/") != std::string::npos
+            || binding.path.find("/bodymods/") != std::string::npos
+            || binding.path.find("facegen") != std::string::npos
+            || binding.path.rfind("runtime/falloutnv/", 0) == 0;
+        binding.sourceKind = generated ? "generated" : pathSourceKind;
+        binding.stage = stage;
+        part.textureBindings.push_back(std::move(binding));
+    }
+
+    void sidecarCollectShaderTextures(SidecarAppearanceCapture& capture,
+        SidecarRenderPart& part, NiObject* shaderProperty, const std::string& shaderRuntimeType)
+    {
+        if (shaderProperty == nullptr)
+            return;
+        UInt32 shaderType = 0;
+        safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x1C, shaderType);
+        const bool textureSetShader
+            = shaderRuntimeType.find("PPLighting") != std::string::npos
+            || shaderRuntimeType.find("Lighting30") != std::string::npos
+            || shaderType == 8 || shaderType == 9 || shaderType == 12;
+        if (textureSetShader)
+        {
+            UInt8* textureSet = nullptr;
+            safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0xA4, textureSet);
+            for (UInt32 stage = 0; stage < 6; ++stage)
+            {
+                char* pathAddress = nullptr;
+                NiTexture** textureAddress = nullptr;
+                NiTexture* texture = nullptr;
+                if (textureSet != nullptr)
+                    safeRead(textureSet + 0x08 + stage * sizeof(String), pathAddress);
+                safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0xAC
+                        + stage * sizeof(NiTexture**), textureAddress);
+                if (textureAddress != nullptr)
+                    safeRead(textureAddress, texture);
+                const std::string path = sidecarNormalizeAssetPath(safeRuntimeString(pathAddress));
+                if (!path.empty() || texture != nullptr)
+                    sidecarAppendTextureBinding(capture, part, stage, path, texture,
+                        path.empty() ? "runtime" : "authored");
+            }
+            return;
+        }
+
+        if (shaderRuntimeType.find("NoLighting") != std::string::npos || shaderType == 0x15)
+        {
+            NiTexture* texture = nullptr;
+            char* pathAddress = nullptr;
+            safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x60, texture);
+            safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x64, pathAddress);
+            const std::string path = sidecarNormalizeAssetPath(safeRuntimeString(pathAddress));
+            if (!path.empty() || texture != nullptr)
+                sidecarAppendTextureBinding(capture, part, 0, path, texture,
+                    path.empty() ? "runtime" : "authored");
+        }
+    }
+
+    UInt32 sidecarAppearanceRoleRank(const std::string& role)
+    {
+        if (role == "face") return 0;
+        if (role == "leftHand") return 1;
+        if (role == "rightHand") return 2;
+        if (role == "exposedBody") return 3;
+        if (role == "hair") return 4;
+        if (role == "eyes") return 5;
+        if (role == "weapon") return 6;
+        if (role == "equipment") return 7;
+        if (role == "headPart") return 8;
+        return 9;
+    }
+
+    std::string sidecarClassifyAppearanceRole(
+        const std::string& inheritedRole, const std::string& nodePath)
+    {
+        if (inheritedRole == "equipment" || inheritedRole == "weapon")
+            return inheritedRole;
+        const std::string value = sidecarLowerAscii(nodePath);
+        if (value.find("facegeneye") != std::string::npos
+            || value.find("/eye") != std::string::npos
+            || value.find("eyes") != std::string::npos)
+            return "eyes";
+        if (value.find("hair") != std::string::npos)
+            return "hair";
+        if (value.find("lefthand") != std::string::npos
+            || value.find("left hand") != std::string::npos)
+            return "leftHand";
+        if (value.find("righthand") != std::string::npos
+            || value.find("right hand") != std::string::npos)
+            return "rightHand";
+        if (value.find("facegenaccessory") != std::string::npos
+            || value.find("headpart") != std::string::npos)
+            return "headPart";
+        if (value.find("facegenface") != std::string::npos)
+            return "face";
+        if (value.find("facegen") != std::string::npos
+            || value.find("headanims") != std::string::npos
+            || value.find("teeth") != std::string::npos
+            || value.find("tongue") != std::string::npos
+            || value.find("mouth") != std::string::npos)
+            return "headPart";
+        if (value.find("upperbody") != std::string::npos
+            || value.find("meatcapbody") != std::string::npos
+            || value.find("/arms") != std::string::npos
+            || value.find("body") != std::string::npos)
+            return "exposedBody";
+        return inheritedRole.empty() ? "actor" : inheritedRole;
+    }
+
+    UInt32 sidecarAppearanceRoleSource(const SidecarAppearanceCapture& capture,
+        const SidecarAppearanceAttachment* attachment, const std::string& role)
+    {
+        if (attachment != nullptr && attachment->sourceForm != 0
+            && attachment->sourceType != kFormType_TESRace
+            && attachment->sourceType != kFormType_TESNPC)
+            return attachment->sourceForm;
+        if (role == "hair" && capture.sources.hairForm != 0)
+            return capture.sources.hairForm;
+        if (role == "eyes" && capture.sources.eyesForm != 0)
+            return capture.sources.eyesForm;
+        if ((role == "leftHand" || role == "rightHand" || role == "exposedBody")
+            && capture.sources.raceForm != 0)
+            return capture.sources.raceForm;
+        if (attachment != nullptr && attachment->sourceForm != 0)
+            return attachment->sourceForm;
+        return capture.sources.actorBaseForm;
+    }
+
+    std::string sidecarAttachmentRole(UInt8 formType, UInt32 slot)
+    {
+        if (formType == kFormType_TESObjectWEAP || slot == 5)
+            return "weapon";
+        if (formType == kFormType_TESObjectARMO || formType == kFormType_TESObjectCLOT)
+            return "equipment";
+        if (formType == kFormType_BGSHeadPart)
+            return "headPart";
+        if (formType == kFormType_TESHair)
+            return "hair";
+        if (formType == kFormType_TESEyes)
+            return "eyes";
+        switch (slot)
+        {
+            case 0: return "face";
+            case 1: return "hair";
+            case 2: return "exposedBody";
+            case 3: return "leftHand";
+            case 4: return "rightHand";
+            default: return "actor";
+        }
+    }
+
+    void sidecarCollectAppearanceSourcesAndAttachments(
+        Actor* actor, SidecarAppearanceCapture& capture)
+    {
+        TESForm* actorBase = nullptr;
+        UInt8 actorBaseType = kFormType_None;
+        if (actor == nullptr || !safeRead(&actor->baseForm, actorBase) || actorBase == nullptr
+            || !safeRead(&actorBase->typeID, actorBaseType))
+            return;
+        safeRead(&actorBase->refID, capture.sources.actorBaseForm);
+        if (actorBaseType != kFormType_TESNPC)
+            return;
+
+        TESNPC* npc = static_cast<TESNPC*>(actorBase);
+        TESRace* race = nullptr;
+        TESHair* hair = nullptr;
+        TESEyes* eyes = nullptr;
+        safeRead(&npc->race.race, race);
+        safeRead(&npc->hair, hair);
+        safeRead(&npc->eyes, eyes);
+        if (race != nullptr)
+            safeRead(&race->refID, capture.sources.raceForm);
+        if (hair != nullptr)
+            safeRead(&hair->refID, capture.sources.hairForm);
+        if (eyes != nullptr)
+            safeRead(&eyes->refID, capture.sources.eyesForm);
+
+        ValidBip01Names* slots = nullptr;
+        if (!safeRead(&static_cast<Character*>(actor)->validBip01Names, slots) || slots == nullptr)
+            return;
+        for (UInt32 slot = 0; slot < 20; ++slot)
+        {
+            ValidBip01Names::Data data = {};
+            if (!safeRead(&slots->unk002C[slot], data)
+                || (data.model == nullptr && data.texture == nullptr && data.bones == nullptr))
+                continue;
+            SidecarAppearanceAttachment attachment;
+            attachment.root = data.bones;
+            attachment.sourceSlot = slot;
+            attachment.required = data.model != nullptr || data.texture != nullptr;
+            if (data.model != nullptr)
+            {
+                safeRead(&data.model->refID, attachment.sourceForm);
+                safeRead(&data.model->typeID, attachment.sourceType);
+            }
+            if (attachment.sourceForm == 0)
+            {
+                attachment.sourceForm = slot >= 2 && slot <= 4
+                    ? capture.sources.raceForm : capture.sources.actorBaseForm;
+            }
+            attachment.role = sidecarAttachmentRole(attachment.sourceType, slot);
+            if (data.texture != nullptr)
+            {
+                char* modelAddress = nullptr;
+                if (safeRead(&data.texture->nifPath.m_data, modelAddress))
+                    attachment.modelPath
+                        = sidecarNormalizeAssetPath(safeRuntimeString(modelAddress));
+            }
+            capture.attachments.push_back(std::move(attachment));
+        }
+        std::sort(capture.attachments.begin(), capture.attachments.end(),
+            [](const SidecarAppearanceAttachment& left,
+                const SidecarAppearanceAttachment& right) {
+                if (left.role != right.role) return left.role < right.role;
+                if (left.sourceForm != right.sourceForm) return left.sourceForm < right.sourceForm;
+                if (left.sourceSlot != right.sourceSlot) return left.sourceSlot < right.sourceSlot;
+                return left.modelPath < right.modelPath;
+            });
+    }
+
+    SidecarAppearanceAttachment* sidecarFindAttachmentAt(
+        SidecarAppearanceCapture& capture, NiAVObject* object)
+    {
+        for (SidecarAppearanceAttachment& attachment : capture.attachments)
+        {
+            if (attachment.root == object)
+                return &attachment;
+        }
+        return nullptr;
+    }
+
+    std::string sidecarRenderPartStableKey(const SidecarRenderPart& part)
+    {
+        std::ostringstream key;
+        key << sidecarAppearanceRoleRank(part.role) << '|' << part.role << '|'
+            << std::setw(8) << std::setfill('0') << std::hex << part.sourceForm << '|'
+            << std::setw(8) << part.sourceSlot << '|' << part.nodeHash << '|'
+            << part.modelHash << '|' << part.geometryHash;
+        for (const SidecarTextureBinding& binding : part.textureBindings)
+        {
+            key << '|' << binding.stage << ':' << binding.semantic << ':' << binding.path
+                << ':' << binding.sourceKind;
+        }
+        return key.str();
+    }
+
+    std::string sidecarRenderPartDeterministicKey(const SidecarRenderPart& part)
+    {
+        std::ostringstream key;
+        key << part.alphaBits << '|' << (part.required ? '1' : '0')
+            << (part.attached ? '1' : '0') << (part.drawable ? '1' : '0')
+            << (part.visible ? '1' : '0');
+        for (const SidecarTextureBinding& binding : part.textureBindings)
+        {
+            key << '|' << binding.stage << ':' << binding.semantic << ':' << binding.path
+                << ':' << binding.contentHash << ':' << binding.width << 'x' << binding.height
+                << ':' << binding.format << ':' << binding.sourceKind;
+        }
+        return key.str();
+    }
+
+    void sidecarCollectAppearanceRecursive(SidecarAppearanceCapture& capture,
+        NiAVObject* object, SidecarAppearanceAttachment* inheritedAttachment,
+        const std::string& parentPath, bool ancestorHidden, UInt32 depth)
+    {
+        if (object == nullptr)
+            return;
+        if (depth > 64 || capture.visitedNodes >= sSidecarAppearanceMaximumNodes)
+        {
+            capture.traversalTruncated = true;
+            return;
+        }
+        if (!capture.visitedObjects.insert(object).second)
+            return;
+        ++capture.visitedNodes;
+
+        SidecarAppearanceAttachment* attachment = sidecarFindAttachmentAt(capture, object);
+        if (attachment == nullptr)
+            attachment = inheritedAttachment;
+        else
+            attachment->reached = true;
+
+        char* nameAddress = nullptr;
+        safeRead(&object->m_pcName, nameAddress);
+        std::string token = sidecarNormalizeNodeToken(safeRuntimeString(nameAddress));
+        const std::string runtimeType
+            = safeRuntimeString(runtimeTypeName(reinterpret_cast<NiObject*>(object)));
+        if (token.empty())
+            token = sidecarNormalizeNodeToken(runtimeType);
+        const std::string nodePath = parentPath.empty() ? token : parentPath + '/' + token;
+
+        UInt32 flags = 0;
+        const bool flagsReadable
+            = safeRead(reinterpret_cast<const UInt8*>(object) + 0x30, flags);
+        const bool hidden = ancestorHidden || !flagsReadable
+            || (flags & (0x00000001u | 0x00100000u)) != 0;
+        if (isOracleGeometryType(runtimeType))
+        {
+            ++capture.geometryCandidates;
+            if (capture.parts.size() >= sSidecarAppearanceMaximumCandidates)
+                capture.traversalTruncated = true;
+            else
+            {
+                NiObject* materialProperty = nullptr;
+                NiObject* shaderProperty = nullptr;
+                OracleGeometryData* geometryDataAddress = nullptr;
+                safeRead(reinterpret_cast<const UInt8*>(object) + 0xA4, materialProperty);
+                safeRead(reinterpret_cast<const UInt8*>(object) + 0xA8, shaderProperty);
+                safeRead(reinterpret_cast<const UInt8*>(object) + 0xB8, geometryDataAddress);
+                OracleGeometryData geometryData = {};
+                const bool geometryReadable = geometryDataAddress != nullptr
+                    && safeRead(geometryDataAddress, geometryData)
+                    && geometryData.vertexCount > 0 && geometryData.vertexCount <= 32768
+                    && geometryData.vertices != nullptr;
+
+                const std::string inheritedRole
+                    = attachment != nullptr ? attachment->role : std::string("actor");
+                SidecarRenderPart part;
+                part.role = sidecarClassifyAppearanceRole(inheritedRole, nodePath);
+                part.sourceForm = sidecarAppearanceRoleSource(capture, attachment, part.role);
+                part.sourceSlot
+                    = attachment != nullptr ? attachment->sourceSlot : sSidecarNoSourceSlot;
+                UInt32 shaderFlags1 = 0;
+                if (shaderProperty != nullptr)
+                    safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x20, shaderFlags1);
+                const std::string lowerNodePath = sidecarLowerAscii(nodePath);
+                part.skinSurface = part.role == "face" || part.role == "leftHand"
+                    || part.role == "rightHand" || part.role == "exposedBody"
+                    || (part.role == "equipment"
+                        && ((shaderFlags1 & 0x400u) != 0
+                            || lowerNodePath.find("skin") != std::string::npos
+                            || lowerNodePath.find("arms") != std::string::npos));
+                part.attached = true;
+                part.drawable = geometryReadable && flagsReadable
+                    && (flags & 0x00000020u) != 0 && shaderProperty != nullptr;
+
+                float effectiveAlpha = 1.f;
+                if (materialProperty != nullptr)
+                {
+                    float materialAlpha = 1.f;
+                    if (safeRead(reinterpret_cast<const UInt8*>(materialProperty) + 0x3C,
+                            materialAlpha) && std::isfinite(materialAlpha))
+                        effectiveAlpha *= materialAlpha;
+                    else
+                        capture.evidenceComplete = false;
+                }
+                if (shaderProperty != nullptr)
+                {
+                    float shaderAlpha = 1.f;
+                    float fadeAlpha = 1.f;
+                    if (safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x28,
+                            shaderAlpha) && std::isfinite(shaderAlpha))
+                        effectiveAlpha *= shaderAlpha;
+                    else
+                        capture.evidenceComplete = false;
+                    if (safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x2C,
+                            fadeAlpha) && std::isfinite(fadeAlpha))
+                        effectiveAlpha *= fadeAlpha;
+                    else
+                        capture.evidenceComplete = false;
+                }
+                if (!std::isfinite(effectiveAlpha))
+                {
+                    effectiveAlpha = 0.f;
+                    capture.evidenceComplete = false;
+                }
+                effectiveAlpha = (std::min)(1.f, (std::max)(0.f, effectiveAlpha));
+                part.alphaBits = sidecarFloatBits(effectiveAlpha);
+                part.visible = part.drawable && !hidden && effectiveAlpha > 0.f;
+                part.required = part.visible;
+                if (attachment != nullptr && !attachment->modelPath.empty())
+                    part.modelHash = sidecarHashText(attachment->modelPath);
+                part.nodeHash = sidecarHashText(nodePath);
+                if (geometryReadable)
+                {
+                    UInt32 geometryHash = 2166136261u;
+                    geometryHash = sidecarHashAppend(
+                        geometryHash, &geometryData.vertexCount, sizeof(geometryData.vertexCount));
+                    UInt64 geometryBytes = 0;
+                    if (sidecarHashReadableBytes(geometryHash,
+                            reinterpret_cast<const UInt8*>(geometryData.vertices),
+                            static_cast<std::size_t>(geometryData.vertexCount)
+                                * sizeof(OracleVector3), geometryBytes))
+                        part.geometryHash = sidecarHashLabel("fnv1a32:", geometryHash);
+                    else
+                        capture.evidenceComplete = false;
+                }
+
+                const std::string shaderRuntimeType
+                    = safeRuntimeString(runtimeTypeName(shaderProperty));
+                sidecarCollectShaderTextures(
+                    capture, part, shaderProperty, shaderRuntimeType);
+                std::sort(part.textureBindings.begin(), part.textureBindings.end(),
+                    [](const SidecarTextureBinding& left, const SidecarTextureBinding& right) {
+                        if (left.stage != right.stage) return left.stage < right.stage;
+                        if (left.semantic != right.semantic) return left.semantic < right.semantic;
+                        return left.path < right.path;
+                    });
+                if (part.visible && part.skinSurface)
+                {
+                    const bool hasBodyColor = std::any_of(part.textureBindings.begin(),
+                        part.textureBindings.end(), [](const SidecarTextureBinding& binding) {
+                            return binding.semantic == "bodyColor";
+                        });
+                    if (!hasBodyColor)
+                        capture.evidenceComplete = false;
+                }
+                part.stableKey = sidecarRenderPartStableKey(part);
+                part.deterministicKey = sidecarRenderPartDeterministicKey(part);
+                capture.parts.push_back(std::move(part));
+                if (attachment != nullptr)
+                    attachment->emitted = true;
+            }
+        }
+
+        NiNode* node = object->GetAsNiNode();
+        if (node == nullptr)
+            return;
+        NiTArray<NiAVObject*> children = {};
+        if (!safeRead(&node->m_children, children))
+        {
+            capture.evidenceComplete = false;
+            return;
+        }
+        const UInt32 count = (std::min)(
+            (std::min)(static_cast<UInt32>(children.firstFreeEntry),
+                static_cast<UInt32>(children.capacity)), static_cast<UInt32>(2048));
+        if (count > 0 && children.data == nullptr)
+        {
+            capture.evidenceComplete = false;
+            return;
+        }
+        for (UInt32 index = 0; index < count; ++index)
+        {
+            NiAVObject* child = nullptr;
+            if (!safeRead(children.data + index, child))
+            {
+                capture.evidenceComplete = false;
+                continue;
+            }
+            sidecarCollectAppearanceRecursive(capture, child, attachment,
+                nodePath, hidden, depth + 1);
+        }
+    }
+
+    bool sidecarCollectAppearanceSafely(
+        SidecarAppearanceCapture& capture, NiNode* root)
+    {
+        bool complete = false;
+        __try
+        {
+            sidecarCollectAppearanceRecursive(
+                capture, root, nullptr, sSidecarEmptyNodePath, false, 0);
+            complete = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            capture.evidenceComplete = false;
+            capture.traversalTruncated = true;
+            complete = false;
+        }
+        return complete;
+    }
+
+    void sidecarAddMissingAttachmentParts(SidecarAppearanceCapture& capture)
+    {
+        for (const SidecarAppearanceAttachment& attachment : capture.attachments)
+        {
+            if (attachment.emitted)
+                continue;
+            SidecarRenderPart part;
+            part.role = attachment.role;
+            part.sourceForm = attachment.sourceForm;
+            part.sourceSlot = attachment.sourceSlot;
+            part.required = attachment.required;
+            part.attached = attachment.reached;
+            part.drawable = false;
+            part.visible = false;
+            if (attachment.required)
+                capture.evidenceComplete = false;
+            if (!attachment.modelPath.empty())
+                part.modelHash = sidecarHashText(attachment.modelPath);
+            const std::string missingIdentity = "missing/" + part.role + '/'
+                + sidecarFormatFormId(part.sourceForm) + '/'
+                + std::to_string(part.sourceSlot);
+            part.nodeHash = sidecarHashText(missingIdentity);
+            part.stableKey = sidecarRenderPartStableKey(part);
+            part.deterministicKey = sidecarRenderPartDeterministicKey(part);
+            capture.parts.push_back(std::move(part));
+        }
+    }
+
+    void sidecarAssignAppearanceOrdinals(std::vector<SidecarRenderPart>& parts)
+    {
+        std::sort(parts.begin(), parts.end(), [](const SidecarRenderPart& left,
+            const SidecarRenderPart& right) {
+            if (left.stableKey != right.stableKey) return left.stableKey < right.stableKey;
+            return left.deterministicKey < right.deterministicKey;
+        });
+        std::map<std::string, UInt32> ordinals;
+        for (SidecarRenderPart& part : parts)
+        {
+            const std::string group = part.role + '|' + sidecarFormatFormId(part.sourceForm)
+                + '|' + std::to_string(part.sourceSlot);
+            part.ordinal = ordinals[group]++;
+        }
+    }
+
+    std::string sidecarSerializeRenderPart(const SidecarRenderPart& part)
+    {
+        std::ostringstream out;
+        out << "{\"role\":" << jsonString(part.role.c_str())
+            << ",\"sourceFormId\":" << jsonString(sidecarFormatFormId(part.sourceForm).c_str())
+            << ",\"sourceSlot\":" << part.sourceSlot
+            << ",\"ordinal\":" << part.ordinal
+            << ",\"required\":" << (part.required ? "true" : "false")
+            << ",\"attached\":" << (part.attached ? "true" : "false")
+            << ",\"drawable\":" << (part.drawable ? "true" : "false")
+            << ",\"visible\":" << (part.visible ? "true" : "false")
+            << ",\"alphaBits\":" << part.alphaBits;
+        out << ",\"textureBindings\":[";
+        for (std::size_t index = 0; index < part.textureBindings.size(); ++index)
+        {
+            if (index != 0)
+                out << ',';
+            const SidecarTextureBinding& binding = part.textureBindings[index];
+            out << "{\"semantic\":" << jsonString(binding.semantic.c_str())
+                << ",\"path\":" << jsonString(binding.path.c_str())
+                << ",\"contentHash\":" << jsonString(binding.contentHash.c_str())
+                << ",\"width\":" << binding.width
+                << ",\"height\":" << binding.height
+                << ",\"format\":" << jsonString(binding.format.c_str())
+                << ",\"sourceKind\":" << jsonString(binding.sourceKind.c_str())
+                << ",\"stage\":" << binding.stage << '}';
+        }
+        out << "]}";
+        return out.str();
+    }
+
+    void sidecarWriteAppearanceTelemetry(std::ostringstream& out, Actor* actor)
+    {
+        SidecarAppearanceCapture capture;
+        sidecarCollectAppearanceSourcesAndAttachments(actor, capture);
+        NiNode* root = sidecarActorRootUnsafe(actor);
+        if (root != nullptr)
+            sidecarCollectAppearanceSafely(capture, root);
+        sidecarAddMissingAttachmentParts(capture);
+        if (capture.parts.empty())
+        {
+            SidecarRenderPart fallback;
+            fallback.role = "actor";
+            fallback.sourceForm = capture.sources.actorBaseForm;
+            fallback.sourceSlot = sSidecarNoSourceSlot;
+            fallback.required = actor != nullptr;
+            fallback.attached = root != nullptr;
+            fallback.nodeHash = sidecarHashText("missing/actor-root");
+            fallback.stableKey = sidecarRenderPartStableKey(fallback);
+            fallback.deterministicKey = sidecarRenderPartDeterministicKey(fallback);
+            capture.parts.push_back(std::move(fallback));
+            capture.evidenceComplete = false;
+        }
+        sidecarAssignAppearanceOrdinals(capture.parts);
+
+        std::vector<std::string> serialized;
+        serialized.reserve((std::min)(capture.parts.size(),
+            static_cast<std::size_t>(sSidecarAppearanceMaximumParts)));
+        const std::streampos currentPosition = out.tellp();
+        const std::size_t currentBytes = currentPosition >= std::streampos(0)
+            ? static_cast<std::size_t>(currentPosition) : 0;
+        constexpr std::size_t reservedTailBytes = 4096;
+        const std::size_t transportBudget = NikamiFNVSidecar::PayloadBytes
+                > currentBytes + reservedTailBytes
+            ? NikamiFNVSidecar::PayloadBytes - currentBytes - reservedTailBytes : 0;
+        const std::size_t renderPartsBudget = (std::min)(
+            sSidecarAppearanceMaximumJsonBytes,
+            transportBudget > 512 ? transportBudget - 512 : std::size_t(0));
+        std::size_t serializedBytes = 0;
+        for (const SidecarRenderPart& part : capture.parts)
+        {
+            if (serialized.size() >= sSidecarAppearanceMaximumParts)
+                break;
+            std::string value = sidecarSerializeRenderPart(part);
+            const std::size_t added = value.size() + (serialized.empty() ? 0 : 1);
+            if (!serialized.empty()
+                && serializedBytes + added > renderPartsBudget)
+                break;
+            serializedBytes += added;
+            serialized.push_back(std::move(value));
+        }
+        const bool truncated = capture.traversalTruncated
+            || serialized.size() != capture.parts.size();
+        const bool complete = capture.evidenceComplete && !truncated && root != nullptr;
+        out << ",\"appearance\":{\"schema\":\"nikami-fnv-sidecar-appearance/v1\""
+            << ",\"complete\":" << (complete ? "true" : "false")
+            << ",\"truncated\":" << (truncated ? "true" : "false")
+            << ",\"visitedNodes\":" << capture.visitedNodes
+            << ",\"candidateCount\":" << capture.geometryCandidates
+            << ",\"renderParts\":[";
+        for (std::size_t index = 0; index < serialized.size(); ++index)
+        {
+            if (index != 0)
+                out << ',';
+            out << serialized[index];
+        }
+        out << "]}";
+    }
+
     void sidecarWriteTransformBits(std::ostream& out, const NiTransform& transform)
     {
         out << "\"rotationBits\":[";
@@ -5982,6 +7151,8 @@ namespace
             }
             out << "]}";
         }
+
+        sidecarWriteAppearanceTelemetry(out, actor);
 
         PlayerCharacter* player = nullptr;
         safeRead(reinterpret_cast<const void*>(0x011DEA3C), player);
