@@ -40,6 +40,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+Import-Module (Join-Path $PSScriptRoot 'FNVCombatTelemetry.psm1') -Force
 
 function Resolve-RepoRelativePath([string]$Path) {
     if ([System.IO.Path]::IsPathRooted($Path)) {
@@ -535,6 +536,7 @@ foreach ($line in [System.IO.File]::ReadLines($finalLogPath)) {
         $pendingCapture = $null
     }
 }
+$combatTelemetry = Read-FNVCombatTelemetry -LogPath $finalLogPath
 
 if ($captures.Count -ne $actors.Count) {
     throw "Actor screenshot contract expected $($actors.Count) captures and found $($captures.Count)."
@@ -562,6 +564,9 @@ for ($index = 0; $index -lt $actors.Count; ++$index) {
     $nativeState = $nativeStateByIndex[$index]
     $actions = @($actionGates | Where-Object { [int]$_.actorIndex -eq $index } |
         Sort-Object actionIndex)
+    $mechanicsActions = @($actions | Where-Object { $_.gateKind -eq 'production-character-controller' })
+    $combatGate = Test-FNVCombatTelemetryForActor -Telemetry $combatTelemetry `
+        -ActorForm ([string]$actor.form) -ExpectedShotCount $mechanicsActions.Count
     if ($actions.Count -ne [int]$pose.requested -and $pose.status -eq 'pass') {
         throw "Actor index $index action-gate contract expected $($pose.requested) rows and found $($actions.Count)."
     }
@@ -594,18 +599,25 @@ for ($index = 0; $index -lt $actors.Count; ++$index) {
         nativeState = $nativeState
         actionFailures = @($actions | Where-Object { $_.status -ne 'pass' }).Count
         actions = $actions
+        combatStatus = [string]$combatGate.status
+        combatFailures = @($combatGate.failures)
+        combat = $combatGate
     }) | Out-Null
 }
 
 $indexPath = Join-Path $outputRootAbs ("actor-sweep-index-$sessionTag.json")
 $actionGatePath = Join-Path $outputRootAbs ("actor-action-gates-$sessionTag.jsonl")
+$combatGatePath = Join-Path $outputRootAbs ("actor-combat-gates-$sessionTag.jsonl")
 $actionGateLines = @($actionGates | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 6 })
 [System.IO.File]::WriteAllLines($actionGatePath, $actionGateLines, [Text.UTF8Encoding]::new($false))
+$combatGateLines = @($rows | ForEach-Object { $_.combat | ConvertTo-Json -Compress -Depth 8 })
+[System.IO.File]::WriteAllLines($combatGatePath, $combatGateLines, [Text.UTF8Encoding]::new($false))
 $failedActorCount = @($rows | Where-Object {
-    $_.phaseStatus -ne 'pass' -or $_.nativeStateStatus -ne 'pass' -or $_.actionFailures -gt 0
+    $_.phaseStatus -ne 'pass' -or $_.nativeStateStatus -ne 'pass' -or $_.actionFailures -gt 0 -or
+        $_.combatStatus -eq 'fail'
 }).Count
 [pscustomobject][ordered]@{
-    schema = 'nikami-openmw-fnv-loaded-actor-sweep/v2'
+    schema = 'nikami-openmw-fnv-loaded-actor-sweep/v3'
     createdAt = (Get-Date).ToString('o')
     processCount = 1
     pid = $processId
@@ -613,6 +625,7 @@ $failedActorCount = @($rows | Where-Object {
     log = $finalLogPath
     screens = $screenRoot
     actionGates = $actionGatePath
+    combatGates = $combatGatePath
     poseGroups = @($PoseGroups)
     allAvailablePoses = [bool]$AllAvailablePoses
     priorityOrder = [bool]$PriorityOrder
@@ -635,6 +648,7 @@ $failedActorCount = @($rows | Where-Object {
     log = $finalLogPath
     screens = $screenRoot
     actionGates = $actionGatePath
+    combatGates = $combatGatePath
     count = $rows.Count
     failedActorCount = $failedActorCount
     processCount = 1
