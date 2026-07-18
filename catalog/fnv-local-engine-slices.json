@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "d193df4d33b65ca604d271822a0767c273b5ab02",
-  "unpromotedCommitCount": 65,
+  "auditedHead": "bf1b0462cf139fee8ac8d6f060d74dcb1c36603a",
+  "unpromotedCommitCount": 66,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -263,6 +263,16 @@
       "scope": ["FNV-only dedicated TERM runtime class and activation", "complete immutable preflight before any UI", "exact strict predicate reaches 3 of 515 winning-live TERM records, 3 of 357 placed terminal references, and 3 of 1,350 menu items", "FalloutNV.esm 000FD76F at placement 000F515D", "DeadMoney.esm 0100F2CB at placement 0100F2D6", "DeadMoney.esm 0100F2CC at placement 0100F2D4", "two accepted DNAM byte shapes preserved as opaque contracts", "strict required identity, bounds, model, name, description, menu text, and result text", "strict empty menu script requirement", "DESC to ITXT selection to RNAM blocking presentation", "ANAM zero completion and ANAM two bounded redraw", "immutable prepared-session runner with no game-state mutator", "scripted DeadMoney 01003514 rejects before UI", "null, wrong-type, deleted, non-FNV, malformed, conditional, scripted, note, submenu, sound, password, and unsupported top-field paths fail closed"],
       "focusedTest": { "filter": "FnvTerminalRuntimeTest.*", "passed": 9, "total": 9 },
       "limitations": ["Runtime coverage is only 3 of 1,350 official menu items, 3 of 515 TERM records, and 3 of 357 placed references", "Blocking generic message boxes are not retail terminal visuals, layout, input, timing, camera, animation, or sound", "DNAM byte meanings are deliberately not inferred, so hacking, lock, lockout, and difficulty behavior are absent", "No CTDA evaluation, embedded or top-level script execution, INAM note display, TNAM submenu traversal, sound, password, mutation, custom state, or CSTA persistence", "ANAM two permits sixteen completed redraws; a seventeenth would-be redraw stops only after its description and result UI were shown", "No natural terminal journey or retail differential", "No promoted-binary provenance", "No certified or retail visual parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "native-fallout-cloud-transitions",
+      "commit": "bf1b0462cf139fee8ac8d6f060d74dcb1c36603a",
+      "subject": "Blend native Fallout cloud transitions",
+      "scope": ["all four FNV cloud layers preserve current and next authored texture endpoints", "continuous weather transition factor replaces the abrupt 50-percent texture swap", "current and next textures bind to distinct shader sampler units zero and one", "real blend factor reaches the Fallout cloud shader", "explicit transparent-black fallback clears absent transition endpoints without stale bindings", "layer visibility follows the endpoint that contributes at the current factor", "cloud speed and color continue to interpolate per layer", "disabled cloud nodes apply the latest endpoints and blend when re-enabled", "non-finite blend factors canonicalize to zero at weather interpolation, SkyManager ingress, and CloudUpdater ingress", "proof logging exposes current texture, next texture, factor, speed, color, visibility, and resolved bindings", "no shader source modification"],
+      "focusedTest": { "filter": "MWWorldWeatherTest.preservesBothFalloutCloudEndpointsAcrossContinuousTransition:MWWorldWeatherTest.clearsFalloutCloudEndpointsWhenTransitionCannotUseNativeLayers:FalloutCloudTransitionTest.*", "passed": 5, "total": 5 },
+      "limitations": ["Both endpoint samplers still share one interpolated per-layer TexMat and speed; independent current and next UV accumulation is unproved and unimplemented", "No unobstructed natural exterior to interior to exterior visual differential has been accepted", "Authored sparse alpha masks, clear directions, and horizon fade can still produce legitimately sparse visible clouds", "No complete 98-WTHR cloud-asset resolution differential", "Launcher environment and binary-provenance hardening is tracked in a separate worlds slice", "Scenery LOD substitution and water reflection coverage are separate unresolved paths", "No promoted-binary provenance", "No certified or retail visual parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
