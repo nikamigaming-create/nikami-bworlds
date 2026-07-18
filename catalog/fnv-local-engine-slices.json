@@ -5,15 +5,15 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "3924a97da84b22e8d280c106e902d161abc6cc80",
-  "unpromotedCommitCount": 55,
+  "auditedHead": "f5c2f3c406124cd14ab5419695436cc5c2913dd2",
+  "unpromotedCommitCount": 56,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
     "promoted": false,
     "certificationEligible": false,
     "parityCredit": false,
-    "reason": "These commits are durable, focused-tested engineering evidence. They remain unpromoted and lack the required retail differential, persistence, promoted-binary provenance, and clean-install certification package."
+    "reason": "These commits are durable, focused-tested engineering evidence. They remain unpromoted and do not collectively satisfy complete persistence coverage, the required retail differentials, promoted-binary provenance, or the clean-install certification package."
   },
   "slices": [
     {
@@ -152,7 +152,7 @@
       "subject": "Populate Fallout creature fixed inventory",
       "scope": ["resolved Template_UseInventory provider", "one-time authored CNTO population", "exact FormIds and counts", "safe duplicate-stack merge and overflow rejection", "eleven supported ESM4 item families", "clone refnum refresh and mutation isolation", "one-time live pointer registration"],
       "focusedTest": { "filter": "ESM4ContainerTest.*", "passed": 9, "total": 9 },
-      "limitations": ["LVLI level, chance-none, use-all, count, and random selection remain unresolved and are skipped explicitly", "CellStore still lacks an ESM4 creature save path, so mutable inventory persistence is uncovered", "No whole-corpus inventory differential", "No promoted-binary provenance"],
+      "limitations": ["LVLI level, chance-none, use-all, count, and random selection remain unresolved and are skipped explicitly", "Mutable creature-state persistence is implemented only by the subsequent persistent-fallout-creature-state slice", "No whole-corpus inventory differential", "No promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     },
@@ -163,6 +163,16 @@
       "scope": ["SetStage 0x1039 with exact r/n argument grammar", "recursive whole-graph purity preflight", "copied quest-state and active-quest transaction", "already-done non-repeatable terminal semantics", "cycle detection and explicit 32-stage recursion cap", "ordered post-commit notifications", "exact FalloutNV.esm VMS38 140-to-150 fixture"],
       "focusedTest": { "filter": "ESM4QuestRuntimeTest.ExecutesRetailVms38NestedSetStageAsOneTransaction:ESM4QuestRuntimeTest.RejectsSelfAndMutualCompiledSetStageCyclesWithoutMutation:ESM4QuestRuntimeTest.RejectsInvalidCompiledSetStageQuestStageAndRange:ESM4QuestRuntimeTest.RollsBackActiveQuestAndStateWhenNestedStageHasLaterInvalidCommand:ESM4QuestRuntimeTest.RejectsImpureNestedStageWithoutTouchingFallbackOrUnsupportedLedgers:ESM4QuestRuntimeTest.TreatsAlreadyDoneNonRepeatableNestedTargetAsTerminalBeforeCycleCheck:ESM4QuestRuntimeTest.RejectsCompiledSetStageGraphBeyondExplicitDepthLimit", "passed": 7, "total": 7 },
       "limitations": ["Strict root-plus-target purity makes only 6 of 148 winning-live authored SetStage frames executable across five root stages", "The bounded startup-spine set gains no executable frame", "Unsupported conditions and any source or opcode fallback reject the complete touched graph", "3,573 of 5,082 winning-live quest frames remain outside the recognized command set", "No retail differential or promoted-binary provenance"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "persistent-fallout-creature-state",
+      "commit": "f5c2f3c406124cd14ab5419695436cc5c2913dd2",
+      "subject": "Persist mutable Fallout creature state",
+      "scope": ["FNV-only CSTA read and write", "mutable concrete inventory", "compatibility-shell health and death state", "unloaded-cell save and reload", "removed-content inventory drop", "whole-state semantic prevalidation", "first-valid duplicate application", "explicit non-FNV ESM4 omission and rejection"],
+      "focusedTest": { "filter": "ESM4ContainerTest.*", "passed": 14, "total": 14 },
+      "limitations": ["CreatureStats SPECIAL, AI, effects, and spells remain a compatibility persistence shell rather than native FNV actor-value parity", "FNV base effects deliberately map to an empty compatibility SpellList", "Unaccessed unchanged FNV creatures remain omitted", "Duplicate suppression is scoped to one CellStore read pass", "Validation is not an exhaustive hostile or obsolete-save semantic guarantee", "No whole-corpus creature-state differential", "No promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     }
