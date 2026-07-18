@@ -1,0 +1,228 @@
+{
+  "schema": "nikami-fnv-clean-transplant-plan/v1",
+  "asOf": "2026-07-18",
+  "scopeId": "fnv-ultimate-edition-en-official-v1",
+  "objective": "Recover FNV parity by replaying bounded, retail-proven subsystems onto the last known-good OpenMW/OpenMW-VR visual baseline without importing the current branch's renderer regressions.",
+  "source": {
+    "repository": "D:/code/nikami-openmw-lab",
+    "branch": "codex/fnv-parity-slices",
+    "auditedHead": "abcad4b5da05de4bac0d7f9c26bc1ea9fe196373"
+  },
+  "recovery": {
+    "repository": "D:/code/nikami-openmw-visual-baseline-6a5576",
+    "branch": "codex/fnv-clean-recovery",
+    "baselineCommit": "6a5576dea5668624c1a720e9d64bf400f750ca97",
+    "activeSliceId": "baseline-certification"
+  },
+  "policy": {
+    "migration": "Re-derive or selectively transplant the smallest coherent implementation. Never merge or cherry-pick the source branch wholesale.",
+    "commit": "One proven slice per commit. A slice may not contain unrelated source, profile, telemetry, or generated output.",
+    "closure": "A slice closes only after focused tests, a hidden natural-play run, a retail differential where available, save/load coverage, and all earlier gates remain green.",
+    "rollback": "A failed slice is repaired or removed on the recovery branch before any later slice starts.",
+    "percentage": "Only closed slice gates and accepted corpus cases earn parity credit. Transplanted code alone earns zero.",
+    "renderer": "Static-world rendering and the Mads VR shell remain byte-for-byte at baseline unless a separately authorized renderer recovery slice identifies a baseline defect with paired evidence."
+  },
+  "frozenBoundaries": {
+    "pathPrefixes": [
+      "apps/openmw/mwvr/",
+      "components/vr/",
+      "files/shaders/"
+    ],
+    "exactPaths": [
+      "apps/openmw/mwrender/objectpaging.cpp",
+      "apps/openmw/mwrender/objectpaging.hpp",
+      "apps/openmw/mwrender/transparentpass.cpp",
+      "components/sceneutil/shadow.cpp",
+      "components/sceneutil/shadow.hpp"
+    ],
+    "reason": "These are the known direct routes to the reflection, transparency, disappearing-world, HUD masking, pointer, menu-shader, LOD, and compositor regressions reported in live play."
+  },
+  "slices": [
+    {
+      "order": 0,
+      "id": "baseline-certification",
+      "status": "active",
+      "allowedPathPrefixes": [],
+      "allowedExactPaths": [],
+      "exit": [
+        "Clean flat and VR binaries build from the pinned commit.",
+        "The exact runtime profile, plugins, assets, and hashes are captured.",
+        "Goodsprings exterior, Doc Mitchell's house, Prospector Saloon, Strip exterior, and representative night/weather transitions render without disappearing geometry, reflection bleed, or exposure failure.",
+        "Mads VR hands, grip pointer, raycast, hover, click, close mappings, and menu shaders work unchanged.",
+        "A repeated cold-start, door-return, and save-load matrix produces the same world and actor population."
+      ]
+    },
+    {
+      "order": 1,
+      "id": "native-record-substrate",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "components/esm4/",
+        "apps/components_tests/esm4/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "Winning FNV NPC, creature, package, idle, furniture, dialogue, quest, inventory, weapon, sound, region, weather, and mutable-reference records parse with exhaustive focused tests.",
+        "No runtime, renderer, VR, shader, or ESM3 fallback behavior changes."
+      ]
+    },
+    {
+      "order": 2,
+      "id": "people-presence-placement-state",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "apps/openmw/mwclass/",
+        "apps/openmw/mwworld/",
+        "apps/openmw_test_suite/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "Every Goodsprings NPC and creature loads on every cold start, door transition, and save/load with retail winning FormID, enable state, cell, transform, inventory, faction, actor values, and ground contact.",
+        "Trudy, Easy Pete, Doc Mitchell, saloon settlers, animals, robots, and a Deathclaw census have zero missing, duplicated, floating, or tipped instances.",
+        "The baseline world-render and VR-shell gates remain pixel- and state-clean."
+      ]
+    },
+    {
+      "order": 3,
+      "id": "people-rig-appearance-animation",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "apps/openmw/mwrender/",
+        "apps/openmw/mwanimation/",
+        "apps/openmw_tests/mwrender/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "Humanoids and every representative creature match retail skeleton variant, bind/root basis, idle group, blend state, hair/head attachment, weapon attachment, and vertex bounds.",
+        "All loaded Deathclaws remain upright across idle selection, interruption, combat, unload, and save/load.",
+        "No file in the frozen renderer boundary changes."
+      ]
+    },
+    {
+      "order": 4,
+      "id": "people-ai-furniture-equipment",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "apps/openmw/mwmechanics/",
+        "apps/openmw/mwworld/",
+        "apps/openmw/mwclass/",
+        "apps/openmw_tests/mwmechanics/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "A full retail/OpenMW Goodsprings day matches package selection, routes, continuous locomotion, furniture reservation/entry/loop/exit, chore props, animal wander, robot turns, bird perches, interruption, and persistence.",
+        "There is no warping, motion-in-place, empty-hand chore, chair drift, infinite spin, or per-actor patch."
+      ]
+    },
+    {
+      "order": 5,
+      "id": "dialogue-face-attention",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "apps/openmw/mwdialogue/",
+        "apps/openmw/mwgui/",
+        "apps/openmw/mwsound/",
+        "apps/openmw/mwrender/",
+        "apps/openmw_tests/mwdialogue/",
+        "apps/openmw_tests/mwsound/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "Every Goodsprings speaker/topic matches retail conditions, prompt identity, response, voice, result, next topics, and termination.",
+        "Authored INFO emotion, LIP phonemes, TRI expression weights, eyes, head, and body attention play and restore package state correctly.",
+        "No right-side option mismatch, rigid face, missing look-at, or generic invented expression remains."
+      ]
+    },
+    {
+      "order": 6,
+      "id": "quests-geck-vm",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "apps/openmw/mwscript/",
+        "apps/openmw/mwdialogue/",
+        "components/compiler/",
+        "components/interpreter/",
+        "apps/openmw_tests/mwscript/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "The natural new-game and Goodsprings quest spine matches retail stages, objectives, variables, conditions, package overrides, result scripts, rewards, alternate branches, and save/load.",
+        "Unknown or substituted GECK commands fail closed into the corpus ledger."
+      ]
+    },
+    {
+      "order": 7,
+      "id": "inventory-pipboy-barter",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "apps/openmw/mwgui/",
+        "apps/openmw/mwworld/",
+        "apps/openmw/mwclass/",
+        "apps/openmw_tests/mwgui/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "Every Pip-Boy pane, inventory action, equipment mutation, ammo stack, sort/filter, barter pane, caps transfer, quest item, save/load, flat input, and unchanged Mads VR pointer path passes retail permutations."
+      ]
+    },
+    {
+      "order": 8,
+      "id": "combat",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "apps/openmw/mwmechanics/",
+        "apps/openmw/mwrender/",
+        "apps/openmw/mwworld/",
+        "apps/openmw/mwsound/",
+        "apps/openmw_tests/mwmechanics/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "Melee, hitscan, projectile, ammo, armor, limb damage, pursuit, attack selection, hit reaction, stagger, death, loot, XP, and save/load pass for representative NPCs and creatures."
+      ]
+    },
+    {
+      "order": 9,
+      "id": "doors-activators-terminals-crafting-radio",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "apps/openmw/mwclass/",
+        "apps/openmw/mwworld/",
+        "apps/openmw/mwgui/",
+        "apps/openmw/mwmechanics/",
+        "apps/openmw/mwsound/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "Every Goodsprings door, vault/Strip transition, container, radio, workbench, terminal, lock, key, recipe, and scripted activator matches retail activation, condition, UI, mutation, destination, and persistence."
+      ]
+    },
+    {
+      "order": 10,
+      "id": "fallout-only-audio-music",
+      "status": "pending",
+      "allowedPathPrefixes": [
+        "apps/openmw/mwsound/",
+        "components/esm4/",
+        "apps/openmw_tests/mwsound/",
+        "apps/components_tests/esm4/"
+      ],
+      "allowedExactPaths": [],
+      "exit": [
+        "FNV ambience, footsteps, weapons, impacts, equipment, UI, creatures, activators, radio, music, dialogue, attenuation, and transitions resolve exact authored records/assets.",
+        "Runtime and source invariants prove zero Morrowind/ESM3 sound fallback."
+      ]
+    },
+    {
+      "order": 11,
+      "id": "whole-game-crawl-release",
+      "status": "pending",
+      "allowedPathPrefixes": [],
+      "allowedExactPaths": [],
+      "exit": [
+        "All 187 capability gates and generated official-content denominators have accepted retail differential evidence.",
+        "Every base-game route, 640 quests, four story DLCs, companions, minigames, endings, clean install, performance, persistence, and crash-free soak reaches 100% with no unknown, fallback, or uncovered row."
+      ]
+    }
+  ]
+}

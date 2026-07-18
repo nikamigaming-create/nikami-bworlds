@@ -86,6 +86,7 @@
   "evidence": {
     "formal-ledger": { "kind": "repo-path", "path": "catalog/fnv-flat-acceptance-ledger.json" },
     "live-defect-ledger": { "kind": "repo-path", "path": "catalog/fnv-live-defect-ledger.json", "certificationEligible": false },
+    "clean-transplant-plan": { "kind": "repo-path", "path": "catalog/fnv-clean-transplant-plan.json", "certificationEligible": false },
     "compat-ledger": { "kind": "repo-path", "path": "docs/fallout-compatibility-evidence-ledger.md" },
     "corpus-census-source": { "kind": "repo-path", "path": "scripts/export_fnv_parity_corpus.py" },
     "parity-profile-generator": { "kind": "repo-path", "path": "scripts/New-FNVParityProfile.ps1" },
