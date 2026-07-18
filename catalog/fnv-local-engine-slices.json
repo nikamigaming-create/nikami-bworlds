@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "3aaf16ed82f154bf97664c0f215d0844765b6d09",
-  "unpromotedCommitCount": 59,
+  "auditedHead": "80b31851e7737ccc0d10a25b3e20b8ba74722c51",
+  "unpromotedCommitCount": 60,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -203,6 +203,16 @@
       "scope": ["FNV-only NPC_/ACHR CSTA read and write", "outer reference count, scale, position, enabled, and RefNum state", "mutable concrete inventory", "compatibility CreatureStats health, death, and AI sequence state", "unloaded-cell save and reload", "removed-content inventory drop", "whole-payload semantic prevalidation", "OBJE and base-record kind rejection before typed payload loading", "invalid-first and first-valid duplicate semantics", "explicitly empty saved AI sequence preservation", "explicit non-FNV omission and rejection"],
       "focusedTest": { "filter": "ESM4ContainerTest.NpcCellStateOmitsUnaccessedFnvAndRejectsNonFnvWriteAndRead:ESM4ContainerTest.NpcCstaRoundTripFromUnloadedCellsRetainsOuterInventoryHealthDeathAndEmptyAi:ESM4ContainerTest.NpcStateDropsItemsWhoseContentFileWasRemoved:ESM4ContainerTest.MalformedNpcStateAndWrongObjeTypeCannotPartiallyMutateOrAllocateRefs:ESM4ContainerTest.DuplicateNpcObjectsUseFirstFullyValidatedStateAfterInvalidWithoutSecondRegistration", "passed": 5, "total": 5 },
       "limitations": ["The frozen official denominator is 3,942 winning-live ACHR placements, but no whole-corpus per-placement differential has run", "CreatureStats is a compatibility persistence shell rather than native FNV actor-value, skill, perk, or effect semantics", "No equipped visual slots, furniture lifecycle, ragdoll, ACHR scripts, respawn or leveled-NPC behavior", "Unaccessed unchanged FNV NPCs remain omitted", "Duplicate suppression is scoped to one CellStore read pass", "Validation is not an exhaustive hostile or obsolete-save semantic guarantee", "No retail differential", "No promoted-binary provenance"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "authored-fallout-door-keys",
+      "commit": "80b31851e7737ccc0d10a25b3e20b8ba74722c51",
+      "subject": "Honor authored Fallout door keys",
+      "scope": ["locked FNV door activation checks the activating actor inventory", "authored key unlock without consuming the key", "keyed load door continues to ActionTeleport", "keyed ordinary door continues to ActionDoor", "missing actor and wrong or missing key remain locked with FailedAction", "125 of 341 authored locked door placements have a valid live KEYM", "44 of 97 authored locked load doors have a valid live KEYM"],
+      "focusedTest": { "filter": "ESM4ContainerTest.AuthoredKeyUnlocksEsm4TeleportAndOrdinaryDoors:ESM4ContainerTest.Esm4DoorRejectsMissingOrWrongAuthoredKey", "passed": 2, "total": 2 },
+      "limitations": ["The direct corpus reach is conditional on the actor actually carrying the authored key", "The remaining 216 keyless locks need lockpicking or script behavior", "No mutable ESM4 door persistence", "No ordinary-door close visibility fix", "No door script, faction crime, NoAccess, enable-parent, XTEL flag, or ignored base-flag behavior", "Only 2 of 1,378 load-door transitions have bounded observations and zero are accepted", "No natural journey or retail differential", "No promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     }
