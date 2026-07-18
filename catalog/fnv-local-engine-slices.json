@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "43ebb92332fc6aa5703dc6348afab588f9811ca8",
-  "unpromotedCommitCount": 54,
+  "auditedHead": "3924a97da84b22e8d280c106e902d161abc6cc80",
+  "unpromotedCommitCount": 55,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -132,7 +132,7 @@
       "subject": "Execute core Fallout quest state bytecode",
       "scope": ["SetObjectiveCompleted 0x11a2", "StartQuest 0x1036", "StopQuest 0x1037", "CompleteQuest 0x1071", "655 winning-live authored frames", "whole-stage transactional preflight"],
       "focusedTest": { "filter": "ESM4QuestRuntimeTest.*", "passed": 13, "total": 13 },
-      "limitations": ["Only six of 112 observed QUST-stage opcode identities execute natively", "3,573 of 5,082 winning-live frames remain outside the recognized command set", "Mixed stages still use temporary whole-SCTX fallback", "SetStage 0x1039 awaits bounded recursive transaction and cycle semantics", "No retail differential or promoted-binary provenance"],
+      "limitations": ["Only six of 112 observed QUST-stage opcode identities execute in this slice", "3,573 of 5,082 winning-live frames remain outside the recognized command set", "Mixed stages still use temporary whole-SCTX fallback", "Recursive SetStage coverage is tracked separately", "No retail differential or promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     },
@@ -153,6 +153,16 @@
       "scope": ["resolved Template_UseInventory provider", "one-time authored CNTO population", "exact FormIds and counts", "safe duplicate-stack merge and overflow rejection", "eleven supported ESM4 item families", "clone refnum refresh and mutation isolation", "one-time live pointer registration"],
       "focusedTest": { "filter": "ESM4ContainerTest.*", "passed": 9, "total": 9 },
       "limitations": ["LVLI level, chance-none, use-all, count, and random selection remain unresolved and are skipped explicitly", "CellStore still lacks an ESM4 creature save path, so mutable inventory persistence is uncovered", "No whole-corpus inventory differential", "No promoted-binary provenance"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "transactional-fallout-setstage-bytecode",
+      "commit": "3924a97da84b22e8d280c106e902d161abc6cc80",
+      "subject": "Execute transactional Fallout SetStage bytecode",
+      "scope": ["SetStage 0x1039 with exact r/n argument grammar", "recursive whole-graph purity preflight", "copied quest-state and active-quest transaction", "already-done non-repeatable terminal semantics", "cycle detection and explicit 32-stage recursion cap", "ordered post-commit notifications", "exact FalloutNV.esm VMS38 140-to-150 fixture"],
+      "focusedTest": { "filter": "ESM4QuestRuntimeTest.ExecutesRetailVms38NestedSetStageAsOneTransaction:ESM4QuestRuntimeTest.RejectsSelfAndMutualCompiledSetStageCyclesWithoutMutation:ESM4QuestRuntimeTest.RejectsInvalidCompiledSetStageQuestStageAndRange:ESM4QuestRuntimeTest.RollsBackActiveQuestAndStateWhenNestedStageHasLaterInvalidCommand:ESM4QuestRuntimeTest.RejectsImpureNestedStageWithoutTouchingFallbackOrUnsupportedLedgers:ESM4QuestRuntimeTest.TreatsAlreadyDoneNonRepeatableNestedTargetAsTerminalBeforeCycleCheck:ESM4QuestRuntimeTest.RejectsCompiledSetStageGraphBeyondExplicitDepthLimit", "passed": 7, "total": 7 },
+      "limitations": ["Strict root-plus-target purity makes only 6 of 148 winning-live authored SetStage frames executable across five root stages", "The bounded startup-spine set gains no executable frame", "Unsupported conditions and any source or opcode fallback reject the complete touched graph", "3,573 of 5,082 winning-live quest frames remain outside the recognized command set", "No retail differential or promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     }
