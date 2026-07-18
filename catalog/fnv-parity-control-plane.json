@@ -42,6 +42,17 @@
     "openCapabilityCases": 187,
     "uncoveredCapabilityCases": 83,
     "failingCapabilityCases": 45,
+    "engineeringProgress": {
+      "greenCapabilityCases": 43,
+      "greenCapabilityPct": 22.9947,
+      "implementedOrBetterCapabilityCases": 52,
+      "implementedOrBetterCapabilityPct": 27.8075,
+      "liveEvidenceCapabilityCases": 29,
+      "liveEvidenceCapabilityPct": 15.508,
+      "mappedCapabilityCases": 104,
+      "mappedCapabilityPct": 55.615,
+      "warning": "Engineering progress is diagnostic only. It proves substantial working implementation but never substitutes for certified retail parity."
+    },
     "acceptedContentInstances": 0,
     "formalFNVProductSubsystems": { "complete": 1, "total": 13, "pct": 7.69 },
     "formalAllLedgerRowsIncludingControls": { "complete": 4, "total": 16, "pct": 25.0 },

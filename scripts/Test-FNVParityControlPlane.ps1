@@ -381,6 +381,22 @@ Assert-Control ([int]$coverage.capabilityCases.complete -eq [int]$control.curren
     "Computed complete capability-case count differs from currentTruth."
 Assert-Control ([int]$coverage.capabilityCases.open -eq [int]$control.currentTruth.openCapabilityCases) `
     "Computed open capability-case count differs from currentTruth."
+Assert-Control ([int]$coverage.engineeringProgress.green -eq [int]$control.currentTruth.engineeringProgress.greenCapabilityCases -and
+    [double]$coverage.engineeringProgress.greenPct -eq [double]$control.currentTruth.engineeringProgress.greenCapabilityPct) `
+    "Computed green engineering progress differs from currentTruth."
+Assert-Control ([int]$coverage.engineeringProgress.implementedOrBetter -eq
+    [int]$control.currentTruth.engineeringProgress.implementedOrBetterCapabilityCases -and
+    [double]$coverage.engineeringProgress.implementedOrBetterPct -eq
+    [double]$control.currentTruth.engineeringProgress.implementedOrBetterCapabilityPct) `
+    "Computed implemented-or-better engineering progress differs from currentTruth."
+Assert-Control ([int]$coverage.engineeringProgress.liveEvidence -eq
+    [int]$control.currentTruth.engineeringProgress.liveEvidenceCapabilityCases -and
+    [double]$coverage.engineeringProgress.liveEvidencePct -eq
+    [double]$control.currentTruth.engineeringProgress.liveEvidenceCapabilityPct) `
+    "Computed live-evidence engineering progress differs from currentTruth."
+Assert-Control ([int]$coverage.engineeringProgress.mapped -eq [int]$control.currentTruth.engineeringProgress.mappedCapabilityCases -and
+    [double]$coverage.engineeringProgress.mappedPct -eq [double]$control.currentTruth.engineeringProgress.mappedCapabilityPct) `
+    "Computed mapped engineering progress differs from currentTruth."
 
 if ($failures.Count -gt 0) {
     Write-Host "FNV parity control-plane failures:" -ForegroundColor Red
@@ -390,6 +406,7 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host ("FNV parity control plane passed: certified={0:N2}%, cases={1}/{2}, formal={3}/{4}." -f `
-    $coverage.certifiedParityPct, $coverage.capabilityCases.complete, $coverage.capabilityCases.total, `
+Write-Host ("FNV parity control plane passed: engineering={0:N2}% ({1}/{2}), certified={3:N2}% ({4}/{2}), formal={5}/{6}." -f `
+    $coverage.engineeringProgress.greenPct, $coverage.engineeringProgress.green, $coverage.capabilityCases.total, `
+    $coverage.certifiedParityPct, $coverage.capabilityCases.complete, `
     $coverage.formalFNVProductSubsystems.complete, $coverage.formalFNVProductSubsystems.total)

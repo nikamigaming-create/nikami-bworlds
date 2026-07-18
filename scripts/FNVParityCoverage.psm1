@@ -193,6 +193,16 @@ function Get-FNVParityCoverage {
     $balancedAxisProgress = ($axisPercentages | Measure-Object -Average).Average
     $capabilityPct = if ($allCases -gt 0) { 100.0 * $completeCases / $allCases } else { 0.0 }
 
+    # Keep engineering progress visible without weakening the certification gate.
+    # These diagnostics are deliberately case-based and never feed certifiedParityPct.
+    $greenEngineeringStates = @("focused-tested", "bounded-runtime", "bounded-retail-differential", "complete")
+    $implementedStates = @("implemented-unproven") + $greenEngineeringStates
+    $liveEvidenceStates = @("bounded-runtime", "bounded-retail-differential", "complete")
+    $greenEngineeringCases = @($openCaseRows | Where-Object { $_.state -in $greenEngineeringStates }).Count + $completeCases
+    $implementedCases = @($openCaseRows | Where-Object { $_.state -in $implementedStates }).Count + $completeCases
+    $liveEvidenceCases = @($openCaseRows | Where-Object { $_.state -in $liveEvidenceStates }).Count + $completeCases
+    $mappedCases = $allCases - $(if ($maturityCounts.ContainsKey("uncovered")) { [int]$maturityCounts["uncovered"] } else { 0 })
+
     $maturityRows = @($control.scorePolicy.maturityStates | ForEach-Object {
         [pscustomobject][ordered]@{
             state = [string]$_
@@ -232,6 +242,17 @@ function Get-FNVParityCoverage {
             total = $allCases
             open = $allCases - $completeCases
             pct = [Math]::Round($capabilityPct, 4)
+        }
+        engineeringProgress = [pscustomobject][ordered]@{
+            green = $greenEngineeringCases
+            greenPct = if ($allCases -gt 0) { [Math]::Round(100.0 * $greenEngineeringCases / $allCases, 4) } else { 0.0 }
+            implementedOrBetter = $implementedCases
+            implementedOrBetterPct = if ($allCases -gt 0) { [Math]::Round(100.0 * $implementedCases / $allCases, 4) } else { 0.0 }
+            liveEvidence = $liveEvidenceCases
+            liveEvidencePct = if ($allCases -gt 0) { [Math]::Round(100.0 * $liveEvidenceCases / $allCases, 4) } else { 0.0 }
+            mapped = $mappedCases
+            mappedPct = if ($allCases -gt 0) { [Math]::Round(100.0 * $mappedCases / $allCases, 4) } else { 0.0 }
+            warning = "Engineering progress is diagnostic only and never earns certified parity credit."
         }
         formalFNVProductSubsystems = $control.currentTruth.formalFNVProductSubsystems
         formalAllLedgerRowsIncludingControls = $control.currentTruth.formalAllLedgerRowsIncludingControls

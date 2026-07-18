@@ -22,13 +22,20 @@ As of 2026-07-17:
 
 | Measure | Current value | Meaning |
 |---|---:|---|
+| Green engineering coverage | **43 / 187 = 22.99%** | Focused-tested, bounded-runtime, or bounded-retail-differential cases; the honest working-progress headline. |
+| Implemented or better | **52 / 187 = 27.81%** | Includes nine implemented-but-not-yet-proven cases in addition to green engineering coverage. |
+| Live or retail evidence | **29 / 187 = 15.51%** | Cases exercised in bounded live runtime or a bounded retail differential. |
+| Mapped capability surface | **104 / 187 = 55.61%** | Everything beyond `uncovered`, including known failures that still require correction. |
 | Certified one-to-one parity | **0.00%** | No axis has both a complete capability set and accepted whole-corpus instances. |
 | Known capability cases complete | **0 / 187 = 0.00%** | All 187 remain open; 83 are uncovered and 45 are known failing. |
 | Existing coarse FNV product gates | **1 / 13 = 7.69%** | Useful engineering checkpoint, not full-game parity. |
 | Existing ledger including controls | **4 / 16 = 25%** | Includes FO3, Morrowind, and patch-replay safeguards; never report this as FNV progress. |
 | Whole-corpus runtime acceptance | **0.00% in every required family** | Current proofs are bounded Goodsprings/Saloon observations, not immutable accepted rows. |
 
-Zero percent is deliberately strict. It does not mean no work exists. It means
+The engineering percentage and the certification percentage answer different
+questions and must always be reported together. Green engineering coverage is
+the appropriate progress headline; it never feeds the release gate. Zero
+percent certification is deliberately strict. It does not mean no work exists. It means
 none of the 15 product axes has yet crossed its complete capability contract
 and its weakest required content family on one promoted build. Even the coarse
 session-integrity pass lacks the normal-exit and immutable binary/corpus/profile
