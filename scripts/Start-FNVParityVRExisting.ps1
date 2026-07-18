@@ -194,3 +194,7 @@ if ($Wait) {
     $process.WaitForExit()
     exit $process.ExitCode
 }
+
+# The batch helper can return a non-zero monitor status even after the real VR
+# process is confirmed alive. Do not leak that stale native exit code to callers.
+exit 0
