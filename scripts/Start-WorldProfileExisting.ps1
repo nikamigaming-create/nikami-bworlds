@@ -18,6 +18,27 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 
+if ($Mode -eq "vr" -and $WorldId -eq "fallout_new_vegas") {
+    $fnvVrLauncher = Join-Path $PSScriptRoot "Start-FNVParityVRExisting.ps1"
+    if (-not (Test-Path -LiteralPath $fnvVrLauncher -PathType Leaf)) {
+        throw "Missing calibrated FNV VR launcher: $fnvVrLauncher"
+    }
+
+    $fnvVrParameters = @{}
+    if ($DryRun) {
+        $fnvVrParameters.DryRun = $true
+    }
+    if ($Wait) {
+        $fnvVrParameters.Wait = $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace($BinaryRoot)) {
+        $fnvVrParameters.BinaryRoot = $BinaryRoot
+    }
+
+    & $fnvVrLauncher @fnvVrParameters
+    return
+}
+
 function Quote-CommandArg([string]$Arg) {
     if ($Arg -match '[\s"]') {
         return '"' + ($Arg -replace '"', '\"') + '"'
@@ -89,10 +110,6 @@ Write-Host "Resources: $ResourcesRoot"
 Write-Host "Profile: $($world.profileDirectory)"
 Write-Host "Command: $commandLine"
 Write-Host "Runtime: real OpenMW profile launch; proof/viewer environment is cleared before start."
-
-if ($Mode -eq "vr" -and $WorldId -eq "fallout_new_vegas") {
-    Write-Host "Note: calibrated FNV VR hands/Pip-Boy testing still uses scripts/Start-FNVVRExisting.ps1."
-}
 
 if ($DryRun) {
     Write-Host "Dry run only; not starting OpenMW."
