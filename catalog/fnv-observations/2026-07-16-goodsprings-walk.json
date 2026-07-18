@@ -1,0 +1,95 @@
+{
+  "schema": "nikami-fnv-runtime-observation/v1",
+  "id": "2026-07-16-goodsprings-walk",
+  "scopeId": "fnv-ultimate-edition-en-official-v1",
+  "recordedAtLocalApprox": "2026-07-16T20:04:12-07:00",
+  "reviewedAt": "2026-07-17",
+  "status": "bounded-observation",
+  "certificationEligible": false,
+  "source": {
+    "kind": "user-provided-video",
+    "filename": "Recording 2026-07-16 200412.mp4",
+    "bytes": 414638235,
+    "sha256": "5174cb0150b0542a0afa773823d7d161ce2504a87f8eee872d3e701bb98de7e0",
+    "durationSeconds": 340.031979,
+    "video": {
+      "codec": "h264",
+      "width": 2052,
+      "height": 1334,
+      "framesPerSecond": 30
+    },
+    "audio": {
+      "codec": "aac",
+      "sampleRate": 48000,
+      "channels": 2,
+      "contentAudited": false
+    }
+  },
+  "observations": [
+    {
+      "id": "goodsprings-exterior",
+      "intervalsSeconds": [[0, 55], [85, 95], [155, 215], [295, 340]],
+      "result": "pass-observed",
+      "detail": "Goodsprings exterior geometry, terrain, props, authored buildings, actors, and traversal render continuously across several walks."
+    },
+    {
+      "id": "authored-sky-clouds",
+      "intervalsSeconds": [[20, 55], [85, 95], [155, 215], [295, 335]],
+      "result": "pass-observed",
+      "detail": "A textured authored sky with moving-looking cloud layers is visible throughout sampled exterior segments; no missing-sky frame was observed."
+    },
+    {
+      "id": "player-movement-camera-hud",
+      "intervalsSeconds": [[35, 55], [85, 100], [155, 215], [295, 335]],
+      "result": "pass-with-visible-gaps",
+      "detail": "Third-person traversal, camera control, crosshair, and HUD render; player equipment and presentation remain visibly incomplete."
+    },
+    {
+      "id": "actors-and-creatures",
+      "intervalsSeconds": [[0, 20], [100, 120], [165, 185], [215, 265], [330, 340]],
+      "result": "pass-with-visible-gaps",
+      "detail": "Human actors, a dog, bighorners, and a securitron render and occupy the world; pose, turn, and reaction fidelity are not established by this recording."
+    },
+    {
+      "id": "load-doors-and-cell-transitions",
+      "intervalsSeconds": [[55, 65], [80, 100], [150, 160], [205, 220], [285, 300]],
+      "result": "pass-observed",
+      "detail": "The run enters and exits Chet's store, the Prospector Saloon, and Doc Mitchell's house through working door/cell transitions, including authored loading screens."
+    },
+    {
+      "id": "authored-interiors",
+      "intervalsSeconds": [[60, 85], [95, 155], [215, 290]],
+      "result": "pass-observed",
+      "detail": "Chet's store, the Prospector Saloon, and Doc Mitchell's house render with their authored meshes, textures, clutter, lighting, and fixtures."
+    },
+    {
+      "id": "multi-topic-dialogue",
+      "intervalsSeconds": [[65, 80], [100, 120], [230, 265]],
+      "result": "pass-with-visible-gaps",
+      "detail": "Multi-topic dialogue UI and authored response text are exercised with Chet, Easy Pete, Sunny Smiles, and Doc Mitchell; presentation is visibly non-retail and condition/quest mutation is not proven."
+    },
+    {
+      "id": "interactive-world-fixtures",
+      "intervalsSeconds": [[125, 145], [260, 280]],
+      "result": "observed-not-proven",
+      "detail": "Radios, bar fixtures, bathroom fixtures, and a jukebox are present and targetable, but this recording does not prove their complete activation behavior."
+    }
+  ],
+  "visibleGaps": [
+    "Player appears in underwear/default equipment for the whole recording.",
+    "Dialogue layout and camera presentation do not match retail Fallout: New Vegas.",
+    "Actor turning, facial motion, pose settling, and reactions remain visibly incomplete or unproven.",
+    "No combat, hit reaction, VATS, inventory, Pip-Boy, quest-log progression, crafting, terminal, save, reload, or death loop is demonstrated.",
+    "Audio stream exists, but voice, lip synchronization, radio, music, and spatial-audio behavior were not audited.",
+    "The recording contains no paired retail capture, immutable engine binary/profile/save hashes, or normal-exit proof."
+  ],
+  "certificationExclusions": [
+    "runtime binary provenance missing",
+    "profile and corpus provenance missing",
+    "save provenance missing",
+    "retail differential missing",
+    "normal exit missing",
+    "audio content not audited"
+  ],
+  "conclusion": "This video proves a substantial playable Goodsprings vertical slice. It is real bounded runtime evidence, not zero work, but it cannot close a retail-parity capability case by itself."
+}

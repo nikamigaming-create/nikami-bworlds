@@ -77,6 +77,7 @@
     "sky-return-run": { "kind": "local-observation", "path": "run/fnv-natural-sky-door-return-20260717/20260717-154128/manifest.json", "certificationEligible": false },
     "voice-run": { "kind": "local-observation", "path": "run/fnv-multi-response-voice-gate-20260717/fallout_new_vegas-20260717-162118/manifest.json", "certificationEligible": false },
     "combat-run": { "kind": "local-observation", "path": "run/fnv-combat-live-visible-telemetry-gate/actor-sweep-index-20260717-084941.json", "certificationEligible": false },
+    "user-goodsprings-video": { "kind": "repo-path", "path": "catalog/fnv-observations/2026-07-16-goodsprings-walk.json", "certificationEligible": false },
     "engine-store-source": { "kind": "git-blob", "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git", "commit": "7ec59e3293b9ef8ae217f7bd14ca7f76b3111a06", "path": "apps/openmw/mwworld/esmstore.hpp", "blobSha1": "df5a9f536c952b33049bccdb9c6e2cbe250597cf" },
     "engine-class-source": { "kind": "git-blob", "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git", "commit": "7ec59e3293b9ef8ae217f7bd14ca7f76b3111a06", "path": "apps/openmw/mwclass/classes.cpp", "blobSha1": "9eea23c64551af6c5e5fe6b415b312073c864c88" },
     "engine-cell-save-source": { "kind": "git-blob", "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git", "commit": "7ec59e3293b9ef8ae217f7bd14ca7f76b3111a06", "path": "apps/openmw/mwworld/cellstore.cpp", "blobSha1": "817aed4899f0192b88f41c0b28de66006a0e9e56" }
