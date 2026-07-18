@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "0814ffa975c0eb6f3685b241d01775e10c7f079d",
-  "unpromotedCommitCount": 64,
+  "auditedHead": "d193df4d33b65ca604d271822a0767c273b5ab02",
+  "unpromotedCommitCount": 65,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -253,6 +253,16 @@
       "scope": ["ESM4 DOOR references participate in generic ObjectState cell save and load", "unchanged authored doors remain omitted", "mutable count, scale, position, enabled, and unlocked state round-trip", "authored key and owner retention", "immutable XTEL destination door, cell, and transform retention", "finite outer-state, non-negative count, and set RefNum prevalidation", "OBJE and base-record kind rejection before typed state loading", "invalid-first and first-valid duplicate semantics", "removed-content state rejection", "headless WorldModel load retains data state while optional scene and physics notifications remain runtime-only"],
       "focusedTest": { "filter": "ESM4ContainerTest.DoorCellStateOmitsUnchangedAuthoredReference:ESM4ContainerTest.DoorStateRoundTripRetainsUnlockOuterAndImmutableTeleportData:ESM4ContainerTest.MalformedAndWrongObjeDoorStatesCannotMutateLiveReference:ESM4ContainerTest.DuplicateDoorObjectsUseFirstFullyValidatedStateAfterInvalid:ESM4ContainerTest.DoorStateFromRemovedContentCannotMutateAuthoredReference", "passed": 5, "total": 5 },
       "limitations": ["ESM3 save serialization canonicalizes an unlocked door lock level to zero while preserving unlocked state", "No moving-door animation or open/closing DoorState persistence", "No ordinary-door close visibility fix", "No lockpicking, trap, script, faction crime, NoAccess, enable-parent, XTEL-flag, or ignored base-flag behavior", "Unchanged authored doors remain omitted", "Duplicate suppression is scoped to one CellStore read pass", "Validation is not an exhaustive hostile or obsolete-save semantic guarantee", "No whole-corpus door-state differential or natural journey", "No promoted-binary provenance", "No parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "strict-read-only-fallout-terminals",
+      "commit": "d193df4d33b65ca604d271822a0767c273b5ab02",
+      "subject": "Run strict read-only Fallout terminals",
+      "scope": ["FNV-only dedicated TERM runtime class and activation", "complete immutable preflight before any UI", "exact strict predicate reaches 3 of 515 winning-live TERM records, 3 of 357 placed terminal references, and 3 of 1,350 menu items", "FalloutNV.esm 000FD76F at placement 000F515D", "DeadMoney.esm 0100F2CB at placement 0100F2D6", "DeadMoney.esm 0100F2CC at placement 0100F2D4", "two accepted DNAM byte shapes preserved as opaque contracts", "strict required identity, bounds, model, name, description, menu text, and result text", "strict empty menu script requirement", "DESC to ITXT selection to RNAM blocking presentation", "ANAM zero completion and ANAM two bounded redraw", "immutable prepared-session runner with no game-state mutator", "scripted DeadMoney 01003514 rejects before UI", "null, wrong-type, deleted, non-FNV, malformed, conditional, scripted, note, submenu, sound, password, and unsupported top-field paths fail closed"],
+      "focusedTest": { "filter": "FnvTerminalRuntimeTest.*", "passed": 9, "total": 9 },
+      "limitations": ["Runtime coverage is only 3 of 1,350 official menu items, 3 of 515 TERM records, and 3 of 357 placed references", "Blocking generic message boxes are not retail terminal visuals, layout, input, timing, camera, animation, or sound", "DNAM byte meanings are deliberately not inferred, so hacking, lock, lockout, and difficulty behavior are absent", "No CTDA evaluation, embedded or top-level script execution, INAM note display, TNAM submenu traversal, sound, password, mutation, custom state, or CSTA persistence", "ANAM two permits sixteen completed redraws; a seventeenth would-be redraw stops only after its description and result UI were shown", "No natural terminal journey or retail differential", "No promoted-binary provenance", "No certified or retail visual parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
