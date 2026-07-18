@@ -6,7 +6,8 @@
   "source": {
     "repository": "D:/code/nikami-openmw-lab",
     "branch": "codex/fnv-parity-slices",
-    "auditedHead": "abcad4b5da05de4bac0d7f9c26bc1ea9fe196373"
+    "auditedHead": "abcad4b5da05de4bac0d7f9c26bc1ea9fe196373",
+    "candidateInventoryScript": "scripts/inventory_fnv_clean_transplant_candidates.py"
   },
   "recovery": {
     "repository": "D:/code/nikami-openmw-visual-baseline-6a5576",
