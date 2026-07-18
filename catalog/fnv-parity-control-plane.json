@@ -6,6 +6,16 @@
   "denominators": "catalog/fnv-parity-denominators.json",
   "exclusions": "catalog/fnv-parity-exclusions.json",
   "biteLedgerSchema": "catalog/fnv-bite-ledger.schema.json",
+  "biteLedger": {
+    "path": "catalog/fnv-geck-bite-ledger.generated.json",
+    "generator": "scripts/generate_fnv_bite_ledger.py",
+    "fileSha256": "b08b739ade2377ba42af96375bb292195295ee488ff5e8b64f64e19331c3ffc5",
+    "canonicalSha256": "c9e99829f27b89a8201a2e22a44f3fd76b30fc530f3cb2d47a8679389b409452",
+    "sourceReportCanonicalSha256": "c61ebb5300bcfba77d79f78a97634e5852f7dbf8ef20fbcdc98951d589bb6ab4",
+    "rows": 6331,
+    "uncoveredRows": 6331,
+    "parityCreditRows": 0
+  },
   "scorePolicy": {
     "certifiedParityFormula": "min(axisScore)",
     "balancedAxisProgressFormula": "mean(axisScore), diagnostic only",
@@ -78,6 +88,9 @@
     "voice-run": { "kind": "local-observation", "path": "run/fnv-multi-response-voice-gate-20260717/fallout_new_vegas-20260717-162118/manifest.json", "certificationEligible": false },
     "combat-run": { "kind": "local-observation", "path": "run/fnv-combat-live-visible-telemetry-gate/actor-sweep-index-20260717-084941.json", "certificationEligible": false },
     "user-goodsprings-video": { "kind": "repo-path", "path": "catalog/fnv-observations/2026-07-16-goodsprings-walk.json", "certificationEligible": false },
+    "geck-workload-inventory": { "kind": "repo-path", "path": "scripts/inventory_fnv_geck_workload.py" },
+    "geck-bite-generator": { "kind": "repo-path", "path": "scripts/generate_fnv_bite_ledger.py" },
+    "geck-bite-ledger": { "kind": "repo-path", "path": "catalog/fnv-geck-bite-ledger.generated.json" },
     "engine-store-source": { "kind": "git-blob", "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git", "commit": "7ec59e3293b9ef8ae217f7bd14ca7f76b3111a06", "path": "apps/openmw/mwworld/esmstore.hpp", "blobSha1": "df5a9f536c952b33049bccdb9c6e2cbe250597cf" },
     "engine-class-source": { "kind": "git-blob", "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git", "commit": "7ec59e3293b9ef8ae217f7bd14ca7f76b3111a06", "path": "apps/openmw/mwclass/classes.cpp", "blobSha1": "9eea23c64551af6c5e5fe6b415b312073c864c88" },
     "engine-cell-save-source": { "kind": "git-blob", "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git", "commit": "7ec59e3293b9ef8ae217f7bd14ca7f76b3111a06", "path": "apps/openmw/mwworld/cellstore.cpp", "blobSha1": "817aed4899f0192b88f41c0b28de66006a0e9e56" }
@@ -535,7 +548,8 @@
     {
       "order": 1,
       "id": "commit-denominator-tooling",
-      "status": "in-progress",
+      "status": "complete",
+      "worldsCommit": "7f209b6ee1a0af4fbf35a6a2cd5f1b2133df09dc",
       "exit": "Committed census reproduces the frozen official corpus, assets, override graph, and every denominator; parity profile excludes FNVR and loose mods."
     },
     {
@@ -555,13 +569,14 @@
     {
       "order": 4,
       "id": "native-fnv-state-substrate",
-      "status": "pending",
+      "status": "in-progress",
       "exit": "Native FNV player/actor values, inventory/equipment, factions, mutable reference state, and save schemas replace ESM3 substitution/skips."
     },
     {
       "order": 5,
       "id": "geck-vm-event-substrate",
-      "status": "pending",
+      "status": "in-progress",
+      "worldsCommit": "210f456f94b47c3048f3bbfbe84f4f69ab8856fc",
       "exit": "Content-derived opcode/command/condition inventory reaches zero unknowns; object/quest/dialogue/terminal events execute and persist."
     },
     {

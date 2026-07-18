@@ -70,6 +70,33 @@ Assert-Control ([string]$control.exclusions -eq "catalog/fnv-parity-exclusions.j
 Assert-Control ([string]$control.biteLedgerSchema -eq "catalog/fnv-bite-ledger.schema.json" -and
     [string]$biteLedgerSchema.'$id' -eq "nikami-fnv-bite-ledger-row/v1") `
     "Control plane does not point at the canonical bite-ledger schema."
+$generatedBiteLedgerFile = Resolve-RepoPath ([string]$control.biteLedger.path)
+Assert-Control (Test-Path -LiteralPath $generatedBiteLedgerFile -PathType Leaf) `
+    "Generated GECK bite ledger is missing."
+if (Test-Path -LiteralPath $generatedBiteLedgerFile -PathType Leaf) {
+    $generatedBiteLedger = Get-Content -LiteralPath $generatedBiteLedgerFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    $generatedBiteLedgerFileSha = (Get-FileHash -LiteralPath $generatedBiteLedgerFile -Algorithm SHA256).Hash
+    Assert-Control ([string]$generatedBiteLedger.schema -eq "nikami-fnv-bite-ledger/v1" -and
+        [string]$generatedBiteLedger.scopeId -eq [string]$control.scopeId) `
+        "Generated GECK bite ledger has the wrong schema or scope."
+    Assert-Control ($generatedBiteLedgerFileSha -eq [string]$control.biteLedger.fileSha256) `
+        "Generated GECK bite-ledger file hash differs from the control plane."
+    Assert-Control ([string]$generatedBiteLedger.canonicalSha256 -eq [string]$control.biteLedger.canonicalSha256 -and
+        [string]$generatedBiteLedger.sourceReport.canonicalSha256 -eq
+        [string]$control.biteLedger.sourceReportCanonicalSha256) `
+        "Generated GECK bite-ledger canonical/source hash differs from the control plane."
+    Assert-Control (@($generatedBiteLedger.rows).Count -eq [int]$control.biteLedger.rows -and
+        [int]$generatedBiteLedger.summary.inputRows -eq [int]$control.biteLedger.rows -and
+        [int]$generatedBiteLedger.summary.outputRows -eq [int]$control.biteLedger.rows -and
+        [int]$generatedBiteLedger.summary.droppedRows -eq 0 -and
+        [int]$generatedBiteLedger.summary.duplicateInputIds -eq 0 -and
+        [int]$generatedBiteLedger.summary.duplicateRowIds -eq 0) `
+        "Generated GECK bite ledger dropped, duplicated, or miscounted workload rows."
+    Assert-Control ([int]$generatedBiteLedger.summary.uncoveredRows -eq [int]$control.biteLedger.uncoveredRows -and
+        [int]$generatedBiteLedger.summary.parityCreditRows -eq [int]$control.biteLedger.parityCreditRows -and
+        @($generatedBiteLedger.rows | Where-Object { [string]$_.implementation.disposition -ne "uncovered" }).Count -eq 0) `
+        "Generated GECK bite ledger awarded unreviewed implementation/parity credit."
+}
 Assert-Control (@($exclusions.exclusions).Count -eq 0) `
     "Current scope unexpectedly contains an approved exclusion."
 Assert-Control ([string]$control.scorePolicy.certifiedParityFormula -eq "min(axisScore)") `
@@ -326,8 +353,19 @@ for ($index = 0; $index -lt $nextSlices.Count; ++$index) {
     Assert-Control ([string]$nextSlices[$index].status -in @("pending", "in-progress", "complete")) `
         "Execution slice '$($nextSlices[$index].id)' has an invalid status."
     if ([string]$nextSlices[$index].status -eq "complete") {
-        Assert-Control ([string]$nextSlices[$index].engineCommit -match "^[0-9a-fA-F]{40}$") `
-            "Completed execution slice '$($nextSlices[$index].id)' lacks a full engine commit."
+        $engineCommit = if ($null -ne $nextSlices[$index].PSObject.Properties["engineCommit"]) {
+            [string]$nextSlices[$index].engineCommit
+        } else {
+            ""
+        }
+        $worldsCommit = if ($null -ne $nextSlices[$index].PSObject.Properties["worldsCommit"]) {
+            [string]$nextSlices[$index].worldsCommit
+        } else {
+            ""
+        }
+        Assert-Control (($engineCommit -match "^[0-9a-fA-F]{40}$") -or
+            ($worldsCommit -match "^[0-9a-fA-F]{40}$")) `
+            "Completed execution slice '$($nextSlices[$index].id)' lacks a full engine or worlds commit."
     }
 }
 
