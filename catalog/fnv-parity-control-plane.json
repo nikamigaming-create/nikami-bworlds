@@ -18,10 +18,10 @@
   },
   "localEngineSlices": {
     "path": "catalog/fnv-local-engine-slices.json",
-    "fileSha256": "82ef5cbecb8d32016e2ab20106d6209d4e4af061e2bc7a5105c4af12762d4c9e",
-    "auditedHead": "bdb901a3b5ca5bd492b5e97e25b333b1417b270d",
-    "unpromotedCommitCount": 61,
-    "slices": 21
+    "fileSha256": "6d4c2b710425fdb718f5c764fc51c737ccb0344da8639827f5065fb92c773dd3",
+    "auditedHead": "1b77b8f10dace6c3a5ee06a5f8b46009b7a3c8f3",
+    "unpromotedCommitCount": 62,
+    "slices": 22
   },
   "scorePolicy": {
     "certifiedParityFormula": "min(axisScore)",
@@ -76,8 +76,8 @@
     "formalControlsWarning": "The 25% figure includes FO3 control, Morrowind regression, and patch replay. It is infrastructure health and must never be reported as FNV parity.",
     "wholeCorpusRuntimeCoverage": "bounded observations are reported per family; every required family has 0 accepted rows",
     "formalPromotedEngineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-    "localEngineHeadAtAudit": "bdb901a3b5ca5bd492b5e97e25b333b1417b270d",
-    "unpromotedLocalCommitCountAtAudit": 61
+    "localEngineHeadAtAudit": "1b77b8f10dace6c3a5ee06a5f8b46009b7a3c8f3",
+    "unpromotedLocalCommitCountAtAudit": 62
   },
   "releaseArtifacts": {
     "scopeFreezeManifest": null,
@@ -98,7 +98,7 @@
     "geck-workload-inventory": { "kind": "repo-path", "path": "scripts/inventory_fnv_geck_workload.py" },
     "geck-bite-generator": { "kind": "repo-path", "path": "scripts/generate_fnv_bite_ledger.py" },
     "geck-bite-ledger": { "kind": "repo-path", "path": "catalog/fnv-geck-bite-ledger.generated.json" },
-    "local-engine-slices": { "kind": "repo-path", "path": "catalog/fnv-local-engine-slices.json", "sha256": "82ef5cbecb8d32016e2ab20106d6209d4e4af061e2bc7a5105c4af12762d4c9e", "certificationEligible": false },
+    "local-engine-slices": { "kind": "repo-path", "path": "catalog/fnv-local-engine-slices.json", "sha256": "6d4c2b710425fdb718f5c764fc51c737ccb0344da8639827f5065fb92c773dd3", "certificationEligible": false },
     "engine-store-source": { "kind": "git-blob", "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git", "commit": "7ec59e3293b9ef8ae217f7bd14ca7f76b3111a06", "path": "apps/openmw/mwworld/esmstore.hpp", "blobSha1": "df5a9f536c952b33049bccdb9c6e2cbe250597cf" },
     "engine-class-source": { "kind": "git-blob", "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git", "commit": "7ec59e3293b9ef8ae217f7bd14ca7f76b3111a06", "path": "apps/openmw/mwclass/classes.cpp", "blobSha1": "9eea23c64551af6c5e5fe6b415b312073c864c88" },
     "engine-cell-save-source": { "kind": "git-blob", "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git", "commit": "7ec59e3293b9ef8ae217f7bd14ca7f76b3111a06", "path": "apps/openmw/mwworld/cellstore.cpp", "blobSha1": "817aed4899f0192b88f41c0b28de66006a0e9e56" }

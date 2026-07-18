@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "bdb901a3b5ca5bd492b5e97e25b333b1417b270d",
-  "unpromotedCommitCount": 61,
+  "auditedHead": "1b77b8f10dace6c3a5ee06a5f8b46009b7a3c8f3",
+  "unpromotedCommitCount": 62,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -223,6 +223,16 @@
       "scope": ["515 winning-live official TERM records and 1,350 menu items", "strict FNV subrecord grammar, ordering, payload sizes, duplicate and truncation rejection", "top-level identity, name, text, model, script, password and sound fields", "DNAM flags and difficulty", "ITXT menu item boundaries", "RNAM result text without overwrite loss", "ANAM flags", "INAM note/display and TNAM submenu links", "802 per-item CTDA conditions", "SCHR, SCDA, SCTX, SLSD, SCVR, SCRV and SCRO embedded-script preservation", "exact raw byte and source preservation", "FormId adjustment including FNV condition parameters", "legacy non-FNV parser behavior retention", "whole-record atomic failure"],
       "focusedTest": { "filter": "Esm4TerminalTest.*", "passed": 7, "total": 7 },
       "limitations": ["Parser only and therefore no terminal gameplay parity credit", "No terminal activation or UI", "No hacking, lockout, sound, condition evaluation or embedded-script execution", "No note/submenu mutation behavior", "No terminal persistence", "No natural terminal journey or retail differential", "No promoted-binary provenance"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-talking-activator-materialization",
+      "commit": "1b77b8f10dace6c3a5ee06a5f8b46009b7a3c8f3",
+      "subject": "Materialize Fallout New Vegas talking activators",
+      "scope": ["all 116 winning-live official REFR-to-TACT placements materialize across 75 used bases", "dedicated TACT runtime class with name, model, tooltip, activator identity and Lua type", "CellStore, ManualRef and object-paging integration", "deterministic zero initialization for absent XRDO data", "all 29 RadioStation placements retain exact XRDO data", "RadioStation flag gates sound activation", "authored SNAM loop takes precedence over INAM template fallback", "15 of 29 placed radio stations have a deterministic direct sound action", "87 non-radio TACT placements materialize without radio misclassification", "malformed and missing references fail closed", "ACTI materialization regression coverage"],
+      "focusedTest": { "filter": "ESM4TalkingActivatorTest.*", "passed": 4, "total": 4 },
+      "limitations": ["Direct-sound coverage is 15 of 116 total TACT placements, or 15 of 29 RadioStation placements", "Fourteen placed RadioStation TACT references have neither SNAM nor INAM and remain NullAction", "No DIAL/INFO sequencing, conditions, clock, randomization, Pip-Boy, range, static or audio-location behavior", "No TACT script, dialogue, animation-sequence or station-state persistence", "Sound action construction is tested but playback execution has no retail differential", "No whole-corpus live journey", "No promoted-binary provenance", "No parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
