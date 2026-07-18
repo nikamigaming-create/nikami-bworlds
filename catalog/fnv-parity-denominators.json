@@ -1,0 +1,153 @@
+{
+  "schema": "nikami-fnv-parity-denominators/v1",
+  "asOf": "2026-07-17",
+  "scopeId": "fnv-ultimate-edition-en-official-v1",
+  "scope": "English Fallout: New Vegas Ultimate Edition using the ten official masters and twenty-one official BSA archives in the frozen order below.",
+  "scorePolicy": {
+    "retailIncluded": [
+      "FalloutNV.esm",
+      "DeadMoney.esm",
+      "HonestHearts.esm",
+      "OldWorldBlues.esm",
+      "LonesomeRoad.esm",
+      "GunRunnersArsenal.esm",
+      "CaravanPack.esm",
+      "ClassicPack.esm",
+      "MercenaryPack.esm",
+      "TribalPack.esm"
+    ],
+    "retailExcluded": [
+      "FNVR.esp",
+      "D:/Modlists/fnv/openmw-config/data"
+    ],
+    "exclusionReason": "FNVR.esp and the loose mod-data overlay are not Bethesda retail inputs. They receive a separate compatibility score and cannot add parity credit or mask a retail failure.",
+    "winningLiveRecordDenominator": 628395,
+    "unknownUnvisitedOrUnsupportedCountsAs": "fail"
+  },
+  "provenanceStatus": "audited-pending-committed-reproducer",
+  "provenanceNote": "Counts were independently read from the configured local corpus with master-aware override/delete resolution. They remain non-promotable until the committed census tool reproduces them byte-for-byte.",
+  "officialMasters": [
+    { "name": "FalloutNV.esm", "bytes": 245650747, "sha256": "50991D36804B7D1E70DF1AFD7471B72F0E29D1B456EE2516A9717C002564E7C1" },
+    { "name": "DeadMoney.esm", "bytes": 6274851, "sha256": "31EDE9C21AE6960EC868BF60879C602BF7A13879B2F47E7CFD1AC30B4D4DE329" },
+    { "name": "HonestHearts.esm", "bytes": 17308500, "sha256": "4341D1A35EAAC7D9E7097EBAC8F31A13264CA6DCB33443408BD97E5DDD5D8368" },
+    { "name": "OldWorldBlues.esm", "bytes": 16202800, "sha256": "FD6CC6E582582EC035277150E106D12B6D78C7C60CBB506545E06D1FA7212295" },
+    { "name": "LonesomeRoad.esm", "bytes": 25676818, "sha256": "41BF457C1ED313834407840D2B60447F74264E33B372590454EAD8AC663B0516" },
+    { "name": "GunRunnersArsenal.esm", "bytes": 252445, "sha256": "AEE27930699494F0626D24A3A8AE947FE447E33EDC0ED46762E54FAAB4C05A1E" },
+    { "name": "CaravanPack.esm", "bytes": 3007, "sha256": "0473CFF52D375A77D6585F203A914445FA5A9E6BA726818AA7D8D48CB177EC82" },
+    { "name": "ClassicPack.esm", "bytes": 6523, "sha256": "3B31928DFDAC46028F2E12F25B0DBDD0E809D4D74AC04FB7783E0063E912760B" },
+    { "name": "MercenaryPack.esm", "bytes": 3064, "sha256": "73E76BCADBF326818AF7B58C315773A2D86FE3A8186A778E84A68916CB830C59" },
+    { "name": "TribalPack.esm", "bytes": 2323, "sha256": "342F42CE9835F57EE19BE09F12AD0BA2C6182E86740338202FCEA9011D62F328" }
+  ],
+  "recordCorpus": {
+    "physicalHeadersIncludingTes4": 629798,
+    "nonTes4Records": 629788,
+    "resolvableNonTes4Records": 629787,
+    "unresolvableRecords": 1,
+    "unresolvableNote": "GunRunnersArsenal.esm contains one authored REFR with malformed/internal FormID 0x02000801.",
+    "winningRecordsIncludingDeleted": 628463,
+    "winningDeletedRecords": 68,
+    "winningLiveRecords": 628395,
+    "rawPlacedReferenceRecords": 428124,
+    "winningLivePlacedReferences": 427319
+  },
+  "world": {
+    "cells": 44517,
+    "interiorCells": 492,
+    "exteriorCells": 44025,
+    "cellsWithPlacements": 5870,
+    "cellsWithActorOrInteractable": 2516,
+    "interiorsWithPlacements": 480,
+    "exteriorsWithPlacements": 5390,
+    "exteriorFourNeighborEdges": 86101,
+    "combinedGraphComponents": 133,
+    "worldspaces": 33,
+    "mapMarkers": 320
+  },
+  "placedReferences": {
+    "doors": 3457,
+    "directedDoorTeleports": 1378,
+    "resolvedDoorTeleportDestinations": 1378,
+    "uniqueDoorLinkedCellPairs": 485,
+    "containers": 10778,
+    "npcs": 3942,
+    "creatures": 3739,
+    "terminals": 357,
+    "craftingStationsCandidate": 304,
+    "craftingStationCandidateBases": 12,
+    "radios": 425,
+    "activatorsAndTalkingActivators": 9979,
+    "engineReservedMarkerBaseReferences": 1492,
+    "engineReservedMarkerFormIds": ["0x17", "0x20"]
+  },
+  "dialogue": {
+    "topics": 21298,
+    "infos": 28896,
+    "responses": 37403,
+    "conditions": 69277,
+    "choiceEdges": 28215
+  },
+  "questsAndScripts": {
+    "officialQuests": 640,
+    "questStages": 1405,
+    "questStageEntries": 1341,
+    "questObjectives": 1479,
+    "questObjectiveTargets": 1958,
+    "officialStandaloneScripts": 3707,
+    "recordsWithScriptAttachments": 5150,
+    "aiPackages": 4885,
+    "leveledNpcLists": 397,
+    "leveledCreatureLists": 437
+  },
+  "interactiveRecords": {
+    "terminalBases": 515,
+    "terminalMenuItems": 1350,
+    "weatherRecords": 98,
+    "climates": 46,
+    "regions": 317,
+    "encounterZones": 28
+  },
+  "archives": {
+    "officialArchiveCount": 21,
+    "authoredEntries": 182177,
+    "uniqueNormalizedVfsPaths": 181642,
+    "duplicateOrOverriddenEntries": 535,
+    "extensions": {
+      "ogg": 63575,
+      "lip": 60702,
+      "dds": 26840,
+      "nif": 20542,
+      "kf": 4765,
+      "wav": 4626
+    },
+    "recordToWinningAssetGraphStatus": "unbuilt"
+  },
+  "nonRetailOverlay": {
+    "name": "FNVR.esp",
+    "winningLiveRecords": 4,
+    "quests": 2,
+    "scripts": 2,
+    "placements": 0
+  },
+  "currentObservedSlices": {
+    "policy": "Observed means touched by a bounded harness. Accepted remains zero until the complete per-instance contract, lifecycle, retail differential, promoted-binary provenance, and regression gates pass.",
+    "cells": { "observed": 2, "accepted": 0, "total": 44517 },
+    "directedDoorTeleports": { "observed": 2, "accepted": 0, "total": 1378 },
+    "dialogueInfos": { "observed": 1, "accepted": 0, "total": 28896 },
+    "dialogueResponses": { "observed": 2, "accepted": 0, "total": 37403 },
+    "radios": { "observed": 1, "accepted": 0, "total": 425 },
+    "weatherRecords": { "observed": 1, "accepted": 0, "total": 98 },
+    "terminals": { "observed": 0, "accepted": 0, "total": 357 },
+    "craftingStations": { "observed": 0, "accepted": 0, "total": 304 },
+    "naturallyCompletedQuests": { "observed": 0, "accepted": 0, "total": 640 },
+    "encounterZones": { "observed": 0, "accepted": 0, "total": 28 },
+    "containerTransfers": { "observed": 0, "accepted": 0, "total": 10778 }
+  },
+  "denominatorCaveats": [
+    "Winning live records are the retail runtime denominator; all physical headers and override chains remain a separate parser-completeness denominator.",
+    "Empty exterior cells count for terrain and streaming but not for the interaction-cell denominator.",
+    "Encounter zones are not a complete combat denominator; authored actor clusters, leveled lists, factions, packages, enable parents, scripts, respawn state, weapon families, and damage families must generate the combat case catalog.",
+    "Dialogue acceptance is per INFO, response, condition, choice edge, voice asset, and LIP asset as applicable.",
+    "The 304 crafting stations are an exact candidate set pending authored-field review before promotion as the final denominator.",
+    "Changing language, official plugin order, DLC set, or asset archives creates a new scopeId and resets corpus-derived percentages."
+  ]
+}

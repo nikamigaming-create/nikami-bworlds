@@ -1,5 +1,11 @@
 # Fallout 3 / New Vegas Retail-Parity Reboot Guide
 
+> For the current whole-game FNV scope, percentages, dependency order, and
+> definition of done, begin with `docs/fnv-100-percent-parity-plan.md`. This
+> reboot guide remains the retail-oracle, patch, and historical evidence
+> workflow; its dated active-truth section does not supersede the control
+> plane.
+
 This is the durable handoff for continuing the flat-screen Fallout 3 and
 Fallout: New Vegas compatibility work. It is written for a person or an agent
 starting with no conversation history.

@@ -1,0 +1,519 @@
+{
+  "schema": "nikami-fnv-parity-control-plane/v1",
+  "asOf": "2026-07-17",
+  "scopeId": "fnv-ultimate-edition-en-official-v1",
+  "objective": "A clean flat-screen OpenMW build in which a player can naturally start, finish, save, reload, and replay Fallout: New Vegas plus every official DLC with retail-equivalent game state, behavior, presentation, audio, timing, and persistence.",
+  "denominators": "catalog/fnv-parity-denominators.json",
+  "scorePolicy": {
+    "certifiedParityFormula": "min(axisScore)",
+    "balancedAxisProgressFormula": "mean(axisScore), diagnostic only",
+    "axisScoreFormula": "min(completeCapabilityCases/totalCapabilityCases, minimum(accepted/total for each required content-instance family))",
+    "contentMicroCoverageFormula": "sum(acceptedContentInstances)/sum(totalContentInstances), diagnostic only",
+    "completeCapabilityRule": "A capability case is complete only after its exit criterion passes discovery, exact format/retail contract, runtime binding, native behavior, mutation, lifecycle/save-load where applicable, retail differential, promoted-binary provenance, and regressions.",
+    "partialCreditRule": "No partial maturity state earns certified parity credit. It remains visible only as engineering progress.",
+    "failureRule": "Unknown, unvisited, unsupported, fallback, warning, forced proof state, synthetic stage change, missing evidence, or unpromoted code counts as not complete.",
+    "releaseRule": "Parity ready is true only when every axis is exactly 100%, every generated content row is pass, the natural journey matrix is green, and there are zero unexplained warnings/fallbacks.",
+    "capabilityInventoryFloor": 179,
+    "capabilityInventoryRule": "The 179 checked-in cases are a minimum macro taxonomy, not a claim of exhaustive discovery. Newly discovered retail responsibilities enter the denominator immediately. A case may be removed only through a versioned, user-approved exclusion row.",
+    "counterPromotionRule": "An accepted content numerator above zero must be derived from an immutable generated result ledger; hand-edited accepted counters are invalid.",
+    "maturityStates": [
+      "uncovered",
+      "parser-only",
+      "implemented-unproven",
+      "focused-tested",
+      "bounded-runtime",
+      "bounded-retail-differential",
+      "failing",
+      "complete"
+    ]
+  },
+  "currentTruth": {
+    "certifiedParityPct": 0.0,
+    "balancedAxisProgressPct": 0.0,
+    "releaseReady": false,
+    "capabilityInventoryComplete": false,
+    "minimumKnownCapabilityCases": 179,
+    "completeCapabilityCases": 0,
+    "openCapabilityCases": 179,
+    "uncoveredCapabilityCases": 75,
+    "failingCapabilityCases": 46,
+    "acceptedContentInstances": 0,
+    "formalFNVProductSubsystems": { "complete": 1, "total": 13, "pct": 7.69 },
+    "formalAllLedgerRowsIncludingControls": { "complete": 4, "total": 16, "pct": 25.0 },
+    "formalControlsWarning": "The 25% figure includes FO3 control, Morrowind regression, and patch replay. It is infrastructure health and must never be reported as FNV parity.",
+    "wholeCorpusRuntimeCoverage": "below 0.1% observed; 0.00% accepted",
+    "formalPromotedEngineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
+    "localEngineHeadAtAudit": "7ec59e3293",
+    "unpromotedLocalCommitCountAtAudit": 40
+  },
+  "releasePrerequisites": {
+    "capabilityInventoryComplete": false,
+    "contentDenominatorsFrozen": false,
+    "generatedResultLedgersComplete": false,
+    "naturalJourneyMatrixComplete": false,
+    "promotedReleaseManifestComplete": false,
+    "cleanInstallReproductionComplete": false
+  },
+  "evidence": {
+    "formal-ledger": { "kind": "path", "path": "catalog/fnv-flat-acceptance-ledger.json" },
+    "compat-ledger": { "kind": "path", "path": "docs/fallout-compatibility-evidence-ledger.md" },
+    "session-run": { "kind": "path", "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/result.json" },
+    "interaction-run": { "kind": "path", "path": "run/fnv-authored-fog-dialogue-gate-20260717/20260717-161921/manifest.json" },
+    "sky-run": { "kind": "path", "path": "run/fnv-natural-sky-gate-20260717/fallout_new_vegas-20260717-153610/manifest.json" },
+    "sky-return-run": { "kind": "path", "path": "run/fnv-natural-sky-door-return-20260717/20260717-154128/manifest.json" },
+    "voice-run": { "kind": "path", "path": "run/fnv-multi-response-voice-gate-20260717/fallout_new_vegas-20260717-162118/manifest.json" },
+    "combat-run": { "kind": "path", "path": "run/fnv-combat-live-visible-telemetry-gate/actor-sweep-index-20260717-084941.json" },
+    "engine-store-source": { "kind": "path", "path": "D:/code/nikami-openmw-lab/apps/openmw/mwworld/esmstore.hpp" },
+    "engine-class-source": { "kind": "path", "path": "D:/code/nikami-openmw-lab/apps/openmw/mwclass/classes.cpp" },
+    "engine-cell-save-source": { "kind": "path", "path": "D:/code/nikami-openmw-lab/apps/openmw/mwworld/cellstore.cpp" }
+  },
+  "onionLayers": [
+    {
+      "id": 0,
+      "name": "Freeze truth",
+      "exit": "Pristine retail profile, committed master/archive hashes, master-aware winning-record census, asset graph, zero unexplained parse rows, and a reproducible score report.",
+      "hardStop": "No feature percentage is certifiable while the corpus or denominator is mutable."
+    },
+    {
+      "id": 1,
+      "name": "Runtime substrate",
+      "exit": "The general native FNV state, identity, persistence, event-scheduler, command-registry, condition-registry, and GECK-bytecode architecture exists; the exact subset required by the first natural spine is implemented without record-specific substitutions; every still-unknown record/opcode/state family is generated into a red ledger row.",
+      "hardStop": "Do not build the spine on synthetic SetStage, ESM3 player substitution, record-specific Lua, or state that disappears on reload; do not postpone architecture validation until every opcode is implemented."
+    },
+    {
+      "id": 2,
+      "name": "Natural playable spine",
+      "exit": "Retail intro through Doc Mitchell character creation, Goodsprings tutorial, HUD/Pip-Boy, inventory, combat, dialogue, quest advancement, manual save, quit, reload, and continuation pass without harness-driven state changes.",
+      "hardStop": "A driven subsystem circuit or screenshot cannot substitute for natural play."
+    },
+    {
+      "id": 3,
+      "name": "Mechanic equivalence classes",
+      "exit": "Every stored/runtime record family, GECK opcode/event/command/condition, activation, inventory, weapon, damage, AI package, dialogue, quest, UI, audio, render, and persistence variant has an exact handler plus boundary tests and at least one retail differential.",
+      "hardStop": "No actor-, quest-, cell-, or FormID-specific gameplay hacks."
+    },
+    {
+      "id": 4,
+      "name": "Whole-corpus crawl",
+      "exit": "Every one of 628,395 winning live records, 427,319 live placements, 181,642 unique VFS paths, and every generated feature row is classified and has a deterministic result.",
+      "hardStop": "Unseen, unknown, fallback, and warning rows are failures, not exclusions."
+    },
+    {
+      "id": 5,
+      "name": "Natural campaigns and DLCs",
+      "exit": "All base-game factions/endings, every official quest, companion arc, minigame, and all four story DLCs plus GRA/preorder content complete from clean saves with retail state and endings.",
+      "hardStop": "Forced quest stages earn diagnostic evidence only."
+    },
+    {
+      "id": 6,
+      "name": "Differential, lifecycle, and soak",
+      "exit": "Retail/OpenMW state, pixels, audio, timing, cell unload/reload, interruption, save/load, performance, and long-soak matrices pass on one promoted binary with clean controls.",
+      "hardStop": "Nonblack screenshots, clean exits, or focused unit tests alone are insufficient."
+    },
+    {
+      "id": 7,
+      "name": "Release and enhancement lane",
+      "exit": "Clean-machine install is reproducible; release manifest is immutable; optional graphics mods pass the same regression suite without contributing retail-parity credit.",
+      "hardStop": "Mods cannot mask or score around a retail-engine failure."
+    }
+  ],
+  "axes": [
+    {
+      "id": "provenance-build-replay",
+      "name": "Provenance, build, replay, and controls",
+      "cases": [
+        { "id": "official-master-corpus", "state": "focused-tested", "exit": "Ten official master sizes, hashes, order, overrides, and deletes reproduce from committed tooling.", "evidence": ["formal-ledger"] },
+        { "id": "official-archive-corpus", "state": "parser-only", "exit": "Twenty-one archive hashes and all winning VFS entries reproduce with zero unexplained duplicates.", "evidence": ["formal-ledger"] },
+        { "id": "pristine-retail-profile", "state": "failing", "exit": "Parity profile loads only official masters/archives and isolated writable state.", "evidence": ["formal-ledger"] },
+        { "id": "clean-session-integrity", "state": "bounded-runtime", "exit": "Native level-one session uses no dry start, forced weather/image-space, actor neutralization, foreground input, or implicit equipment, and the accepted result carries a normal exit plus immutable promoted binary, corpus, profile, save, and evidence hashes.", "evidence": ["session-run", "formal-ledger"] },
+        { "id": "retail-oracle-lock", "state": "bounded-retail-differential", "exit": "Oracle build, game version, corpus, save, camera, time, weather, and capture contract are immutable for every differential.", "evidence": ["compat-ledger"] },
+        { "id": "overlay-queue-replay", "state": "failing", "exit": "Every local engine commit is exported, replayed from the locked base, rebuilt, and tree-identical.", "evidence": ["formal-ledger"] },
+        { "id": "fo3-morrowind-regressions", "state": "bounded-runtime", "exit": "Shared FO3 paths and Morrowind controls pass every promoted FNV slice on the same binary.", "evidence": ["formal-ledger"] },
+        { "id": "warning-fallback-zero", "state": "failing", "exit": "Runtime and crawl contain zero unexplained ESM3 fallbacks, unhandled controllers/stages, missing resources, or compatibility defaults.", "evidence": ["interaction-run"] }
+      ],
+      "instances": [
+        { "id": "official-masters", "observed": 10, "accepted": 0, "total": 10 },
+        { "id": "official-archives", "observed": 21, "accepted": 0, "total": 21 }
+      ]
+    },
+    {
+      "id": "content-census-parsing",
+      "name": "Content census and parsing",
+      "cases": [
+        { "id": "physical-record-headers", "state": "focused-tested", "exit": "All 629,798 physical headers and override chains parse with exact byte consumption.", "evidence": ["engine-store-source"] },
+        { "id": "master-formid-resolution", "state": "focused-tested", "exit": "Every master-relative FormID resolves through the frozen load order; the one malformed GRA REFR is explicitly classified.", "evidence": ["engine-store-source"] },
+        { "id": "winning-record-resolution", "state": "focused-tested", "exit": "Committed tooling reproduces 628,395 official winning live records and 68 winning deletes.", "evidence": ["engine-store-source"] },
+        { "id": "record-family-storage", "state": "failing", "exit": "Every FNV record family is stored or explicitly proven irrelevant; current store coverage is 61 of 140 cross-game enums.", "evidence": ["engine-store-source"] },
+        { "id": "subrecord-byte-contracts", "state": "failing", "exit": "Every observed subrecord/flag/version variant has exact parser tests and no ignored gameplay-bearing bytes.", "evidence": ["engine-store-source"] },
+        { "id": "placed-base-resolution", "state": "focused-tested", "exit": "All 427,319 live placements resolve to a winning base or an explicit engine-reserved special form.", "evidence": ["engine-store-source"] },
+        { "id": "script-attachment-resolution", "state": "parser-only", "exit": "All 5,150 SCRI attachments and quest/dialogue result scripts resolve to executable contracts.", "evidence": ["engine-store-source"] },
+        { "id": "record-asset-graph", "state": "uncovered", "exit": "Every record-to-asset edge resolves to a winning VFS path and decode/runtime result." },
+        { "id": "unsupported-record-zero", "state": "failing", "exit": "No winning live record required by retail play is skipped, generic-no-op, or parser-only.", "evidence": ["engine-store-source", "engine-class-source"] }
+      ],
+      "instances": [
+        { "id": "winning-live-records", "observed": 628395, "accepted": 0, "total": 628395 },
+        { "id": "winning-vfs-paths", "observed": 181642, "accepted": 0, "total": 181642 }
+      ]
+    },
+    {
+      "id": "world-traversal-physics",
+      "name": "World traversal, streaming, physics, navigation, and doors",
+      "cases": [
+        { "id": "worldspace-resolution", "state": "bounded-runtime", "exit": "All worldspace inheritance, climate, water, map, and transition fields match retail.", "evidence": ["sky-run"] },
+        { "id": "exterior-streaming", "state": "bounded-runtime", "exit": "Every exterior loads, crosses boundaries, pages LOD, and returns without missing scenery or state loss.", "evidence": ["session-run"] },
+        { "id": "interior-loading", "state": "bounded-runtime", "exit": "Every interior loads actors, references, lighting, audio, nav, and scripts without fallback.", "evidence": ["interaction-run"] },
+        { "id": "door-teleport-graph", "state": "bounded-runtime", "exit": "All 1,378 directed XTEL transitions and 485 cell pairs work in both directions with retail placement/timing.", "evidence": ["interaction-run"] },
+        { "id": "locks-keys-ownership", "state": "uncovered", "exit": "Locked, keyed, owned, trapped, crime, and persistence variants match retail." },
+        { "id": "collision-movement", "state": "bounded-runtime", "exit": "Player, actors, projectiles, doors, statics, terrain, water, and triggers collide with retail dimensions and stepping.", "evidence": ["session-run", "combat-run"] },
+        { "id": "authored-navmesh", "state": "failing", "exit": "NAVM/NAVI and doors/path portals drive retail-equivalent paths instead of generated-only navigation.", "evidence": ["engine-store-source"] },
+        { "id": "cross-cell-pathfinding", "state": "uncovered", "exit": "Actors follow authored packages across exterior cells and doors without teleports or stalls." },
+        { "id": "enable-parent-persistence", "state": "focused-tested", "exit": "Every XESP chain, quest enable state, disable/delete, unload/reload, and save/load transition is exact.", "evidence": ["compat-ledger"] },
+        { "id": "time-wait-sleep", "state": "uncovered", "exit": "Game time, timescale, wait, sleep, trespass, rest restrictions, schedules, and needs advance exactly." },
+        { "id": "map-fast-travel", "state": "failing", "exit": "All 320 markers, discovery state, local/global map, restrictions, travel time, encounters, and persistence work naturally.", "evidence": ["formal-ledger"] },
+        { "id": "lod-paging-occlusion", "state": "bounded-retail-differential", "exit": "Terrain/object/tree/actor LOD and occlusion match across all cells, distances, times, and reloads.", "evidence": ["compat-ledger"] }
+      ],
+      "instances": [
+        { "id": "cells", "observed": 2, "accepted": 0, "total": 44517 },
+        { "id": "interaction-cells", "observed": 2, "accepted": 0, "total": 2516 },
+        { "id": "placed-references", "observed": 7, "accepted": 0, "total": 427319 },
+        { "id": "door-teleports", "observed": 2, "accepted": 0, "total": 1378 },
+        { "id": "map-markers", "observed": 0, "accepted": 0, "total": 320 }
+      ]
+    },
+    {
+      "id": "rendering-weather-materials",
+      "name": "Rendering, weather, materials, animation presentation, and pixels",
+      "cases": [
+        { "id": "terrain-landscape", "state": "failing", "exit": "LAND/LTEX, blends, normals, distant terrain, seams, and colors match every worldspace.", "evidence": ["formal-ledger"] },
+        { "id": "architecture-statics", "state": "bounded-runtime", "exit": "All NIF/controller/material variants render with correct transforms, visibility, collision, and LOD.", "evidence": ["session-run"] },
+        { "id": "water", "state": "failing", "exit": "WATR/PWAT surfaces, depth, reflection, refraction, fog, current, sound, collision, and underwater state match retail.", "evidence": ["formal-ledger"] },
+        { "id": "sky-clouds", "state": "bounded-runtime", "exit": "All climates/weather/times render retail-equivalent atmosphere, four authored cloud layers, sun, moons, stars, transitions, and lifecycle.", "evidence": ["sky-run", "sky-return-run"] },
+        { "id": "weather-fog", "state": "bounded-runtime", "exit": "All 98 WTHR records and transitions reproduce colors, near/far/power curves, wind, sounds, and lifecycle.", "evidence": ["interaction-run"] },
+        { "id": "precipitation-lightning", "state": "uncovered", "exit": "Rain, snow, ash, lightning, thunder, ripples, wind, occlusion, and transitions match retail." },
+        { "id": "lighting-shadows", "state": "failing", "exit": "Exterior/interior lighting templates, local lights, shadows, ambient, sun, emissive, and exposure match retail pixels.", "evidence": ["formal-ledger"] },
+        { "id": "materials-alpha-reflection-emissive", "state": "failing", "exit": "Every shader/material flag handles alpha, windows, signs, reflection, glow, skin, decals, and depth without bleed or black planes.", "evidence": ["formal-ledger"] },
+        { "id": "image-space-hdr-bloom", "state": "failing", "exit": "IMGS/IMAD, HDR adaptation, bloom, tint, blur, DOF, fade, cinematic effects, and ordering match shader-byte and pixel oracles.", "evidence": ["compat-ledger"] },
+        { "id": "particles-decals-impacts", "state": "uncovered", "exit": "Muzzle flashes, tracers, impacts, blood, dust, smoke, fire, explosions, decals, and lifetime/order match retail." },
+        { "id": "npc-face-body", "state": "failing", "exit": "Every race/sex/head/body/hair/beard/eyes/teeth/hands/outfit/skin configuration renders and animates correctly.", "evidence": ["formal-ledger"] },
+        { "id": "creature-presentation", "state": "implemented-unproven", "exit": "Every creature skeleton, skin, attachment, animation, effect, LOD, death, and gore variant is accepted.", "evidence": ["engine-class-source"] },
+        { "id": "weapons-items-attachments", "state": "bounded-runtime", "exit": "Every item/weapon model, holster, grip, magazine, projectile helper, icon, world/drop state, and LOD matches retail.", "evidence": ["combat-run"] },
+        { "id": "animation-transform-stack", "state": "bounded-retail-differential", "exit": "All KF/controller/interpolator/blend/root-motion/priorities and lifecycle states match representative retail traces and every outlier.", "evidence": ["compat-ledger"] },
+        { "id": "pixel-differential", "state": "failing", "exit": "Same-state native retail/OpenMW frames pass explicit masks, transforms, color, material, silhouette, and temporal tolerances; nonblack statistics are not evidence.", "evidence": ["formal-ledger"] }
+      ],
+      "instances": [
+        { "id": "unique-vfs-assets", "observed": 0, "accepted": 0, "total": 181642 },
+        { "id": "weather-records", "observed": 1, "accepted": 0, "total": 98 },
+        { "id": "climates", "observed": 1, "accepted": 0, "total": 46 },
+        { "id": "regions", "observed": 1, "accepted": 0, "total": 317 }
+      ]
+    },
+    {
+      "id": "player-ui-character-creation",
+      "name": "Player rules, controls, HUD, Pip-Boy, and character creation",
+      "cases": [
+        { "id": "native-fnv-player-model", "state": "failing", "exit": "Courier uses native FNV actor values, inventory/equipment, race/appearance, SPECIAL, skills, perks, limbs, reputation, and save state—not an ESM3 proxy.", "evidence": ["engine-class-source"] },
+        { "id": "main-menu-new-game", "state": "uncovered", "exit": "Main menu and New Game reproduce retail flow without skip-menu/start scripts." },
+        { "id": "intro-cinematic", "state": "uncovered", "exit": "Retail BIK playback, subtitles/audio, skip behavior, transition, and state match." },
+        { "id": "doc-mitchell-character-creation", "state": "uncovered", "exit": "Wake-up, name, sex, race/face, SPECIAL, skills, traits, review, equipment, and exit naturally complete." },
+        { "id": "keyboard-mouse-input", "state": "bounded-runtime", "exit": "Every retail action, binding, sensitivity, menu context, edge trigger, hold/repeat, and remap works.", "evidence": ["session-run"] },
+        { "id": "gamepad-input", "state": "uncovered", "exit": "Every gameplay/menu control, deadzone, vibration, glyph, context, and remap works." },
+        { "id": "first-third-person-camera", "state": "bounded-runtime", "exit": "FOV, eye height, collision, zoom, iron sights, transitions, bob, sway, dialogue, death, and save state match.", "evidence": ["session-run"] },
+        { "id": "hud", "state": "failing", "exit": "Retail HP/AP/compass/condition/ammo/crosshair/cripple/stealth/messages/subtitles and scaling work.", "evidence": ["formal-ledger"] },
+        { "id": "pip-boy", "state": "failing", "exit": "Stats, Items, Data, Map, Radio, quests, notes, effects, reputation, controls, animations, audio, and persistence work.", "evidence": ["formal-ledger"] },
+        { "id": "pause-settings-quit", "state": "implemented-unproven", "exit": "Pause, settings, save/load, help, controls, display/audio, quit, and resume preserve retail state.", "evidence": ["session-run"] },
+        { "id": "tutorials-messages-localization", "state": "uncovered", "exit": "All MESG/tutorial/help/subtitle/string variants render, gate input, persist, and localize correctly." }
+      ],
+      "instances": [
+        { "id": "canonical-player-start-flow", "observed": 0, "accepted": 0, "total": 1 },
+        { "id": "input-families", "observed": 1, "accepted": 0, "total": 2 },
+        { "id": "pip-boy-primary-tabs", "observed": 0, "accepted": 0, "total": 5 }
+      ]
+    },
+    {
+      "id": "activation-locks-objects",
+      "name": "Object activation, locks, terminals, furniture, and world interactions",
+      "cases": [
+        { "id": "activation-dispatch", "state": "failing", "exit": "Every placed base type resolves to an exact activation handler; no gameplay object inherits generic NullAction.", "evidence": ["engine-class-source"] },
+        { "id": "doors", "state": "bounded-runtime", "exit": "Teleport and animated doors cover locked/keyed/owned/scripted/enable-parent/lifecycle/save variants.", "evidence": ["interaction-run"] },
+        { "id": "locks-keys-lockpicking", "state": "uncovered", "exit": "Key use, lock levels, lockpick UI/minigame, force lock, crime, traps, sounds, and persistence match." },
+        { "id": "ownership-theft-crime", "state": "uncovered", "exit": "Ownership, factions, trespass, stolen flags, witnesses, karma, aggression, bounty, and reset match." },
+        { "id": "activators-switches", "state": "implemented-unproven", "exit": "Every one of 9,979 ACTI/TACT placements executes prompt, animation, sound, script, state, and persistence.", "evidence": ["engine-class-source"] },
+        { "id": "containers", "state": "focused-tested", "exit": "All 10,778 containers open, transfer all item/list types, honor locks/ownership/scripts/reset, and persist through unload/save/load on committed code.", "evidence": ["engine-class-source", "engine-cell-save-source"] },
+        { "id": "terminals-hacking", "state": "uncovered", "exit": "All 357 placed terminals and 1,350 menu items run text, menus, scripts, locks, hacking, sounds, and persistence." },
+        { "id": "radios", "state": "bounded-runtime", "exit": "All 425 placed radios handle power, range, static, station scheduling, subtitles, activation sounds, unload, and save/load.", "evidence": ["interaction-run"] },
+        { "id": "furniture-beds", "state": "failing", "exit": "Every marker/direction handles ownership, approach, enter, idle, dialogue, sleep/wait, exit, interruption, unload, and save/load without pose drift.", "evidence": ["compat-ledger", "interaction-run"] },
+        { "id": "flora-harvest", "state": "uncovered", "exit": "Harvest chance, loot, animation, sound, respawn, ownership, scripts, and persistence match." },
+        { "id": "notes-books-holotapes", "state": "uncovered", "exit": "Read/play/take, skill/quest effects, text/audio, UI, ownership, and persistence match." },
+        { "id": "traps-scripted-setpieces", "state": "uncovered", "exit": "All triggers, traps, hazards, enable chains, scripted movers, destructibles, and cinematic set pieces execute naturally and persist." }
+      ],
+      "instances": [
+        { "id": "placed-doors", "observed": 2, "accepted": 0, "total": 3457 },
+        { "id": "placed-containers", "observed": 0, "accepted": 0, "total": 10778 },
+        { "id": "placed-terminals", "observed": 0, "accepted": 0, "total": 357 },
+        { "id": "terminal-menu-items", "observed": 0, "accepted": 0, "total": 1350 },
+        { "id": "placed-radios", "observed": 1, "accepted": 0, "total": 425 },
+        { "id": "placed-activators", "observed": 1, "accepted": 0, "total": 9979 }
+      ]
+    },
+    {
+      "id": "inventory-economy-crafting",
+      "name": "Inventory, equipment, loot, economy, and crafting",
+      "cases": [
+        { "id": "item-family-runtime", "state": "parser-only", "exit": "Every weapon, ammo, armor, aid, misc, key, book, note, mod, leveled item, quest item, and currency has exact runtime semantics.", "evidence": ["engine-class-source"] },
+        { "id": "pickups-drops-world-stacks", "state": "uncovered", "exit": "Loose take/drop, stacking, ownership, physics, scripts, quest flags, respawn, and persistence match." },
+        { "id": "inventory-transfer-ui", "state": "failing", "exit": "Player/container/corpse/companion transfer, sorting, icons, weights, values, hotkeys, sounds, and restrictions work.", "evidence": ["formal-ledger"] },
+        { "id": "equipment-outfits", "state": "failing", "exit": "Equip/unequip, body slots, outfits, armor effects, weapon/ammo pairing, visuals, AI, and persistence match.", "evidence": ["formal-ledger"] },
+        { "id": "consumables-effects", "state": "uncovered", "exit": "Aid/food/drink/chems, addiction, duration, stacking, hardcore needs, animation, sound, and UI match." },
+        { "id": "weapon-mods-ammo-switch", "state": "uncovered", "exit": "Weapon mods, ammo types, recipes, visuals, stats, selection, inventory, and persistence match." },
+        { "id": "condition-repair", "state": "uncovered", "exit": "Condition loss, jams, repair skill/items/vendors, jury rigging, UI, value, damage, and persistence match." },
+        { "id": "workbench-crafting", "state": "uncovered", "exit": "Every reviewed workbench recipe, skill/perk condition, ingredient delta, output, UI, animation, and persistence passes." },
+        { "id": "reloading-bench", "state": "uncovered", "exit": "Breakdown/hand-load recipes, ammo variants, perks, UI, and inventory deltas match." },
+        { "id": "campfire-cooking", "state": "uncovered", "exit": "Campfire/cooking recipes, Survival checks, ingredients, outputs, UI, and effects match." },
+        { "id": "vendors-barter-services", "state": "uncovered", "exit": "Vendor inventory, caps, barter math, skill/perk/reputation, restock, repair/doctor services, crime, and persistence match." },
+        { "id": "pickpocket", "state": "uncovered", "exit": "Detection, chance, item restrictions, caught response, karma/crime, reverse pickpocket, and persistence match." },
+        { "id": "corpse-loot", "state": "uncovered", "exit": "Every NPC/creature corpse exposes correct inventory, equipment, ownership, quest state, physics, decay, and persistence." },
+        { "id": "leveled-lists-respawn", "state": "parser-only", "exit": "All leveled item/NPC/creature lists resolve at retail level/chance/count, seed, difficulty, DLC, reset, and save behavior.", "evidence": ["engine-store-source"] }
+      ],
+      "instances": [
+        { "id": "placed-containers", "observed": 0, "accepted": 0, "total": 10778 },
+        { "id": "crafting-station-candidates", "observed": 0, "accepted": 0, "total": 304 },
+        { "id": "leveled-npc-lists", "observed": 0, "accepted": 0, "total": 397 },
+        { "id": "leveled-creature-lists", "observed": 0, "accepted": 0, "total": 437 }
+      ]
+    },
+    {
+      "id": "actor-appearance-animation",
+      "name": "Actor and creature appearance, animation, attachments, and physical state",
+      "cases": [
+        { "id": "npc-record-template-resolution", "state": "bounded-retail-differential", "exit": "Every NPC template/race/sex/head/outfit/inventory/scale/flags chain resolves exactly.", "evidence": ["compat-ledger"] },
+        { "id": "npc-face-body-render", "state": "failing", "exit": "Every humanoid appearance and skin/material variant passes native retail pixels and lifecycle states.", "evidence": ["formal-ledger"] },
+        { "id": "creature-render", "state": "implemented-unproven", "exit": "Every creature model/skeleton/material/scale/effect/LOD variant passes.", "evidence": ["engine-class-source"] },
+        { "id": "skeleton-controller-runtime", "state": "bounded-retail-differential", "exit": "All NIF/KF skeleton, controller, Bone LOD, priorities, attachments, and root motion match.", "evidence": ["compat-ledger"] },
+        { "id": "locomotion-turn-idle", "state": "bounded-runtime", "exit": "All actor/creature idle, walk, run, sneak, swim, jump, turn, aim, and transition states match retail.", "evidence": ["session-run"] },
+        { "id": "weapon-reload-attack-animation", "state": "bounded-runtime", "exit": "Every weapon family, grip, attack, recoil, reload, jam, holster, aim, and interruption sequence matches.", "evidence": ["combat-run"] },
+        { "id": "facial-lip-headtracking", "state": "bounded-retail-differential", "exit": "All facial morphs, 33 LIP targets, voice clock, emotion, gaze, blinking, and head tracking match across actors/lifecycles.", "evidence": ["voice-run", "compat-ledger"] },
+        { "id": "furniture-state-machine", "state": "failing", "exit": "Approach/entry/idle/dialogue/exit/interrupt/offscreen/unload/save states remain anchored and claim-safe for every marker.", "evidence": ["interaction-run", "compat-ledger"] },
+        { "id": "hit-death-ragdoll-animation", "state": "failing", "exit": "Damage reactions, stagger, knockdown, death, ragdoll, gore, dismemberment, corpse pose, loot, unload, and save match.", "evidence": ["combat-run"] },
+        { "id": "actor-equipment-state", "state": "failing", "exit": "Actors equip/use/swap/drop/loot all items with correct stats, visuals, AI, and persistence.", "evidence": ["engine-class-source"] }
+      ],
+      "instances": [
+        { "id": "placed-npcs", "observed": 1, "accepted": 0, "total": 3942 },
+        { "id": "placed-creatures", "observed": 0, "accepted": 0, "total": 3739 }
+      ]
+    },
+    {
+      "id": "ai-packages-furniture-followers",
+      "name": "AI, packages, detection, factions, and companions",
+      "cases": [
+        { "id": "package-scheduler-conditions", "state": "implemented-unproven", "exit": "All package schedules, flags, locations, targets, conditions, priority, interruption, evaluation, and persistence match.", "evidence": ["engine-class-source"] },
+        { "id": "wander-sandbox", "state": "implemented-unproven", "exit": "Radius, duration, idle selection, allowed behavior, nav, doors, cells, and reset match.", "evidence": ["engine-class-source"] },
+        { "id": "travel-cross-cell", "state": "failing", "exit": "Actors travel to references/locations across cells/doors with authored nav and resume correctly.", "evidence": ["engine-class-source"] },
+        { "id": "use-eat-sleep", "state": "failing", "exit": "Use Item At, Eat, Sleep, furniture claims, animations, inventory effects, and schedules execute rather than reduce to travel.", "evidence": ["engine-class-source"] },
+        { "id": "patrol-guard-follow-escort", "state": "uncovered", "exit": "Patrol, guard, accompany, follow, escort, flee, dialogue and quest control match." },
+        { "id": "combat-tactics", "state": "failing", "exit": "Detection, cover, range, weapon selection, movement, flee, healing, allies, tactics, nav, and search match.", "evidence": ["combat-run"] },
+        { "id": "detection-stealth", "state": "uncovered", "exit": "Sight, sound, light, distance, sneak skill, movement, alerts, markers, pickpocket, and persistence match." },
+        { "id": "factions-reputation-hostility", "state": "uncovered", "exit": "Faction membership/ranks, allies/enemies, reputation, disguises, aggression, crime, dialogue, AI, and save state match." },
+        { "id": "companions", "state": "uncovered", "exit": "Recruitment, wheel, follow distance, tactics, inventory, perks, affinity/quests, dismissal, death, DLC restrictions, and persistence match." },
+        { "id": "scenes-scripted-ai", "state": "uncovered", "exit": "All conversation/action scenes, markers, synchronized actors, scripts, cameras, interruptions, and saves match." },
+        { "id": "respawn-corpse-cleanup", "state": "uncovered", "exit": "Respawn timers, reset cells, dead counts, corpse persistence/cleanup, inventories, and quest exceptions match." }
+      ],
+      "instances": [
+        { "id": "ai-packages", "observed": 1, "accepted": 0, "total": 4885 },
+        { "id": "actor-placements", "observed": 1, "accepted": 0, "total": 7681 }
+      ]
+    },
+    {
+      "id": "combat-vats-damage",
+      "name": "Combat, VATS, damage, reactions, death, and encounter behavior",
+      "cases": [
+        { "id": "ranged-hitscan", "state": "bounded-runtime", "exit": "Player, NPC, and companion fire every hitscan family with exact spread, ammo, damage, impact, reaction, AI, and persistence.", "evidence": ["combat-run"] },
+        { "id": "physical-energy-projectiles", "state": "parser-only", "exit": "All PROJ paths simulate speed, gravity, collision, lifetime, tracer/beam, impact, explosion, sound, light, and save state.", "evidence": ["engine-store-source"] },
+        { "id": "shotguns-multi-projectile", "state": "failing", "exit": "Pellet count/spread, per-pellet hit, ammo, impacts, damage aggregation, armor, reactions, and AI match.", "evidence": ["combat-run"] },
+        { "id": "melee-unarmed", "state": "uncovered", "exit": "Reach, arcs, timing, blocks, power attacks, special moves, fatigue/AP, damage, effects, reactions, and AI match." },
+        { "id": "explosives-mines-grenades", "state": "uncovered", "exit": "Throw/place/arm/disarm, fuse, radius, LOS, chain reaction, force, damage, limbs, AI, ownership, and persistence match." },
+        { "id": "aim-recoil-spread-iron-sights", "state": "failing", "exit": "Player/AI aim, sway, recoil, spread, zoom, iron sights, crouch, skill, condition, perks, and camera match.", "evidence": ["combat-run"] },
+        { "id": "reload-magazine-jam-condition", "state": "failing", "exit": "Magazine/chamber, tactical/empty reload, interruption, ammo variants, jams, condition, animation, sound, AI, and saves match.", "evidence": ["combat-run"] },
+        { "id": "damage-dt-dr-armor", "state": "failing", "exit": "Weapon/effect damage, DT/DR, armor, ammo modifiers, difficulty, location, perks, criticals, resistance, and UI match.", "evidence": ["combat-run"] },
+        { "id": "limbs-cripple-status", "state": "uncovered", "exit": "Per-limb health, cripple effects, animations, aim/move penalties, doctor items/services, UI, AI, and persistence match." },
+        { "id": "hit-reaction-stagger-knockdown", "state": "failing", "exit": "Every actor/creature reaction is damage-driven and retail-equivalent; synthetic transform reactions are forbidden.", "evidence": ["combat-run"] },
+        { "id": "death-gore-dismemberment", "state": "uncovered", "exit": "Death selection, ragdoll, gore, dismemberment, ash/goo, kill cams, inventory, quests, crime, XP, and persistence match." },
+        { "id": "vats", "state": "uncovered", "exit": "Targeting UI, hit chance, AP, queues, time dilation, camera, limb shots, perks, execution, interruption, death, and save state match." },
+        { "id": "encounter-resolution", "state": "uncovered", "exit": "Generated authored-encounter catalog covers factions, leveled actors, packages, weapons, locations, scripts, respawn, loot, and outcomes." }
+      ],
+      "instances": [
+        { "id": "authored-encounter-zones-minimum", "observed": 0, "accepted": 0, "total": 28 },
+        { "id": "actor-placements", "observed": 1, "accepted": 0, "total": 7681 }
+      ]
+    },
+    {
+      "id": "dialogue-voice-lip",
+      "name": "Dialogue, conditions, choices, voice, LIP, and services",
+      "cases": [
+        { "id": "topic-info-selection", "state": "bounded-runtime", "exit": "All DIAL/INFO types, priority, PNAM/choice order, say-once, random, goodbye, deleted/disabled, and speaker contexts match.", "evidence": ["interaction-run"] },
+        { "id": "dialogue-conditions-runon", "state": "focused-tested", "exit": "All 69,277 authored conditions and RunOn/reference/subject/target semantics map to exact handlers; unsupported is zero.", "evidence": ["compat-ledger"] },
+        { "id": "choices-links-order", "state": "implemented-unproven", "exit": "All 28,215 choice edges, return links, ordering, visibility, repeats, loops, and state changes match.", "evidence": ["interaction-run"] },
+        { "id": "compiled-results", "state": "failing", "exit": "All begin/end result scripts execute through the GECK VM with retail side effects, errors, and persistence.", "evidence": ["interaction-run"] },
+        { "id": "multi-response-sequencing", "state": "bounded-runtime", "exit": "All 37,403 responses sequence text/voice/LIP/results, missing assets, interruption, replacement, cell change, and save state correctly.", "evidence": ["voice-run"] },
+        { "id": "voice-path-resolution", "state": "bounded-runtime", "exit": "Every voiced response resolves exact actor/voice type/language/archive paths with retail fallbacks and timing.", "evidence": ["voice-run"] },
+        { "id": "lip-decoding-playback", "state": "bounded-retail-differential", "exit": "All LIP formats/targets/clocks, missing/corrupt cases, facial animation, interruption, and sync pass.", "evidence": ["voice-run", "compat-ledger"] },
+        { "id": "subtitles-dialogue-ui", "state": "implemented-unproven", "exit": "General/dialogue subtitles, names, timing, choices, scrolling, input, scaling, and accessibility match.", "evidence": ["interaction-run"] },
+        { "id": "speaker-facing-camera", "state": "focused-tested", "exit": "Standing/furniture/dead/moving/multi-speaker body/head/camera policy passes native pose assertions and retail differentials.", "evidence": ["interaction-run", "compat-ledger"] },
+        { "id": "barter-services-skill-checks", "state": "uncovered", "exit": "Barter/repair/doctor/training, SPECIAL/skill/perk/reputation checks, costs, UI, results, crime, and state match." },
+        { "id": "dialogue-history-persistence", "state": "uncovered", "exit": "Said-once, topics, choices, disposition, speaker state, interruption, unload, save/load, and quest-dependent history persist." }
+      ],
+      "instances": [
+        { "id": "dialogue-topics", "observed": 1, "accepted": 0, "total": 21298 },
+        { "id": "dialogue-infos", "observed": 1, "accepted": 0, "total": 28896 },
+        { "id": "dialogue-responses", "observed": 2, "accepted": 0, "total": 37403 },
+        { "id": "dialogue-conditions", "observed": 1, "accepted": 0, "total": 69277 },
+        { "id": "dialogue-choice-edges", "observed": 1, "accepted": 0, "total": 28215 }
+      ]
+    },
+    {
+      "id": "quests-scripts-factions",
+      "name": "Quests, GECK scripts, conditions, factions, perks, and campaign state",
+      "cases": [
+        { "id": "quest-stage-state", "state": "focused-tested", "exit": "All quest running/completed/failed/stage flags and valid/invalid transitions match retail naturally and persist.", "evidence": ["interaction-run"] },
+        { "id": "objectives-targets-markers", "state": "parser-only", "exit": "All objectives, targets, visibility, map/compass markers, location resolution, updates, completion, and persistence match.", "evidence": ["engine-store-source"] },
+        { "id": "geck-bytecode-vm", "state": "uncovered", "exit": "Compiled object, quest, dialogue, terminal, package, effect, and event scripts execute the complete FNV bytecode contract." },
+        { "id": "script-event-scheduler", "state": "uncovered", "exit": "GameMode/MenuMode/OnActivate/OnDeath/OnHit/OnTrigger/equip/drop/cell and timer events schedule/order/reenter/save exactly." },
+        { "id": "command-opcode-coverage", "state": "failing", "exit": "Every authored opcode/command has exact types, side effects, errors, target context, scheduling, and persistence; unknown is zero.", "evidence": ["interaction-run"] },
+        { "id": "condition-function-coverage", "state": "failing", "exit": "Every quest/dialogue/package/perk/recipe condition function and RunOn mode matches retail; unsupported is zero.", "evidence": ["compat-ledger"] },
+        { "id": "globals-formlists-settings", "state": "parser-only", "exit": "All global variables, form lists, game settings, defaults, overrides, scripts, mutation, and persistence match.", "evidence": ["engine-store-source"] },
+        { "id": "actor-values-special-skills-perks", "state": "uncovered", "exit": "Every actor value, SPECIAL, skill, derived value, perk entry point, effect, condition, UI, AI, and save state matches." },
+        { "id": "factions-reputation-karma", "state": "uncovered", "exit": "Faction ranks/relations, reputation tiers, disguises, karma, crime, dialogue, AI, quests, perks, UI, and saves match." },
+        { "id": "natural-quest-triggers", "state": "failing", "exit": "Every official quest advances through authored world/dialogue/script conditions without harness SetStage or synthetic refs.", "evidence": ["interaction-run"] },
+        { "id": "scripted-scenes-cinematics", "state": "uncovered", "exit": "All scripted scenes, cameras, actor synchronization, dialogue, effects, controls, interruption, skip, and save behavior match." },
+        { "id": "endings-slides-credits", "state": "uncovered", "exit": "All ending-state calculations, narration, slides, music, credits, DLC effects, and return/quit behavior match." },
+        { "id": "quest-script-persistence", "state": "focused-tested", "exit": "Quest stages/objectives/variables/globals/scripts/events/aliases/scenes round-trip across all save types and content changes.", "evidence": ["engine-cell-save-source"] }
+      ],
+      "instances": [
+        { "id": "official-quests", "observed": 1, "accepted": 0, "total": 640 },
+        { "id": "quest-stages", "observed": 1, "accepted": 0, "total": 1405 },
+        { "id": "quest-objectives", "observed": 0, "accepted": 0, "total": 1479 },
+        { "id": "quest-targets", "observed": 0, "accepted": 0, "total": 1958 },
+        { "id": "standalone-scripts", "observed": 0, "accepted": 0, "total": 3707 },
+        { "id": "script-attachments", "observed": 0, "accepted": 0, "total": 5150 }
+      ]
+    },
+    {
+      "id": "audio-music-radio-video",
+      "name": "Audio, music, radio, voice, ambience, and video",
+      "cases": [
+        { "id": "video-playback", "state": "uncovered", "exit": "BIK video/audio/subtitle/skip/transition/control behavior works for intro and endings." },
+        { "id": "voice-dialogue", "state": "bounded-runtime", "exit": "All dialogue voices resolve, stream, sequence, attenuate, subtitle, lip-sync, interrupt, and persist correctly.", "evidence": ["voice-run"] },
+        { "id": "radio-station-scheduling", "state": "failing", "exit": "Stations, songs, news, DJ dialogue, conditions, order/randomness, time, static, range, UI, and persistence match.", "evidence": ["interaction-run"] },
+        { "id": "music-state", "state": "uncovered", "exit": "Exploration, dungeon, combat, location, scripted, stingers, transitions, priority, looping, and save state match." },
+        { "id": "ambient-region-weather", "state": "uncovered", "exit": "Region/location/weather/day-night ambience, random sounds, occlusion, interior/exterior transitions, and timing match." },
+        { "id": "effects-foley-activation", "state": "implemented-unproven", "exit": "Weapons, impacts, footsteps, doors, containers, UI, creatures, items, machines, traps, and activators use exact assets/parameters.", "evidence": ["interaction-run", "combat-run"] },
+        { "id": "spatial-mix-attenuation", "state": "failing", "exit": "Categories, volume curves, pitch, 3D position, attenuation, occlusion, reverb/acoustic spaces, ducking, and output match.", "evidence": ["interaction-run"] },
+        { "id": "audio-asset-coverage", "state": "uncovered", "exit": "Every winning OGG/WAV referenced by content resolves, decodes, plays or is explicitly unreachable; every voice response maps to audio/LIP." }
+      ],
+      "instances": [
+        { "id": "ogg-assets", "observed": 2, "accepted": 0, "total": 63575 },
+        { "id": "wav-assets", "observed": 0, "accepted": 0, "total": 4626 },
+        { "id": "lip-assets", "observed": 2, "accepted": 0, "total": 60702 },
+        { "id": "placed-radios", "observed": 1, "accepted": 0, "total": 425 }
+      ]
+    },
+    {
+      "id": "persistence-map-fast-travel",
+      "name": "Save/load, mutable world persistence, map, and fast travel",
+      "cases": [
+        { "id": "manual-quick-auto-save-load", "state": "failing", "exit": "All save types serialize, list, preview, load, overwrite, delete, recover, and preserve complete FNV state.", "evidence": ["engine-cell-save-source"] },
+        { "id": "reference-enable-delete-position", "state": "failing", "exit": "Every mutable ESM4 reference count/enabled/deleted/position/rotation/scale/ownership/script state round-trips.", "evidence": ["engine-cell-save-source"] },
+        { "id": "doors-locks", "state": "uncovered", "exit": "Door open/closed, lock/key/trap/ownership, animation, destination, unload, and save state round-trip." },
+        { "id": "containers-inventory", "state": "focused-tested", "exit": "All container/player/actor stacks, ownership, condition, mods, ammo, equipment, scripts, reset, unload, and save state round-trip on committed code.", "evidence": ["engine-cell-save-source"] },
+        { "id": "actor-stats-death-equipment", "state": "failing", "exit": "Actor values, health/limbs, effects, AI, inventory/equipment, death/corpse/gore, location, respawn, and save state round-trip.", "evidence": ["engine-cell-save-source"] },
+        { "id": "ai-package-furniture", "state": "failing", "exit": "Package stack/procedure/target/path/furniture claim/phase/anchor/interruption/unload and save state round-trip.", "evidence": ["interaction-run"] },
+        { "id": "quests-scripts-globals", "state": "focused-tested", "exit": "All quest/objective/variable/global/script locals/events/timers/scenes and enable chains round-trip.", "evidence": ["engine-cell-save-source"] },
+        { "id": "dialogue-history", "state": "uncovered", "exit": "Topics, said-once, choices, disposition, service state, interruptions, queued voice/LIP, and save state round-trip." },
+        { "id": "terminal-radio-activator", "state": "uncovered", "exit": "Power/menu/hack/door-control/radio playback/switch/script states round-trip across cell unload and save." },
+        { "id": "time-weather-audio", "state": "uncovered", "exit": "Calendar/time/timescale/weather transition/music/radio/random sequence and world timing round-trip deterministically." },
+        { "id": "map-discovery-fog", "state": "uncovered", "exit": "Markers, discovery, local-map fog, quest targets, notes, world map, and fast-travel availability round-trip." },
+        { "id": "dlc-boundaries", "state": "uncovered", "exit": "DLC entry/exit, stripped inventories, companions, radios, worldspaces, quests, endings, and return state persist exactly." },
+        { "id": "save-schema-migration", "state": "uncovered", "exit": "Schema/version changes, missing/added content, invalid data, rollback, and forward compatibility fail safely and preserve supported saves." }
+      ],
+      "instances": [
+        { "id": "mutable-reference-classes", "observed": 1, "accepted": 0, "total": 23 },
+        { "id": "official-quests", "observed": 1, "accepted": 0, "total": 640 },
+        { "id": "placed-containers", "observed": 0, "accepted": 0, "total": 10778 },
+        { "id": "placed-actors", "observed": 1, "accepted": 0, "total": 7681 }
+      ]
+    },
+    {
+      "id": "end-to-end-base-dlc-release",
+      "name": "Natural campaigns, DLCs, minigames, soak, and release",
+      "cases": [
+        { "id": "new-game-to-goodsprings", "state": "failing", "exit": "A clean New Game naturally reaches Goodsprings through intro and Doc Mitchell with authored player state, UI, quests, inventory, and save/load.", "evidence": ["formal-ledger"] },
+        { "id": "goodsprings-tutorial", "state": "failing", "exit": "Back in the Saddle and the Goodsprings tutorial/combat/interaction flow complete naturally with alternate choices.", "evidence": ["interaction-run"] },
+        { "id": "ncr-main-route", "state": "uncovered", "exit": "NCR main route completes naturally through ending slides and credits from clean saves." },
+        { "id": "legion-main-route", "state": "uncovered", "exit": "Legion main route completes naturally through ending slides and credits from clean saves." },
+        { "id": "house-main-route", "state": "uncovered", "exit": "Mr. House main route completes naturally through ending slides and credits from clean saves." },
+        { "id": "yes-man-main-route", "state": "uncovered", "exit": "Independent/Yes Man main route completes naturally through ending slides and credits from clean saves." },
+        { "id": "all-official-quests", "state": "uncovered", "exit": "Every one of 640 official quest records, branch, objective, failure, reward, and persistent consequence passes naturally." },
+        { "id": "dead-money", "state": "uncovered", "exit": "Dead Money entry, all quests/companions/mechanics/endings, inventory rules, and Mojave return pass." },
+        { "id": "honest-hearts", "state": "uncovered", "exit": "Honest Hearts entry, all quest branches/companions/endings, Zion systems, and Mojave return pass." },
+        { "id": "old-world-blues", "state": "uncovered", "exit": "Old World Blues entry, all quests/dialogue/perks/mechanics/endings, and Mojave return pass." },
+        { "id": "lonesome-road", "state": "uncovered", "exit": "Lonesome Road entry, all quests/ED-E mechanics/endings/launch choices, and Mojave return pass." },
+        { "id": "gra-preorder-content", "state": "uncovered", "exit": "GRA challenges, weapons, mods, ammo, recipes, achievements, and all preorder items/quests distribute and persist correctly." },
+        { "id": "companions", "state": "uncovered", "exit": "Every companion recruitment, personal quest, perk, command, dismissal, ending, death mode, DLC restriction, and save path passes." },
+        { "id": "casino-games-caravan", "state": "uncovered", "exit": "Blackjack, roulette, slots, Caravan, chips, bans, luck, rules, AI, UI, audio, rewards, and persistence match." },
+        { "id": "all-endings-slides", "state": "uncovered", "exit": "Every base/DLC/companion/faction/location ending predicate selects exact narration/slides/music/order." },
+        { "id": "performance-loading", "state": "uncovered", "exit": "Representative and worst-case cells meet frozen frame-time, hitch, loading, streaming, and memory budgets against retail/reference hardware." },
+        { "id": "crash-free-soak", "state": "uncovered", "exit": "Long travel/combat/dialogue/save-load/weather/fast-travel soak completes with zero crash, leak, corruption, hang, warning growth, or state drift." },
+        { "id": "clean-install-release", "state": "uncovered", "exit": "A clean machine can install the promoted build, point at legally installed data, create a fresh profile, play, save, reload, uninstall, and reproduce hashes." },
+        { "id": "graphics-mod-compatibility", "state": "uncovered", "exit": "A separately scored optional graphics stack installs deterministically and passes the entire retail regression suite without hiding failures or changing parity score." }
+      ],
+      "instances": [
+        { "id": "official-quests", "observed": 0, "accepted": 0, "total": 640 },
+        { "id": "main-faction-routes", "observed": 0, "accepted": 0, "total": 4 },
+        { "id": "story-dlcs", "observed": 0, "accepted": 0, "total": 4 },
+        { "id": "ending-matrix", "observed": 0, "accepted": 0, "total": 1 },
+        { "id": "clean-install-release", "observed": 0, "accepted": 0, "total": 1 }
+      ]
+    }
+  ],
+  "nextSlices": [
+    {
+      "order": 1,
+      "id": "commit-denominator-tooling",
+      "exit": "Committed census reproduces the frozen official corpus, assets, override graph, and every denominator; parity profile excludes FNVR and loose mods."
+    },
+    {
+      "order": 2,
+      "id": "close-container-wip",
+      "exit": "Current Saloon container slice is reviewed, rebuilt, runtime-proven, committed, and its save schema generalized without staging unrelated work."
+    },
+    {
+      "order": 3,
+      "id": "native-fnv-state-substrate",
+      "exit": "Native FNV player/actor values, inventory/equipment, factions, mutable reference state, and save schemas replace ESM3 substitution/skips."
+    },
+    {
+      "order": 4,
+      "id": "geck-vm-event-substrate",
+      "exit": "Content-derived opcode/command/condition inventory reaches zero unknowns; object/quest/dialogue/terminal events execute and persist."
+    },
+    {
+      "order": 5,
+      "id": "natural-new-game-spine",
+      "exit": "Intro through Doc Mitchell and Goodsprings tutorial is naturally playable with HUD/Pip-Boy, inventory, combat, quests, dialogue, save/quit/reload."
+    },
+    {
+      "order": 6,
+      "id": "equivalence-class-expansion",
+      "exit": "Every mechanic family is complete before breadth crawl expands its instance numerator."
+    },
+    {
+      "order": 7,
+      "id": "whole-corpus-crawl",
+      "exit": "All generated instance ledgers reach pass with zero unseen/unknown/fallback rows."
+    },
+    {
+      "order": 8,
+      "id": "campaign-dlc-differential-release",
+      "exit": "All natural journeys, retail differentials, persistence matrices, soak, replay, and clean-install gates reach 100%."
+    }
+  ]
+}
