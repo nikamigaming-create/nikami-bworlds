@@ -19,6 +19,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+
 function Resolve-RepoPath([string]$Path) {
     if ([IO.Path]::IsPathRooted($Path)) {
         return [IO.Path]::GetFullPath($Path)
@@ -149,6 +151,34 @@ if ($arguments -contains "--no-sound") {
 }
 $argumentLine = ($arguments | ForEach-Object { Quote-ProcessArgument ([string]$_) }) -join " "
 
+$configurationPaths = @(Get-NikamiOpenMWConfigurationInputPaths `
+    -ConfigDirectory @($profile, $baselineConfig, $fnvPlayableGraphicsConfig, $doorPreloadConfig, $sessionConfig) `
+    -AdditionalFile @($startup))
+$dataRoots = [Collections.Generic.List[string]]::new()
+foreach ($root in @(Get-NikamiOpenMWDataRootsFromConfig -ConfigPath $profileConfig) + @($morrowindData)) {
+    if (-not @($dataRoots | Where-Object { [string]::Equals($_, $root, [StringComparison]::OrdinalIgnoreCase) })) {
+        $dataRoots.Add($root) | Out-Null
+    }
+}
+$boundedInputEvidence = New-NikamiOpenMWBoundedInputEvidence `
+    -Executable $exe `
+    -ResourcesRoot $resources `
+    -ConfigurationPath $configurationPaths `
+    -DataConfigPath $profileConfig `
+    -DataRoot $dataRoots.ToArray()
+$boundedEvidenceSelfConsistent = [bool](Assert-NikamiOpenMWBoundedInputEvidence `
+    -Evidence $boundedInputEvidence `
+    -Executable $exe `
+    -ResourcesRoot $resources `
+    -ConfigurationPath $configurationPaths `
+    -DataConfigPath $profileConfig `
+    -DataRoot $dataRoots.ToArray())
+$boundedEvidencePath = Join-Path $output "bounded-input-evidence.json"
+$boundedEvidenceLogPath = Join-Path $output "bounded-input-evidence.log"
+$boundedInputEvidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $boundedEvidencePath -Encoding utf8
+@(Get-NikamiOpenMWBoundedInputEvidenceLogLines -Evidence $boundedInputEvidence) |
+    Set-Content -LiteralPath $boundedEvidenceLogPath -Encoding utf8
+
 $environmentPrefixes = @(
     "OPENMW_WORLD_VIEWER_",
     "OPENMW_PROOF_",
@@ -190,10 +220,22 @@ $timedOut = $false
 $exitCode = $null
 $stdoutTask = $null
 $stderrTask = $null
+$environmentIsolationPass = $false
+$preLaunchFreshness = $false
 try {
     foreach ($entry in $environment.GetEnumerator()) {
         [Environment]::SetEnvironmentVariable([string]$entry.Key, [string]$entry.Value, "Process")
     }
+    $unexpectedSkyEnvironment = @([Environment]::GetEnvironmentVariables("Process").Keys |
+        ForEach-Object { [string]$_ } |
+        Where-Object {
+            (Test-NikamiFnvSkyRuntimeEnvironmentName -Name $_) -and
+            -not $environment.Contains([string]$_)
+        })
+    if ($unexpectedSkyEnvironment.Count -ne 0) {
+        throw "Interaction-audit environment isolation failed: $($unexpectedSkyEnvironment -join ', ')"
+    }
+    $environmentIsolationPass = $true
     $startInfo = [Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $exe
     $startInfo.Arguments = $argumentLine
@@ -205,6 +247,10 @@ try {
     $startInfo.RedirectStandardError = $true
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
+    $preLaunchFreshness = [bool](Assert-NikamiOpenMWBoundedInputEvidence `
+        -Evidence $boundedInputEvidence -Executable $exe -ResourcesRoot $resources `
+        -ConfigurationPath $configurationPaths -DataConfigPath $profileConfig `
+        -DataRoot $dataRoots.ToArray() -VerifyCurrent)
     if (-not $process.Start()) {
         throw "Failed to start hidden OpenMW interaction audit."
     }
@@ -348,9 +394,19 @@ $authoredFogChecks = [ordered]@{
 $authoredFogFailures = @($authoredFogChecks.GetEnumerator() | Where-Object { -not [bool]$_.Value } |
     ForEach-Object { [string]$_.Key })
 $authoredFogPass = $authoredFogFailures.Count -eq 0
+$postRunFreshness = $false
+$postRunFreshnessFailure = $null
+try {
+    $postRunFreshness = [bool](Assert-NikamiOpenMWBoundedInputEvidence `
+        -Evidence $boundedInputEvidence -Executable $exe -ResourcesRoot $resources `
+        -ConfigurationPath $configurationPaths -DataConfigPath $profileConfig `
+        -DataRoot $dataRoots.ToArray() -VerifyCurrent)
+}
+catch { $postRunFreshnessFailure = $_.Exception.Message }
 $passed = -not $timedOut -and $exitCode -eq 0 -and $null -ne $resultMatch `
     -and $resultMatch.Groups["result"].Value -eq "pass" -and $pixelPass -and $doorPreloadPass `
-    -and $naturalSkyPass -and $authoredFogPass
+    -and $naturalSkyPass -and $authoredFogPass -and $boundedEvidenceSelfConsistent `
+    -and $environmentIsolationPass -and $preLaunchFreshness -and $postRunFreshness
 $manifest = [ordered]@{
     schema = "nikami-fnv-interaction-audit/v1"
     status = if ($passed) { "pass" } else { "fail" }
@@ -359,7 +415,21 @@ $manifest = [ordered]@{
     evidenceClass = "driven-subsystem-harness"
     soundEnabled = $true
     executable = $exe -replace "\\", "/"
-    executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
+    executableSha256 = [string]$boundedInputEvidence.executable.observedSha256
+    resources = $resources -replace "\\", "/"
+    resourceVersionContract = $boundedInputEvidence.resourceVersionContract
+    configurationContract = $boundedInputEvidence.configurationContract
+    officialCorpusContract = $boundedInputEvidence.officialCorpusContract
+    boundedInputEvidence = $boundedInputEvidence
+    boundedInputEvidencePath = $boundedEvidencePath -replace "\\", "/"
+    boundedInputEvidenceLogPath = $boundedEvidenceLogPath -replace "\\", "/"
+    boundedInputEvidenceStatus = if ($boundedEvidenceSelfConsistent) { "pass" } else { "fail" }
+    boundedInputFreshnessChecks = [ordered]@{
+        preLaunch = if ($preLaunchFreshness) { "pass" } else { "fail" }
+        postRun = if ($postRunFreshness) { "pass" } else { "fail" }
+        postRunFailure = $postRunFreshnessFailure
+    }
+    environmentIsolationStatus = if ($environmentIsolationPass) { "pass" } else { "fail" }
     startedAt = $startedAt.ToString("o")
     endedAt = [DateTime]::UtcNow.ToString("o")
     timeoutSeconds = $TimeoutSeconds

@@ -106,6 +106,19 @@ $argsList = @(
     "--start", $startCell
 )
 $argumentLine = ($argsList | ForEach-Object { Quote-CommandArg $_ }) -join " "
+$boundedInputEvidence = $null
+if ($WorldId -eq "fallout_new_vegas") {
+    $profileDirectory = (Resolve-Path -LiteralPath ([string]$world.profileDirectory)).Path
+    $profileConfig = Join-Path $profileDirectory "openmw.cfg"
+    $configurationPaths = @(Get-NikamiOpenMWConfigurationInputPaths -ConfigDirectory @($profileDirectory) `
+        -AdditionalFile @($seedPath, $startsPath))
+    $dataRoots = @(Get-NikamiOpenMWDataRootsFromConfig -ConfigPath $profileConfig)
+    $boundedInputEvidence = New-NikamiOpenMWBoundedInputEvidence -Executable $binary -ResourcesRoot $resourcesRoot `
+        -ConfigurationPath $configurationPaths -DataConfigPath $profileConfig -DataRoot $dataRoots
+    [void](Assert-NikamiOpenMWBoundedInputEvidence -Evidence $boundedInputEvidence -Executable $binary `
+        -ResourcesRoot $resourcesRoot -ConfigurationPath $configurationPaths `
+        -DataConfigPath $profileConfig -DataRoot $dataRoots)
+}
 
 Write-Host "Interactive Fallout world session"
 Write-Host "World:   $($world.displayName) [$WorldId]"
@@ -119,8 +132,12 @@ Write-Host "Environment:"
 foreach ($entry in $environment.GetEnumerator()) {
     Write-Host "  $($entry.Key)=$($entry.Value)"
 }
+if ($null -ne $boundedInputEvidence) {
+    foreach ($line in @(Get-NikamiOpenMWBoundedInputEvidenceLogLines -Evidence $boundedInputEvidence)) { Write-Host $line }
+}
 
 if ($DryRun) {
+    if ($null -ne $boundedInputEvidence) { Write-Host "Bounded input freshness: not-run (dry run; no launch)." }
     Write-Host "Dry run only; not starting OpenMW."
     exit 0
 }
@@ -133,6 +150,12 @@ if (-not $AllowDuplicate -and (Get-Process -Name $processName -ErrorAction Silen
 Clear-NikamiWorldViewerRuntimeEnvironment
 foreach ($entry in $environment.GetEnumerator()) {
     [Environment]::SetEnvironmentVariable([string]$entry.Key, [string]$entry.Value, "Process")
+}
+if ($null -ne $boundedInputEvidence) {
+    [void](Assert-NikamiOpenMWBoundedInputEvidence -Evidence $boundedInputEvidence -Executable $binary `
+        -ResourcesRoot $resourcesRoot -ConfigurationPath $configurationPaths `
+        -DataConfigPath $profileConfig -DataRoot $dataRoots -VerifyCurrent)
+    Write-Host "Bounded input freshness: pass (verified immediately before launch)."
 }
 
 $process = Start-Process -FilePath $binary -ArgumentList $argumentLine `
