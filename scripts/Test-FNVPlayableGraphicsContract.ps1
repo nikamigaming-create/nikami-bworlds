@@ -30,9 +30,9 @@ if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
         'distant terrain = true',
         'lod factor = 1.0',
         'composite map resolution = 512',
-        'object paging = false',
+        'object paging = true',
         'object paging active grid = false',
-        'object paging min size = 0.05',
+        'object paging min size = 0.01',
         'anisotropy = 8',
         'texture mipmap = linear',
         'antialiasing = 2',
@@ -73,11 +73,11 @@ Assert-Contract (-not [bool]$fnv.Cells.'preload enabled') `
     "Generated FNV profile enables expensive cell preloading."
 Assert-Contract ([bool]$fnv.Terrain.'distant terrain') `
     "Generated FNV profile does not enable distant terrain."
-Assert-Contract (-not [bool]$fnv.Terrain.'object paging') `
-    "Generated FNV profile enables object paging."
+Assert-Contract ([bool]$fnv.Terrain.'object paging') `
+    "Generated FNV profile does not retain distant object scenery."
 Assert-Contract (-not [bool]$fnv.Terrain.'object paging active grid') `
     "Generated FNV profile enables unsafe active-grid paging."
-Assert-Contract ([double]$fnv.Terrain.'object paging min size' -eq 0.05) `
+Assert-Contract ([double]$fnv.Terrain.'object paging min size' -eq 0.01) `
     "Generated FNV profile does not retain the bounded paging threshold."
 Assert-Contract ([int]$fnv.General.anisotropy -eq 8) `
     "Generated FNV profile does not use balanced 8x anisotropy."
