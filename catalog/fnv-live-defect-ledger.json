@@ -1,0 +1,360 @@
+{
+  "schema": "nikami-fnv-live-defect-ledger/v1",
+  "asOf": "2026-07-18",
+  "scopeId": "fnv-ultimate-edition-en-official-v1",
+  "purpose": "Persistent fail-closed ledger for every defect reported during natural Fallout: New Vegas play. Chat recollection is never used as the source of truth.",
+  "policy": {
+    "intake": "Every newly reported or automatically detected defect is added before implementation moves on.",
+    "closure": "A row closes only with a focused test, a natural-play reproduction, a retail differential, promoted binary/profile provenance, and a regression test or invariant.",
+    "rendererInvariant": "Character, creature, AI, dialogue, quest, UI, audio, or combat work may not alter static-world material routing, transparency, depth, reflection, LOD, weather, interior lighting, HUD masking, or VR compositor behavior unless the row explicitly owns that renderer change.",
+    "baselineRule": "The initial known-good OpenMW/OpenMW-VR set-piece rendering lineage must be hash-pinned. Until that commit and profile are pinned, all world-render rows remain open.",
+    "sliceRule": "Every accepted repair is committed as a bounded slice and records its commit in this ledger.",
+    "percentageRule": "Open, unverified, intermittent, or synthetic-only rows earn zero parity credit. Percentages are generated from evidence, never estimated from effort."
+  },
+  "baseline": {
+    "description": "Initial OpenMW/OpenMW-VR FNV import where authored terrain, buildings, interiors, clutter, furniture, windows, and ordinary set pieces rendered without the later reflection/transparency regressions.",
+    "engineCommit": null,
+    "profileHash": null,
+    "status": "needs-hash-pin",
+    "boundedVideoEvidence": "catalog/fnv-observations/2026-07-16-goodsprings-walk.json"
+  },
+  "statusCounts": {
+    "open": 30,
+    "fixedAwaitingDifferential": 0,
+    "closed": 0
+  },
+  "defects": [
+    {
+      "id": "FNV-RENDER-001",
+      "priority": "P0",
+      "subsystem": "renderer/material-routing",
+      "title": "Reflection shader bleeds onto non-window world materials",
+      "symptoms": ["World surfaces mirror the surrounding environment", "A window reflection treatment appears on unrelated meshes"],
+      "requiredGate": "Paired baseline/current material and screenshot census across Goodsprings exterior and three interiors proves reflection only on retail-authored reflective surfaces.",
+      "status": "open",
+      "owner": "C++/shader",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-RENDER-002",
+      "priority": "P0",
+      "subsystem": "renderer/depth-alpha",
+      "title": "Buildings, floors, rocks, furniture, boxes, and chairs blink or disappear",
+      "symptoms": ["Geometry becomes transparent or vanishes by view/cell", "Layer ordering allows seeing through authored set pieces", "Doc Mitchell's house and floors can nearly disappear"],
+      "requiredGate": "Camera-path screenshot and draw-state differential has zero unexplained visibility, depth-write, alpha-test, blend, cull, or render-bin changes from the known-good baseline.",
+      "status": "open",
+      "owner": "C++/shader",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-RENDER-003",
+      "priority": "P0",
+      "subsystem": "renderer/HUD-compositor",
+      "title": "HUD quad masks or removes world geometry",
+      "symptoms": ["World content disappears behind or around the HUD quad"],
+      "requiredGate": "Flat and VR HUD-on/HUD-off pixel differential proves the HUD changes only HUD pixels and never world depth or material state.",
+      "status": "open",
+      "owner": "C++/VR",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-RENDER-004",
+      "priority": "P0",
+      "subsystem": "weather/interior-lighting",
+      "title": "Lighting and image space swing between black-and-white, muddy, overbright, and nuclear-winter states",
+      "symptoms": ["Interior entry can become black and white", "Night and Strip transitions become muddy or extremely bright", "Exposure changes make the world unreadable"],
+      "requiredGate": "Retail/OpenMW time-and-weather matrix plus interior/exterior door loop matches weather, image-space, fog, ambient, sun, exposure, and transition state without synthetic overrides.",
+      "status": "open",
+      "owner": "C++/shader",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-RENDER-005",
+      "priority": "P0",
+      "subsystem": "sky/weather",
+      "title": "Sky and clouds intermittently disappear",
+      "symptoms": ["Clouds are present in some runs or cells and absent in others", "Sky was previously fixed and regressed"],
+      "requiredGate": "Natural load, door-return, save-load, and 24-hour weather matrix has continuous retail-authored sky/cloud geometry and textures in flat and VR.",
+      "status": "open",
+      "owner": "C++/shader",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-RENDER-006",
+      "priority": "P2",
+      "subsystem": "animated-statics",
+      "title": "Goodsprings flag appears duplicated and one copy does not animate",
+      "symptoms": ["Two flags occupy the authored location", "One flag is static"],
+      "requiredGate": "Retail/OpenMW node census and timed transform trace match instance count and controller motion.",
+      "status": "open",
+      "owner": "C++/assets",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-001",
+      "priority": "P0",
+      "subsystem": "AI/package/pathing/root-motion",
+      "title": "Town actors warp instead of naturally executing packages",
+      "symptoms": ["Actors jump or warp along chores", "Package movement does not produce continuous locomotion", "People mill around without retail timing or routes"],
+      "requiredGate": "Retail/OpenMW lockstep traces package selection, procedure state, nav path, transform, animation group, root motion, and destination through complete natural Goodsprings schedules.",
+      "status": "open",
+      "owner": "C++/Lua",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-002",
+      "priority": "P0",
+      "subsystem": "AI/animation/equipment",
+      "title": "Chore actors do not hold or use authored brooms, rakes, and equipment",
+      "symptoms": ["Actors attempt chores empty-handed", "Equipment state and animation do not agree"],
+      "requiredGate": "Package-to-idle-to-equipped-item differential matches retail attachment, grip, animation event, and persistence state.",
+      "status": "open",
+      "owner": "C++/Lua",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-003",
+      "priority": "P0",
+      "subsystem": "furniture/animation",
+      "title": "Easy Pete and Doc Mitchell do not sit correctly",
+      "symptoms": ["Actors stand instead of using authored furniture", "Prior sit attempts were misaligned or malformed"],
+      "requiredGate": "Retail/OpenMW furniture reservation, entry, loop, exit, transform, IK, and save-load trace matches for every Goodsprings furniture package.",
+      "status": "open",
+      "owner": "C++/Lua",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-004",
+      "priority": "P0",
+      "subsystem": "placement/grounding",
+      "title": "Actors and creatures float above the floor or ground",
+      "symptoms": ["Saloon settlers float", "Many hostile creatures are off the ground", "Authored positions look correct but vertical placement is wrong"],
+      "requiredGate": "Retail/OpenMW actor root, collision foot plane, navmesh height, skeleton bound, and animation root differential stays within authored tolerance across representative races and creatures.",
+      "status": "open",
+      "owner": "C++",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-005",
+      "priority": "P0",
+      "subsystem": "creature-animation/root-basis",
+      "title": "A subset of Deathclaws idle tipped onto their left side",
+      "symptoms": ["Most Deathclaws stand correctly", "Three or four enter a left-flipped idle pose"],
+      "requiredGate": "Per-instance retail/OpenMW trace proves skeleton variant, selected group, KF root transform, blend source, root basis, and world transform for every loaded Deathclaw; no mixed orientation result is allowed.",
+      "status": "open",
+      "owner": "C++",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-006",
+      "priority": "P0",
+      "subsystem": "facial-animation",
+      "title": "Speech moves jaw or mouth but leaves the rest of the face rigid",
+      "symptoms": ["Teeth and mouth move", "Cheeks, brows, eyes, and expression remain static", "Quality varies by NPC"],
+      "requiredGate": "Retail/OpenMW dialogue trace correlates LIP phonemes, HeadAnims tracks, TRI morph weights, expression state, eye/head controllers, and rendered vertex deltas for every Goodsprings speaker.",
+      "status": "open",
+      "owner": "C++",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-007",
+      "priority": "P1",
+      "subsystem": "dialogue-look-at",
+      "title": "Dialogue actors do not turn or look toward the player",
+      "symptoms": ["Actors speak while facing away", "No reliable eye/head/body attention transition"],
+      "requiredGate": "Retail/OpenMW dialogue begin/end trace matches look-at target, head tracking, eye tracking, body turn threshold, and restoration to package state.",
+      "status": "open",
+      "owner": "C++/Lua",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-008",
+      "priority": "P1",
+      "subsystem": "appearance/hair",
+      "title": "Easy Pete and Doc Mitchell hair is malformed",
+      "symptoms": ["Hair basis, placement, or skinning visibly differs from retail"],
+      "requiredGate": "Retail/OpenMW face/hair attachment and vertex/bounds differential passes for every Goodsprings NPC, including hat/no-hat states.",
+      "status": "open",
+      "owner": "C++",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-009",
+      "priority": "P0",
+      "subsystem": "hostile-AI/combat-movement",
+      "title": "Hostile actors react but remain stationary or warp in place",
+      "symptoms": ["Enemies acquire hostility and turn", "They do not pursue or attack", "Mobs animate or warp without traversing routes"],
+      "requiredGate": "Natural combat differential matches detection, target selection, combat package, nav path, locomotion, attack selection, hit event, damage, death, and save-load.",
+      "status": "open",
+      "owner": "C++/Lua",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-010",
+      "priority": "P1",
+      "subsystem": "creature-AI",
+      "title": "Animals animate in place instead of following idle routes",
+      "symptoms": ["Animals move their bodies but not through the world", "Authored idle and wander routes do not complete"],
+      "requiredGate": "Retail/OpenMW package, path, transform, root-motion, idle-marker, and loop timing differential passes for Goodsprings animals.",
+      "status": "open",
+      "owner": "C++/Lua",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-011",
+      "priority": "P1",
+      "subsystem": "robot-animation/interaction",
+      "title": "Robots rotate incorrectly and interaction alignment spins or never settles",
+      "symptoms": ["Robot turning is misaligned", "Interaction can spin indefinitely", "Target alignment does not converge"],
+      "requiredGate": "Retail/OpenMW robot controller, root axis, turn state, interaction target, and activation trace converges for representative securitrons.",
+      "status": "open",
+      "owner": "C++",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-ACTOR-012",
+      "priority": "P2",
+      "subsystem": "animated-statics/perches",
+      "title": "Birds do not align to authored perch targets",
+      "symptoms": ["Birds are displaced from boxes and expected targets"],
+      "requiredGate": "Retail/OpenMW reference transform, target marker, controller, and animation-root trace matches every representative perch.",
+      "status": "open",
+      "owner": "C++",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-WORLD-001",
+      "priority": "P0",
+      "subsystem": "cell/reference-loading",
+      "title": "Actors can be absent after load or cell transition",
+      "symptoms": ["Town can appear evacuated", "Trudy is not reliably present", "Different launch paths produce different actor populations"],
+      "requiredGate": "Natural new-game, save-load, door, fast-travel, and VR launch matrices match retail winning references, enable state, persistent state, cell attachment, and actor count.",
+      "status": "open",
+      "owner": "C++/save",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-WORLD-002",
+      "priority": "P0",
+      "subsystem": "doors/quest-gates",
+      "title": "Vault and Strip transitions can be missing or inaccessible",
+      "symptoms": ["A vault entrance lacked a usable door", "The Strip could not be entered"],
+      "requiredGate": "Retail/OpenMW crawl of every load door and teleport reference validates mesh, activation, lock, condition, quest gate, destination, return path, and persistence.",
+      "status": "open",
+      "owner": "C++/Lua/content",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-QUEST-001",
+      "priority": "P0",
+      "subsystem": "quest/dialogue-state",
+      "title": "Goodsprings actors appear stuck in incorrect quest and dialogue state",
+      "symptoms": ["Many actors repeat Powder Ganger or Khan topics", "Dialogue availability does not match expected progression", "Package state appears quest-stuck"],
+      "requiredGate": "Natural Goodsprings quest spine matches retail stages, objectives, variables, conditions, topics, results, package overrides, rewards, save-load, and alternate branches.",
+      "status": "open",
+      "owner": "C++/Lua",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-DIALOGUE-001",
+      "priority": "P0",
+      "subsystem": "dialogue/UI",
+      "title": "Displayed response text and selectable topic text do not reliably correspond",
+      "symptoms": ["Right-side dialogue does not work", "Text on the right can differ from the option selected on the left"],
+      "requiredGate": "Every Goodsprings speaker/topic passes retail differential for conditions, prompt, response, voice, result script, next topics, and UI selection identity.",
+      "status": "open",
+      "owner": "C++/Lua/UI",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-UI-001",
+      "priority": "P0",
+      "subsystem": "Pip-Boy/inventory/trade",
+      "title": "Pip-Boy, inventory buttons, and barter inventory are incomplete or empty",
+      "symptoms": ["Pip-Boy controls do not reliably respond", "Barter panes can be empty", "Inventory interaction is unstable"],
+      "requiredGate": "Retail/OpenMW permutation covers every pane, tab, button, sort/filter, item action, barter mutation, caps transfer, quest item, save-load, flat input, and VR pointer input.",
+      "status": "open",
+      "owner": "C++/Lua/UI",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-VR-001",
+      "priority": "P0",
+      "subsystem": "VR/hands-pointer-menus",
+      "title": "VR hands may render while grip pointer, menu raycast, button mapping, and menu shaders fail",
+      "symptoms": ["Grip pointer can be invisible", "Menus can render purple", "Clicks and Escape mappings can fail", "A menu may become impossible to close"],
+      "requiredGate": "Mads OpenMW-VR hand and pointer behavior remains intact while every native FNV menu passes visible-ray, hover, click, close, shader, and input mapping tests in headset.",
+      "status": "open",
+      "owner": "C++/VR/Lua",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-COMBAT-001",
+      "priority": "P0",
+      "subsystem": "combat",
+      "title": "Combat does not complete from attack through damage and death",
+      "symptoms": ["Mobs become angry but do not attack", "Player attacks do not provide proven hit, damage, reaction, or death behavior"],
+      "requiredGate": "Retail/OpenMW matrix covers melee, hitscan, projectile, ammo, armor, limb damage, stagger, hit reaction, AI pursuit, death, loot, XP, save-load, and representative creatures/NPCs.",
+      "status": "open",
+      "owner": "C++/Lua",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-AUDIO-001",
+      "priority": "P0",
+      "subsystem": "audio",
+      "title": "Fallout ambience, footsteps, combat, equipment, radio, and world sounds are largely absent",
+      "symptoms": ["Only some doors and voices are audible", "World is otherwise nearly silent"],
+      "requiredGate": "Retail/OpenMW event and waveform matrix resolves only FNV SOUN/SNDR/REGN/WTHR/material/animation sources for ambience, footsteps, combat, equipment, UI, radio, music, creatures, and activators.",
+      "status": "open",
+      "owner": "C++",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-AUDIO-002",
+      "priority": "P0",
+      "subsystem": "audio/fallback-policy",
+      "title": "Morrowind sound fallback must never run during Fallout: New Vegas",
+      "symptoms": ["Risk of silently substituting ESM3 sound records for unresolved FNV events"],
+      "requiredGate": "Runtime telemetry and source invariant prove zero ESM3 sound lookup or playback while the active game is FNV; every unresolved FNV event fails explicitly into the ledger.",
+      "status": "open",
+      "owner": "C++",
+      "implementationCommit": "abcad4b5da",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-PERF-001",
+      "priority": "P0",
+      "subsystem": "telemetry/performance",
+      "title": "Excessive telemetry and graphics load make movement choppy or nearly impossible",
+      "symptoms": ["Continuous diagnostic chatter", "Severe frame pacing and input degradation", "High graphics configuration overwhelmed the machine"],
+      "requiredGate": "Release-profile flat and VR traversal meets frame-time budgets with bounded asynchronous telemetry, no per-frame info logging, and no graphics mod requirement.",
+      "status": "open",
+      "owner": "C++/scripts/profile",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-SAVE-001",
+      "priority": "P0",
+      "subsystem": "save-load/startup",
+      "title": "Load can place the player in an invalid pit or produce divergent world state",
+      "symptoms": ["A rerun loaded into a weird pit", "Actor population and systems differ between launch paths"],
+      "requiredGate": "New game and representative save matrix validates player form, cell, transform, quest state, actor persistence, weather, inventory, packages, and VR state across repeated cold starts.",
+      "status": "open",
+      "owner": "C++/save/scripts",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-HARNESS-001",
+      "priority": "P0",
+      "subsystem": "retail-differential-runner",
+      "title": "Hidden lockstep runner timed out before scene state could converge",
+      "symptoms": ["Thirty initialization frames consumed the 30-second wall-clock timeout", "Hour and weather commands were issued immediately before timeout"],
+      "requiredGate": "The corrected four-case smoke completes all retail/OpenMW barriers and produces correlated screenshots plus state payloads before scaling to 10,000 cases.",
+      "evidence": "run/fnv-sidecar-10k-smoke-20260718/sunny-smiles-sidecar-example/retail/retail-oracle.jsonl",
+      "status": "open",
+      "owner": "C++/PowerShell",
+      "closingCommit": null
+    }
+  ]
+}
