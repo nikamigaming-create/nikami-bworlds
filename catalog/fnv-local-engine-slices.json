@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "50d36ebddef4fb45ecb4279f9993431b4310331a",
-  "unpromotedCommitCount": 68,
+  "auditedHead": "9f1a19ce1c5dbb6d7211cc4fb3e71ed7627224fb",
+  "unpromotedCommitCount": 69,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -293,6 +293,16 @@
       "scope": ["FNV-only headless two-phase crafting transaction core", "exact Workbench 00075005 plus script 0013E11C to RCCT 0013B2C1 mapping", "exact Reloading Bench 0015361F plus script 0015361E to RCCT 00153621 mapping", "live RCPE category and subcategory validation", "exact Player base 00000007 and initialized native actor-value state validation", "native skill threshold evaluation with unresolved raw offsets rejected", "conditionless and scriptless recipe requirement", "strict MISC, ALCH, AMMO, WEAP, and ARMO ingredient and output support", "signed positive quantity decoding, aggregation, inventory sufficiency, and final-count overflow preflight", "explicit CMNY 00176AC4 blocker and generic unsupported or missing record rejection", "all outputs constructed before mutation", "inventory snapshot revalidation before commit", "all ingredients removed before authored output rows are added with auto-equip disabled", "single-use prepared plans over the live ContainerStore without InventoryStore cloning"],
       "focusedTest": { "filter": "FnvCraftingRuntimeTest.*", "passed": 12, "total": 12 },
       "limitations": ["No activation call site, workbench menu, recipe list, selection UI, messages, sound, animation, or natural crafting journey", "No frozen-corpus transaction sweep has yet proven every audited conditionless recipe through the planner", "Conditional recipes, scripted items, unsupported item kinds, and CMNY remain fail-closed", "Campfire and special quest or sleep station behavior is not included", "The existing ContainerStore mutation API cannot guarantee rollback after an unexpected failure once the first live mutation succeeds", "Prepared plans hold non-owning actor, inventory, and store-derived lifetimes and must be prepared and committed synchronously", "No crafting-specific save payload is added; inventory persistence remains the existing subsystem's responsibility", "No retail differential", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "strict-fallout-terminal-text-notes",
+      "commit": "9f1a19ce1c5dbb6d7211cc4fb3e71ed7627224fb",
+      "subject": "Display strict Fallout terminal text notes",
+      "scope": ["FNV-only typed NOTE lookup from terminal INAM links", "complete immutable NOTE and TERM preflight before any presentation", "strict live NOTE flags and DATA equals one text-only shape", "copied prepared note text and FormId with no live-record dependency during presentation", "exact frozen numerator of 10 NOTE links on four TERM records and four placed references", "FalloutNV.esm TERM 000FD76B at REFR 000F5165 with three notes", "FalloutNV.esm TERM 000FC9B9 at REFR 000F5131 with four notes", "DeadMoney.esm TERM 010121FB at REFR 010121FF with one note", "DeadMoney.esm TERM 0100F2CA at REFR 0100F2D5 with two notes plus one ordinary result item", "exact official ITXT, RNAM, ANAM and INAM ordering anchored by raw-record hashes", "missing, deleted, non-text, empty, embedded-NUL, image, voice, speaker, quest-linked and mixed-state notes reject before UI", "existing read-only terminal presentation and bounded redraw path retained"],
+      "focusedTest": { "filter": "FnvTerminalRuntimeTest.*", "passed": 12, "total": 12 },
+      "limitations": ["Total strict runtime coverage is 14 of 1,350 official menu items, 7 of 515 TERM records, and 7 of 357 placed references", "The new NOTE numerator is only 10 of 772 official INAM links, four of 279 INAM-bearing TERM records, and four of 199 placed INAM-bearing terminal references", "Unit fixtures preserve exact official identities, menu ordering, byte counts, and provenance hashes but use synthetic note body text to avoid embedding copyrighted transcripts", "Blocking generic message boxes are not retail terminal visuals, layout, input, timing, camera, animation, or sound", "DATA equals two image notes and DATA equals three voice notes remain unsupported", "CTDA, submenu, sound, password, hacking, lockout, embedded script, top-level script, mutation, and persistence paths remain unsupported", "ANAM two redraw sessions complete only when the player cancels or fail at the existing explicit redraw limit", "No natural terminal journey or retail differential", "No promoted-binary provenance", "No certified or retail visual parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
