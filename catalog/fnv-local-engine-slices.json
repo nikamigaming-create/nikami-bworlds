@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "aea28ce26758c33a349037406847e814c989fd40",
-  "unpromotedCommitCount": 77,
+  "auditedHead": "4585e991f94a3f4b7e6003855ab49370312c4b71",
+  "unpromotedCommitCount": 78,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -392,6 +392,16 @@
       "focusedTest": { "filter": "FnvRadioProgramTest.*:ESM4TalkingActivatorTest.*", "passed": 15, "total": 15 },
       "fullRegression": { "binary": "openmw-tests", "passed": 670, "total": 670 },
       "limitations": ["This closes a retail-record-shape rejection in the bounded Repcon bootstrap; it does not broaden the supported station-program contract", "The earlier synthetic fixture omitted FalloutNV.esm's flag-one empty SCHR shape and therefore was insufficient retail evidence", "No natural Repcon activation journey, audible capture, retail timing or mix differential, save/load, Pip-Boy tuning, or whole-corpus radio sweep has passed", "All scheduling, conditional, random, chained, multi-response, scripted, continuous, and voice-file-only radio programs remain outside the bounded bootstrap", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "strict-fallout-humanoid-hit-reaction-binding",
+      "commit": "4585e991f94a3f4b7e6003855ab49370312c4b71",
+      "subject": "Bind strict Fallout humanoid hit reactions",
+      "scope": ["lazy hit-recovery preparation applies only to live ESM4 NPC records carrying Fallout New Vegas identity and explicitly excluding Fallout 3 identity", "the corrected actor model must normalize exactly to meshes/characters/_male/skeleton.nif", "the selected retail source is exactly meshes/characters/_male/idleanims/mt_hittorso.kf and is exposed as the one-shot semantic group hit1", "the audited source controls 60 unique targets and the official shared skeleton contains all 60 exact target names", "an already selected exact source is accepted only with a nonzero bound controller mask", "an unknown selected hit1 source is replaced only when the exact retail source exists and passes the existing all-required-controller binding contract", "missing source, incompatible skeleton, partial binding, controller collision, final source mismatch, and zero controller mask fail closed before hit recovery begins", "the binding is prepared only in the nonfatal recovery branch after knockout and knockdown precedence", "legacy actors, non-FNV NPCs, and the separately supported FNV creature path retain existing behavior", "all 17 humanoid placements in the frozen 37-actor Goodsprings roster use the exact shared skeleton and no KFFZ override", "combined with the creature binding slice, selectable hit recovery reaches 33 of 37 Goodsprings placements and seven of eight audited rig families; four ravens remain fail closed"],
+      "focusedTest": { "filter": "FalloutHitReactionTest.*", "passed": 6, "total": 6 },
+      "limitations": ["The 60-controller source/skeleton comparison is an exact local official-asset audit, not a runtime byte hash or rendered retail differential", "The focused tests exercise constants, normalization, resolution, final binding acceptance, creature regressions, and fail-closed decisions but do not instantiate a live retail NPC scene graph", "No isolated full openmw-tests regression was recorded for this commit; a later incremental build also compiled the separate uncommitted lockpick foundation and is not used as isolated evidence", "No natural shot-to-damage-to-visible-reaction video has passed yet", "Directional, body-location, variation, priority timing, knockdown, death, blood, impact effects, sound, VATS, and camera feedback remain unsupported by this slice", "Custom humanoid skeletons and the four Goodsprings ravens fail closed", "No whole-corpus NPC placement census, promoted-binary provenance, or certified parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
