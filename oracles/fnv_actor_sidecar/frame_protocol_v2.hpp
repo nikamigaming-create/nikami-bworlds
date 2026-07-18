@@ -22,7 +22,7 @@ namespace NikamiFNVSidecar::FramesV2
     inline constexpr std::uint32_t FrameMagic = 0x32464B4Eu;   // "NKF2" in little-endian memory.
     inline constexpr std::uint32_t EndianTag = 0x01020304u;
     inline constexpr std::uint16_t ProtocolVersion = 2;
-    inline constexpr std::uint64_t LayoutTag = 0x0002'0008'0004'0000ull;
+    inline constexpr std::uint64_t LayoutTag = 0x0002'0016'0004'0001ull;
 
     inline constexpr std::size_t MappingHeaderBytes = 4096;
     inline constexpr std::size_t RingCount = 2;
@@ -87,10 +87,18 @@ namespace NikamiFNVSidecar::FramesV2
         CameraState = 12,
         EnvironmentState = 13,
         Diagnostics = 14,
+        InputEvents = 15,
+        UiState = 16,
+        ActorState = 17,
+        PackageState = 18,
+        CellState = 19,
+        ReferenceState = 20,
+        InventoryEvents = 21,
+        ScriptEvents = 22,
     };
 
     inline constexpr std::uint32_t SectionTypeCount =
-        static_cast<std::uint32_t>(SectionType::Diagnostics) + 1u;
+        static_cast<std::uint32_t>(SectionType::ScriptEvents) + 1u;
 
     enum SectionFlag : std::uint16_t
     {
@@ -221,6 +229,121 @@ namespace NikamiFNVSidecar::FramesV2
         Paused = 3,
         Ending = 4,
         Complete = 5,
+    };
+
+    enum class InputDevice : std::uint32_t
+    {
+        Unknown = 0,
+        Keyboard = 1,
+        Mouse = 2,
+        Gamepad = 3,
+        VrLeft = 4,
+        VrRight = 5,
+        Engine = 6,
+    };
+
+    enum class InputPhase : std::uint32_t
+    {
+        Pressed = 0,
+        Released = 1,
+        Held = 2,
+        Repeated = 3,
+        Axis = 4,
+    };
+
+    enum ActorRuntimeFlag : std::uint32_t
+    {
+        ActorEnabled = 1u << 0,
+        ActorLoaded = 1u << 1,
+        ActorVisible = 1u << 2,
+        ActorDead = 1u << 3,
+        ActorInCombat = 1u << 4,
+        ActorWeaponDrawn = 1u << 5,
+        ActorGrounded = 1u << 6,
+        ActorPathing = 1u << 7,
+        ActorTalking = 1u << 8,
+        ActorUsingFurniture = 1u << 9,
+    };
+
+    enum class PackageProcedure : std::uint32_t
+    {
+        None = 0,
+        Travel = 1,
+        Wander = 2,
+        Sandbox = 3,
+        Patrol = 4,
+        Guard = 5,
+        Follow = 6,
+        Escort = 7,
+        Flee = 8,
+        Combat = 9,
+        Dialogue = 10,
+        UseItem = 11,
+        Eat = 12,
+        Sleep = 13,
+        Furniture = 14,
+        Activate = 15,
+    };
+
+    enum class CellLifecycle : std::uint32_t
+    {
+        Unloaded = 0,
+        Loading = 1,
+        Loaded = 2,
+        Activating = 3,
+        Active = 4,
+        Deactivating = 5,
+        Unloading = 6,
+    };
+
+    enum ReferenceRuntimeFlag : std::uint32_t
+    {
+        ReferenceEnabled = 1u << 0,
+        ReferenceLoaded = 1u << 1,
+        ReferenceNodePresent = 1u << 2,
+        ReferenceCulled = 1u << 3,
+        ReferenceDrawable = 1u << 4,
+        ReferenceVisible = 1u << 5,
+        ReferencePaged = 1u << 6,
+        ReferenceActiveGrid = 1u << 7,
+        ReferenceCollision = 1u << 8,
+    };
+
+    enum class InventoryAction : std::uint32_t
+    {
+        Snapshot = 0,
+        Add = 1,
+        Remove = 2,
+        Transfer = 3,
+        Equip = 4,
+        Unequip = 5,
+        Use = 6,
+        Drop = 7,
+        Buy = 8,
+        Sell = 9,
+        Repair = 10,
+        Mod = 11,
+        AmmoSwitch = 12,
+    };
+
+    enum class ScriptEventKind : std::uint32_t
+    {
+        Unknown = 0,
+        GameMode = 1,
+        MenuMode = 2,
+        OnActivate = 3,
+        OnAdd = 4,
+        OnDrop = 5,
+        OnEquip = 6,
+        OnUnequip = 7,
+        OnHit = 8,
+        OnDeath = 9,
+        OnTrigger = 10,
+        OnLoad = 11,
+        OnCellAttach = 12,
+        OnCellDetach = 13,
+        QuestStage = 14,
+        DialogueResult = 15,
     };
 
     struct alignas(8) MappingIdentity
@@ -434,6 +557,153 @@ namespace NikamiFNVSidecar::FramesV2
         std::uint32_t phonemeId;
     };
 
+    struct alignas(8) InputEventRecord
+    {
+        std::uint64_t simulationTick;
+        std::uint64_t actionHash;
+        std::uint32_t device;
+        std::uint32_t code;
+        std::uint32_t phase;
+        std::uint32_t modifiers;
+        float valueX;
+        float valueY;
+        float valueZ;
+        float duration;
+        std::uint64_t contextHash;
+        std::uint64_t targetHash;
+    };
+
+    struct alignas(8) UiStateRecord
+    {
+        std::uint64_t menuStackHash;
+        std::uint64_t widgetTreeHash;
+        std::uint64_t focusedWidgetHash;
+        std::uint64_t selectedEntryHash;
+        std::uint32_t mode;
+        std::uint32_t flags;
+        std::uint32_t primaryTab;
+        std::uint32_t secondaryTab;
+        float cursorX;
+        float cursorY;
+        std::uint32_t visibleWidgetCount;
+        std::uint32_t enabledWidgetCount;
+    };
+
+    struct alignas(8) ActorStateRecord
+    {
+        std::uint32_t actorReferenceId;
+        std::uint32_t actorBaseId;
+        std::uint32_t cellId;
+        std::uint32_t worldspaceId;
+        std::uint32_t flags;
+        std::uint32_t movementMode;
+        std::uint32_t combatTargetReferenceId;
+        std::uint32_t packageFormId;
+        Transform3f worldTransform;
+        float linearVelocity[3];
+        float angularVelocity;
+        std::uint64_t animationStateHash;
+        std::uint64_t equipmentStateHash;
+        std::uint64_t aiStateHash;
+        std::uint64_t reserved;
+    };
+
+    struct alignas(8) PackageStateRecord
+    {
+        std::uint32_t actorReferenceId;
+        std::uint32_t packageFormId;
+        std::uint32_t procedure;
+        std::uint32_t phase;
+        std::uint32_t targetReferenceId;
+        std::uint32_t targetBaseId;
+        std::uint32_t furnitureReferenceId;
+        std::uint32_t markerReferenceId;
+        std::uint32_t flags;
+        std::uint32_t pathPointCount;
+        std::uint32_t idleFormId;
+        std::uint32_t animatedObjectFormId;
+        float destination[3];
+        float heading;
+        std::uint64_t startSimulationTick;
+        std::uint64_t stateHash;
+        float phaseTime;
+        float timeout;
+        std::uint32_t reserved[2];
+    };
+
+    struct alignas(8) CellStateRecord
+    {
+        std::uint32_t cellId;
+        std::uint32_t worldspaceId;
+        std::int32_t gridX;
+        std::int32_t gridY;
+        std::uint32_t lifecycle;
+        std::uint32_t flags;
+        std::uint32_t loadedReferenceCount;
+        std::uint32_t visibleReferenceCount;
+        std::uint32_t actorCount;
+        std::uint32_t visibleActorCount;
+        std::uint32_t weatherFormId;
+        std::uint32_t imageSpaceFormId;
+        std::uint64_t visibleSetHash;
+        std::uint64_t drawStateHash;
+        std::uint64_t scriptStateHash;
+        std::uint64_t reserved;
+    };
+
+    struct alignas(8) ReferenceStateRecord
+    {
+        std::uint32_t referenceId;
+        std::uint32_t baseFormId;
+        std::uint32_t cellId;
+        std::uint32_t recordType;
+        std::uint32_t flags;
+        std::uint32_t nodeMask;
+        std::uint32_t renderBin;
+        std::uint32_t reserved0;
+        std::uint64_t modelPathHash;
+        std::uint64_t materialSetHash;
+        std::uint64_t drawStateHash;
+        std::uint64_t parentReferenceKey;
+        Transform3f worldTransform;
+        float boundsMin[3];
+        float boundsMax[3];
+        std::uint32_t reserved[2];
+    };
+
+    struct alignas(8) InventoryEventRecord
+    {
+        std::uint64_t simulationTick;
+        std::uint32_t ownerReferenceId;
+        std::uint32_t itemFormId;
+        std::uint32_t baseFormId;
+        std::uint32_t action;
+        std::int32_t countBefore;
+        std::int32_t countAfter;
+        std::int32_t countDelta;
+        std::uint32_t flags;
+        float conditionBefore;
+        float conditionAfter;
+        std::uint64_t stackKey;
+        std::uint64_t stateHash;
+    };
+
+    struct alignas(8) ScriptEventRecord
+    {
+        std::uint64_t simulationTick;
+        std::uint32_t scriptFormId;
+        std::uint32_t eventKind;
+        std::uint32_t opcode;
+        std::uint32_t flags;
+        std::uint32_t subjectReferenceId;
+        std::uint32_t targetReferenceId;
+        std::uint32_t menuMode;
+        std::uint32_t result;
+        std::uint64_t argumentsHash;
+        std::uint64_t stateBeforeHash;
+        std::uint64_t stateAfterHash;
+    };
+
     struct alignas(8) RingControl
     {
         std::uint32_t source;
@@ -603,6 +873,14 @@ namespace NikamiFNVSidecar::FramesV2
     static_assert(sizeof(MaterialRecord) == 64);
     static_assert(sizeof(FaceChannelRecord) == 32);
     static_assert(sizeof(DialogueStateRecord) == 80);
+    static_assert(sizeof(InputEventRecord) == 64);
+    static_assert(sizeof(UiStateRecord) == 64);
+    static_assert(sizeof(ActorStateRecord) == 128);
+    static_assert(sizeof(PackageStateRecord) == 96);
+    static_assert(sizeof(CellStateRecord) == 80);
+    static_assert(sizeof(ReferenceStateRecord) == 144);
+    static_assert(sizeof(InventoryEventRecord) == 64);
+    static_assert(sizeof(ScriptEventRecord) == 64);
     static_assert(sizeof(RingControl) == 256);
     static_assert(offsetof(RingControl, publishedSequence) == 64);
     static_assert(offsetof(RingControl, consumedSequence) == 128);

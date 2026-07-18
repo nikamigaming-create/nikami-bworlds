@@ -222,7 +222,71 @@ namespace
         face.value = 0.33f;
         face.targetValue = 0.5f;
 
-        std::array<Frames::SectionInput, 4> sections{};
+        Frames::InputEventRecord inputEvent{};
+        inputEvent.simulationTick = 44;
+        inputEvent.actionHash = 0x501u;
+        inputEvent.device = static_cast<std::uint32_t>(Frames::InputDevice::VrRight);
+        inputEvent.phase = static_cast<std::uint32_t>(Frames::InputPhase::Pressed);
+        inputEvent.valueX = 1.f;
+
+        Frames::UiStateRecord ui{};
+        ui.menuStackHash = 0x601u;
+        ui.widgetTreeHash = 0x602u;
+        ui.primaryTab = 2;
+        ui.visibleWidgetCount = 17;
+        ui.enabledWidgetCount = 14;
+
+        Frames::ActorStateRecord actor{};
+        actor.actorReferenceId = 0x00104F03u;
+        actor.actorBaseId = 0x00104F02u;
+        actor.cellId = 0x0010DAEBu;
+        actor.flags = Frames::ActorEnabled | Frames::ActorLoaded | Frames::ActorVisible | Frames::ActorGrounded;
+        actor.packageFormId = 0x00108F3Bu;
+        actor.worldTransform.rotationQuaternion[3] = 1.f;
+        actor.worldTransform.scale[0] = 1.f;
+        actor.worldTransform.scale[1] = 1.f;
+        actor.worldTransform.scale[2] = 1.f;
+
+        Frames::PackageStateRecord package{};
+        package.actorReferenceId = actor.actorReferenceId;
+        package.packageFormId = actor.packageFormId;
+        package.procedure = static_cast<std::uint32_t>(Frames::PackageProcedure::Sandbox);
+        package.markerReferenceId = 0x0010B3EFu;
+        package.idleFormId = 0x0008957Au;
+        package.animatedObjectFormId = 0x00089579u;
+
+        Frames::CellStateRecord cell{};
+        cell.cellId = actor.cellId;
+        cell.lifecycle = static_cast<std::uint32_t>(Frames::CellLifecycle::Active);
+        cell.loadedReferenceCount = 91;
+        cell.visibleReferenceCount = 88;
+
+        Frames::ReferenceStateRecord reference{};
+        reference.referenceId = 0x0010636Fu;
+        reference.baseFormId = 0x00106370u;
+        reference.cellId = cell.cellId;
+        reference.flags = Frames::ReferenceEnabled | Frames::ReferenceLoaded | Frames::ReferenceNodePresent
+            | Frames::ReferenceDrawable | Frames::ReferenceVisible;
+        reference.worldTransform.rotationQuaternion[3] = 1.f;
+        reference.worldTransform.scale[0] = 1.f;
+        reference.worldTransform.scale[1] = 1.f;
+        reference.worldTransform.scale[2] = 1.f;
+
+        Frames::InventoryEventRecord inventory{};
+        inventory.simulationTick = 45;
+        inventory.ownerReferenceId = 0x00000014u;
+        inventory.itemFormId = 0x00004322u;
+        inventory.action = static_cast<std::uint32_t>(Frames::InventoryAction::Equip);
+        inventory.countBefore = 1;
+        inventory.countAfter = 1;
+
+        Frames::ScriptEventRecord script{};
+        script.simulationTick = 46;
+        script.scriptFormId = 0x0010A1A2u;
+        script.eventKind = static_cast<std::uint32_t>(Frames::ScriptEventKind::MenuMode);
+        script.subjectReferenceId = 0x00000014u;
+
+        std::array<Frames::SectionInput, 12> sections{};
         sections[0] = {
             Frames::SectionType::SequenceStates,
             1,
@@ -255,6 +319,33 @@ namespace
             static_cast<std::uint32_t>(sizeof(face)),
             &face,
             static_cast<std::uint32_t>(sizeof(face))};
+        sections[4] = {
+            Frames::SectionType::InputEvents, 1, Frames::SectionRequired, 1,
+            static_cast<std::uint32_t>(sizeof(inputEvent)), &inputEvent,
+            static_cast<std::uint32_t>(sizeof(inputEvent))};
+        sections[5] = {
+            Frames::SectionType::UiState, 1, Frames::SectionRequired, 1,
+            static_cast<std::uint32_t>(sizeof(ui)), &ui, static_cast<std::uint32_t>(sizeof(ui))};
+        sections[6] = {
+            Frames::SectionType::ActorState, 1, Frames::SectionRequired | Frames::SectionCanonicalOrder, 1,
+            static_cast<std::uint32_t>(sizeof(actor)), &actor, static_cast<std::uint32_t>(sizeof(actor))};
+        sections[7] = {
+            Frames::SectionType::PackageState, 1, Frames::SectionRequired | Frames::SectionCanonicalOrder, 1,
+            static_cast<std::uint32_t>(sizeof(package)), &package, static_cast<std::uint32_t>(sizeof(package))};
+        sections[8] = {
+            Frames::SectionType::CellState, 1, Frames::SectionRequired | Frames::SectionCanonicalOrder, 1,
+            static_cast<std::uint32_t>(sizeof(cell)), &cell, static_cast<std::uint32_t>(sizeof(cell))};
+        sections[9] = {
+            Frames::SectionType::ReferenceState, 1, Frames::SectionRequired | Frames::SectionCanonicalOrder, 1,
+            static_cast<std::uint32_t>(sizeof(reference)), &reference,
+            static_cast<std::uint32_t>(sizeof(reference))};
+        sections[10] = {
+            Frames::SectionType::InventoryEvents, 1, Frames::SectionRequired, 1,
+            static_cast<std::uint32_t>(sizeof(inventory)), &inventory,
+            static_cast<std::uint32_t>(sizeof(inventory))};
+        sections[11] = {
+            Frames::SectionType::ScriptEvents, 1, Frames::SectionRequired, 1,
+            static_cast<std::uint32_t>(sizeof(script)), &script, static_cast<std::uint32_t>(sizeof(script))};
 
         Frames::PublishInput input{};
         input.identity = identity(3, 4);
@@ -306,10 +397,26 @@ namespace
         const Frames::SectionDescriptor* transformSection = read.frame.find(Frames::SectionType::NodeTransforms);
         const Frames::SectionDescriptor* equipmentSection = read.frame.find(Frames::SectionType::Equipment);
         const Frames::SectionDescriptor* faceSection = read.frame.find(Frames::SectionType::FaceChannels);
+        const Frames::SectionDescriptor* inputEventSection = read.frame.find(Frames::SectionType::InputEvents);
+        const Frames::SectionDescriptor* uiSection = read.frame.find(Frames::SectionType::UiState);
+        const Frames::SectionDescriptor* actorSection = read.frame.find(Frames::SectionType::ActorState);
+        const Frames::SectionDescriptor* packageSection = read.frame.find(Frames::SectionType::PackageState);
+        const Frames::SectionDescriptor* cellSection = read.frame.find(Frames::SectionType::CellState);
+        const Frames::SectionDescriptor* referenceSection = read.frame.find(Frames::SectionType::ReferenceState);
+        const Frames::SectionDescriptor* inventorySection = read.frame.find(Frames::SectionType::InventoryEvents);
+        const Frames::SectionDescriptor* scriptSection = read.frame.find(Frames::SectionType::ScriptEvents);
         test.expect(sequenceSection != nullptr, "sequence section is indexed");
         test.expect(transformSection != nullptr, "transform section is indexed");
         test.expect(equipmentSection != nullptr, "equipment section is indexed");
         test.expect(faceSection != nullptr, "face section is indexed");
+        test.expect(inputEventSection != nullptr, "input-event section is indexed");
+        test.expect(uiSection != nullptr, "UI-state section is indexed");
+        test.expect(actorSection != nullptr, "actor-state section is indexed");
+        test.expect(packageSection != nullptr, "package-state section is indexed");
+        test.expect(cellSection != nullptr, "cell-state section is indexed");
+        test.expect(referenceSection != nullptr, "reference-state section is indexed");
+        test.expect(inventorySection != nullptr, "inventory-event section is indexed");
+        test.expect(scriptSection != nullptr, "script-event section is indexed");
         if (sequenceSection != nullptr)
         {
             test.expect(
@@ -334,6 +441,20 @@ namespace
                 std::memcmp(read.frame.sectionData(*faceSection), &face, sizeof(face)) == 0,
                 "face bytes round-trip exactly");
         }
+        const auto expectRecord = [&](const Frames::SectionDescriptor* section, const void* expected,
+                                      std::size_t bytes, const char* message) {
+            test.expect(section != nullptr
+                    && std::memcmp(read.frame.sectionData(*section), expected, bytes) == 0,
+                message);
+        };
+        expectRecord(inputEventSection, &inputEvent, sizeof(inputEvent), "input-event bytes round-trip exactly");
+        expectRecord(uiSection, &ui, sizeof(ui), "UI-state bytes round-trip exactly");
+        expectRecord(actorSection, &actor, sizeof(actor), "actor-state bytes round-trip exactly");
+        expectRecord(packageSection, &package, sizeof(package), "package-state bytes round-trip exactly");
+        expectRecord(cellSection, &cell, sizeof(cell), "cell-state bytes round-trip exactly");
+        expectRecord(referenceSection, &reference, sizeof(reference), "reference-state bytes round-trip exactly");
+        expectRecord(inventorySection, &inventory, sizeof(inventory), "inventory-event bytes round-trip exactly");
+        expectRecord(scriptSection, &script, sizeof(script), "script-event bytes round-trip exactly");
 
         test.expectStatus(
             Frames::Acknowledge(fixture.mapping.get(), Frames::Source::Retail, sequenceNumber),
