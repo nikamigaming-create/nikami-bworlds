@@ -105,7 +105,14 @@ if (-not $AllowDuplicate -and (Get-Process -Name $processName -ErrorAction Silen
 }
 
 Clear-NikamiWorldViewerRuntimeEnvironment
-$process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory $workingDirectory -PassThru
+$previousDebugLevel = $env:OPENMW_DEBUG_LEVEL
+try {
+    $env:OPENMW_DEBUG_LEVEL = "INFO"
+    $process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory $workingDirectory -PassThru
+}
+finally {
+    $env:OPENMW_DEBUG_LEVEL = $previousDebugLevel
+}
 Write-Host "Started PID $($process.Id)."
 
 if ($Wait) {
