@@ -18,11 +18,37 @@ Assert-Contract (Test-Path -LiteralPath $settingsPath -PathType Leaf) `
 if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
     $settings = Get-Content -LiteralPath $settingsPath -Raw
     foreach ($required in @(
-        'viewing distance = 32768',
+        'viewing distance = 196608',
+        'reverse z = true',
+        'preload enabled = true',
+        'preload exterior grid = true',
+        'preload doors = true',
+        'preload distance = 32768',
+        'preload instances = true',
+        'preload cell cache min = 24',
+        'preload cell cache max = 64',
         'distant terrain = true',
+        'lod factor = 1.0',
+        'composite map resolution = 1024',
         'object paging = true',
         'object paging active grid = false',
-        'object paging min size = 0.01'
+        'object paging min size = 0.005',
+        'anisotropy = 16',
+        'texture mipmap = linear',
+        'antialiasing = 4',
+        'force shaders = true',
+        'apply lighting to environment maps = true',
+        'soft particles = true',
+        'enable shadows = true',
+        'number of shadow maps = 4',
+        'shadow map resolution = 2048',
+        'terrain shadows = true',
+        'object shadows = true',
+        'shader = true',
+        'rtt size = 2048',
+        'refraction = true',
+        'reflection detail = 4',
+        'sunlight scattering = true'
     )) {
         Assert-Contract ($settings.Contains($required)) "FNV playable graphics setting is missing: $required"
     }
@@ -32,15 +58,32 @@ if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
 
 $catalog = Get-Content -LiteralPath (Join-Path $repoRoot "catalog\world-settings-presets.json") -Raw |
     ConvertFrom-Json
-$fnv = $catalog.worlds.fallout_new_vegas.sections
+$fnvWorld = $catalog.worlds.fallout_new_vegas
+Assert-Contract ([string]$fnvWorld.preset -eq 'fnv_max_quality') `
+    "Generated FNV profile does not select the maximum-quality preset."
+$fnv = $catalog.presets.$($fnvWorld.preset)
+Assert-Contract ([int]$fnv.Camera.'viewing distance' -eq 196608) `
+    "Generated FNV profile does not use the maximum view distance."
+Assert-Contract ([bool]$fnv.Camera.'reverse z') `
+    "Generated FNV profile does not enable reverse-Z for its long view distance."
+Assert-Contract ([bool]$fnv.Cells.'preload enabled') `
+    "Generated FNV profile does not enable cell preloading."
 Assert-Contract ([bool]$fnv.Terrain.'distant terrain') `
     "Generated FNV profile does not enable distant terrain."
 Assert-Contract ([bool]$fnv.Terrain.'object paging') `
     "Generated FNV profile does not enable object paging."
 Assert-Contract (-not [bool]$fnv.Terrain.'object paging active grid') `
     "Generated FNV profile enables unsafe active-grid paging."
-Assert-Contract ([double]$fnv.Terrain.'object paging min size' -eq 0.01) `
+Assert-Contract ([double]$fnv.Terrain.'object paging min size' -eq 0.005) `
     "Generated FNV profile does not use the safe object paging minimum size."
+Assert-Contract ([int]$fnv.General.anisotropy -eq 16) `
+    "Generated FNV profile does not use 16x anisotropy."
+Assert-Contract ([int]$fnv.Video.antialiasing -eq 4) `
+    "Generated FNV profile does not use 4x antialiasing."
+Assert-Contract ([bool]$fnv.Shadows.'enable shadows') `
+    "Generated FNV profile does not enable shadows."
+Assert-Contract ([bool]$fnv.Water.shader -and [bool]$fnv.Water.refraction) `
+    "Generated FNV profile does not enable shader water and refraction."
 
 $baseline = Get-Content -LiteralPath (Join-Path $repoRoot "config\playable-baseline\settings.cfg") -Raw
 foreach ($bounded in @(
