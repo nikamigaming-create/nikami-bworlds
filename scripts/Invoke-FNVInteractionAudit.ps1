@@ -207,7 +207,9 @@ $environment = [ordered]@{
     OPENMW_WORLD_VIEWER_TELEMETRY = "0"
     OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY = "0"
     OPENMW_WORLD_VIEWER_DOOR_PRELOAD_TELEMETRY = "1"
-    OPENMW_DEBUG_LEVEL = "INFO"
+    # Verbose is confined to this hidden audit. It exposes the furniture claim/idle lifecycle
+    # needed for the cell-return gate without adding telemetry to a normal flat or VR session.
+    OPENMW_DEBUG_LEVEL = "VERBOSE"
 }
 if ($DoorOnly) {
     $environment.OPENMW_FNV_INTERACTION_DOOR_ONLY = "1"
@@ -346,6 +348,36 @@ $naturalSkyFailures = @($naturalSkyChecks.GetEnumerator() | Where-Object { -not 
     ForEach-Object { [string]$_.Key })
 $naturalSkyPass = $naturalSkyFailures.Count -eq 0
 
+$doorExitActivation = [Regex]::Match($logText,
+    'FNV interaction audit: activate label=prospector-saloon-exit-door',
+    [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$exteriorReturn = [Regex]::Match($logText,
+    'FNV interaction audit: exterior return cell=',
+    [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$easyPeteFurnitureClaims = [Regex]::Matches($logText,
+    'FNV/ESM4 diag: retained active furniture claim package=[^\r\n]* state=3 for EasyPete',
+    [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$easyPeteChairIdles = [Regex]::Matches($logText,
+    "FNV/ESM4 diag: CharacterController playing idle for FormId:0x1104c80 group 'chairsit'",
+    [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$furnitureReloadPass = $false
+$furnitureClaimIndex = $null
+$furnitureIdleIndex = $null
+if ($doorExitActivation.Success -and $exteriorReturn.Success) {
+    foreach ($claim in $easyPeteFurnitureClaims) {
+        if ($claim.Index -le $doorExitActivation.Index) { continue }
+        foreach ($idle in $easyPeteChairIdles) {
+            if ($idle.Index -gt $claim.Index -and $exteriorReturn.Index -gt $idle.Index) {
+                $furnitureReloadPass = $true
+                $furnitureClaimIndex = $claim.Index
+                $furnitureIdleIndex = $idle.Index
+                break
+            }
+        }
+        if ($furnitureReloadPass) { break }
+    }
+}
+
 $nightEnd = 5.5
 $dayStart = 8.0
 $dayEnd = 18.0
@@ -406,7 +438,7 @@ try {
 catch { $postRunFreshnessFailure = $_.Exception.Message }
 $passed = -not $timedOut -and $exitCode -eq 0 -and $null -ne $resultMatch `
     -and $resultMatch.Groups["result"].Value -eq "pass" -and $pixelPass -and $doorPreloadPass `
-    -and $naturalSkyPass -and $authoredFogPass -and $boundedEvidenceSelfConsistent `
+    -and $naturalSkyPass -and $authoredFogPass -and $furnitureReloadPass -and $boundedEvidenceSelfConsistent `
     -and $environmentIsolationPass -and $preLaunchFreshness -and $postRunFreshness
 $manifest = [ordered]@{
     schema = "nikami-fnv-interaction-audit/v1"
@@ -498,6 +530,19 @@ $manifest = [ordered]@{
         }
         checks = $authoredFogChecks
         failures = $authoredFogFailures
+    }
+    furnitureReload = [ordered]@{
+        status = if ($furnitureReloadPass) { "pass" } else { "fail" }
+        actor = "FormId:0x1104c80"
+        furnitureState = "Seated"
+        animation = "chairsit"
+        doorExitActivationObserved = $doorExitActivation.Success
+        retainedClaimCount = $easyPeteFurnitureClaims.Count
+        chairsitReplayCount = $easyPeteChairIdles.Count
+        exteriorReturnObserved = $exteriorReturn.Success
+        orderedClaimIndex = $furnitureClaimIndex
+        orderedIdleIndex = $furnitureIdleIndex
+        exteriorReturnIndex = if ($exteriorReturn.Success) { $exteriorReturn.Index } else { $null }
     }
     screenshotSceneMeasurements = $pixelMeasurements
     screenshots = @($copiedScreenshots | ForEach-Object { $_ -replace "\\", "/" })
