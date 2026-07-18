@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "774c7949ad54be5c619fc37c735411e4f48722fb",
-  "unpromotedCommitCount": 58,
+  "auditedHead": "3aaf16ed82f154bf97664c0f215d0844765b6d09",
+  "unpromotedCommitCount": 59,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -193,6 +193,16 @@
       "scope": ["strict FNV LVLI grammar and payload sizes", "LVLG and COED metadata preservation", "typed official record decoding", "actor-level eligible-bucket selection", "nested deterministic use-all and calc-each expansion", "exact entry and outer-count multiplication", "supported terminal-item materialization", "cycle and depth protection", "complete plan and existing-stack overflow preflight", "all-or-nothing per-list mutation", "mutable CSTA round-trip of resolved inventory"],
       "focusedTest": { "filter": "Esm4LvliTest.*:ESM4ContainerTest.*", "passed": 26, "total": 26 },
       "limitations": ["Official deterministic gain is 110 of 1,606 effective creature LVLI root/reference uses (6.8493 percent), or 110 of 1,544 fixed-level uses (7.1244 percent)", "Only 18 of 829 entire creature roots are fully deterministic", "Chance-none, LVLG globals, COED, random ambiguity, PCLevelMult, unknown flags, unsupported terminal types, overflow, cycles, and depth above 16 fail closed", "CLOT, INGR, and LIGH remain direct-inventory-only because no official deterministic LVLI target proves them", "No whole-corpus runtime differential", "No promoted-binary provenance"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "persistent-fallout-npc-state",
+      "commit": "3aaf16ed82f154bf97664c0f215d0844765b6d09",
+      "subject": "Persist mutable Fallout NPC state",
+      "scope": ["FNV-only NPC_/ACHR CSTA read and write", "outer reference count, scale, position, enabled, and RefNum state", "mutable concrete inventory", "compatibility CreatureStats health, death, and AI sequence state", "unloaded-cell save and reload", "removed-content inventory drop", "whole-payload semantic prevalidation", "OBJE and base-record kind rejection before typed payload loading", "invalid-first and first-valid duplicate semantics", "explicitly empty saved AI sequence preservation", "explicit non-FNV omission and rejection"],
+      "focusedTest": { "filter": "ESM4ContainerTest.NpcCellStateOmitsUnaccessedFnvAndRejectsNonFnvWriteAndRead:ESM4ContainerTest.NpcCstaRoundTripFromUnloadedCellsRetainsOuterInventoryHealthDeathAndEmptyAi:ESM4ContainerTest.NpcStateDropsItemsWhoseContentFileWasRemoved:ESM4ContainerTest.MalformedNpcStateAndWrongObjeTypeCannotPartiallyMutateOrAllocateRefs:ESM4ContainerTest.DuplicateNpcObjectsUseFirstFullyValidatedStateAfterInvalidWithoutSecondRegistration", "passed": 5, "total": 5 },
+      "limitations": ["The frozen official denominator is 3,942 winning-live ACHR placements, but no whole-corpus per-placement differential has run", "CreatureStats is a compatibility persistence shell rather than native FNV actor-value, skill, perk, or effect semantics", "No equipped visual slots, furniture lifecycle, ragdoll, ACHR scripts, respawn or leveled-NPC behavior", "Unaccessed unchanged FNV NPCs remain omitted", "Duplicate suppression is scoped to one CellStore read pass", "Validation is not an exhaustive hostile or obsolete-save semantic guarantee", "No retail differential", "No promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     }
