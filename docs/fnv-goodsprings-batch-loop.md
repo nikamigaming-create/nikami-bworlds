@@ -72,6 +72,71 @@ The run writes one JSON manifest containing every gate, not a verdict inferred
 from log text. Screenshots are limited to the fixed rendering and UI
 checkpoints. A normal exit and unchanged input hashes are mandatory.
 
+## Frozen town inventory and interaction matrix
+
+The retail record census contains 42 authored actor placements in the town
+slice: 21 humanoids and 21 creatures. Inventory completeness is 42/42, but it
+does not count as behavioral parity.
+
+The natural dialogue matrix contains 12 targets: Doc Mitchell, Sunny Smiles,
+Trudy, Joe Cobb, Ringo, Chet, Easy Pete, four Goodsprings settlers, and the
+active Victor reference. Each target must be tested in every authored
+enabled/disabled quest-state variant. Cheyenne and ambient/hostile creatures
+remain in the activation and combat matrices but are not normal dialogue-menu
+targets.
+
+Every dialogue target must pass all of these assertions:
+
+- the authored reference is enabled exactly when its conditions require;
+- natural activation opens the correct ESM4 greeting;
+- every visible prompt maps to the same topic and INFO FormIDs as the response;
+- quest-owner and INFO conditions are both evaluated against the actor/player;
+- result scripts and quest, local, inventory, caps, and enable-state deltas persist;
+- right-side choices rebuild after every response without display-text collisions;
+- voice and LIP drive the matching expression/phoneme lifecycle;
+- the actor looks toward the player during dialogue and resumes its package afterward;
+- Chet, Doc, and Trudy expose their authored barter inventory and caps; and
+- save/quit/reload preserves the resulting dialogue and quest state.
+
+## Regression-first invariants
+
+The initial port already rendered ordinary furniture and clutter. Actor-package,
+paging, HUD, and material work may not replace that working behavior with a new
+special case. These invariants are now mandatory:
+
+1. A live reference is either individually rendered or represented by a current
+   visible paging chunk, never neither and never both. Stale cached chunks cannot
+   suppress current chairs, crates, rocks, doors, or flags.
+2. HUD, menu, dialogue, and VR quads never write world depth or mutate a world
+   object's node mask, cull state, material, or transparency.
+3. Human and creature DATA positions are root/feet or authored contact pivots.
+   Capsule centers and half-heights are never added to DATA. Furniture and perch
+   markers own their authored height.
+4. Cell re-entry retains a matching active furniture claim, phase, anchor, and
+   animation. Easy Pete must remain in `chairsit` after two Saloon round trips and
+   after save/quit/reload.
+5. The Nevada flag remains one world reference with its intentional front/back
+   faces deforming together. Paging may not overlap a static copy with the live
+   animated copy.
+6. Interior entry immediately replaces the exterior image-space grade and
+   composes XCIM plus LTMP/LNAM inheritance. Exterior color state cannot leak
+   into Doc Mitchell's house.
+
+Exact transition probes include Easy Pete chair `0x10634A`, exterior chairs
+`0x106349` and `0x106348`, crates `0x10B8CF` and `0x10B8D0`, raven perch crate
+`0x10B1B3`, Nevada flag `0x10A18D`, and Doc's shell refs `0x174771`, `0x103E19`,
+`0x103E1B`, `0x103E1F`, `0x174772`, `0x103E60`, `0x103E20`-`0x103E2F`,
+`0x103E32`-`0x103E33`, and `0x103E5F`-`0x103E67`.
+
+## Current immutable diagnostic baseline
+
+Engine commit `aa5b9294c14f54f4525dc0d4017e276cfde4d6aa` passed 699 unit tests and was
+deployed to both flat and VR executables. The bounded flat interaction run at
+`run/fnv-interaction-audit-aa5/20260718-092130` passed its narrow Easy Pete,
+quest-notification, Saloon population, radio, and door circuit. It is diagnostic
+evidence only: the capture also proves that Pete can return standing on his chair,
+so the complete town gate remains red.
+
 ## Repair cadence
 
 1. Baseline the current build with the complete flat diagnostic loop.
@@ -97,4 +162,3 @@ does not increment either numerator by itself. A capability advances only when
 its checked-in gate and required lifecycle replay pass on the same immutable
 build. Certified parity remains the minimum across all required axes and
 content families.
-
