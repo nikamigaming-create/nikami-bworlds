@@ -194,7 +194,34 @@ class CorpusContract(unittest.TestCase):
                 ],
             )
 
-            report = CORPUS.build_report([base, gra])
+            base_offset = base.read_bytes().find(b"INFO")
+            gra_offset = gra.read_bytes().find(b"REFR")
+            synthetic_zlib_allowlist = frozenset(
+                {
+                    (
+                        CORPUS._sha256_file(base),
+                        base_offset,
+                        "INFO",
+                        0x00000100,
+                    )
+                }
+            )
+            synthetic_form_allowlist = frozenset(
+                {
+                    (CORPUS._sha256_file(gra), gra_offset, "REFR", 0x02000801),
+                    (CORPUS._sha256_file(gra), gra_offset, "REFR.NAME", 0x02000800),
+                }
+            )
+            with mock.patch.object(
+                CORPUS,
+                "ALLOWED_ZLIB_CHECKSUM_RECOVERIES",
+                synthetic_zlib_allowlist,
+            ), mock.patch.object(
+                CORPUS,
+                "ALLOWED_UNRESOLVABLE_FORM_IDS",
+                synthetic_form_allowlist,
+            ):
+                report = CORPUS.build_report([base, gra])
             official = report["corpora"]["official"]
             self.assertEqual(
                 official["records"],
@@ -321,14 +348,14 @@ class CorpusContract(unittest.TestCase):
             self.assertEqual(report["uniqueNormalizedVfsPaths"], 2)
             self.assertEqual(report["duplicateOrOverriddenEntries"], 1)
             self.assertEqual(report["tool"]["versionOutput"], "BSATool version test")
-            self.assertTrue(report["tool"]["repoLocal"])
+            self.assertTrue(report["localDiagnostics"]["bsatoolRepoLocal"])
             self.assertEqual(report["tool"]["sha256"], "ab" * 32)
             self.assertEqual(
                 report["archives"][0],
                 {
                     "order": 0,
                     "name": "Update.bsa",
-                    "path": str(archive.resolve()),
+                    "logicalId": "official-archive:Update.bsa",
                     "bytes": len(b"fake archive"),
                     "sha256": "ab" * 32,
                     "authoredEntries": 3,
@@ -339,6 +366,146 @@ class CorpusContract(unittest.TestCase):
                     ],
                 },
             )
+
+    def test_nonallowlisted_checksum_recovery_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary) / "FalloutNV.esm"
+            unpacked = subrecord("TRDT")
+            packed = bytearray(zlib.compress(unpacked))
+            packed[-1] ^= 0x01
+            plugin(
+                base,
+                [],
+                [
+                    record(
+                        "INFO",
+                        0x00000100,
+                        struct.pack("<I", len(unpacked)) + bytes(packed),
+                        flags=CORPUS.REC_COMPRESSED,
+                    )
+                ],
+            )
+
+            with self.assertRaisesRegex(CORPUS.CorpusError, "not in the frozen checksum-recovery allowlist"):
+                CORPUS.build_report([base])
+
+    def test_nonallowlisted_malformed_form_id_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary) / "FalloutNV.esm"
+            plugin(base, [], [record("REFR", 0x01000001)])
+
+            with self.assertRaisesRegex(CORPUS.CorpusError, "Invalid local FormID"):
+                CORPUS.build_report([base])
+
+    def test_strict_profile_rejects_nonempty_overlay_and_reordered_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            official = root / "official"
+            overlay = root / "overlay"
+            official.mkdir()
+            overlay.mkdir()
+            (overlay / "unexpected.dds").write_bytes(b"overlay")
+            plugin_paths = []
+            for name in CORPUS.OFFICIAL_NAMES:
+                path = official / name
+                path.write_bytes(b"plugin")
+                plugin_paths.append(path)
+            archives = []
+            for name in CORPUS.OFFICIAL_ARCHIVE_NAMES:
+                path = official / name
+                path.write_bytes(b"archive")
+                archives.append(CORPUS.ArchiveSource(name, path))
+            sources = CORPUS.OpenMWConfigSources(
+                path=root / "openmw.cfg",
+                data_roots=(overlay, official),
+                data_entries=(("data-local", overlay), ("data", official)),
+                content=CORPUS.OFFICIAL_NAMES,
+                fallback_archives=CORPUS.OFFICIAL_ARCHIVE_NAMES,
+            )
+
+            with self.assertRaisesRegex(CORPUS.CorpusError, "permits only empty data-local"):
+                CORPUS.validate_strict_official_inputs(plugin_paths, archives, sources)
+            with self.assertRaisesRegex(CORPUS.CorpusError, "exactly these plugins in order"):
+                CORPUS.validate_strict_official_inputs(
+                    list(reversed(plugin_paths)), archives, None
+                )
+
+    def test_canonical_hash_excludes_machine_local_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            left = root / "left"
+            right = root / "right"
+            left.mkdir()
+            right.mkdir()
+            plugin(left / "FalloutNV.esm", [], [record("STAT", 0x00000100)])
+            plugin(right / "FalloutNV.esm", [], [record("STAT", 0x00000100)])
+            for directory in (left, right):
+                (directory / "bsatool.exe").write_bytes(b"same tool")
+                (directory / "Update.bsa").write_bytes(b"same archive")
+
+            def fake_run(
+                _tool: Path,
+                arguments: tuple[str, ...],
+                accepted_return_codes: tuple[int, ...] = (0,),
+            ) -> str:
+                if arguments == ("--version",):
+                    return "BSATool version test\n"
+                return "Textures\\A.DDS\n"
+
+            reports = []
+            with mock.patch.object(CORPUS, "_run_bsatool", side_effect=fake_run):
+                for directory in (left, right):
+                    report = CORPUS.build_report([directory / "FalloutNV.esm"])
+                    archive_report = CORPUS.build_archive_report(
+                        [
+                            CORPUS.ArchiveSource(
+                                "Update.bsa", directory / "Update.bsa"
+                            )
+                        ],
+                        directory / "bsatool.exe",
+                        repo_root=directory,
+                    )
+                    CORPUS.attach_archive_report(report, archive_report)
+                    reports.append(CORPUS.finalize_report(report))
+            left_report, right_report = reports
+
+            self.assertNotEqual(
+                left_report["localDiagnostics"]["pluginPaths"],
+                right_report["localDiagnostics"]["pluginPaths"],
+            )
+            self.assertEqual(
+                left_report["canonicalReportSha256"],
+                right_report["canonicalReportSha256"],
+            )
+            self.assertNotIn(
+                str(root).encode("utf-8"), CORPUS._canonical_report_bytes(left_report)
+            )
+
+    def test_pwat_family_is_distinct_from_referenced_watr_union(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary) / "FalloutNV.esm"
+            plugin(
+                base,
+                [],
+                [
+                    record("WATR", 0x00000100, subrecord("EDID", b"CellWater\0")),
+                    record("WATR", 0x00000101, subrecord("EDID", b"DrinkWater\0")),
+                    record("PWAT", 0x00000102),
+                    record("CELL", 0x00000200, subrecord("XCWT", struct.pack("<I", 0x100))),
+                    record(
+                        "ACTI",
+                        0x00000300,
+                        subrecord("EDID", b"DrinkActivator\0")
+                        + subrecord("WNAM", struct.pack("<I", 0x101)),
+                    ),
+                    record("REFR", 0x00000400, subrecord("NAME", struct.pack("<I", 0x300))),
+                ],
+            )
+
+            report = CORPUS.build_report([base])
+            official = report["corpora"]["official"]
+            self.assertEqual(official["features"]["water"]["uniqueReferencedTypes"], 2)
+            self.assertEqual(CORPUS._live_type(official, "PWAT"), 1)
 
 
 if __name__ == "__main__":

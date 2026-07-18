@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nikami-fnv-bite-ledger-row/v1",
+  "title": "Fallout New Vegas parity bite ledger row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rowId",
+    "scopeId",
+    "biteKind",
+    "source",
+    "category",
+    "dependencies",
+    "variants",
+    "implementation",
+    "retailContract",
+    "status",
+    "evidence"
+  ],
+  "properties": {
+    "rowId": { "type": "string", "minLength": 1 },
+    "scopeId": { "const": "fnv-ultimate-edition-en-official-v1" },
+    "biteKind": {
+      "enum": [
+        "physical-record",
+        "winning-record",
+        "subrecord-variant",
+        "placed-reference",
+        "asset-edge",
+        "script-opcode",
+        "script-command",
+        "condition-function",
+        "event",
+        "ui-flow",
+        "mechanic-variant",
+        "journey-edge"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "identity", "byteOffset", "byteSize"],
+      "properties": {
+        "owner": { "type": "string" },
+        "identity": { "type": "string" },
+        "byteOffset": { "type": ["integer", "null"], "minimum": 0 },
+        "byteSize": { "type": ["integer", "null"], "minimum": 0 },
+        "winning": { "type": ["boolean", "null"] }
+      }
+    },
+    "category": { "type": "string", "minLength": 1 },
+    "dependencies": { "type": "array", "items": { "type": "string" } },
+    "variants": { "type": "array", "items": { "type": "string" } },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "handlerPath", "rationale"],
+      "properties": {
+        "disposition": {
+          "enum": [
+            "existing-cpp-analog",
+            "new-cpp-runtime",
+            "lua-retail-script",
+            "data-only",
+            "retail-unreachable",
+            "uncovered"
+          ]
+        },
+        "handlerPath": { "type": ["string", "null"] },
+        "rationale": { "type": "string" }
+      }
+    },
+    "retailContract": {
+      "type": "object",
+      "required": ["preconditions", "actions", "stateDelta", "lifecycle", "persistence", "timing"],
+      "properties": {
+        "preconditions": { "type": "array" },
+        "actions": { "type": "array" },
+        "stateDelta": { "type": "object" },
+        "lifecycle": { "type": "array" },
+        "persistence": { "type": "array" },
+        "timing": { "type": "object" }
+      }
+    },
+    "status": {
+      "enum": ["unseen", "cataloged", "unsupported", "fail", "pass", "excluded"]
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["manifestSha256"],
+      "properties": {
+        "manifestSha256": { "type": ["string", "null"], "pattern": "^[0-9A-Fa-f]{64}$" }
+      }
+    }
+  }
+}

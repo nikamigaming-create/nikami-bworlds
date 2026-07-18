@@ -1,0 +1,20 @@
+{
+  "schema": "nikami-fnv-parity-exclusions/v1",
+  "scopeId": "fnv-ultimate-edition-en-official-v1",
+  "policy": "An exclusion is valid only for a retail-unreachable or explicitly out-of-scope row and must preserve its original denominator visibility. Difficulty, missing implementation, unsupported runtime behavior, or unavailable evidence are never exclusion reasons.",
+  "requiredFields": [
+    "rowId",
+    "rowKind",
+    "retailReachabilityReason",
+    "evidenceManifestSha256",
+    "scopeRevision",
+    "approvedByUser",
+    "approvedAt",
+    "scoringDisposition"
+  ],
+  "allowedScoringDispositions": [
+    "retained-as-pass-equivalent-retail-unreachable",
+    "removed-by-explicit-scope-revision"
+  ],
+  "exclusions": []
+}

@@ -6,6 +6,10 @@ never extracts archive contents.  Plugin counts use TES4-family record headers
 after master-aware FormID resolution and load-order override/deletion handling.
 Archive counts use OpenMW's ``bsatool list`` command against the configured
 fallback archives.
+
+``--strict-official-profile --verify-denominators`` is the fail-closed Layer-0
+gate.  Its canonical report is path-independent; machine-local paths live only
+under ``localDiagnostics`` and are excluded from ``canonicalReportSha256``.
 """
 
 from __future__ import annotations
@@ -61,6 +65,29 @@ OFFICIAL_ARCHIVE_NAMES = (
     "Update.bsa",
 )
 HELPER_NAME = "FNVR.esp"
+SCOPE_ID = "fnv-ultimate-edition-en-official-v1"
+DENOMINATOR_SCHEMA = "nikami-fnv-parity-denominators/v1"
+REPORT_SCHEMA = "nikami-fnv-parity-corpus/v1"
+
+# These are not permissive parser fallbacks.  They are byte-identity-locked
+# exceptions for two defects in the frozen English Ultimate Edition corpus.
+# A repack, another language, another record, or even the same defect at a
+# different offset is an error and creates a new corpus rather than silently
+# inheriting this recovery policy.
+FALLOUTNV_SHA256 = "50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1"
+GRA_SHA256 = "aee27930699494f0626d24a3a8ae947fe447e33edc0ed46762e54faab4c05a1e"
+ALLOWED_UNRESOLVABLE_FORM_IDS = frozenset(
+    {
+        (GRA_SHA256, 0x00032168, "REFR", 0x02000801),
+        (GRA_SHA256, 0x00032168, "REFR.NAME", 0x02000800),
+    }
+)
+ALLOWED_ZLIB_CHECKSUM_RECOVERIES = frozenset(
+    {(FALLOUTNV_SHA256, 0x0B0CFF04, "LAND", 0x00150FC0)}
+)
+EXPECTED_BSATOOL_BYTES_BY_SHA256 = {
+    "8c6d081baa377daf0f6c19f81e7fd6ec2a5e25eb7d2698251ecda9a984868f08": 404_992,
+}
 
 REC_DELETED = 0x00000020
 REC_COMPRESSED = 0x00040000
@@ -115,6 +142,7 @@ class CorpusError(RuntimeError):
 class OpenMWConfigSources:
     path: Path
     data_roots: tuple[Path, ...]
+    data_entries: tuple[tuple[str, Path], ...]
     content: tuple[str, ...]
     fallback_archives: tuple[str, ...]
 
@@ -159,6 +187,7 @@ def read_openmw_config_sources(config_path: Path) -> OpenMWConfigSources:
         raise CorpusError(f"OpenMW config does not exist: {config_path}")
 
     data_roots: list[Path] = []
+    data_entries: list[tuple[str, Path]] = []
     content: list[str] = []
     fallback_archives: list[str] = []
     for raw_line in config_path.read_text(encoding="utf-8-sig").splitlines():
@@ -169,7 +198,9 @@ def read_openmw_config_sources(config_path: Path) -> OpenMWConfigSources:
         key = key.strip().lower()
         value = _strip_config_value(value)
         if key in ("data", "data-local"):
-            data_roots.append(_config_path(value, config_path.parent))
+            resolved = _config_path(value, config_path.parent)
+            data_roots.append(resolved)
+            data_entries.append((key, resolved))
         elif key == "content":
             content.append(value)
         elif key == "fallback-archive":
@@ -183,6 +214,7 @@ def read_openmw_config_sources(config_path: Path) -> OpenMWConfigSources:
     return OpenMWConfigSources(
         path=config_path,
         data_roots=tuple(data_roots),
+        data_entries=tuple(data_entries),
         content=tuple(content),
         fallback_archives=tuple(fallback_archives),
     )
@@ -264,6 +296,10 @@ def _run_bsatool(
         detail = stderr.strip() or stdout.strip() or "no diagnostic output"
         raise CorpusError(
             f"bsatool {' '.join(arguments)} failed with exit code {result.returncode}: {detail}"
+        )
+    if stderr.strip():
+        raise CorpusError(
+            f"bsatool {' '.join(arguments)} emitted unexpected stderr: {stderr.strip()}"
         )
     return stdout
 
@@ -379,7 +415,7 @@ def build_archive_report(
             {
                 "order": order,
                 "name": source.name,
-                "path": str(source.path.resolve()),
+                "logicalId": f"official-archive:{source.name}",
                 "bytes": source.path.stat().st_size,
                 "sha256": _sha256_file(source.path),
                 **counts,
@@ -414,15 +450,21 @@ def build_archive_report(
         },
         "tool": {
             "name": "OpenMW bsatool",
-            "path": str(bsatool_path),
+            "logicalId": "openmw-bsatool",
             "bytes": bsatool_path.stat().st_size,
             "sha256": _sha256_file(bsatool_path),
             "versionOutput": version_output,
-            "repoLocal": repo_local,
             "listingInvocation": ["bsatool", "list", "<archive-path>"],
         },
         **aggregate,
         "archives": archive_metadata,
+        "localDiagnostics": {
+            "canonical": False,
+            "excludedFromCanonicalSha256": True,
+            "bsatoolPath": str(bsatool_path),
+            "bsatoolRepoLocal": repo_local,
+            "archivePaths": [str(source.path.resolve()) for source in selected],
+        },
     }
 
 
@@ -491,6 +533,7 @@ class RecordFacts:
     editor_id: str = ""
     full_name: str = ""
     cell_flags: int | None = None
+    water_types: tuple[int, ...] = ()
 
     @property
     def deleted(self) -> bool:
@@ -586,6 +629,7 @@ def _resolve_form_id(raw: int, source: PluginSource, master_indices: Sequence[in
 
 def _record_facts(
     source: PluginSource,
+    record_offset: int,
     rtype: str,
     raw_form: int,
     flags: int,
@@ -600,10 +644,13 @@ def _record_facts(
         if form_id is None:
             raise CorpusError(f"Zero FormID on non-header {rtype} record in {source.name}")
     except CorpusError:
-        # One retail GRA REFR is authored with local index 02 despite GRA
-        # declaring only FalloutNV.esm as index 00.  It belongs in the
-        # physical-header denominator but cannot safely participate in an
-        # override chain.  Keep it explicit rather than guessing ownership.
+        allowlist_key = (source.sha256, record_offset, rtype, raw_form)
+        if allowlist_key not in ALLOWED_UNRESOLVABLE_FORM_IDS:
+            raise
+        # One byte-identity-locked retail GRA REFR is authored with local
+        # index 02 despite GRA declaring only FalloutNV.esm as index 00.  It
+        # belongs in the physical-header denominator but cannot safely
+        # participate in an override chain.
         form_id = None
         if diagnostics is not None:
             diagnostics[f"unresolvableRecordFormId:{rtype}"] += 1
@@ -613,17 +660,27 @@ def _record_facts(
     editor_id = ""
     full_name = ""
     cell_flags: int | None = None
-    want_names = rtype in ("FURN", "ACTI", "TACT")
+    water_types: list[int] = []
+    want_names = rtype in ("FURN", "ACTI", "TACT", "WATR")
     context = f"{source.name}:{rtype}:0x{raw_form:08x}"
     for name, offset, size in _subrecords(payload_data, payload_start, payload_end, context):
         if name in COUNTED_SUBRECORDS:
             metrics[name.decode("ascii")] += 1
         if rtype in PLACED_TYPES and name == b"NAME" and size >= 4:
+            raw_base = _u32(payload_data, offset)
             try:
                 base = _resolve_form_id(
-                    _u32(payload_data, offset), source, master_indices, f"{rtype}.NAME"
+                    raw_base, source, master_indices, f"{rtype}.NAME"
                 )
             except CorpusError:
+                allowlist_key = (
+                    source.sha256,
+                    record_offset,
+                    f"{rtype}.NAME",
+                    raw_base,
+                )
+                if allowlist_key not in ALLOWED_UNRESOLVABLE_FORM_IDS:
+                    raise
                 base = None
                 if diagnostics is not None:
                     diagnostics[f"unresolvableReferencedFormId:{rtype}.NAME"] += 1
@@ -633,6 +690,19 @@ def _record_facts(
             full_name = _zstr(payload_data[offset : offset + size])
         elif rtype == "CELL" and name == b"DATA" and size >= 1:
             cell_flags = payload_data[offset]
+        elif (
+            (rtype == "CELL" and name == b"XCWT")
+            or (rtype == "WRLD" and name in (b"NAM2", b"NAM3"))
+            or (rtype == "ACTI" and name == b"WNAM")
+        ) and size >= 4:
+            resolved_water = _resolve_form_id(
+                _u32(payload_data, offset),
+                source,
+                master_indices,
+                f"{rtype}.{name.decode('ascii')}",
+            )
+            if resolved_water is not None:
+                water_types.append(resolved_water)
 
     return RecordFacts(
         form_id=form_id,
@@ -644,6 +714,7 @@ def _record_facts(
         editor_id=editor_id,
         full_name=full_name,
         cell_flags=cell_flags,
+        water_types=tuple(water_types),
     )
 
 
@@ -693,10 +764,16 @@ def iter_plugin_records(
                         try:
                             unpacked = zlib.decompress(packed)
                         except zlib.error as error:
-                            # The installed retail FalloutNV.esm contains a LAND
-                            # whose deflate stream is complete but whose trailing
-                            # Adler-32 is wrong.  Recover only that narrowly
-                            # recognizable case and expose it in diagnostics.
+                            recovery_key = (source.sha256, offset, rtype, raw_form)
+                            if recovery_key not in ALLOWED_ZLIB_CHECKSUM_RECOVERIES:
+                                raise CorpusError(
+                                    f"Cannot decompress {rtype} in {source.name} at 0x{offset:x}: "
+                                    f"{error}; record is not in the frozen checksum-recovery allowlist"
+                                ) from error
+                            # The frozen FalloutNV.esm contains one LAND whose
+                            # deflate stream is complete but whose Adler-32 is
+                            # wrong.  Only the exact SHA/offset/type/FormID above
+                            # may use raw-deflate recovery.
                             try:
                                 unpacked = zlib.decompress(packed[2:-4], -15)
                             except zlib.error as recovery_error:
@@ -713,6 +790,7 @@ def iter_plugin_records(
                             )
                         yield _record_facts(
                             source,
+                            offset,
                             rtype,
                             raw_form,
                             flags,
@@ -725,6 +803,7 @@ def iter_plugin_records(
                     else:
                         yield _record_facts(
                             source,
+                            offset,
                             rtype,
                             raw_form,
                             flags,
@@ -773,11 +852,22 @@ def _feature_summary(records: Iterable[RecordFacts], base_lookup: Mapping[int, R
     }
     xrdo_refs = [record for record in placements if record.count("XRDO")]
     radio_refs = [record for record in placements if record.base in radio_bases or record.count("XRDO")]
+    reserved_marker_refs = [record for record in placements if record.base in (0x17, 0x20)]
     infos = [record for record in live if record.rtype == "INFO"]
     quests = [record for record in live if record.rtype == "QUST"]
     terminal_records = [record for record in live if record.rtype == "TERM"]
     script_links = [record for record in live if record.count("SCRI")]
     cells = [record for record in live if record.rtype == "CELL"]
+    placed_base_ids = {record.base for record in placements if record.base is not None}
+    water_owners = [
+        record
+        for record in live
+        if record.rtype in ("CELL", "WRLD")
+        or (record.rtype == "ACTI" and record.form_id in placed_base_ids)
+    ]
+    placed_water_types = {
+        water_type for record in water_owners for water_type in record.water_types
+    }
 
     return {
         "placedRefs": {
@@ -865,6 +955,21 @@ def _feature_summary(records: Iterable[RecordFacts], base_lookup: Mapping[int, R
         "mapMarkers": {
             "placedRefsXMRK": sum(1 for record in placements if record.count("XMRK")),
         },
+        "water": {
+            "cellsWithXCWT": sum(1 for record in cells if record.water_types),
+            "worldspacesWithNAM2OrNAM3": sum(
+                1
+                for record in live
+                if record.rtype == "WRLD" and record.water_types
+            ),
+            "activatorsWithWNAM": sum(
+                1
+                for record in water_owners
+                if record.rtype == "ACTI" and record.water_types
+            ),
+            "uniqueReferencedTypes": len(placed_water_types),
+        },
+        "engineReservedMarkers": {"placedRefs": len(reserved_marker_refs)},
         "worldSystems": {rtype: by_type.get(rtype, 0) for rtype in WORLD_SYSTEM_TYPES},
     }
 
@@ -923,6 +1028,8 @@ def build_report(paths: Sequence[Path], config_path: Path | None = None) -> dict
     official_unresolvable = 0
     helper_unresolvable = 0
     effective_unresolvable = 0
+    official_physical_records_with_scri = 0
+    helper_physical_records_with_scri = 0
     per_plugin: list[dict] = []
     per_plugin_types: dict[str, Counter[str]] = {}
 
@@ -944,12 +1051,14 @@ def build_report(paths: Sequence[Path], config_path: Path | None = None) -> dict
                     effective_unresolvable += 1
                 if source.role == "official":
                     official_physical[record.rtype] += 1
+                    official_physical_records_with_scri += int(bool(record.count("SCRI")))
                     if record.form_id is not None:
                         official_winners[record.form_id] = record
                     else:
                         official_unresolvable += 1
                 else:
                     helper_physical[record.rtype] += 1
+                    helper_physical_records_with_scri += int(bool(record.count("SCRI")))
                     if record.form_id is not None:
                         helper_winners[record.form_id] = record
                     else:
@@ -958,8 +1067,8 @@ def build_report(paths: Sequence[Path], config_path: Path | None = None) -> dict
             {
                 "loadIndex": source.load_index,
                 "name": source.name,
+                "logicalId": f"{source.role}-plugin:{source.name}",
                 "role": source.role,
-                "path": str(source.path),
                 "bytes": source.size,
                 "sha256": source.sha256,
                 "recordHeaderBytes": source.header_size,
@@ -1026,7 +1135,8 @@ def build_report(paths: Sequence[Path], config_path: Path | None = None) -> dict
         }
 
     return {
-        "schema": "nikami-fnv-parity-corpus/v1",
+        "schema": REPORT_SCHEMA,
+        "scopeId": SCOPE_ID,
         "semantics": {
             "physical": "Every non-TES4 record instance in the selected plugin layer.",
             "winning": "One last-loaded record per master-resolved 32-bit FormID, including deleted winners.",
@@ -1038,7 +1148,6 @@ def build_report(paths: Sequence[Path], config_path: Path | None = None) -> dict
             "scope": "This section counts static plugin records only; runtime-spawned objects and execution paths are not counted.",
         },
         "source": {
-            "config": str(config_path.resolve()) if config_path is not None else None,
             "completeOfficialSet": not missing_official and len(official_actual_names) == len(OFFICIAL_NAMES),
             "fnvrPresent": any(source.role == "helper" for source in sources),
             "warnings": warnings,
@@ -1053,7 +1162,328 @@ def build_report(paths: Sequence[Path], config_path: Path | None = None) -> dict
                 effective_winners, effective_physical, unresolvable=effective_unresolvable
             ),
         },
+        "physicalFeatureCounts": {
+            "officialRecordsWithSCRI": official_physical_records_with_scri,
+            "fnvrRecordsWithSCRI": helper_physical_records_with_scri,
+        },
         "baseGameRegression": regression,
+        "localDiagnostics": {
+            "canonical": False,
+            "excludedFromCanonicalSha256": True,
+            "inputMode": "openmw-config" if config_path is not None else "explicit",
+            "configPath": str(config_path.resolve()) if config_path is not None else None,
+            "pluginPaths": [str(source.path) for source in sources],
+        },
+    }
+
+
+def validate_strict_official_inputs(
+    plugin_paths: Sequence[Path],
+    archive_sources: Sequence[ArchiveSource],
+    config_sources: OpenMWConfigSources | None = None,
+) -> None:
+    """Reject every source shape except the frozen official-only corpus."""
+
+    failures: list[str] = []
+    plugin_names = [Path(path).name for path in plugin_paths]
+    if plugin_names != list(OFFICIAL_NAMES):
+        failures.append(
+            "requires exactly these plugins in order: "
+            + ", ".join(OFFICIAL_NAMES)
+            + "; got: "
+            + (", ".join(plugin_names) or "<none>")
+        )
+    archive_names = [source.name for source in archive_sources]
+    if archive_names != list(OFFICIAL_ARCHIVE_NAMES):
+        failures.append(
+            "requires exactly these fallback archives in order: "
+            + ", ".join(OFFICIAL_ARCHIVE_NAMES)
+            + "; got: "
+            + (", ".join(archive_names) or "<none>")
+        )
+
+    resolved_input_parents = {
+        Path(path).resolve().parent for path in plugin_paths
+    } | {source.path.resolve().parent for source in archive_sources}
+    if len(resolved_input_parents) != 1:
+        failures.append(
+            "official inputs must resolve from one data root; got: "
+            + ", ".join(sorted(str(path) for path in resolved_input_parents))
+        )
+
+    if config_sources is not None:
+        if config_sources.content != OFFICIAL_NAMES:
+            failures.append(
+                "rejects missing, reordered, helper, or extra content entries; got: "
+                + ", ".join(config_sources.content)
+            )
+        if config_sources.fallback_archives != OFFICIAL_ARCHIVE_NAMES:
+            failures.append("rejects missing, reordered, or extra fallback archives")
+        official_roots = [
+            path for kind, path in config_sources.data_entries if kind == "data"
+        ]
+        local_roots = [
+            path for kind, path in config_sources.data_entries if kind == "data-local"
+        ]
+        nonempty_local_roots = [
+            path
+            for path in local_roots
+            if path.exists() and any(candidate.is_file() for candidate in path.rglob("*"))
+        ]
+        if len(official_roots) != 1 or nonempty_local_roots:
+            rendered = ", ".join(
+                f"{kind}={path}" for kind, path in config_sources.data_entries
+            )
+            failures.append(
+                "requires exactly one data= root and permits only empty data-local runtime roots; got: "
+                + (rendered or "<none>")
+            )
+        if len(official_roots) == 1 and len(resolved_input_parents) == 1:
+            only_input_root = next(iter(resolved_input_parents))
+            if official_roots[0].resolve() != only_input_root:
+                failures.append("data root does not own every resolved official input")
+
+    if failures:
+        raise CorpusError(
+            "Strict official profile rejected input:\n  - " + "\n  - ".join(failures)
+        )
+
+
+def _canonical_report_bytes(report: Mapping) -> bytes:
+    canonical = dict(report)
+    canonical.pop("localDiagnostics", None)
+    canonical.pop("canonicalReportSha256", None)
+    return json.dumps(
+        canonical,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def finalize_report(report: dict) -> dict:
+    """Attach a hash that deliberately excludes all machine-local paths."""
+
+    report["canonicalReportSha256"] = hashlib.sha256(
+        _canonical_report_bytes(report)
+    ).hexdigest()
+    return report
+
+
+def attach_archive_report(report: dict, archive_report: dict) -> None:
+    local = archive_report.pop("localDiagnostics", {})
+    report["archives"] = archive_report
+    report.setdefault("localDiagnostics", {}).update(local)
+
+
+def _live_type(official: Mapping, rtype: str) -> int:
+    return int(official["recordTypes"].get(rtype, {}).get("live", 0))
+
+
+def verify_denominators(report: Mapping, denominator_path: Path) -> dict:
+    """Verify every census headline this exporter can derive, plus all provenance."""
+
+    try:
+        denominator_bytes = denominator_path.read_bytes()
+        denominators = json.loads(denominator_bytes)
+    except (OSError, json.JSONDecodeError) as error:
+        raise CorpusError(f"Cannot read denominator JSON {denominator_path}: {error}") from error
+    if denominators.get("schema") != DENOMINATOR_SCHEMA:
+        raise CorpusError(
+            f"Unexpected denominator schema: {denominators.get('schema')!r}"
+        )
+    if denominators.get("scopeId") != SCOPE_ID or report.get("scopeId") != SCOPE_ID:
+        raise CorpusError("Report and denominator scopeId must both equal the frozen FNV scope")
+
+    failures: list[str] = []
+    assertions = 0
+
+    def expect(label: str, actual, expected) -> None:
+        nonlocal assertions
+        assertions += 1
+        if actual != expected:
+            failures.append(f"{label}: expected {expected!r}, got {actual!r}")
+
+    source = report["source"]
+    expect("source.completeOfficialSet", source["completeOfficialSet"], True)
+    expect("source.fnvrPresent", source["fnvrPresent"], False)
+    expect("source.warnings", source["warnings"], [])
+
+    expected_plugins = denominators["officialMasters"]
+    actual_plugins = report["plugins"]
+    expect("plugin count", len(actual_plugins), len(expected_plugins))
+    expect(
+        "plugin order",
+        [plugin["name"] for plugin in actual_plugins],
+        [plugin["name"] for plugin in expected_plugins],
+    )
+    for order, (actual, expected) in enumerate(zip(actual_plugins, expected_plugins)):
+        prefix = f"plugin[{order}] {expected['name']}"
+        expect(prefix + " role", actual["role"], "official")
+        expect(prefix + " loadIndex", actual["loadIndex"], order)
+        expect(prefix + " bytes", actual["bytes"], expected["bytes"])
+        expect(prefix + " sha256", actual["sha256"].casefold(), expected["sha256"].casefold())
+        approved_diagnostics: dict[str, int] = {}
+        if actual["sha256"].casefold() == FALLOUTNV_SHA256:
+            approved_diagnostics = {"recoveredZlibChecksum:LAND": 1}
+        elif actual["sha256"].casefold() == GRA_SHA256:
+            approved_diagnostics = {
+                "unresolvableRecordFormId:REFR": 1,
+                "unresolvableReferencedFormId:REFR.NAME": 1,
+            }
+        expect(prefix + " payloadDiagnostics", actual["payloadDiagnostics"], approved_diagnostics)
+
+    regression = report.get("baseGameRegression")
+    expect("baseGameRegression.status", regression and regression.get("status"), "pass")
+
+    if "archives" not in report:
+        failures.append("archives: missing complete official archive report")
+    else:
+        archives = report["archives"]
+        expect("archive source.completeOfficialSet", archives["source"]["completeOfficialSet"], True)
+        expect("archive source.warnings", archives["source"]["warnings"], [])
+        expected_archives = denominators["officialArchives"]
+        actual_archives = archives["archives"]
+        expect("archive count", len(actual_archives), len(expected_archives))
+        expect(
+            "archive order",
+            [archive["name"] for archive in actual_archives],
+            [archive["name"] for archive in expected_archives],
+        )
+        for order, (actual, expected) in enumerate(zip(actual_archives, expected_archives)):
+            prefix = f"archive[{order}] {expected['name']}"
+            expect(prefix + " order", actual["order"], expected["order"])
+            expect(prefix + " bytes", actual["bytes"], expected["bytes"])
+            expect(prefix + " sha256", actual["sha256"].casefold(), expected["sha256"].casefold())
+            expect(prefix + " authoredEntries", actual["authoredEntries"], expected["authoredEntries"])
+            expect(
+                prefix + " normalizedListingSha256",
+                actual["normalizedListingSha256"].casefold(),
+                expected["normalizedListingSha256"].casefold(),
+            )
+        tool = archives["tool"]
+        expected_tool_hash = denominators["reproducer"]["bsatoolSha256"].casefold()
+        expect("bsatool sha256", tool["sha256"].casefold(), expected_tool_hash)
+        expect(
+            "bsatool bytes",
+            tool["bytes"],
+            EXPECTED_BSATOOL_BYTES_BY_SHA256.get(expected_tool_hash),
+        )
+        expect("bsatool version", tool["versionOutput"], "BSATool version 1.1")
+        expect("archive authoredEntries", archives["authoredEntries"], denominators["archives"]["authoredEntries"])
+        expect(
+            "archive uniqueNormalizedVfsPaths",
+            archives["uniqueNormalizedVfsPaths"],
+            denominators["archives"]["uniqueNormalizedVfsPaths"],
+        )
+        expect(
+            "archive duplicateOrOverriddenEntries",
+            archives["duplicateOrOverriddenEntries"],
+            denominators["archives"]["duplicateOrOverriddenEntries"],
+        )
+        for extension, expected_count in denominators["archives"]["extensions"].items():
+            expect(
+                f"archive winning extension .{extension}",
+                archives["extensionCounts"]["winning"].get(extension, 0),
+                expected_count,
+            )
+
+    official = report["corpora"]["official"]
+    records = official["records"]
+    features = official["features"]
+    record_den = denominators["recordCorpus"]
+    headline_checks = [
+        ("recordCorpus.physicalHeadersIncludingTes4", records["physical"] + len(actual_plugins), record_den["physicalHeadersIncludingTes4"]),
+        ("recordCorpus.nonTes4Records", records["physical"], record_den["nonTes4Records"]),
+        ("recordCorpus.resolvableNonTes4Records", records["physical"] - records["unresolvablePhysicalRecords"], record_den["resolvableNonTes4Records"]),
+        ("recordCorpus.unresolvableRecords", records["unresolvablePhysicalRecords"], record_den["unresolvableRecords"]),
+        ("recordCorpus.winningRecordsIncludingDeleted", records["winning"], record_den["winningRecordsIncludingDeleted"]),
+        ("recordCorpus.winningDeletedRecords", records["deletedWinners"], record_den["winningDeletedRecords"]),
+        ("recordCorpus.winningLiveRecords", records["live"], record_den["winningLiveRecords"]),
+        ("recordCorpus.rawPlacedReferenceRecords", features["placedRefs"]["physical"], record_den["rawPlacedReferenceRecords"]),
+        ("recordCorpus.winningLivePlacedReferences", features["placedRefs"]["live"], record_den["winningLivePlacedReferences"]),
+        ("world.cells", features["cells"]["total"], denominators["world"]["cells"]),
+        ("world.interiorCells", features["cells"]["interior"], denominators["world"]["interiorCells"]),
+        ("world.exteriorCells", features["cells"]["exterior"], denominators["world"]["exteriorCells"]),
+        ("world.worldspaces", features["worldSystems"]["WRLD"], denominators["world"]["worldspaces"]),
+        ("world.mapMarkers", features["mapMarkers"]["placedRefsXMRK"], denominators["world"]["mapMarkers"]),
+        ("placedReferences.doors", features["doors"]["placedRefs"], denominators["placedReferences"]["doors"]),
+        ("placedReferences.directedDoorTeleports", features["doors"]["teleportRefsXTEL"], denominators["placedReferences"]["directedDoorTeleports"]),
+        ("placedReferences.containers", features["containers"]["placedRefs"], denominators["placedReferences"]["containers"]),
+        ("placedReferences.npcs", features["actors"]["ACHR"], denominators["placedReferences"]["npcs"]),
+        ("placedReferences.creatures", features["actors"]["ACRE"], denominators["placedReferences"]["creatures"]),
+        ("placedReferences.terminals", features["terminals"]["placedRefs"], denominators["placedReferences"]["terminals"]),
+        ("placedReferences.craftingStationsCandidate", features["craftingCandidates"]["placedCandidateRefs"], denominators["placedReferences"]["craftingStationsCandidate"]),
+        ("placedReferences.craftingStationCandidateBases", features["craftingCandidates"]["candidateBaseRecords"], denominators["placedReferences"]["craftingStationCandidateBases"]),
+        ("placedReferences.radios", features["radios"]["placedRadioRefs"], denominators["placedReferences"]["radios"]),
+        ("placedReferences.activatorsAndTalkingActivators", features["activators"]["placedRefs"], denominators["placedReferences"]["activatorsAndTalkingActivators"]),
+        ("placedReferences.engineReservedMarkerBaseReferences", features["engineReservedMarkers"]["placedRefs"], denominators["placedReferences"]["engineReservedMarkerBaseReferences"]),
+        ("dialogue.topics", features["dialogue"]["topicsDIAL"], denominators["dialogue"]["topics"]),
+        ("dialogue.infos", features["dialogue"]["infosINFO"], denominators["dialogue"]["infos"]),
+        ("dialogue.responses", features["dialogue"]["responsesTRDT"], denominators["dialogue"]["responses"]),
+        ("dialogue.conditions", features["dialogue"]["conditions"]["total"], denominators["dialogue"]["conditions"]),
+        ("dialogue.choiceEdges", features["dialogue"]["choiceEdgesTCLT"], denominators["dialogue"]["choiceEdges"]),
+        ("questsAndScripts.officialQuests", features["quests"]["recordsQUST"], denominators["questsAndScripts"]["officialQuests"]),
+        ("questsAndScripts.questStages", features["quests"]["stagesINDX"], denominators["questsAndScripts"]["questStages"]),
+        ("questsAndScripts.questStageEntries", features["quests"]["stageEntriesQSDT"], denominators["questsAndScripts"]["questStageEntries"]),
+        ("questsAndScripts.questObjectives", features["quests"]["objectivesQOBJ"], denominators["questsAndScripts"]["questObjectives"]),
+        ("questsAndScripts.questObjectiveTargets", features["quests"]["objectiveTargetsQSTA"], denominators["questsAndScripts"]["questObjectiveTargets"]),
+        ("questsAndScripts.officialStandaloneScripts", features["scripts"]["recordsSCPT"], denominators["questsAndScripts"]["officialStandaloneScripts"]),
+        ("questsAndScripts.physicalRecordsWithScriptAttachments", report["physicalFeatureCounts"]["officialRecordsWithSCRI"], denominators["questsAndScripts"]["physicalRecordsWithScriptAttachments"]),
+        ("questsAndScripts.winningLiveRecordsWithScriptAttachments", features["scripts"]["recordsWithSCRI"], denominators["questsAndScripts"]["winningLiveRecordsWithScriptAttachments"]),
+        ("questsAndScripts.aiPackages", features["worldSystems"]["PACK"], denominators["questsAndScripts"]["aiPackages"]),
+        ("questsAndScripts.leveledNpcLists", _live_type(official, "LVLN"), denominators["questsAndScripts"]["leveledNpcLists"]),
+        ("questsAndScripts.leveledCreatureLists", _live_type(official, "LVLC"), denominators["questsAndScripts"]["leveledCreatureLists"]),
+        ("interactiveRecords.terminalBases", features["terminals"]["baseRecordsTERM"], denominators["interactiveRecords"]["terminalBases"]),
+        ("interactiveRecords.terminalMenuItems", features["terminals"]["menuItemsITXT"], denominators["interactiveRecords"]["terminalMenuItems"]),
+        ("interactiveRecords.weatherRecords", features["worldSystems"]["WTHR"], denominators["interactiveRecords"]["weatherRecords"]),
+        ("interactiveRecords.climates", features["worldSystems"]["CLMT"], denominators["interactiveRecords"]["climates"]),
+        ("interactiveRecords.regions", features["worldSystems"]["REGN"], denominators["interactiveRecords"]["regions"]),
+        ("interactiveRecords.encounterZones", features["worldSystems"]["ECZN"], denominators["interactiveRecords"]["encounterZones"]),
+    ]
+    runtime_type_map = {
+        "authoredNavmeshes": "NAVM", "leveledItems": "LVLI", "magicEffects": "MGEF",
+        "enchantments": "ENCH", "spells": "SPEL", "effectShaders": "EFSH",
+        "perks": "PERK", "actorValues": "AVIF", "factions": "FACT",
+        "challenges": "CHAL", "recipes": "RCPE", "messages": "MESG",
+        "imageSpaces": "IMGS", "imageSpaceAdapters": "IMAD", "waterTypes": "WATR",
+        "projectiles": "PROJ", "explosions": "EXPL", "impactData": "IPCT",
+        "impactDataSets": "IPDS", "sounds": "SOUN", "musicTypes": "MUSC",
+    }
+    for denominator_name, rtype in runtime_type_map.items():
+        headline_checks.append(
+            (
+                f"runtimeRecordFamilies.{denominator_name}",
+                _live_type(official, rtype),
+                denominators["runtimeRecordFamilies"][denominator_name],
+            )
+        )
+    headline_checks.append(
+        (
+            "runtimeRecordFamilies.placedWaterTypes",
+            _live_type(official, "PWAT"),
+            denominators["runtimeRecordFamilies"]["placedWaterTypes"],
+        )
+    )
+    for label, actual, expected in headline_checks:
+        expect(label, actual, expected)
+
+    helper_records = report["corpora"]["fnvrLayer"]["records"]
+    expect("strict fnvrLayer physical records", helper_records["physical"], 0)
+    expect("strict fnvrLayer winning records", helper_records["winning"], 0)
+
+    if failures:
+        rendered = "\n  - ".join(failures[:50])
+        suffix = "" if len(failures) <= 50 else f"\n  - ... {len(failures) - 50} more"
+        raise CorpusError(
+            f"Denominator verification failed ({len(failures)} mismatch(es)):\n  - {rendered}{suffix}"
+        )
+    return {
+        "status": "pass",
+        "scopeId": SCOPE_ID,
+        "denominatorSchema": DENOMINATOR_SCHEMA,
+        "denominatorSha256": hashlib.sha256(denominator_bytes).hexdigest(),
+        "assertionsPassed": assertions,
     }
 
 
@@ -1074,6 +1504,13 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         help="Explicit plugin path in load order; repeat to bypass --config",
     )
     parser.add_argument(
+        "--archive",
+        action="append",
+        type=Path,
+        default=[],
+        help="Explicit official BSA path in fallback order; repeat with --plugin",
+    )
+    parser.add_argument(
         "--bsatool",
         type=Path,
         default=repo_root / "local" / "openmw-fo4guard" / "bsatool.exe",
@@ -1084,6 +1521,16 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         action="store_true",
         help="Export plugin records only; explicit --plugin inputs already imply this",
     )
+    parser.add_argument(
+        "--strict-official-profile",
+        action="store_true",
+        help="Reject helper plugins, overlays, extra/missing/reordered inputs, and split data roots",
+    )
+    parser.add_argument(
+        "--verify-denominators",
+        type=Path,
+        help="Fail unless provenance, listings, diagnostics, and derived counts match this JSON",
+    )
     parser.add_argument("--output", type=Path, help="Write JSON here instead of stdout")
     parser.add_argument("--compact", action="store_true", help="Emit single-line JSON")
     return parser.parse_args(argv)
@@ -1092,16 +1539,65 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     try:
-        config_path = None if args.plugin else args.config
-        paths = [path.resolve() for path in args.plugin] if args.plugin else plugin_paths_from_config(args.config)
+        if args.archive and not args.plugin:
+            raise CorpusError("Explicit --archive inputs require explicit --plugin inputs")
+        if args.skip_archives and args.archive:
+            raise CorpusError("--skip-archives cannot be combined with --archive")
+
+        config_sources: OpenMWConfigSources | None = None
+        if args.plugin:
+            config_path = None
+            paths = [path.resolve() for path in args.plugin]
+            archive_sources = [
+                ArchiveSource(path.name, path.resolve()) for path in args.archive
+            ]
+        else:
+            config_path = args.config
+            config_sources = read_openmw_config_sources(args.config)
+            paths = _resolve_config_entries(
+                config_sources.content, config_sources.data_roots, "content"
+            )
+            archive_sources = (
+                []
+                if args.skip_archives
+                else [
+                    ArchiveSource(name, path)
+                    for name, path in zip(
+                        config_sources.fallback_archives,
+                        _resolve_config_entries(
+                            config_sources.fallback_archives,
+                            config_sources.data_roots,
+                            "fallback-archive",
+                        ),
+                        strict=True,
+                    )
+                ]
+            )
+
+        strict = args.strict_official_profile or args.verify_denominators is not None
+        if strict:
+            if args.skip_archives or not archive_sources:
+                raise CorpusError(
+                    "Strict official verification requires all explicit/configured official archives"
+                )
+            validate_strict_official_inputs(paths, archive_sources, config_sources)
+
         report = build_report(paths, config_path=config_path)
-        if config_path is not None and not args.skip_archives:
-            archive_sources = archive_sources_from_config(config_path)
-            report["archives"] = build_archive_report(
+        if archive_sources:
+            archive_report = build_archive_report(
                 archive_sources,
                 args.bsatool,
                 repo_root=Path(__file__).resolve().parents[1],
             )
+            attach_archive_report(report, archive_report)
+        if args.verify_denominators is not None:
+            report["verification"] = verify_denominators(
+                report, args.verify_denominators.resolve()
+            )
+            report["localDiagnostics"]["denominatorPath"] = str(
+                args.verify_denominators.resolve()
+            )
+        finalize_report(report)
     except (CorpusError, OSError, struct.error) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2

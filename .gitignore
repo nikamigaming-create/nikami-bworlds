@@ -14,6 +14,12 @@
 /tmp/
 /out/
 /external/
+/CODEX_RESTART_HANDOFF.md
+/config/door-preload/console_history.txt
+/config/door-preload/global_storage.bin
+/config/door-preload/input_v3.xml
+/config/door-preload/player_storage.bin
+/config/door-preload/shaders.yaml
 __pycache__/
 *.pyc
 

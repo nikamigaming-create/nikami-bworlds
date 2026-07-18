@@ -8,7 +8,11 @@ dependency layers, generated acceptance cases, and mechanical percentages.
 The machine-readable sources are:
 
 - `catalog/fnv-parity-denominators.json` — the frozen retail corpus;
-- `catalog/fnv-parity-control-plane.json` — 15 axes and 179 capability cases;
+- `catalog/fnv-parity-exclusions.json` — the versioned, currently empty exclusion ledger;
+- `catalog/fnv-bite-ledger.schema.json` — the per-byte/record/opcode/mechanic mapping contract;
+- `catalog/fnv-parity-control-plane.json` — 15 axes and 187 known capability cases;
+- `scripts/export_fnv_parity_corpus.py` — master/BSA-aware read-only census and strict verifier;
+- `scripts/New-FNVParityProfile.ps1` — pristine official-only profile generator;
 - `scripts/Measure-FNVParityCoverage.ps1` — the score report; and
 - `scripts/Test-FNVParityControlPlane.ps1` — the anti-overclaim contract.
 
@@ -19,14 +23,16 @@ As of 2026-07-17:
 | Measure | Current value | Meaning |
 |---|---:|---|
 | Certified one-to-one parity | **0.00%** | No axis has both a complete capability set and accepted whole-corpus instances. |
-| Comprehensive capability cases complete | **1 / 179 = 0.56%** | Only clean session integrity satisfies its complete exit contract. |
+| Known capability cases complete | **0 / 187 = 0.00%** | All 187 remain open; 83 are uncovered and 45 are known failing. |
 | Existing coarse FNV product gates | **1 / 13 = 7.69%** | Useful engineering checkpoint, not full-game parity. |
 | Existing ledger including controls | **4 / 16 = 25%** | Includes FO3, Morrowind, and patch-replay safeguards; never report this as FNV progress. |
-| Whole-corpus runtime coverage | **below 0.1% observed; 0.00% accepted** | Current proofs are a Goodsprings/Saloon vertical slice. |
+| Whole-corpus runtime acceptance | **0.00% in every required family** | Current proofs are bounded Goodsprings/Saloon observations, not immutable accepted rows. |
 
 Zero percent is deliberately strict. It does not mean no work exists. It means
 none of the 15 product axes has yet crossed its complete capability contract
-and its complete content denominator on one promoted build. A cloud, combat,
+and its weakest required content family on one promoted build. Even the coarse
+session-integrity pass lacks the normal-exit and immutable binary/corpus/profile
+provenance required for a complete case. A cloud, combat, container, furniture,
 or dialogue slice remains visible as bounded engineering evidence without
 silently becoming full-game credit.
 
@@ -79,14 +85,37 @@ The official corpus currently contains:
 | Dialogue topics / INFOs / responses | 21,298 / 28,896 / 37,403 |
 | Dialogue conditions / choice edges | 69,277 / 28,215 |
 | Official quests | 640 |
-| Standalone scripts / SCRI attachments | 3,707 / 5,150 |
+| Standalone scripts / physical SCRI records / winning-live SCRI records | 3,707 / 5,151 / 5,148 |
 | AI packages | 4,885 |
 | Worldspaces / climates / weather / regions | 33 / 46 / 98 / 317 |
 | Unique winning archive paths | 181,642 |
 
+High-risk runtime families are also explicit, rather than hidden inside the
+628,395-record total: 6,129 NAVM, 3,479 LVLI, 419 MGEF, 252 ENCH, 384 SPEL,
+44 EFSH, 257 PERK, 65 AVIF, 772 FACT, 184 CHAL, 291 RCPE, 1,567 MESG, 92
+IMGS, 299 IMAD, 83 WATR, 34 PWAT, 155 PROJ, 223 EXPL, 147 IPCT, 73 IPDS,
+3,646 SOUN, and 29 MUSC winning-live records. Each is a required content
+family and cannot be hidden by the aggregate record count.
+
 The committed census tool must reproduce these numbers before they become a
-promotion input. Changing language, plugin order, official DLC set, or archive
-hash creates a new corpus ID and resets corpus-derived percentages.
+promotion input. The current tool reproduces the master and BSA corpus locally;
+its strict pristine-profile/anomaly gate is the active Layer-0 slice. Changing
+language, plugin order, official DLC set, or archive hash creates a new corpus
+ID and resets corpus-derived percentages.
+
+The retail oracle is a separate frozen manifest. It records the retail
+executable/distribution/version hash; master/BSA order; INIs; OS; renderer/API;
+GPU and driver; resolution, aspect ratio, refresh, FOV, and preset; audio
+format/device; keyboard/mouse or gamepad mode; save/camera/time/weather; and
+the exact state, pixel, audio, timing, and performance tolerances for each
+differential. Without that manifest a visual, audio, or timing comparison is
+an observation, never acceptance.
+
+English retail gameplay is included by default. Retail save-file interchange,
+console/debug commands, platform achievements/cloud services, and deliberate
+bug-for-bug compatibility stay in scope until a versioned user-approved scope
+decision explicitly includes, excludes, or substitutes them. Silence is not
+an exclusion.
 
 ## What “100%” means
 
@@ -122,21 +151,25 @@ version.
 
 ## The percentage model
 
-There are 15 equal product axes. Each axis has two independent denominators:
+There are 15 required product axes. Each axis has capability cases and one or
+more required content families:
 
 ```text
 capability coverage = complete capability cases / all capability cases
-content coverage    = accepted content instances / all content instances
-axis score          = min(capability coverage, content coverage)
-overall parity      = mean(the 15 axis scores)
+family coverage     = accepted instances / total instances for that family
+axis score          = min(capability coverage, every required family coverage)
+certified parity    = min(the 15 axis scores)
+balanced progress   = mean(the 15 axis scores), diagnostic only
 ```
 
-The minimum prevents a polished prototype from hiding an uncrawled game, and
-prevents a broad smoke crawl from hiding missing semantics. A capability case
-enters the numerator only after discovery, exact format/retail contract,
-runtime binding, natural behavior, state mutation, lifecycle/save-load where
-applicable, retail differential, promoted-binary provenance, and regressions
-all pass. Partial maturity is reported but earns zero certified parity credit.
+The nested minimum prevents a large asset family from hiding zero terminals,
+quests, or projectiles, and prevents fourteen strong axes from hiding one
+release-blocking axis. The mean remains visible only as an engineering trend.
+A capability case enters the numerator only after discovery, exact
+format/retail contract, runtime binding, natural behavior, state mutation,
+lifecycle/save-load where applicable, retail differential, promoted-binary
+provenance, and regressions all pass. Partial maturity is reported but earns
+zero certified parity credit.
 
 The 15 axes are:
 
@@ -156,9 +189,51 @@ The 15 axes are:
 14. save/load, mutable world persistence, map, and fast travel; and
 15. natural base-game/DLC journeys, soak, and release.
 
-The control-plane JSON is the exhaustive case list. Adding a newly discovered
-retail requirement increases the denominator immediately. Removing or marking
-a case complete requires evidence and must pass the contract script.
+The 187 checked-in cases are the current minimum macro taxonomy, not a claim
+that discovery is finished. Their fully qualified IDs and all 84 current
+content-counter IDs/totals are hash-pinned. Adding a newly discovered retail
+requirement increases the denominator immediately. Removing one requires a
+versioned, user-approved scope revision; replacing it with a dummy changes the
+pinned ID hash. A case or content row cannot enter a numerator from a hand edit:
+the validator requires a committed, content-addressed result manifest/ledger
+whose scope, status, counts, normal exit, and producer/corpus/profile/save/
+binary provenance validate.
+
+## The bite ledger
+
+Discovery and implementation order are deliberately separate. We inventory
+the entire game first, but implement inward-to-outward by dependency. Every
+physical record, winning record, subrecord variant, placed reference, asset
+edge, script opcode/event/command/condition, UI flow, mechanic variant, and
+journey edge receives a stable row containing:
+
+```text
+stable ID and source byte range
+  -> override/winning identity and dependencies
+  -> category and meaningful state variants
+  -> retail inputs, expected transitions, outputs, timing, and persistence
+  -> implementation disposition
+  -> handler/source path and tests
+  -> observed/accepted result manifest
+```
+
+The implementation disposition is exactly one of:
+
+- `existing-cpp-analog` — a general OpenMW C++ path already has the same
+  responsibility and is extended/tested rather than duplicated;
+- `new-cpp-runtime` — binary parsing, simulation, scheduling, persistence,
+  rendering, audio, or performance-critical engine behavior needs new C++;
+- `lua-retail-script` — Lua is appropriate only for authored/script-level
+  behavior while preserving GECK event/order/state semantics;
+- `data-only` — existing general runtime behavior needs a parsed contract, not
+  bespoke code;
+- `retail-unreachable` — proven unreachable with frozen retail evidence and a
+  user-approved exclusion row; or
+- `uncovered` — no analog or implementation exists yet, which is always red.
+
+This engine is C++/Lua, not C#. We do not add a C# layer. We also do not
+hand-translate individual GECK scripts into Lua or use actor/FormID/cell Lua
+patches to fake parity; the VM/event system must execute the general contract.
 
 ## Peel the onion in dependency order
 
@@ -171,32 +246,43 @@ Deliver:
 - committed master/archive hashes and load order;
 - a master-aware record parser that preserves physical headers, global FormID
   resolution, override chains, deletes, and winning live records;
+- strict allowlists for the one malformed GRA FormID and the exact known
+  FalloutNV compressed-record checksum anomaly; every other anomaly is fatal;
+- a path-independent verifier that fails on FNVR/loose overlays, unexpected
+  inputs, master/BSA/tool hash drift, order drift, warnings, or count drift;
 - the complete cell/reference/door/asset/interaction/dialogue/quest/script
   catalogs;
+- the frozen retail-oracle environment/tolerance manifest;
 - a generated case ledger and score report; and
 - zero unexplained parse, missing-base, or missing-asset rows.
 
 Hard stop: no percentage beyond provisional engineering metadata is valid
 while the corpus or denominator can change.
 
-### Layer 1 — Build the runtime substrate once
+### Layer 1 — Establish the runtime kernel
 
-This is the deepest technical blocker and must precede broad quest work.
+This is the deepest technical blocker and must precede broad quest work, but
+it is not a multi-year big-bang implementation. Inventory every dependency
+now; implement the general architecture plus the exact subset required by the
+first natural spine; then use that spine to validate the architecture before
+completing every opcode and record family in Layer 3.
 
 Deliver:
 
-- storage/runtime bindings for every gameplay-bearing FNV record family;
+- generated red rows for every still-unbound gameplay-bearing record family;
 - a native FNV player and actor-value model: SPECIAL, skills, perks, derived
   values, limbs, factions, reputation, karma, inventory, and equipment;
-- a complete GECK bytecode VM, event scheduler, command registry, condition
-  registry, target/RunOn semantics, timers, and error behavior;
+- the general GECK bytecode VM, event scheduler, command/condition registries,
+  target/RunOn, timer, error, and persistence architecture, with the precise
+  spine-required subset implemented;
 - complete mutable ESM4 state schemas for references, actors, inventories,
   quests, scripts, dialogue history, AI, terminals, radios, time, and weather;
 - deterministic save/load with stable IDs and content-version handling; and
 - no gameplay-bearing generic `NullAction` or silently skipped ESM4 save row.
 
-Hard stop: do not expand campaign breadth on an ESM3 player proxy, synthetic
-quest advancement, incomplete script VM, or state that disappears on reload.
+Hard stop: do not build the spine on an ESM3 player proxy, synthetic quest
+advancement, record-specific Lua, or state that disappears on reload. Also do
+not defer architecture validation until every opcode has been implemented.
 
 ### Layer 2 — Prove one natural playable spine
 
@@ -227,7 +313,8 @@ Hard stop: do not call the game playable until this exact spine passes.
 
 For each mechanic family, first inventory every serialized/runtime variant,
 then implement the general rule, then prove boundaries before crawling all
-instances. The required families include:
+instances. This layer closes every still-red record family, GECK opcode/event/
+command/condition, and state schema. The required families include:
 
 - all placed base types and activation modes;
 - locks, keys, ownership, theft, crimes, traps, enable parents, and resets;
@@ -364,15 +451,18 @@ outward merely because the code compiled or the token/time budget is low.
 
 ## Ordered work from the current checkout
 
-1. **Commit denominator tooling.** Reproduce the official corpus and archive
-   counts, create the pristine profile, generate all base catalogs, and make
-   unexplained parse/reference/asset rows a hard failure.
-2. **Close the existing container WIP.** Review, relink, deploy, run real
-   open/transfer/unload/save/reload evidence, generalize its state schema, and
-   commit without the unrelated engine/actor/shader WIP.
-3. **Fix the known furniture return regression.** Easy Pete must return from
-   the Saloon still seated in `chairsit`, at the saved anchor, with no +20-unit
-   chair-top drift. Add the dialogue/interior/exterior lifecycle gate.
+1. **Finish and commit strict denominator tooling (active).** Master and BSA
+   counts/hashes now reproduce. Add the pristine profile, exact anomaly
+   allowlists, denominator verification mode, oracle manifest, base catalogs,
+   and hard failures for overlays, drift, unexplained parse/reference/assets.
+2. **Persistent containers — committed at engine `c33e3df591`.** Authored CNTO
+   inventory, normal UI transfer, locks/keys, and save/load persistence pass
+   focused tests and the real executable links. Natural runtime acceptance is
+   still required before its parity rows can turn green.
+3. **Furniture lifecycle — committed at engine `c1b8bf261f`.** The active
+   package is authoritative across scene/controller resets and restores the
+   settled anchor without actor-specific hacks. Natural exterior/interior
+   replay and immutable acceptance remain open.
 4. **Build native FNV state and persistence.** Replace the ESM3 player proxy
    and the broad ESM4 save skips before adding more mutable mechanics.
 5. **Build the GECK VM and event substrate.** Generate the opcode/command and
@@ -391,7 +481,7 @@ center of the architecture and do not change the ordering above.
 
 ## Known hard blockers right now
 
-- The formal promoted queue stops 40 local engine commits behind the audited
+- The formal promoted queue stops 42 local engine commits behind current
   engine head; later commits have not passed the formal replay/promotion gate.
 - Only 61 of 140 cross-game ESM4 record enums are indexed in the game store.
   Parser/store percentage is not playability, but the missing runtime families
@@ -400,8 +490,9 @@ center of the architecture and do not change the ordering above.
 - The Courier is still an ESM3/OpenMW player with an ESM4 visual proxy.
 - There is no complete GECK bytecode VM or event scheduler. Current dialogue,
   quest, condition, and result support is a narrow interpreted subset.
-- Almost every ESM4 reference class is skipped by save/load. NPC death/state,
-  doors, loose items, activators, radio, furniture, AI, equipment, dialogue
+- Containers now have a committed specialized state path, but almost every
+  other ESM4 reference class is skipped by save/load. NPC death/state, doors,
+  loose items, activators, radio, furniture/AI phase, equipment, dialogue
   history, and enable state are not generally persistent.
 - Terminals, hacking, lockpicking, workbenches, crafting, beds, flora, books,
   pickups, corpse loot, barter/services, Pip-Boy, VATS, and many UI surfaces
