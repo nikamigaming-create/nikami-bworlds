@@ -45,6 +45,7 @@ Then edit `local/paths.json`, or set the equivalent environment variables:
 - `NIKAMI_OPENMW_BINARY_ROOT` (legacy only; real launches are locked to `local/openmw-fo4guard`)
 - `NIKAMI_OPENMW_RESOURCES` (legacy only; generated profiles are locked to `local/openmw-fo4guard/resources`)
 - `NIKAMI_FNV_ROOT`
+- `NIKAMI_FNV_DATA_PATHS` (semicolon-separated OpenMW-ready loose mod data roots)
 - `NIKAMI_STEAM_APPS_ROOTS`
 
 ## Quick Start

@@ -5,6 +5,9 @@
   "openmwBinaryRoot": "local/openmw-fo4guard",
   "openmwResources": "local/openmw-fo4guard/resources",
   "fnvRoot": "X:/path/to/fnv-modlist-or-launcher-root",
+  "fnvDataPaths": [
+    "X:/path/to/extracted/OpenMW-ready/FNV-mod-data-root"
+  ],
   "fallout4Root": "X:/SteamLibrary/steamapps/common/Fallout 4",
   "steamAppsRoots": [
     "X:/SteamLibrary/steamapps"

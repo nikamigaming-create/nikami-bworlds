@@ -6,6 +6,7 @@ param(
     [string]$ProfilesRoot = "profiles",
     [string]$OpenMWResources = "",
     [string[]]$ExtraFalloutNewVegasInstallPaths = @(),
+    [string[]]$ExtraFalloutNewVegasDataPaths = @(),
     [string[]]$ExtraFallout4InstallPaths = @(),
     [string[]]$ExtraSteamAppsRoots = @()
 )
@@ -394,6 +395,11 @@ $configuredFnvRoots = @(Resolve-NikamiPathList `
     -EnvName "NIKAMI_FNV_ROOT" `
     -ConfigName "fnvRoot")
 
+$configuredFnvDataPaths = @(Resolve-NikamiPathList `
+    -ParameterValue $ExtraFalloutNewVegasDataPaths `
+    -EnvName "NIKAMI_FNV_DATA_PATHS" `
+    -ConfigName "fnvDataPaths")
+
 $configuredFallout4Roots = @(Resolve-NikamiPathList `
     -ParameterValue $ExtraFallout4InstallPaths `
     -EnvName "NIKAMI_FALLOUT4_ROOT" `
@@ -434,6 +440,13 @@ foreach ($definition in $definitions) {
     $additionalProfileConfigLines = @()
     $fnvRoot = if ($definition.id -eq "fallout_new_vegas" -and $configuredFnvRoots.Count -gt 0) { $configuredFnvRoots[0] } else { "" }
     $fnvProfileConfig = if ($fnvRoot) { Join-Path $fnvRoot "openmw-config/openmw.cfg" } else { "" }
+    if ($definition.id -eq "fallout_new_vegas") {
+        foreach ($fnvDataPath in $configuredFnvDataPaths) {
+            if (Test-Path -LiteralPath $fnvDataPath -PathType Container) {
+                $dataPaths += Convert-ToForwardSlash (Resolve-Path -LiteralPath $fnvDataPath).Path
+            }
+        }
+    }
     if ($definition.id -eq "fallout_new_vegas" -and $fnvProfileConfig -and (Test-Path -LiteralPath $fnvProfileConfig)) {
         $profileConfig = Convert-ToForwardSlash (Resolve-Path -LiteralPath $fnvProfileConfig).Path
         $additionalProfileConfigLines = @(Get-Content -LiteralPath $fnvProfileConfig | Where-Object { $_ -match '^\s*fallback\s*=' })
