@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "ce84d676c93c09226ca6e90160e718f8af3ab9dd",
-  "unpromotedCommitCount": 67,
+  "auditedHead": "50d36ebddef4fb45ecb4279f9993431b4310331a",
+  "unpromotedCommitCount": 68,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -283,6 +283,16 @@
       "scope": ["1,225 of 1,225 physical and winning-live official NOTE records", "strict FNV subrecord grammar, ordering, payload sizes, duplicate and truncation rejection", "zero record flags, deletes, compression, and overrides in the frozen corpus", "producer counts FalloutNV 894, Dead Money 148, Honest Hearts 21, Old World Blues 125, and Lonesome Road 37", "exact one-byte DATA shapes with counts zero 2, one 1,166, two 7, and three 50", "text TNAM, image XNAM, dialogue-topic TNAM, optional speaker SNAM, and repeatable quest ONAM preservation", "object bounds, full name, model, icon, and bound radius preservation", "nonzero FormId validation and adjustment", "typed FNV-only store override resolution", "whole-record atomic failure", "all ten official plugins parse through the rebuilt typed loader"],
       "focusedTest": { "filter": "Esm4NoteTest.*:Esm4NoteStoreTest.*", "passed": 10, "total": 10 },
       "limitations": ["Parser and typed storage only", "No terminal INAM note display", "No text, image, voice, speaker, quest, or audio runtime behavior", "No note mutation or persistence", "Cross-reference target record kinds are preserved but not runtime-validated in this slice", "No natural journey or retail differential", "No promoted-binary provenance", "No certified or retail visual parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "strict-fallout-crafting-transactions",
+      "commit": "50d36ebddef4fb45ecb4279f9993431b4310331a",
+      "subject": "Add strict Fallout crafting transactions",
+      "scope": ["FNV-only headless two-phase crafting transaction core", "exact Workbench 00075005 plus script 0013E11C to RCCT 0013B2C1 mapping", "exact Reloading Bench 0015361F plus script 0015361E to RCCT 00153621 mapping", "live RCPE category and subcategory validation", "exact Player base 00000007 and initialized native actor-value state validation", "native skill threshold evaluation with unresolved raw offsets rejected", "conditionless and scriptless recipe requirement", "strict MISC, ALCH, AMMO, WEAP, and ARMO ingredient and output support", "signed positive quantity decoding, aggregation, inventory sufficiency, and final-count overflow preflight", "explicit CMNY 00176AC4 blocker and generic unsupported or missing record rejection", "all outputs constructed before mutation", "inventory snapshot revalidation before commit", "all ingredients removed before authored output rows are added with auto-equip disabled", "single-use prepared plans over the live ContainerStore without InventoryStore cloning"],
+      "focusedTest": { "filter": "FnvCraftingRuntimeTest.*", "passed": 12, "total": 12 },
+      "limitations": ["No activation call site, workbench menu, recipe list, selection UI, messages, sound, animation, or natural crafting journey", "No frozen-corpus transaction sweep has yet proven every audited conditionless recipe through the planner", "Conditional recipes, scripted items, unsupported item kinds, and CMNY remain fail-closed", "Campfire and special quest or sleep station behavior is not included", "The existing ContainerStore mutation API cannot guarantee rollback after an unexpected failure once the first live mutation succeeds", "Prepared plans hold non-owning actor, inventory, and store-derived lifetimes and must be prepared and committed synchronously", "No crafting-specific save payload is added; inventory persistence remains the existing subsystem's responsibility", "No retail differential", "No promoted-binary provenance", "No certified parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
