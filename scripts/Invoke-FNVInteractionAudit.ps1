@@ -3,6 +3,7 @@ param(
     [string]$OpenMWExe = "local/openmw-fo4guard/openmw.exe",
     [string]$ResourcesRoot = "local/openmw-fo4guard/resources",
     [string]$ProfileDirectory = "profiles/fallout_new_vegas",
+    [string]$MorrowindProfileDirectory = "profiles/morrowind",
     [string]$StartupScript = "config/starts/fnv-level-one-goodsprings.txt",
     [string]$OutputRoot = "run/fnv-interaction-audit",
     [ValidateRange(1, 360)]
@@ -106,7 +107,7 @@ if (Get-Process -Name openmw,openmw_vr -ErrorAction SilentlyContinue) {
     throw "OpenMW is already running. The audit will not replace or interfere with an existing session."
 }
 
-$morrowindConfig = Resolve-RepoPath "profiles/morrowind/openmw.cfg"
+$morrowindConfig = Join-Path (Resolve-RepoPath $MorrowindProfileDirectory) "openmw.cfg"
 $morrowindData = Get-ProfileValue $morrowindConfig "data"
 if ([string]::IsNullOrWhiteSpace($morrowindData)) {
     throw "Unable to resolve the shared OpenMW UI data directory from $morrowindConfig"
