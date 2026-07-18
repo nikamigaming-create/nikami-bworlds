@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "b2dfcc32b5732701cafe87b0137e4318b37a42c2",
-  "unpromotedCommitCount": 52,
+  "auditedHead": "aa0fbdabe5b731c455b0f4f59a7e4b119db6eb37",
+  "unpromotedCommitCount": 53,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -133,6 +133,16 @@
       "scope": ["SetObjectiveCompleted 0x11a2", "StartQuest 0x1036", "StopQuest 0x1037", "CompleteQuest 0x1071", "655 winning-live authored frames", "whole-stage transactional preflight"],
       "focusedTest": { "filter": "ESM4QuestRuntimeTest.*", "passed": 13, "total": 13 },
       "limitations": ["Only six of 112 observed QUST-stage opcode identities execute natively", "3,573 of 5,082 winning-live frames remain outside the recognized command set", "Mixed stages still use temporary whole-SCTX fallback", "SetStage 0x1039 awaits bounded recursive transaction and cycle semantics", "No retail differential or promoted-binary provenance"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "mutable-fallout-player-actor-values",
+      "commit": "aa0fbdabe5b731c455b0f4f59a7e4b119db6eb37",
+      "subject": "Persist mutable Fallout player actor values",
+      "scope": ["finite mutable health", "seven SPECIAL values", "fourteen skill values", "dirty-state save omission", "versioned FPLR save round-trip", "load-order FormId remapping", "immutable raw DNAM offset provenance validation", "malformed all-or-nothing load"],
+      "focusedTest": { "filter": "FalloutPlayerRuntimeStateTest.*", "passed": 6, "total": 6 },
+      "limitations": ["Single current-value layer is not the retail actor-value modifier stack", "No invented retail clamps", "Raw skill offsets are preserved but not interpreted", "No proxy-health sync because DATA base/max/current semantics remain unproven", "No production GetActorValue consumer yet", "No retail differential or promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     }
