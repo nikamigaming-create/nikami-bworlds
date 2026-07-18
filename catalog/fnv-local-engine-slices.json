@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "6520f96984e72d5e4131d4a870681843f7ff6718",
-  "unpromotedCommitCount": 47,
+  "auditedHead": "a78a61003948a959074b831967ed7b7b721145f7",
+  "unpromotedCommitCount": 50,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -83,6 +83,36 @@
       "scope": ["2,235 winning-live CREA records", "AIDT:20", "DATA:17", "signed health and damage", "SPECIAL and AI shell binding"],
       "focusedTest": { "filter": "Esm4CreatureRuntimeStateTest.*:Esm4CreatureTemplateTest.*", "passed": 4, "total": 4 },
       "limitations": ["Template-category inheritance remains incomplete", "Creature skills/type/base damage and extended AI fields are not consumed", "No persistence or retail differential"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "native-fallout-player-base-state",
+      "commit": "282433cf3d370b7ad10ec91a6205d87b56aebab4",
+      "subject": "Resolve native Fallout player state",
+      "scope": ["official Player FormID and identity", "template-category source provenance", "ACBS and AIDT", "health", "seven SPECIAL values", "fourteen skill values and raw offsets", "safe compatibility shell"],
+      "focusedTest": { "filter": "FalloutPlayerStateTest.*", "passed": 6, "total": 6 },
+      "limitations": ["This is immutable authored/base state, not mutable runtime actor values", "No native SPECIAL/skill mechanics consumption or save round-trip", "No perks, limbs, appearance, or inventory state"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "bounded-fallout-quest-bytecode",
+      "commit": "bf1840277d9ede2751ba06ea5e3a4fbaa538270d",
+      "subject": "Execute bounded Fallout quest bytecode",
+      "scope": ["typed r/n argument grammar", "SetObjectiveDisplayed 0x11a3", "ForceActiveQuest 0x11dd", "whole-stage transactional preflight", "unsupported-opcode ledger", "malformed fail-closed handling"],
+      "focusedTest": { "filter": "ESM4QuestRuntimeTest.*", "passed": 9, "total": 9 },
+      "limitations": ["Only two compiled opcodes execute natively", "Unsupported opcodes retain temporary whole-SCTX fallback", "No general object/dialogue/event VM coverage"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-creature-template-categories",
+      "commit": "a78a61003948a959074b831967ed7b7b721145f7",
+      "subject": "Resolve Fallout creature template categories",
+      "scope": ["1,703 winning-live templated creatures", "ten independent TPLT categories", "validated direct and LVLC bridge edges", "bounded cycle/missing/mismatch failure", "runtime stats, AI, package, model, movement, scale, and name routing"],
+      "focusedTest": { "filter": "Esm4CreatureTemplateCategoryTest.*:Esm4CreatureRuntimeStateTest.*:Esm4CreatureTemplateTest.*", "passed": 12, "total": 12 },
+      "limitations": ["541 LVLC-backed templates still use deterministic level-1 selection", "Traits, factions, effects, inventory, and script category consumers remain incomplete", "No retail differential or persistence certification"],
       "certificationEligible": false,
       "parityCredit": false
     }
