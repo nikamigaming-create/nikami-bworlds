@@ -1806,6 +1806,42 @@
             "Run with -UseActorAnimationPolicyEnvironment and keeper audit env before treating this as actor walkaround evidence."
           ]
         },
+        "repcon-platform-radio-walkaround": {
+          "label": "REPCON platform Launch Music user walkaround",
+          "startCell": "RepconPlatform",
+          "anchor": {
+            "source": "FalloutNV.esm exterior CELL 000846B6 and persistent TACT ref 000CE419; targeted user radio observation, not natural-journey evidence",
+            "position": {
+              "x": -9000,
+              "y": -29236,
+              "z": 8875
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 4.712389
+            },
+            "camera": {
+              "mode": "firstperson",
+              "distance": 0,
+              "pitch": 0.15,
+              "yaw": 1.5707964
+            },
+            "dry": true
+          },
+          "capture": {
+            "runSeconds": 0,
+            "captureSeconds": [],
+            "engineScreenshotEnabled": false,
+            "engineScreenshotFrames": "",
+            "expectedScreenshotCount": 0,
+            "crashReportSettleSeconds": 0
+          },
+          "notes": [
+            "Interactive start 220 units east of TACT ref 000CE419, display name Launch Music, at (-9218.635,-29236.271,8875.565).",
+            "This anchor replaces user console teleport for the bounded radio capture and earns no natural-journey parity credit."
+          ]
+        },
         "goodsprings-settler-actor-front-walk": {
           "label": "Goodsprings settler deterministic front walk",
           "scriptRun": "config/proofs/fnv-front-walk.txt",

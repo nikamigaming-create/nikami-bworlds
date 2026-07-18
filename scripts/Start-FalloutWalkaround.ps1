@@ -5,6 +5,7 @@ param(
     [switch]$Wait,
     [switch]$Diagnostics,
     [switch]$AllowDuplicate,
+    [string]$StartSlice = "",
     [string]$BinaryRoot = ""
 )
 
@@ -46,7 +47,9 @@ if (-not $world -or $world.readyForWorldWalker -ne $true) {
 
 $starts = Get-Content -LiteralPath $startsPath -Raw | ConvertFrom-Json
 $worldStart = Get-RequiredProperty $starts.worlds $WorldId "worlds"
-$sliceName = if ($WorldId -eq "fallout_new_vegas") {
+$sliceName = if (-not [string]::IsNullOrWhiteSpace($StartSlice)) {
+    $StartSlice
+} elseif ($WorldId -eq "fallout_new_vegas") {
     "goodsprings-settler-actor-walkaround"
 } else {
     "megaton-entrance-lucas-actor-walkaround"
@@ -56,7 +59,11 @@ $anchor = Get-RequiredProperty $slice "anchor" $sliceName
 $position = Get-RequiredProperty $anchor "position" "$sliceName.anchor"
 $rotation = Get-RequiredProperty $anchor "rotation" "$sliceName.anchor"
 $camera = Get-RequiredProperty $anchor "camera" "$sliceName.anchor"
-$startCell = [string](Get-RequiredProperty $worldStart "startCell" $WorldId)
+$startCell = if ($slice.PSObject.Properties.Name -contains "startCell") {
+    [string](Get-RequiredProperty $slice "startCell" $sliceName)
+} else {
+    [string](Get-RequiredProperty $worldStart "startCell" $WorldId)
+}
 
 $runtimeRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
 $resourcesRoot = Resolve-NikamiOpenMWResourcesRoot
@@ -122,6 +129,7 @@ if ($WorldId -eq "fallout_new_vegas") {
 
 Write-Host "Interactive Fallout world session"
 Write-Host "World:   $($world.displayName) [$WorldId]"
+Write-Host "Slice:   $sliceName"
 Write-Host "Spawn:   $startCell at ($($position.x), $($position.y), $($position.z)); neighboring cells stream normally"
 Write-Host "Camera:  $($camera.mode); live keyboard and mouse input"
 Write-Host "Weather: natural authored region weather (no forced WTHR or image space)"
