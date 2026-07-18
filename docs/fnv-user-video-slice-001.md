@@ -22,24 +22,27 @@ REPCON file. Record them as two separate, continuous files.
 
 ## Stamped local capture build
 
-This build was compiled, deployed, and dry-run checked on 2026-07-18. It is a
+This build was compiled, deployed, and full-game launch checked on 2026-07-18. It is a
 local diagnostic capture build, not a promoted release and not parity credit.
 
 | Field | Exact value |
 |---|---|
-| Engine commit | `a14571acde4ad476518a8916306c1bdfb639d4b8` |
+| Engine commit | `ee0f6154fa466950a07c5ce0bb0dc40a06d330bc` |
 | Engine branch | `codex/fnv-parity-slices` |
 | Build configuration | `RelWithDebInfo` |
 | Executable | `D:\code\nikami-worlds-fnv-parity\local\openmw-fo4guard\openmw.exe` |
 | Physical executable | `D:\code\nikami-worlds\local\openmw-fo4guard\openmw.exe` |
-| Executable SHA-256 | `2ea004d117b41114c5b1a4208ec7446e24ce211ffaa1a39a0ae8aba8b06eae7a` |
+| Executable SHA-256 | `0455e3b7d845c1d8fb399218a6b6126a59471bb6415e7e1b052c5cb25275ce31` |
 | Executable bytes | `77434368` |
-| Executable timestamp | `2026-07-18T03:26:42.8141923-07:00` |
+| Executable timestamp | `2026-07-18T04:05:06.9046705-07:00` |
 | Resource version SHA-256 | `0dcbb0af4c45a563b75bd52c3d31e3955f29e18ecb305b5f8dcb5b9a9a5d60f6` |
 | Activation handler SHA-256 | `741544032baee66842fa9f49aa14191c5cf42dec704997fc555ef0d97cc089d1` |
-| Configuration contract | `1fe6835dd06dbc2aac1f8c23e8a1360e3c3b5f2e83f4494e5e316a91e07acde7` |
-| Official-corpus contract | `00a4764a25b470a4cacd14361ba177f564c1ded8ba9de5d5dfb91f890d8e97de` |
+| Configuration contract | `5d094682f55afa77d16d66de0f309415e3477d17deb2e3055d5180a50217fa63` |
+| Official-corpus contract | `731929947dbb7c1083038e69d1bb9d796eca0e5e596b4787d2c19bc5a4695a15` |
 | Denominator file SHA-256 | `983708e08fdb5193c36a669db3494682020a010cbf64760c73891c758f0d49b3` |
+| Graphics preset | `fnv_max_quality` |
+| NMC Small assets | `5431` files / `2071810318` bytes |
+| NMC source SHA-256 | `ac5b6f25b4c9dca1c8ca74f14ef9e5065bcee559f8c092273e30721ef50f65c6` |
 
 The bounded input contract deliberately does not hash the complete resources
 tree, `FNVR.esp`, loose overlays, or shared UI data. That limitation is why this
@@ -62,7 +65,8 @@ Set-Location D:\code\nikami-worlds-fnv-parity
 .\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout_new_vegas -StartSlice repcon-platform-radio-walkaround
 ```
 
-The two commands were dry-run verified against the stamped executable. They do
+The Goodsprings command was full-game launch verified against the stamped executable; the
+REPCON command was dry-run verified. They do
 not use the browser, desktop automation, the console, or injected input.
 
 ## Exact Goodsprings route anchors

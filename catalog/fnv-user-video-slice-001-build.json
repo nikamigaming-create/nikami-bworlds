@@ -1,27 +1,27 @@
 {
   "schema": "nikami-fnv-user-video-capture-build/v1",
-  "asOf": "2026-07-18T03:28:49.6710582-07:00",
+  "asOf": "2026-07-18T04:06:30.5045811-07:00",
   "status": "ready-for-user-capture",
   "purpose": "Reproducible local build stamp for FNV User Video Slice 001.",
   "engine": {
     "repository": "D:/code/nikami-openmw-lab",
     "branch": "codex/fnv-parity-slices",
-    "commit": "a14571acde4ad476518a8916306c1bdfb639d4b8",
+    "commit": "ee0f6154fa466950a07c5ce0bb0dc40a06d330bc",
     "configuration": "RelWithDebInfo"
   },
   "executable": {
     "sourcePath": "D:/code/nikami-openmw-lab/MSVC2022_64/RelWithDebInfo/openmw.exe",
     "deployedPath": "D:/code/nikami-worlds/local/openmw-fo4guard/openmw.exe",
     "walkaroundPath": "D:/code/nikami-worlds-fnv-parity/local/openmw-fo4guard/openmw.exe",
-    "sha256": "2ea004d117b41114c5b1a4208ec7446e24ce211ffaa1a39a0ae8aba8b06eae7a",
+    "sha256": "0455e3b7d845c1d8fb399218a6b6126a59471bb6415e7e1b052c5cb25275ce31",
     "bytes": 77434368,
-    "lastWriteTime": "2026-07-18T03:26:42.8141923-07:00",
+    "lastWriteTime": "2026-07-18T04:05:06.9046705-07:00",
     "sourceAndDestinationHashesMatch": true
   },
   "replacedRuntime": {
-    "sha256": "183cfc672f984cb041492567b6009176c46576c102213c2712af1acc0123ba19",
-    "bytes": 76634624,
-    "lastWriteTime": "2026-07-17T16:16:57.7223698-07:00"
+    "sha256": "2ea004d117b41114c5b1a4208ec7446e24ce211ffaa1a39a0ae8aba8b06eae7a",
+    "bytes": 77434368,
+    "lastWriteTime": "2026-07-18T03:26:42.8141923-07:00"
   },
   "resources": {
     "root": "D:/code/nikami-worlds/local/openmw-fo4guard/resources",
@@ -30,11 +30,20 @@
     "sourceAndDestinationHashesMatch": true,
     "fullTreeHashed": false
   },
+  "graphics": {
+    "preset": "fnv_max_quality",
+    "settingsSha256": "faa7a34ba6f77e0c740194a0e6b83e7d3f2f30e69d444c5d923cd9d0788d5275",
+    "profileConfigSha256": "cf6723eadaa78de4bc6625730654c1e627ce8566c394e1d1303efbc3fe098d95",
+    "nmcDataRoot": "D:/Modlists/fnv/mods/NMCs_Texture_Pack_SMALL_1.0/NMCsTexPack_SMALL",
+    "nmcSourceArchiveSha256": "ac5b6f25b4c9dca1c8ca74f14ef9e5065bcee559f8c092273e30721ef50f65c6",
+    "nmcFiles": 5431,
+    "nmcBytes": 2071810318
+  },
   "contracts": {
     "boundedInputSchema": "nikami-openmw-bounded-input-evidence/v1",
-    "boundedInputSha256": "cedbc9a770e1f5457398f3258f2d8ba4c1786ec7fb91daa61dff1c78499740e0",
-    "configurationSha256": "1fe6835dd06dbc2aac1f8c23e8a1360e3c3b5f2e83f4494e5e316a91e07acde7",
-    "officialCorpusSha256": "00a4764a25b470a4cacd14361ba177f564c1ded8ba9de5d5dfb91f890d8e97de",
+    "boundedInputSha256": "ffce573c2a8b773f8406046c4ba18ac15db2e73aa2e9eee267c471aa0873ae83",
+    "configurationSha256": "5d094682f55afa77d16d66de0f309415e3477d17deb2e3055d5180a50217fa63",
+    "officialCorpusSha256": "731929947dbb7c1083038e69d1bb9d796eca0e5e596b4787d2c19bc5a4695a15",
     "denominatorObservedSha256": "983708e08fdb5193c36a669db3494682020a010cbf64760c73891c758f0d49b3"
   },
   "captures": [
@@ -42,7 +51,14 @@
       "id": "goodsprings-settler-actor-walkaround",
       "output": "fnv-slice-001-goodsprings.mp4",
       "command": ".\\scripts\\Start-FalloutWalkaround.ps1 -WorldId fallout_new_vegas",
-      "dryRunPassed": true
+      "dryRunPassed": true,
+      "fullGameLaunchPassed": true,
+      "verifiedMilestones": [
+        "resolved native Player state base=0x1000007",
+        "prepareEngine setupPlayer complete",
+        "startNewGame complete bypass=1 startCell='Goodsprings' playerInCell=1",
+        "native FNV sky and four cloud layers initialized"
+      ]
     },
     {
       "id": "repcon-platform-radio-walkaround",
