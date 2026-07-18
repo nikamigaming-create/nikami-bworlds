@@ -1,0 +1,90 @@
+{
+  "schema": "nikami-fnv-local-engine-slices/v1",
+  "asOf": "2026-07-17",
+  "scopeId": "fnv-ultimate-edition-en-official-v1",
+  "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
+  "branchAtAudit": "codex/fnv-parity-slices",
+  "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
+  "auditedHead": "6520f96984e72d5e4131d4a870681843f7ff6718",
+  "unpromotedCommitCount": 47,
+  "policy": {
+    "availability": "local-commit",
+    "publishedAtAudit": false,
+    "promoted": false,
+    "certificationEligible": false,
+    "parityCredit": false,
+    "reason": "These commits are durable, focused-tested engineering evidence. They remain unpromoted and lack the required retail differential, persistence, promoted-binary provenance, and clean-install certification package."
+  },
+  "slices": [
+    {
+      "id": "persistent-fallout-containers",
+      "commit": "c33e3df59147d8ceeb564881fe53a4ca91a92da9",
+      "subject": "Support persistent Fallout containers",
+      "scope": ["authored fixed contents", "locked activation", "key unlock", "mutable contents save/load"],
+      "focusedTest": { "filter": "ESM4ContainerTest.*", "passed": 5, "total": 5 },
+      "limitations": ["No whole-corpus container differential", "No promoted-binary provenance"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-furniture-lifecycle",
+      "commit": "c1b8bf261f747be53db4bdde89fd7cfaae02c926",
+      "subject": "Recover Fallout furniture lifecycle state",
+      "scope": ["seated package phase", "anchor ownership", "dialogue interruption", "unload/reload recovery"],
+      "focusedTest": { "filter": "FnvFurnitureLifecycleTest.*", "passed": 3, "total": 3 },
+      "limitations": ["No complete furniture/package corpus differential", "No promoted-binary provenance"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "exact-fallout-actor-value-metadata",
+      "commit": "48a6259b08e99dad03903aad22687e42d2a9a6b7",
+      "subject": "Parse exact Fallout actor value metadata",
+      "scope": ["AVIF typed store", "exact FNV fields and flags", "malformed schema rejection"],
+      "focusedTest": { "filter": "Esm4ActorValueStoreTest.*", "passed": 3, "total": 3 },
+      "limitations": ["Metadata is not complete actor-value evaluation", "No mutation/persistence or retail differential"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "exact-fallout-faction-records",
+      "commit": "83a5ba5a0b9a7b8a13aaf8c977ca8f87a21055b7",
+      "subject": "Parse exact Fallout faction records",
+      "scope": ["772 official FACT records", "relations", "ranks", "reputation data", "strict payload sizes"],
+      "focusedTest": { "filter": "Esm4FactionStoreTest.*", "passed": 4, "total": 4 },
+      "limitations": ["Typed records are not reputation/disguise/crime runtime behavior", "No persistence or retail differential"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "exact-fallout-npc-runtime-state",
+      "commit": "e3d79c5db0ad13807bbd6ac3c13d2d148791d2fa",
+      "subject": "Parse exact Fallout NPC runtime state",
+      "scope": ["4,222 official NPC_ records", "AIDT:20", "DATA:11", "DNAM:28", "health", "SPECIAL", "skills", "AI data"],
+      "focusedTest": { "filter": "Esm4BehaviorRecordTest.shouldPreserveExactFalloutNpcRuntimeStatePayloads:Esm4BehaviorRecordTest.shouldRejectMalformedFalloutNpcRuntimeStatePayloads", "passed": 2, "total": 2 },
+      "limitations": ["Existing compatibility stat shell is not a complete native FNV mechanics model", "No mutable player-state persistence or retail differential"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-scda-instruction-frames",
+      "commit": "f709b46a84bea467ea7d60ec2e15e84db9d81e34",
+      "subject": "Decode Fallout SCDA instruction frames",
+      "scope": ["two-pass bounded frame decoder", "calling-reference wrapper", "unknown opcode preservation", "malformed boundary rejection", "exact VCG02 fixture"],
+      "focusedTest": { "filter": "Esm4ScdaDecoderTest.*", "passed": 4, "total": 4 },
+      "limitations": ["Instruction framing is not a complete GECK VM or event scheduler", "No opcode-wide retail differential"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "exact-fallout-creature-runtime-state",
+      "commit": "6520f96984e72d5e4131d4a870681843f7ff6718",
+      "subject": "Parse exact Fallout creature runtime state",
+      "scope": ["2,235 winning-live CREA records", "AIDT:20", "DATA:17", "signed health and damage", "SPECIAL and AI shell binding"],
+      "focusedTest": { "filter": "Esm4CreatureRuntimeStateTest.*:Esm4CreatureTemplateTest.*", "passed": 4, "total": 4 },
+      "limitations": ["Template-category inheritance remains incomplete", "Creature skills/type/base damage and extended AI fields are not consumed", "No persistence or retail differential"],
+      "certificationEligible": false,
+      "parityCredit": false
+    }
+  ]
+}

@@ -97,6 +97,50 @@ if (Test-Path -LiteralPath $generatedBiteLedgerFile -PathType Leaf) {
         @($generatedBiteLedger.rows | Where-Object { [string]$_.implementation.disposition -ne "uncovered" }).Count -eq 0) `
         "Generated GECK bite ledger awarded unreviewed implementation/parity credit."
 }
+$localEngineSliceFile = Resolve-RepoPath ([string]$control.localEngineSlices.path)
+Assert-Control (Test-Path -LiteralPath $localEngineSliceFile -PathType Leaf) `
+    "Local engine-slice ledger is missing."
+if (Test-Path -LiteralPath $localEngineSliceFile -PathType Leaf) {
+    $localEngineSlices = Get-Content -LiteralPath $localEngineSliceFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    $localEngineSliceFileSha = (Get-FileHash -LiteralPath $localEngineSliceFile -Algorithm SHA256).Hash
+    Assert-Control ([string]$localEngineSlices.schema -eq "nikami-fnv-local-engine-slices/v1" -and
+        [string]$localEngineSlices.scopeId -eq [string]$control.scopeId) `
+        "Local engine-slice ledger has the wrong schema or scope."
+    Assert-Control ($localEngineSliceFileSha -eq [string]$control.localEngineSlices.fileSha256) `
+        "Local engine-slice ledger hash differs from the control plane."
+    Assert-Control ([string]$localEngineSlices.auditedHead -eq [string]$control.localEngineSlices.auditedHead -and
+        [string]$localEngineSlices.auditedHead -eq [string]$control.currentTruth.localEngineHeadAtAudit -and
+        [int]$localEngineSlices.unpromotedCommitCount -eq [int]$control.localEngineSlices.unpromotedCommitCount -and
+        [int]$localEngineSlices.unpromotedCommitCount -eq [int]$control.currentTruth.unpromotedLocalCommitCountAtAudit) `
+        "Local engine-slice ledger head/count differs from current truth."
+    $engineSlices = @($localEngineSlices.slices)
+    Assert-Control ($engineSlices.Count -eq [int]$control.localEngineSlices.slices) `
+        "Local engine-slice ledger count differs from the control plane."
+    Assert-Control (@($engineSlices | ForEach-Object { [string]$_.id } | Select-Object -Unique).Count -eq $engineSlices.Count) `
+        "Local engine-slice ledger contains duplicate slice IDs."
+    Assert-Control (@($engineSlices | ForEach-Object { [string]$_.commit } | Select-Object -Unique).Count -eq $engineSlices.Count) `
+        "Local engine-slice ledger contains duplicate commits."
+    Assert-Control ([string]$localEngineSlices.policy.availability -eq "local-commit" -and
+        -not [bool]$localEngineSlices.policy.publishedAtAudit -and
+        -not [bool]$localEngineSlices.policy.promoted -and
+        -not [bool]$localEngineSlices.policy.certificationEligible -and
+        -not [bool]$localEngineSlices.policy.parityCredit) `
+        "Local engine-slice policy awarded publication, promotion, certification, or parity credit."
+    foreach ($slice in $engineSlices) {
+        Assert-Control (-not [string]::IsNullOrWhiteSpace([string]$slice.id) -and
+            [string]$slice.commit -match "^[0-9a-fA-F]{40}$" -and
+            -not [string]::IsNullOrWhiteSpace([string]$slice.subject) -and
+            @($slice.scope).Count -gt 0 -and
+            @($slice.limitations).Count -gt 0) `
+            "A local engine slice lacks ID, full commit, subject, scope, or limitations."
+        Assert-Control ([int]$slice.focusedTest.total -gt 0 -and
+            [int]$slice.focusedTest.passed -eq [int]$slice.focusedTest.total -and
+            -not [string]::IsNullOrWhiteSpace([string]$slice.focusedTest.filter)) `
+            "Local engine slice '$($slice.id)' lacks a green focused-test result."
+        Assert-Control (-not [bool]$slice.certificationEligible -and -not [bool]$slice.parityCredit) `
+            "Local engine slice '$($slice.id)' improperly awards certification or parity credit."
+    }
+}
 Assert-Control (@($exclusions.exclusions).Count -eq 0) `
     "Current scope unexpectedly contains an approved exclusion."
 Assert-Control ([string]$control.scorePolicy.certifiedParityFormula -eq "min(axisScore)") `
@@ -318,6 +362,15 @@ foreach ($property in $control.evidence.PSObject.Properties) {
             $resolved = Resolve-RepoPath ([string]$entry.path)
             Assert-Control (Test-Path -LiteralPath $resolved -PathType Leaf) `
                 "Repository evidence '$($property.Name)' does not exist: $resolved"
+            if ($null -ne $entry.PSObject.Properties["sha256"] -and
+                (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+                Assert-Control ((Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash -eq [string]$entry.sha256) `
+                    "Repository evidence '$($property.Name)' SHA-256 differs from the control plane."
+            }
+            if ($null -ne $entry.PSObject.Properties["certificationEligible"]) {
+                Assert-Control (-not [bool]$entry.certificationEligible) `
+                    "Repository evidence '$($property.Name)' must not opt into certification implicitly."
+            }
         }
         "local-observation" {
             Assert-Control (-not [bool]$entry.certificationEligible) `
