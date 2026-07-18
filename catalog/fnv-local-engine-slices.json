@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "01d3549ed8fdc76b15272964000df835bb8983c2",
-  "unpromotedCommitCount": 73,
+  "auditedHead": "b79272cd22a694f44e9236e28de1b3a83f6f3734",
+  "unpromotedCommitCount": 74,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -346,6 +346,18 @@
       "combinedRegression": { "filter": "FalloutHitReactionTest.*:FalloutWeaponAnimationTest.*", "passed": 23, "total": 23 },
       "fullRegression": { "binary": "openmw-tests", "passed": 658, "total": 658 },
       "limitations": ["The selectable-source numerator is bounded to the frozen Goodsprings roster and is not a whole-corpus creature placement census", "Seventeen Goodsprings humanoid placements remain unsupported because ESM4NpcAnimation was deliberately not changed", "Four Goodsprings raven placements remain unsupported because the frozen official assets expose no audited hit or recoil KF for that rig", "CharacterController still clears non-NPC creature recovery during an active upper-body attack before animation selection", "Resolver tests use exact path fixtures and do not instantiate a retail KF, scene graph, controller map, or target actor", "No natural shot-to-damage-to-visible-reaction journey or retail timing and pose differential was run", "Hit direction, body-part selection, reaction variation, knockdown, death transitions, VATS, blood, impact effects, sound, and camera feedback remain outside this slice", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-creature-active-action-hit-recovery",
+      "commit": "b79272cd22a694f44e9236e28de1b3a83f6f3734",
+      "subject": "Preserve Fallout creature hit recovery",
+      "scope": ["CharacterController no longer discards hit recovery solely because a supported Fallout creature has an active upper-body action", "the exception applies only while the existing upper-body state is above WeaponEquipped", "the live Ptr must be an ESM4 Creature with a non-null base carrying the existing Fallout New Vegas identity flag", "the live Animation must report an actually bound hit1 semantic group", "a pure eight-case decision matrix proves NPC, game identity, and binding combinations", "legacy and non-Fallout creatures retain the previous recovery-clearing behavior even if they expose a hit1 group", "Fallout creatures without a bound hit1 group fail closed and retain the previous recovery-clearing behavior", "NPC behavior remains unchanged", "the separate strict source-binding slice remains the bounded provider for 16 of 37 Goodsprings placements across six of eight rig families"],
+      "focusedTest": { "filter": "FalloutHitReactionTest.*", "passed": 4, "total": 4 },
+      "combinedRegression": { "filter": "FalloutHitReactionTest.*:FalloutWeaponAnimationTest.*", "passed": 24, "total": 24 },
+      "fullRegression": { "binary": "openmw-tests", "passed": 659, "total": 659 },
+      "limitations": ["This slice preserves the recovery request but does not raise hit animation priority above an already-playing action", "It adds no hit-reaction source, animation variant, directional or body-part selection, knockdown, death, blood, impact, sound, VATS, or camera behavior", "Humanoid and raven Goodsprings placements remain unsupported by the separate source-binding contract", "The decision test is pure and does not instantiate a CharacterController, retail actor, active attack, or animation scene graph", "No natural active-attack shot-to-damage-to-visible-reaction journey or retail timing and pose differential was run", "No promoted-binary provenance", "No certified parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
