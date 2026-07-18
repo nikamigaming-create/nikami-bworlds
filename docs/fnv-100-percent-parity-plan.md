@@ -1,8 +1,10 @@
 # Fallout: New Vegas 100% Parity Plan
 
 This is the controlling execution plan for making the English Fallout: New
-Vegas Ultimate Edition naturally playable in OpenMW. The next user validation
-run is required to use OpenMW VR; flat-screen capture is not the next gate. It replaces
+Vegas Ultimate Edition naturally playable in OpenMW. Flat OpenMW is the fast,
+repeatable diagnostic and authored-gameplay bench; OpenMW VR is the acceptance
+surface for the same promoted slice. The active Goodsprings compile/replay
+cadence is specified in `docs/fnv-goodsprings-batch-loop.md`. This plan replaces
 feature-by-feature intuition with a frozen corpus, hard denominators, explicit
 dependency layers, generated acceptance cases, and mechanical percentages.
 
