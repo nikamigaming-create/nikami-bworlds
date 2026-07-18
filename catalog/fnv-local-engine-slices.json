@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "b79272cd22a694f44e9236e28de1b3a83f6f3734",
-  "unpromotedCommitCount": 74,
+  "auditedHead": "b04c9d84f9103820f7bc4c03cfb4a142b24f2b99",
+  "unpromotedCommitCount": 75,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -358,6 +358,17 @@
       "combinedRegression": { "filter": "FalloutHitReactionTest.*:FalloutWeaponAnimationTest.*", "passed": 24, "total": 24 },
       "fullRegression": { "binary": "openmw-tests", "passed": 659, "total": 659 },
       "limitations": ["This slice preserves the recovery request but does not raise hit animation priority above an already-playing action", "It adds no hit-reaction source, animation variant, directional or body-part selection, knockdown, death, blood, impact, sound, VATS, or camera behavior", "Humanoid and raven Goodsprings placements remain unsupported by the separate source-binding contract", "The decision test is pure and does not instantiate a CharacterController, retail actor, active attack, or animation scene graph", "No natural active-attack shot-to-damage-to-visible-reaction journey or retail timing and pose differential was run", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "strict-fallout-repcon-radio-bootstrap",
+      "commit": "b04c9d84f9103820f7bc4c03cfb4a142b24f2b99",
+      "subject": "Play strict Fallout radio bootstrap",
+      "scope": ["FNV-only data-driven one-shot radio-program preparation with no station, quest, INFO, or sound FormId special case", "direct ACTI SNAM and INAM sounds remain looping and take precedence", "linked TACT SNAM and INAM sounds remain looping and take precedence", "program preparation begins only when owner and linked-station direct broadcasts are absent", "the live TACT must be the exact winning store record, carry RadioStation, omit ContBroadcast, and expose no direct broadcast", "exactly one live quest must carry exactly one subject GetIsID equals one condition bound to the station", "the station quest must be Running in the native ESM4 quest runtime", "a unique RadioHello DTYP_Radio topic must retain the station quest through QSTI", "a unique quest-and-topic-owned INFO must have no CTDA, speaker override, next speaker, unsupported flags, begin result script, or end result script", "the INFO must carry exactly one response with a nonzero sound resolving to live SOUN or SNDR", "selection and playback decisions are pure-tested: prepared programs use one-shot Normal playback, direct sounds use Loop, and reactivation while the same sound is active stops it", "exact frozen Repcon chain uses TACT 000CD126, QUST 000CD18A, INFO 000CD185, and SOUN 00169BED", "the bounded physical consumer numerator is TACT placements 000CD127 and 000CE419 plus 41 ACTI references linked through bases 000CD125 and 000CD21B", "uppercase sorted TACT placement-ID ledger with terminal LF has SHA-256 d5a72f89feefa99af69615bb4126fa8189140618eeb7712adb950ea893e92238", "uppercase sorted linked-ACTI placement-ID ledger with terminal LF has SHA-256 f6ef112a4341b2d63b05725c7741e85ecda0daea702a1cd6ab046186647c14f0", "the frozen placed-TACT direct-or-bootstrap numerator moves from 15 of 29 to 17 of 29", "the separate linked-ACTI direct-or-bootstrap consumer numerator moves from 16 of 110 to 57 of 110"],
+      "focusedTest": { "filter": "FnvRadioProgramTest.*:ESM4TalkingActivatorTest.*", "passed": 15, "total": 15 },
+      "fullRegression": { "binary": "openmw-tests", "passed": 670, "total": 670 },
+      "limitations": ["This is activation-triggered Repcon bootstrap audio, not a continuously scheduled radio program or complete radio-station implementation", "Automatic SetBroadcastState and StartRadioConversation object-script behavior remains absent", "Only the unique unconditional RadioHello direct-sound path is supported; conditional, random, chained, multi-response, scripted, continuous, voice-file-only, and ambiguous paths fail closed", "The 848 authored radio responses, 739 direct voice-response keys, songs, dialogue graphs, timers, quest variables, daily rules, and program state are not implemented by this slice", "Playback uses the existing 3D sound action and does not prove retail radio category, attenuation, static, range, mix, timing, interruption, or lip behavior", "Pip-Boy tuning, station list, HUD state, current-track persistence, save/load, and automatic world broadcasts remain unsupported", "No natural Repcon activation journey, retail audio capture, or differential was run", "The 670-test full regression also includes one compiled but separately uncommitted unlocked-door test; the radio-specific focused gate is 15 of 15", "No promoted-binary provenance", "No certified parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
