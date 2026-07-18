@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "37c35e625ab7302d73af41b7d92cc7cf1c1fdc57",
-  "unpromotedCommitCount": 71,
+  "auditedHead": "12338bf5d0dd20bd98d56ca374762f6c5313b8ed",
+  "unpromotedCommitCount": 72,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -323,6 +323,17 @@
       "scope": ["Fallout BSShaderPPLighting fallback blending now requires AlphaTexture and WindowEnvironmentMapping on the same shader property", "an explicit NiAlphaProperty remains authoritative", "five exact combined-flag Goodsprings window drawables without NiAlphaProperty retain source-alpha blending and transparent-bin routing", "ten alpha-only full-model drawables no longer inherit the window fallback", "four alpha-only single-drawable Goodsprings LOD building proxies no longer enter the transparent bin as whole objects", "one window-environment-only fully opaque gas-station drawable no longer enters the transparent bin", "true window, alpha-only, window-only, explicit-NiAlpha, sibling isolation, environment-texture binding, and opaque-root state are regression tested", "NV_StoreGlass diffuse alpha distribution confirms authored window transparency", "GasStation01NV diffuse alpha is fully opaque while its sparse environment mask remains available to RGB reflection", "37 frozen Goodsprings full and LOD NIF assets plus relevant DDS pixels were audited", "environment and gloss binding and the compatibility fragment shader remain unchanged"],
       "focusedTest": { "filter": "NifOsgLoaderTest.should*PpLighting*", "passed": 7, "total": 7 },
       "limitations": ["Synthetic NIF unit fixtures prove state routing but do not embed or render retail assets", "The external asset audit is SHA-anchored locally but is not a GPU or retail screenshot differential", "No natural Goodsprings full-to-LOD-to-full walk was launched because desktop and browser control were explicitly stopped", "Reflection brightness, environment-mask intensity, transparent sorting, depth interactions, and GPU draw order still require retail differential evidence", "Distant paging selection and crossfade behavior are covered by a separate unpromoted slice", "No shader source or authored asset was changed", "No promoted-binary provenance", "No certified or retail visual parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "strict-fallout-crafting-station-activation",
+      "commit": "12338bf5d0dd20bd98d56ca374762f6c5313b8ed",
+      "subject": "Activate strict Fallout crafting stations",
+      "scope": ["FNV-only activation for the exact Workbench ACTI 00075005 plus script 0013E11C and Reloading Bench ACTI 0015361F plus script 0015361E identities", "immutable catalog preparation before presentation or inventory mutation", "all 96 live Workbench-category recipes and all 63 live Reloading-category recipes are classified", "37 Workbench recipes and 36 Reloading recipes satisfy the statically supported skill, item-kind, quantity, and conditionless contract", "59 Workbench recipes and 26 Reloading recipes remain explicitly blocked by authored CTDA conditions", "Reloading recipe 00165E7D remains explicitly blocked by the unsupported CMNY item kind", "all six authored CTDA function identifiers in the two catalogs are retained as blocker evidence", "six-entry bounded paging with next, previous, back, cancel, invalid-selection, blocked-recipe, confirmation, result, and redraw-cap handling", "confirmed selection prepares and immediately commits exactly one live ContainerStore crafting transaction", "player, actor-value state, target type, target enabled state, game identity, station mapping, and recipe catalog are validated before UI", "frozen placement census covers 64 Workbench references across 53 cells and 49 Reloading references across 46 cells", "112 of 113 station placements are initially enabled; Workbench reference 0015E119 remains disabled pending unsupported SCPT enable behavior", "ordinary and radio activator routing remains unchanged"],
+      "focusedTest": { "filter": "FnvCraftingRuntimeTest.*:ActionFnvCraftingTest.*:ESM4TalkingActivatorTest.OrdinaryAndRadioActiRoutingRemainUnchanged", "passed": 22, "total": 22 },
+      "fullRegression": { "binary": "openmw-tests", "passed": 655, "total": 655 },
+      "limitations": ["The menu uses generic blocking message boxes rather than the retail Fallout crafting interface, layout, inputs, sounds, animation, camera, or timing", "Conditional recipes remain fail-closed because CTDA evaluation is not implemented", "CMNY and any unsupported or scripted item kind remain fail-closed", "The UI does not display live owned ingredient counts", "Workbench reference 0015E119 remains initially disabled because its enabling SCPT OnAdd behavior is unsupported", "The target is revalidated immediately before the synchronous modal session but not between selection and commit; the world does not tick through this modal path", "The existing ContainerStore mutation API still cannot guarantee rollback after an unexpected failure once the first live mutation succeeds", "No campfire or special quest and sleep station behavior", "No natural crafting journey, retail differential, or exhaustive transaction sweep of all 73 statically supported recipes", "No promoted-binary provenance", "No certified parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
