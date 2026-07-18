@@ -1,7 +1,8 @@
 # Fallout: New Vegas 100% Parity Plan
 
 This is the controlling execution plan for making the English Fallout: New
-Vegas Ultimate Edition naturally playable in flat-screen OpenMW. It replaces
+Vegas Ultimate Edition naturally playable in OpenMW. The next user validation
+run is required to use OpenMW VR; flat-screen capture is not the next gate. It replaces
 feature-by-feature intuition with a frozen corpus, hard denominators, explicit
 dependency layers, generated acceptance cases, and mechanical percentages.
 
@@ -11,6 +12,7 @@ The machine-readable sources are:
 - `catalog/fnv-parity-exclusions.json` — the versioned, currently empty exclusion ledger;
 - `catalog/fnv-bite-ledger.schema.json` — the per-byte/record/opcode/mechanic mapping contract;
 - `catalog/fnv-parity-control-plane.json` — 15 axes and 187 known capability cases;
+- `catalog/fnv-local-engine-slices.json` — content-addressed local engineering slices and limitations;
 - `scripts/export_fnv_parity_corpus.py` — master/BSA-aware read-only census and strict verifier;
 - `scripts/New-FNVParityProfile.ps1` — pristine official-only profile generator;
 - `scripts/Measure-FNVParityCoverage.ps1` — the score report; and
@@ -18,16 +20,16 @@ The machine-readable sources are:
 
 ## Current truth
 
-As of 2026-07-17:
+As of 2026-07-18:
 
 | Measure | Current value | Meaning |
 |---|---:|---|
 | Green engineering coverage | **43 / 187 = 22.99%** | Focused-tested, bounded-runtime, or bounded-retail-differential cases; the honest working-progress headline. |
 | Implemented or better | **52 / 187 = 27.81%** | Includes nine implemented-but-not-yet-proven cases in addition to green engineering coverage. |
 | Live or retail evidence | **29 / 187 = 15.51%** | Cases exercised in bounded live runtime or a bounded retail differential. |
-| Mapped capability surface | **104 / 187 = 55.61%** | Everything beyond `uncovered`, including known failures that still require correction. |
+| Mapped capability surface | **108 / 187 = 57.75%** | Everything beyond `uncovered`, including known failures that still require correction. |
 | Certified one-to-one parity | **0.00%** | No axis has both a complete capability set and accepted whole-corpus instances. |
-| Known capability cases complete | **0 / 187 = 0.00%** | All 187 remain open; 83 are uncovered and 45 are known failing. |
+| Known capability cases complete | **0 / 187 = 0.00%** | All 187 remain open; 79 are uncovered and 45 are known failing. |
 | Existing coarse FNV product gates | **1 / 13 = 7.69%** | Useful engineering checkpoint, not full-game parity. |
 | Existing ledger including controls | **4 / 16 = 25%** | Includes FO3, Morrowind, and patch-replay safeguards; never report this as FNV progress. |
 | Whole-corpus runtime acceptance | **0.00% in every required family** | Current proofs are bounded Goodsprings/Saloon observations, not immutable accepted rows. |
@@ -42,6 +44,40 @@ session-integrity pass lacks the normal-exit and immutable binary/corpus/profile
 provenance required for a complete case. A cloud, combat, container, furniture,
 or dialogue slice remains visible as bounded engineering evidence without
 silently becoming full-game credit.
+
+### 2026-07-18 VR validation build
+
+The current local VR runtime is built from engine commit
+`3b2f43e73a0e869847f7ad3c8959ea74395ca35f`. The deployed
+`openmw_vr.exe` SHA-256 is
+`af6bbe3427ed016e69fd2a90593ba62c3d2ab5742aec9ac97ea1592dc6df5910`.
+Its resource version is pinned to engine `3b2f43e73a0e869847f7ad3c8959ea74395ca35f`
+and resource commit `8a1ad31b2bfd7f3d9b387df0ba216c46ec6a8c96`.
+The full-profile VR launcher dry-run resolves the real Ultimate Edition profile
+without a proof-slice start cell, skip menu, or injected new-game state. No game
+or desktop UI was launched during this remote audit.
+
+When the user is home with the headset and OpenXR runtime ready, the next run is:
+
+```powershell
+Set-Location D:\code\nikami-worlds
+.\scripts\Start-WorldProfileExisting.ps1 -WorldId fallout_new_vegas -Mode vr
+```
+
+Seven newly audited local commits cover the shifted master-index Player FormID,
+categorical friendly/hostile aggression, retail PACK condition decoding and
+retry suppression, window-reflection isolation, selected INFO prompt/branch
+binding, paused dialogue facing, and bounded safe dialogue result commands.
+The focused matrix passes 33 of 33 selected tests, and the current full
+`openmw-tests` regression passes 699 of 699. The local slice ledger now records
+46 slices at 86 commits beyond the formal promoted baseline.
+
+These fixes do not increase a macro-case numerator yet. Cross-cell packages and
+animation objects, face morphs and complete LIP behavior, the complete GECK
+condition/result VM, generic reference persistence, whole-corpus differentials,
+natural VR replay, and promoted-binary provenance remain open. Therefore the
+honest engineering headline remains **43 / 187 = 22.99%**, while certified
+one-to-one parity remains **0.00%**.
 
 Run the live report at any time:
 
@@ -488,7 +524,7 @@ center of the architecture and do not change the ordering above.
 
 ## Known hard blockers right now
 
-- The formal promoted queue stops 42 local engine commits behind current
+- The formal promoted queue stops 86 local engine commits behind current
   engine head; later commits have not passed the formal replay/promotion gate.
 - Only 61 of 140 cross-game ESM4 record enums are indexed in the game store.
   Parser/store percentage is not playability, but the missing runtime families

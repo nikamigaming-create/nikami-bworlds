@@ -1,12 +1,12 @@
 {
   "schema": "nikami-fnv-local-engine-slices/v1",
-  "asOf": "2026-07-17",
+  "asOf": "2026-07-18",
   "scopeId": "fnv-ultimate-edition-en-official-v1",
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "a14571acde4ad476518a8916306c1bdfb639d4b8",
-  "unpromotedCommitCount": 79,
+  "auditedHead": "3b2f43e73a0e869847f7ad3c8959ea74395ca35f",
+  "unpromotedCommitCount": 86,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -413,6 +413,77 @@
       "focusedTest": { "filter": "FnvLockpickRuntimeTest.*", "passed": 13, "total": 13 },
       "fullRegression": { "binary": "openmw-tests", "configuration": "Release", "passed": 685, "total": 685 },
       "limitations": ["This slice prepares no lockpick interface and is not connected to door activation; the honest playable lockpick numerator remains zero of 216 keyless locked doors", "There is no pick-angle, torque, tolerance, controller or mouse input, bobby-pin damage or breakage, unlock mutation, XP, perk, force-lock, broken-lock, sound, animation, camera, ownership-crime consequence, or persistence behavior", "XACT and reference-level script facts discarded by the current loader are guarded only by the exact frozen allowlist and must become direct record checks when retained", "The exact 84-placement table is a conservative subset, not coverage of all 120 nominally pick-tier or 216 keyless locked door placements", "The materialized tests use exact record shapes and identities but synthetic live cells and do not launch a retail door", "No natural lockpick journey or retail differential", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-player-master-load-index",
+      "commit": "ee0f6154fa466950a07c5ce0bb0dc40a06d330bc",
+      "subject": "Resolve FNV player at the master load index",
+      "scope": ["resolves official Player FormID 00000007 through the owning master index", "survives built-in content shifting FalloutNV.esm away from file index zero", "retains winning override and fail-closed malformed-record behavior", "unblocks normal full-profile startup without inventing a player identity"],
+      "focusedTest": { "filter": "FalloutPlayerStateTest.*", "passed": 7, "total": 7 },
+      "limitations": ["Player representation still uses the broader compatibility proxy outside the native base-state layer", "No complete mutable actor-value, appearance, equipment, perk, limb, or player-save parity", "No clean-install or promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-categorical-actor-aggression",
+      "commit": "72e53045d4e4b50998bcabd0a88dbb87092a158f",
+      "subject": "Honor Fallout New Vegas actor aggression",
+      "scope": ["uses categorical FNV AIDT aggression instead of Morrowind Fight bias", "resolves directional authored faction group-combat reactions", "keeps exact Goodsprings Settler and Easy Pete neutral to the Player faction", "allows the authored aggressive Goodsprings mantis to initiate", "fails closed for unknown faction identity", "preserves legacy and non-FNV aggression behavior"],
+      "focusedTest": { "filter": "FalloutCombatTest.*", "passed": 11, "total": 11 },
+      "limitations": ["No complete faction, reputation, disguise, crime, witness, alarm, disposition, calm, or combat-start parity", "No whole-corpus actor-pair differential", "Natural Goodsprings validation remains required", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-ai-package-condition-decoding",
+      "commit": "fd8103bfaa7856660d4a05f2f018105c76be0789",
+      "subject": "Parse Fallout AI package conditions",
+      "scope": ["decodes retail 28-byte PACK CTDA payloads through the shared target-condition schema", "preserves condition operator, flags, function, parameters, run-on target, and reference", "stops retrying stable unsupported or cross-cell package outcomes every mechanics frame", "removes the dominant skipped-package telemetry loop"],
+      "focusedTest": { "filter": "Esm4BehaviorRecordTest.shouldPreserveCurrentFalloutPackageConditions", "passed": 1, "total": 1 },
+      "limitations": ["Condition decoding is not complete CTDA evaluation", "Package procedure trees, cross-cell routing, animation objects, smart-object props, furniture entry, schedules, and persistence remain incomplete", "Easy Pete still lacks a proven route through the saloon portal", "No natural package or retail timing differential", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-window-reflection-isolation",
+      "commit": "13fcf1e8db44d0aebf36686180a9002cf5314b02",
+      "subject": "Scope Fallout window reflections to glass",
+      "scope": ["requires authored window-environment and alpha flags for the window reflection fallback", "keeps ordinary authored environment mapping intact", "prevents opaque neighboring scenery from inheriting the window mirror state", "retains explicit NiAlphaProperty authority and sibling isolation"],
+      "focusedTest": { "filter": "NifOsgLoaderTest.should*PpLighting*", "passed": 6, "total": 6 },
+      "limitations": ["Synthetic state-routing tests are not a retail GPU or screenshot differential", "Reflection intensity, environment masks, sorting, depth, LOD transition, water, and image-space behavior remain open", "A natural VR Goodsprings full-to-LOD-to-full walk is still required", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-dialogue-selected-info-prompts",
+      "commit": "7e473d768066da970f7b322925ef47be58e5cabf",
+      "subject": "Bind Fallout dialogue prompts to selected responses",
+      "scope": ["displays authored INFO RNAM prompts for player-facing choices", "retains the exact selected INFO identity through the click", "executes the same branch the player saw", "preserves authored physical order for equal-affinity responses", "falls back deterministically to topic and editor names when RNAM is absent"],
+      "focusedTest": { "filter": "Esm4DialogueUtilsTest.*", "passed": 2, "total": 2 },
+      "limitations": ["Actor-affinity selection remains an interim heuristic", "Complete CTDA evaluation, choice-link traversal, history, services, interruptions, subtitles, and retail UI layout remain incomplete", "No whole-dialogue-corpus differential", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "fallout-dialogue-paused-facing",
+      "commit": "47bd8a54a2187405e9d9bfbf9eb9bb604f04bd40",
+      "subject": "Update actor facing while Fallout dialogue pauses",
+      "scope": ["updates dialogue body turning while world simulation is paused", "applies head tracking during the dialogue pause", "preserves furniture-constrained body yaw", "clears facing when dialogue closes, the reference disappears, or the cell changes"],
+      "focusedTest": { "filter": "DialogueFacingTest.*", "passed": 3, "total": 3 },
+      "limitations": ["Face morphs, expressions, full lip synchronization, camera framing, and retail turn timing remain incomplete", "No natural VR speaker-facing differential", "No promoted-binary provenance", "No certified parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "safe-fallout-dialogue-result-commands",
+      "commit": "3b2f43e73a0e869847f7ad3c8959ea74395ca35f",
+      "subject": "Execute safe Fallout dialogue result commands",
+      "scope": ["parses result-script statements into a bounded action plan", "opens Chet barter when every authored branch converges on ShowBarterMenu", "executes top-level Enable, Disable, Unlock, and evp through native world APIs", "defers commands inside unknown conditional expressions", "guards Unlock and unsafe EVP state transitions", "resolves placed references by editor ID only as an explicit fallback"],
+      "focusedTest": { "filter": "Esm4ResultScriptTest.*", "passed": 3, "total": 3 },
+      "fullRegression": { "binary": "openmw-tests", "configuration": "RelWithDebInfo", "passed": 699, "total": 699 },
+      "limitations": ["Chet's exact 75, 50, and zero discount branches are not yet preserved", "Compiled SCDA opcodes, SCRO targets, and the general GECK expression VM remain incomplete", "Conditional world mutations are deferred when their expressions are unknown", "Generic non-NPC reference persistence and creature EVP remain incomplete", "No natural Trudy, Chet, save-load, or whole-dialogue-corpus differential", "No promoted-binary provenance", "No certified parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
