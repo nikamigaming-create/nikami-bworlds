@@ -157,6 +157,13 @@
       "title": "Speech moves jaw or mouth but leaves the rest of the face rigid",
       "symptoms": ["Teeth and mouth move", "Cheeks, brows, eyes, and expression remain static", "Quality varies by NPC"],
       "requiredGate": "Retail/OpenMW dialogue trace correlates LIP phonemes, HeadAnims tracks, TRI morph weights, expression state, eye/head controllers, and rendered vertex deltas for every Goodsprings speaker.",
+      "currentFindings": [
+        "The official Easy Pete voice LIP contains nonzero phoneme, brow, blink, look, squint, and head channels; the facial data is not absent.",
+        "The official HeadOld TRI exposes authored Anger, Disgust, Fear, Happy, Sad, Surprise, Mood*, Pained, CombatAnger, brow, phoneme, blink, squint, and look morphs.",
+        "FNV INFO responses already parse emotion type/value, use-emotion-animation flag, speaker animation, and listener animation, but executeEsm4Topic currently reduces the response sequence to voice filenames.",
+        "The renderer currently combines LIP values with HeadAnims tracks from active body animation KFs; it has no surviving per-response emotion state after dialogue selection."
+      ],
+      "implementationContract": "Carry each ordered INFO response's exact emotion type/value/flags and speaker/listener animation beside its voice, apply the authored expression/mood target with the LIP timeline and exact TRI-name aliases, drive eye/head targets through their native controllers, then clear or advance the state exactly with the response sequence. Do not invent a generic talking face.",
       "status": "open",
       "owner": "C++",
       "closingCommit": null
