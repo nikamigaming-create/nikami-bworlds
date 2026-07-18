@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "8e564b6ae1b1ee940a8bc98785925e258f8fdb88",
-  "unpromotedCommitCount": 57,
+  "auditedHead": "774c7949ad54be5c619fc37c735411e4f48722fb",
+  "unpromotedCommitCount": 58,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -152,7 +152,7 @@
       "subject": "Populate Fallout creature fixed inventory",
       "scope": ["resolved Template_UseInventory provider", "one-time authored CNTO population", "exact FormIds and counts", "safe duplicate-stack merge and overflow rejection", "eleven supported ESM4 item families", "clone refnum refresh and mutation isolation", "one-time live pointer registration"],
       "focusedTest": { "filter": "ESM4ContainerTest.*", "passed": 9, "total": 9 },
-      "limitations": ["LVLI level, chance-none, use-all, count, and random selection remain unresolved and are skipped explicitly", "Mutable creature-state persistence is implemented only by the subsequent persistent-fallout-creature-state slice", "No whole-corpus inventory differential", "No promoted-binary provenance"],
+      "limitations": ["The subsequent deterministic-fallout-leveled-inventory slice resolves only 110 of 1,606 effective official creature LVLI uses; chance, global, COED, random, PCLevelMult, ambiguous, and unsupported paths remain fail-closed", "Mutable creature-state persistence is implemented only by the subsequent persistent-fallout-creature-state slice", "No whole-corpus inventory differential", "No promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     },
@@ -183,6 +183,16 @@
       "scope": ["259 physical and 257 winning-live official PERK records", "strict FNV subrecord order and payload sizes", "record and entry conditions", "quest, ability, and entry-point variants", "FormId adjustment", "embedded script byte and source preservation", "typed store override resolution", "33 malformed-record fixtures"],
       "focusedTest": { "filter": "Esm4PerkTest.*:Esm4PerkStoreTest.*", "passed": 7, "total": 7 },
       "limitations": ["Parser and typed store only", "No perk condition evaluation or effect execution", "No perk UI, mutation, or persistence behavior", "No whole-corpus runtime differential", "No promoted-binary provenance"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "deterministic-fallout-leveled-inventory",
+      "commit": "774c7949ad54be5c619fc37c735411e4f48722fb",
+      "subject": "Resolve deterministic Fallout leveled inventory",
+      "scope": ["strict FNV LVLI grammar and payload sizes", "LVLG and COED metadata preservation", "typed official record decoding", "actor-level eligible-bucket selection", "nested deterministic use-all and calc-each expansion", "exact entry and outer-count multiplication", "supported terminal-item materialization", "cycle and depth protection", "complete plan and existing-stack overflow preflight", "all-or-nothing per-list mutation", "mutable CSTA round-trip of resolved inventory"],
+      "focusedTest": { "filter": "Esm4LvliTest.*:ESM4ContainerTest.*", "passed": 26, "total": 26 },
+      "limitations": ["Official deterministic gain is 110 of 1,606 effective creature LVLI root/reference uses (6.8493 percent), or 110 of 1,544 fixed-level uses (7.1244 percent)", "Only 18 of 829 entire creature roots are fully deterministic", "Chance-none, LVLG globals, COED, random ambiguity, PCLevelMult, unknown flags, unsupported terminal types, overflow, cycles, and depth above 16 fail closed", "CLOT, INGR, and LIGH remain direct-inventory-only because no official deterministic LVLI target proves them", "No whole-corpus runtime differential", "No promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     }
