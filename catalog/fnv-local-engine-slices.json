@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "bdf8362e307ab71fd71cf9dbd9223c7fa5796a90",
-  "unpromotedCommitCount": 51,
+  "auditedHead": "b2dfcc32b5732701cafe87b0137e4318b37a42c2",
+  "unpromotedCommitCount": 52,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -123,6 +123,16 @@
       "scope": ["normalized retail moon angle domain", "20..160 degree phase-shadow window", "day/night alpha assertions", "full openmw regression suite"],
       "focusedTest": { "filter": "MWWorldWeatherTest.mapsSingleRetailFalloutMoonToOpenMWQuadAxis", "passed": 1, "total": 1 },
       "limitations": ["Test-only correction; no runtime behavior changed", "No new live retail differential", "No certification credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "core-fallout-quest-state-bytecode",
+      "commit": "b2dfcc32b5732701cafe87b0137e4318b37a42c2",
+      "subject": "Execute core Fallout quest state bytecode",
+      "scope": ["SetObjectiveCompleted 0x11a2", "StartQuest 0x1036", "StopQuest 0x1037", "CompleteQuest 0x1071", "655 winning-live authored frames", "whole-stage transactional preflight"],
+      "focusedTest": { "filter": "ESM4QuestRuntimeTest.*", "passed": 13, "total": 13 },
+      "limitations": ["Only six of 112 observed QUST-stage opcode identities execute natively", "3,573 of 5,082 winning-live frames remain outside the recognized command set", "Mixed stages still use temporary whole-SCTX fallback", "SetStage 0x1039 awaits bounded recursive transaction and cycle semantics", "No retail differential or promoted-binary provenance"],
       "certificationEligible": false,
       "parityCredit": false
     }
