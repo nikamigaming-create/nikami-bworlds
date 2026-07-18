@@ -5,8 +5,8 @@
   "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
   "branchAtAudit": "codex/fnv-parity-slices",
   "promotedBaselineCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
-  "auditedHead": "6f84bba2024542d785d3e9eaa4a49ef1dcfd87fb",
-  "unpromotedCommitCount": 70,
+  "auditedHead": "37c35e625ab7302d73af41b7d92cc7cf1c1fdc57",
+  "unpromotedCommitCount": 71,
   "policy": {
     "availability": "local-commit",
     "publishedAtAudit": false,
@@ -313,6 +313,16 @@
       "scope": ["FNV-only ESM versions 132, 133, and 134", "active-grid references retain their full authored model", "far references require the authored Visible When Distant record flag", "unflagged far references are excluded even when a proxy happens to exist", "flagged far references use the existing Bethesda _lod and _lod_N resolver", "flagged references fall back to the full model if a proxy is unavailable", "disabled-reference paging exclusion is factored into an explicit regression-tested predicate without changing semantics", "record flags survive the ESM4 REFR-to-paged-reference boundary", "optional OPENMW_FNV_LOD_TELEMETRY exposes base, flags, LOD tier, selection, and resolved model with a 256-row cap", "frozen census covers 211,339 enabled supported exterior placements and 181,642 VFS paths", "all 23,810 Visible When Distant placements resolve a proxy", "4,676 unflagged placements are proxy-capable but remain excluded from far paging", "897 disabled supported exterior placements remain excluded"],
       "focusedTest": { "filter": "FalloutLodSelectionTest.*", "passed": 6, "total": 6 },
       "limitations": ["The frozen census establishes authored selection inputs and asset availability but is not a rendered whole-corpus differential", "The user's prior walk moved less than one 4,096-unit exterior cell and therefore did not exercise the full-to-paged boundary", "No new natural greater-than-one-cell full-to-paged-to-full return journey was launched because desktop and browser control were explicitly stopped", "No retail crossfade, pop timing, occlusion, draw-order, or GPU differential is claimed", "The fallback full model is a safety path; the frozen official Visible When Distant numerator currently has zero missing proxies", "XLOD and worldspace MNAM behavior are not inferred or changed", "Shaders, material alpha routing, water reflection, and cloud behavior are separate paths", "No promoted-binary provenance", "No certified or retail visual parity credit"],
+      "certificationEligible": false,
+      "parityCredit": false
+    },
+    {
+      "id": "authored-fallout-window-glass-blending",
+      "commit": "37c35e625ab7302d73af41b7d92cc7cf1c1fdc57",
+      "subject": "Limit Fallout window blending to authored glass",
+      "scope": ["Fallout BSShaderPPLighting fallback blending now requires AlphaTexture and WindowEnvironmentMapping on the same shader property", "an explicit NiAlphaProperty remains authoritative", "five exact combined-flag Goodsprings window drawables without NiAlphaProperty retain source-alpha blending and transparent-bin routing", "ten alpha-only full-model drawables no longer inherit the window fallback", "four alpha-only single-drawable Goodsprings LOD building proxies no longer enter the transparent bin as whole objects", "one window-environment-only fully opaque gas-station drawable no longer enters the transparent bin", "true window, alpha-only, window-only, explicit-NiAlpha, sibling isolation, environment-texture binding, and opaque-root state are regression tested", "NV_StoreGlass diffuse alpha distribution confirms authored window transparency", "GasStation01NV diffuse alpha is fully opaque while its sparse environment mask remains available to RGB reflection", "37 frozen Goodsprings full and LOD NIF assets plus relevant DDS pixels were audited", "environment and gloss binding and the compatibility fragment shader remain unchanged"],
+      "focusedTest": { "filter": "NifOsgLoaderTest.should*PpLighting*", "passed": 7, "total": 7 },
+      "limitations": ["Synthetic NIF unit fixtures prove state routing but do not embed or render retail assets", "The external asset audit is SHA-anchored locally but is not a GPU or retail screenshot differential", "No natural Goodsprings full-to-LOD-to-full walk was launched because desktop and browser control were explicitly stopped", "Reflection brightness, environment-mask intensity, transparent sorting, depth interactions, and GPU draw order still require retail differential evidence", "Distant paging selection and crossfade behavior are covered by a separate unpromoted slice", "No shader source or authored asset was changed", "No promoted-binary provenance", "No certified or retail visual parity credit"],
       "certificationEligible": false,
       "parityCredit": false
     }
