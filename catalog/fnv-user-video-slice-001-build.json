@@ -1,0 +1,66 @@
+{
+  "schema": "nikami-fnv-user-video-capture-build/v1",
+  "asOf": "2026-07-18T03:28:49.6710582-07:00",
+  "status": "ready-for-user-capture",
+  "purpose": "Reproducible local build stamp for FNV User Video Slice 001.",
+  "engine": {
+    "repository": "D:/code/nikami-openmw-lab",
+    "branch": "codex/fnv-parity-slices",
+    "commit": "a14571acde4ad476518a8916306c1bdfb639d4b8",
+    "configuration": "RelWithDebInfo"
+  },
+  "executable": {
+    "sourcePath": "D:/code/nikami-openmw-lab/MSVC2022_64/RelWithDebInfo/openmw.exe",
+    "deployedPath": "D:/code/nikami-worlds/local/openmw-fo4guard/openmw.exe",
+    "walkaroundPath": "D:/code/nikami-worlds-fnv-parity/local/openmw-fo4guard/openmw.exe",
+    "sha256": "2ea004d117b41114c5b1a4208ec7446e24ce211ffaa1a39a0ae8aba8b06eae7a",
+    "bytes": 77434368,
+    "lastWriteTime": "2026-07-18T03:26:42.8141923-07:00",
+    "sourceAndDestinationHashesMatch": true
+  },
+  "replacedRuntime": {
+    "sha256": "183cfc672f984cb041492567b6009176c46576c102213c2712af1acc0123ba19",
+    "bytes": 76634624,
+    "lastWriteTime": "2026-07-17T16:16:57.7223698-07:00"
+  },
+  "resources": {
+    "root": "D:/code/nikami-worlds/local/openmw-fo4guard/resources",
+    "versionSha256": "0dcbb0af4c45a563b75bd52c3d31e3955f29e18ecb305b5f8dcb5b9a9a5d60f6",
+    "activationHandlerSha256": "741544032baee66842fa9f49aa14191c5cf42dec704997fc555ef0d97cc089d1",
+    "sourceAndDestinationHashesMatch": true,
+    "fullTreeHashed": false
+  },
+  "contracts": {
+    "boundedInputSchema": "nikami-openmw-bounded-input-evidence/v1",
+    "boundedInputSha256": "cedbc9a770e1f5457398f3258f2d8ba4c1786ec7fb91daa61dff1c78499740e0",
+    "configurationSha256": "1fe6835dd06dbc2aac1f8c23e8a1360e3c3b5f2e83f4494e5e316a91e07acde7",
+    "officialCorpusSha256": "00a4764a25b470a4cacd14361ba177f564c1ded8ba9de5d5dfb91f890d8e97de",
+    "denominatorObservedSha256": "983708e08fdb5193c36a669db3494682020a010cbf64760c73891c758f0d49b3"
+  },
+  "captures": [
+    {
+      "id": "goodsprings-settler-actor-walkaround",
+      "output": "fnv-slice-001-goodsprings.mp4",
+      "command": ".\\scripts\\Start-FalloutWalkaround.ps1 -WorldId fallout_new_vegas",
+      "dryRunPassed": true
+    },
+    {
+      "id": "repcon-platform-radio-walkaround",
+      "output": "fnv-slice-001-repcon-radio.mp4",
+      "command": ".\\scripts\\Start-FalloutWalkaround.ps1 -WorldId fallout_new_vegas -StartSlice repcon-platform-radio-walkaround",
+      "dryRunPassed": true
+    }
+  ],
+  "claims": {
+    "diagnosticEvidenceOnly": true,
+    "certificationEligible": false,
+    "parityCredit": false,
+    "naturalJourneyCreditForRepconStart": false
+  },
+  "knownHashExclusions": [
+    "complete resources tree",
+    "FNVR.esp",
+    "loose overlay files",
+    "shared UI data"
+  ]
+}

@@ -1,6 +1,6 @@
 # FNV User Video Slice 001
 
-Status: awaiting stamped executable and launch wrapper
+Status: ready for user capture with the locally stamped build below
 
 This protocol records a natural, user-controlled flat-screen observation. It is
 diagnostic evidence, not retail parity credit. No console, fast travel, staged
@@ -17,8 +17,53 @@ is permitted.
 - Output names are `fnv-slice-001-goodsprings.mp4` and
   `fnv-slice-001-repcon-radio.mp4`.
 
-The release handoff must stamp the executable path, SHA-256, byte count, engine
-commit, profile contract, and launch command before this protocol becomes ready.
+Allow about 20-30 minutes for the Goodsprings file and 3-5 minutes for the
+REPCON file. Record them as two separate, continuous files.
+
+## Stamped local capture build
+
+This build was compiled, deployed, and dry-run checked on 2026-07-18. It is a
+local diagnostic capture build, not a promoted release and not parity credit.
+
+| Field | Exact value |
+|---|---|
+| Engine commit | `a14571acde4ad476518a8916306c1bdfb639d4b8` |
+| Engine branch | `codex/fnv-parity-slices` |
+| Build configuration | `RelWithDebInfo` |
+| Executable | `D:\code\nikami-worlds-fnv-parity\local\openmw-fo4guard\openmw.exe` |
+| Physical executable | `D:\code\nikami-worlds\local\openmw-fo4guard\openmw.exe` |
+| Executable SHA-256 | `2ea004d117b41114c5b1a4208ec7446e24ce211ffaa1a39a0ae8aba8b06eae7a` |
+| Executable bytes | `77434368` |
+| Executable timestamp | `2026-07-18T03:26:42.8141923-07:00` |
+| Resource version SHA-256 | `0dcbb0af4c45a563b75bd52c3d31e3955f29e18ecb305b5f8dcb5b9a9a5d60f6` |
+| Activation handler SHA-256 | `741544032baee66842fa9f49aa14191c5cf42dec704997fc555ef0d97cc089d1` |
+| Configuration contract | `1fe6835dd06dbc2aac1f8c23e8a1360e3c3b5f2e83f4494e5e316a91e07acde7` |
+| Official-corpus contract | `00a4764a25b470a4cacd14361ba177f564c1ded8ba9de5d5dfb91f890d8e97de` |
+| Denominator file SHA-256 | `983708e08fdb5193c36a669db3494682020a010cbf64760c73891c758f0d49b3` |
+
+The bounded input contract deliberately does not hash the complete resources
+tree, `FNVR.esp`, loose overlays, or shared UI data. That limitation is why this
+capture is diagnostic and cannot certify parity by itself.
+
+## Launch commands
+
+Open PowerShell and run:
+
+```powershell
+Set-Location D:\code\nikami-worlds-fnv-parity
+.\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout_new_vegas
+```
+
+Complete the Goodsprings actions below, quit normally, and stop the first
+recording. Then begin the second recording before running:
+
+```powershell
+Set-Location D:\code\nikami-worlds-fnv-parity
+.\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout_new_vegas -StartSlice repcon-platform-radio-walkaround
+```
+
+The two commands were dry-run verified against the stamped executable. They do
+not use the browser, desktop automation, the console, or injected input.
 
 ## Exact Goodsprings route anchors
 
