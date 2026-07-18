@@ -13,10 +13,15 @@
   },
   "baseline": {
     "description": "Initial OpenMW/OpenMW-VR FNV import where authored terrain, buildings, interiors, clutter, furniture, windows, and ordinary set pieces rendered without the later reflection/transparency regressions.",
-    "engineCommit": null,
+    "engineCommit": "6a5576dea5668624c1a720e9d64bf400f750ca97",
+    "engineCommitSubject": "Apply retail FaceGen layers to FNV exposed skin",
+    "flatBinarySha256": "A018AC76D803014ACFA200F243100563BD2822C6C005EDBFF22ACF939C84AA7B",
     "profileHash": null,
-    "status": "needs-hash-pin",
-    "boundedVideoEvidence": "catalog/fnv-observations/2026-07-16-goodsprings-walk.json"
+    "status": "engine-and-flat-binary-hash-pinned-profile-pending",
+    "boundedVideoEvidence": "catalog/fnv-observations/2026-07-16-goodsprings-walk.json",
+    "revisionProofLog": "run/fo3-interaction-audit/current-vr-source-preflight/20260716-205443/openmw.log",
+    "binaryProofManifest": "run/fo3-interaction-audit/current-vr-source-preflight/20260716-205443/manifest.json",
+    "correlation": "The pinned revision and binary were logged at 20:54 local, bracketing the 20:04 user recording before the next engine animation commits. Profile provenance still requires recovery, so this is a bounded visual baseline rather than certification."
   },
   "statusCounts": {
     "open": 30,
