@@ -1,0 +1,59 @@
+{
+  "schema": "nikami-fnv-save330-change-form-matrix/v1",
+  "status": "exact-envelope-matrix-parser-payloads-in-progress",
+  "save": {
+    "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
+    "bytes": 3395328,
+    "sha256": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f",
+    "formVersion": 27
+  },
+  "changedForms": {
+    "offset": 494730,
+    "bytes": 2813549,
+    "end": 3308279,
+    "count": 7093,
+    "envelopeHeaderBytes": 77161,
+    "payloadBytes": 2736388
+  },
+  "types": [
+    { "type": 0, "formType": "0x03A", "record": "REFR", "count": 347, "payloadBytes": 41604, "maxPayloadBytes": 5830, "version": 27, "flagVariants": 18, "payloadPercent": 1.520398423 },
+    { "type": 1, "formType": "0x03B", "record": "ACHR", "count": 2926, "payloadBytes": 1198189, "maxPayloadBytes": 5095, "version": 27, "flagVariants": 26, "payloadPercent": 43.787248007 },
+    { "type": 2, "formType": "0x03C", "record": "ACRE", "count": 3281, "payloadBytes": 1488493, "maxPayloadBytes": 2944, "version": 27, "flagVariants": 23, "payloadPercent": 54.396269827 },
+    { "type": 7, "formType": "0x039", "record": "CELL", "count": 12, "payloadBytes": 262, "maxPayloadBytes": 81, "version": 27, "flagVariants": 4, "payloadPercent": 0.009574666 },
+    { "type": 8, "formType": "0x046", "record": "INFO", "count": 14, "payloadBytes": 0, "maxPayloadBytes": 0, "version": 27, "flagVariants": 1, "payloadPercent": 0.0 },
+    { "type": 9, "formType": "0x047", "record": "QUST", "count": 468, "payloadBytes": 4776, "maxPayloadBytes": 268, "version": 27, "flagVariants": 8, "payloadPercent": 0.174536652 },
+    { "type": 11, "formType": "0x02B", "record": "CREA", "count": 1, "payloadBytes": 25, "maxPayloadBytes": 25, "version": 27, "flagVariants": 1, "payloadPercent": 0.000913613 },
+    { "type": 34, "formType": "0x008", "record": "FACT", "count": 4, "payloadBytes": 792, "maxPayloadBytes": 744, "version": 27, "flagVariants": 1, "payloadPercent": 0.028943264 },
+    { "type": 37, "formType": "0x055", "record": "FLST", "count": 37, "payloadBytes": 2165, "maxPayloadBytes": 465, "version": 27, "flagVariants": 1, "payloadPercent": 0.079118897 },
+    { "type": 40, "formType": "0x034", "record": "LVLI", "count": 1, "payloadBytes": 62, "maxPayloadBytes": 62, "version": 27, "flagVariants": 1, "payloadPercent": 0.002265761 },
+    { "type": 50, "formType": "0x071", "record": "CHAL", "count": 2, "payloadBytes": 20, "maxPayloadBytes": 10, "version": 27, "flagVariants": 1, "payloadPercent": 0.000730891 }
+  ],
+  "semanticAccountingAtEngineCommit": {
+    "engineCommit": "ff64fcaf22",
+    "cleanEngineCommit": "85c112f667",
+    "decodedChangedFormPayloadBytes": 4208,
+    "opaqueChangedFormPayloadBytes": 2732180,
+    "opaqueGlobalDataPayloadBytes": 2582,
+    "opaqueUnknownTableBytes": 5,
+    "semanticOpaqueBytes": 2734767,
+    "equation": "2732180 + 2582 + 5 = 2734767"
+  },
+  "dominantWork": {
+    "actorAndCreaturePayloadBytes": 2686682,
+    "percentOfChangedFormPayload": 98.183517834,
+    "percentOfCurrentSemanticOpaqueBytes": 98.241714925,
+    "priority": [
+      "finish the exact 887-byte Player ACHR tail",
+      "decode generic version-27 ACHR payloads by observed change-flag branch",
+      "decode generic version-27 ACRE payloads by observed change-flag branch",
+      "decode REFR, QUST, FACT, FLST, CELL, CREA, LVLI, and CHAL payloads",
+      "decode Global Data types 0-7 and 9-11 plus the five-byte unknown-table tail"
+    ]
+  },
+  "sourceDefinitions": {
+    "path": "D:/code/nikami-worlds/external/xedit/Core/wbDefinitionsFNVSaves.pas",
+    "sha256": "701f4b734b4c3bb28b32c6f8d1595b952e536bd7f75358d764eea6bec51db406",
+    "changeTypeDefinitionLines": [2362, 2417],
+    "saveChapterDefinitionLines": [6761, 6834]
+  }
+}
