@@ -46,7 +46,7 @@
     {
       "id": 1,
       "name": "Lock the pristine renderer boundary",
-      "status": "in_progress",
+      "status": "complete",
       "actions": [
         "diff every renderer, GUI shader, runtime resource, shaders.yaml, and graphics setting against baseline commit 2ed153af06 and the pristine Mads package",
         "separate the GUI filename compatibility change from world rendering",
@@ -57,6 +57,12 @@
         "use D:/Modlists/fnv/openmw-config/flat-ui-proof/20260611_232015/settings.cfg (174 bytes, SHA-256 670F5DC9FDF3EDC199EF4BCD6190BBE5D3DE1090F2C5CE466590E2582F8C582A) as the last known working minimal-settings reference",
         "remove or quarantine every unproven reflection/environment-map/material override",
         "produce a hash manifest of the renderer source, deployed resources, and settings without launching the game"
+      ],
+      "outputs": [
+        "commit 48fd42f restores the June-safe FNV settings and rejects retired ordinary-launch runtimes",
+        "commit 8d5c5e6 adds the deterministic offline renderer boundary audit",
+        "catalog/fnv-renderer-boundary-manifest.json passes with exactly one expected renderer-source delta, 62/62 byte-identical deployed shaders, zero shader mismatches, and the exact 174-byte June settings reference",
+        "the current generated profile manifest remains explicitly stale and acceptance-ineligible until regenerated for a committed Save330-capable build"
       ],
       "gate": "The candidate renderer is byte-accounted against pristine Mads; no unexplained world shader/resource/config delta remains. Visual green still requires the later user-authorized Save330 run."
     },
