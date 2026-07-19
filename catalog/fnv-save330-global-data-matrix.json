@@ -1,0 +1,495 @@
+{
+  "schema": "nikami-fnv-save330-global-data-matrix/v1",
+  "status": "exact-offline-layout-matrix-type-8-decoded-types-0-7-and-9-11-opaque",
+  "scope": {
+    "purpose": "Pin every exact Save330 Global Data payload to the authoritative xEdit FNV save layout, identify only branches that can be parsed fail-closed, and order the remaining parser and runtime work without inventing semantics.",
+    "runtimeMutation": false,
+    "playableParityCredit": false,
+    "creditRule": "This is an offline matrix. Only Global Data type 8 is currently engine-decoded. A layout observation, raw-field preservation, or proposed parser branch does not reduce semantic opacity until compiled engine code and exact/malformed fixtures pass."
+  },
+  "save": {
+    "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
+    "bytes": 3395328,
+    "sha256": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f",
+    "formVersion": 27
+  },
+  "layoutAuthority": {
+    "path": "D:/code/nikami-worlds/external/xedit/Core/wbDefinitionsFNVSaves.pas",
+    "bytes": 253687,
+    "sha256": "701f4b734b4c3bb28b32c6f8d1595b952e536bd7f75358d764eea6bec51db406",
+    "globalDataCountersLines": [146, 163],
+    "globalDataTypeDeciderLines": [187, 212],
+    "pathingAndDialogueDefinitionsLines": [2020, 2075],
+    "globalDataDefinitionsLines": [2077, 2344],
+    "branchDeciderLines": [[915, 945], [1465, 1474]],
+    "authorityLimit": "The source is authoritative for serialized field widths, order, arrays, and named branches. Names beginning Unknown/Unk and source comments do not establish runtime meaning; this matrix does not promote them into invented behavior."
+  },
+  "encodingContract": {
+    "entryEnvelope": "little-endian u32 type, little-endian u32 payload length, then exactly payload-length bytes",
+    "terminatedScalars": "Every xEdit *T scalar in these payloads has its fixed-width bytes followed by exactly 0x7C.",
+    "fixedWidthRule": "Never split payloads on 0x7C. Raw values can contain 0x7C; type 3 RefID 0x00017C is followed by a second 0x7C terminator in the exact fixture.",
+    "referenceIds": {
+      "widthBytes": 3,
+      "byteOrder": "big-endian encoded RefID",
+      "exactKinds": ["null", "one-based FormID-table index"],
+      "formIdTable": {
+        "countOffset": 3308287,
+        "count": 21755,
+        "entriesOffset": 3308291,
+        "entryWidthBytes": 4,
+        "end": 3395311
+      },
+      "guard": "Decode the top two kind bits before the 22-bit value; for the exact one-based-index branch require 1 <= index <= 21755 before reading the little-endian u32 FormID table. Null is all zero. Unsupported kinds fail closed."
+    },
+    "vsvalCounts": {
+      "description": "The low two bits select a 1-, 2-, or 4-byte encoded unsigned count; the count is the little-endian encoded integer shifted right two bits.",
+      "guard": "Reject tag 3, non-canonical width, arithmetic overflow, count above parser limits, missing 0x7C, or a count whose fully expanded branch does not end exactly at the payload boundary."
+    },
+    "lengthPrefixedStrings": "For the exact wbLenStringT(...,-3) branch, read a terminated little-endian u16 length. When nonzero, read exactly that many bytes and a second 0x7C; length zero has no string-body field.",
+    "floatGuard": "Reject non-finite floats. Type 5 contains the finite -FLT_MAX sentinel and tests must not reject it as infinity.",
+    "endGuard": "Every supported type branch must consume its payload exactly. No unclassified tail can be silently accepted."
+  },
+  "tables": {
+    "table1": {
+      "range": { "offset": 491981, "bytes": 2749, "end": 494730 },
+      "sha256": "89adef8ebf1ab3fca527c512e5fae55619b2be7b0efc0d41fadc1c1fdf43eaee",
+      "count": 12,
+      "exactTypeOrder": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      "entryHeaderBytes": 96,
+      "payloadBytes": 2653,
+      "payloadConcatSha256": "018c9b5a095f6eaa3c7eceff30371c3fa514ad2d4e7a177294e76a3454d8269f",
+      "equation": "12 * 8 + 2653 = 2749"
+    },
+    "table2": {
+      "range": { "offset": 3308279, "bytes": 8, "end": 3308287 },
+      "sha256": "921ac7f259f864606624eb7fc29124712ff65b425e9500a35dd32b71ddb9332c",
+      "count": 1,
+      "entry": {
+        "type": 1000,
+        "payloadBytes": 0,
+        "payloadSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "observedHeaderLittleEndianHex": "e803000000000000",
+        "layout": "wbNull",
+        "failClosedGuard": "Accept type 1000 only with a zero payload and exact envelope consumption; reject a nonzero payload. xEdit declares wbNull but its current decider also clamps results greater than 12 back to the unknown branch, which is harmless only because this exact payload is empty."
+      }
+    }
+  },
+  "semanticAccounting": {
+    "table1PayloadBytes": 2653,
+    "engineDecodedPayloadBytes": 71,
+    "engineDecodedTypes": [8],
+    "semanticallyOpaquePayloadBytes": 2582,
+    "semanticallyOpaqueTypes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11],
+    "decodedPercent": 2.676215605,
+    "opaquePercent": 97.323784395,
+    "equation": "71 + 2582 = 2653",
+    "opaqueEquation": "220 + 57 + 121 + 1803 + 30 + 36 + 33 + 2 + 7 + 269 + 4 = 2582",
+    "table2PayloadEffect": "type 1000 contributes zero payload bytes"
+  },
+  "entries": [
+    {
+      "type": 0,
+      "definition": "Global Data 0: u32-counted array of terminated u32 values",
+      "definitionLineRanges": [[2083, 2083]],
+      "entryRange": { "offset": 491981, "bytes": 228, "end": 492209 },
+      "entrySha256": "38bf0eaaf57ea1f9d9c236a2c9fc38c3915ddae9c4345cd4292c96f5ee24beee",
+      "headerRange": { "offset": 491981, "bytes": 8, "end": 491989 },
+      "headerSha256": "836367b29904a735384d24d4e8457bc70092a437779ba2e21c6b33aee2d35219",
+      "payloadRange": { "offset": 491989, "bytes": 220, "end": 492209 },
+      "payloadSha256": "bd4c701bea9140c20a8273b0f32b5b4ffcb1463068f105e6d44a3fe6601d3219",
+      "currentStatus": "opaque",
+      "observedBranch": {
+        "count": 43,
+        "countEncodingLittleEndianHex": "2b000000",
+        "valueCount": 43,
+        "nonzeroValues": [{ "index": 1, "value": 1 }, { "index": 27, "value": 2 }],
+        "zeroValueCount": 41,
+        "sizeEquation": "5 + 43 * 5 = 220"
+      },
+      "failClosedDecode": "Read one terminated u32 count, cap it before multiplication, require exactly count terminated u32 values, and require payload-end equality. Preserve the 43 values without assigning semantics.",
+      "runtimeDomain": "unknown global integer-vector manager state",
+      "runtimeBlocker": "xEdit establishes the array shape but not the meaning or consumer of each index; publication must wait for a retail/runtime semantic mapping.",
+      "recommendedParserOrder": 5
+    },
+    {
+      "type": 1,
+      "definition": "Global Data 1: world/current-objective metadata with coordinates and level",
+      "definitionLineRanges": [[2084, 2098]],
+      "entryRange": { "offset": 492209, "bytes": 65, "end": 492274 },
+      "entrySha256": "e08cdcb0eb3b66425c9f85a67722d6b9f57de6448678808c88b8131ec2d83207",
+      "headerRange": { "offset": 492209, "bytes": 8, "end": 492217 },
+      "headerSha256": "9e418cc0557ce3901e79f2c850917e58b63094e330fef24ab8431c8de60f1bbc",
+      "payloadRange": { "offset": 492217, "bytes": 57, "end": 492274 },
+      "payloadSha256": "97685a8b16e245d2b43c50100298f5c54c3f56ae419a78dde343b6f14ccd6bc2",
+      "currentStatus": "opaque",
+      "observedBranch": {
+        "unknownHex": "0xff001315",
+        "worldspace": { "encodedRefId": "0x000247", "formIdTableIndex": 583, "formId": "0x000da726" },
+        "coordX": -18,
+        "coordY": 0,
+        "refId": { "encodedRefId": "0x000247", "formIdTableIndex": 583, "formId": "0x000da726" },
+        "coords": [-72392.84375, -1240.1927490234375, 8137.58642578125],
+        "coordsDelimiterRange": { "offset": 492252, "bytes": 1, "end": 492253, "hex": "7c" },
+        "currentObjective": {
+          "quest": { "encodedRefId": "0x00403c", "formIdTableIndex": 16444, "formId": "0x03002fca" },
+          "objectiveId": 10,
+          "unknownFloat": 0.05000000074505806,
+          "playerLevel": 1,
+          "unknownByte": 1
+        }
+      },
+      "failClosedDecode": "Parse the fixed layout and every terminator, require all three coordinate floats finite, resolve the three non-null RefIDs through the exact master/FormID table, and require payload-end equality.",
+      "runtimeDomain": "player world metadata, current quest objective, and level",
+      "runtimeBlocker": "This entry's (-18,0) pair is not the authoritative player exterior CELL. The Player ACHR position derives grid (-18,-1); type 1 must not overwrite that placement. The current-objective quest also requires the exact load-order store and quest-state publisher.",
+      "recommendedParserOrder": 2
+    },
+    {
+      "type": 2,
+      "definition": "Global Data 2: TESActorBase list, square-size scalar, and size-by-size RefID matrix",
+      "definitionLineRanges": [[2099, 2106]],
+      "entryRange": { "offset": 492274, "bytes": 129, "end": 492403 },
+      "entrySha256": "77b933d1a191b8081cdb25c662907bf108c6d4a59dd61dc9956c354b085fd182",
+      "headerRange": { "offset": 492274, "bytes": 8, "end": 492282 },
+      "headerSha256": "2d2f3377aadf7b139207c8fb739c3a4d30711e6e61b8c2d0a4e02f9a148d39e1",
+      "payloadRange": { "offset": 492282, "bytes": 121, "end": 492403 },
+      "payloadSha256": "cfed3a14fc535212f2ce0ddfd08703491af6941d404628a2dec6965787dbfdc5",
+      "currentStatus": "opaque",
+      "observedBranch": {
+        "tesActorBaseCount": 2,
+        "tesActorBaseCountVsvalHex": "08",
+        "tesActorBaseEntries": [
+          { "actorBaseRefId": "0x000000", "unknownU16": 1 },
+          { "actorBaseRefId": "0x000000", "unknownU16": 1 }
+        ],
+        "matrixSize": 5,
+        "matrixCells": 25,
+        "nonNullMatrixCells": 0,
+        "sizeEquation": "2 + 2 * (4 + 3) + 5 + 25 * 4 = 121"
+      },
+      "failClosedDecode": "Decode the VSVal list count, each fixed RefID/u16 pair, then the terminated u32 matrix size. Check size*size overflow and caps before consuming exactly that many RefIDs. Accept nulls in this exact branch and require payload-end equality.",
+      "runtimeDomain": "TESActorBase-associated global lookup matrix",
+      "runtimeBlocker": "The matrix's gameplay meaning is not named, both exact actor-base keys are null, and no runtime consumer is mapped. Do not fabricate actor ownership, faction, or AI behavior from it.",
+      "recommendedParserOrder": 6
+    },
+    {
+      "type": 3,
+      "definition": "Global Variables: VSVal-counted pairs of RefID and float",
+      "definitionLineRanges": [[2107, 2110]],
+      "entryRange": { "offset": 492403, "bytes": 1811, "end": 494214 },
+      "entrySha256": "e69f29065749e3420a51421886fc3d6554757583868edb8f14190696ba5f6374",
+      "headerRange": { "offset": 492403, "bytes": 8, "end": 492411 },
+      "headerSha256": "35f8fcb440ca87c3a26c36d2681f6c20337372319653862a43e1ec6c70ed5cc6",
+      "payloadRange": { "offset": 492411, "bytes": 1803, "end": 494214 },
+      "payloadSha256": "1ba3966fb128b21626e19bdfeb3e9ec2608d9f6287a5d3c86617b61b184105f4",
+      "currentStatus": "opaque",
+      "observedBranch": {
+        "count": 200,
+        "countVsvalLittleEndianHex": "2103",
+        "recordsRange": { "offset": 492414, "bytes": 1800, "end": 494214 },
+        "recordBytes": 9,
+        "encodedRefIdSequence": { "first": "0x00014c", "last": "0x000213", "contiguous": true },
+        "resolvedFormIds": { "first": "0x04003608", "last": "0x00000035", "allReferencesInBounds": true },
+        "floatValues": { "finiteCount": 200, "nonzeroCount": 56, "minimum": -10.0, "maximum": 2277.0 },
+        "tailValues": [
+          { "encodedRefId": "0x00020e", "formId": "0x0000003a", "value": 300.0 },
+          { "encodedRefId": "0x00020f", "formId": "0x00000039", "value": 8.592291831970215 },
+          { "encodedRefId": "0x000210", "formId": "0x00000038", "value": 14.215002059936523 },
+          { "encodedRefId": "0x000211", "formId": "0x00000037", "value": 20.0 },
+          { "encodedRefId": "0x000212", "formId": "0x00000036", "value": 7.0 },
+          { "encodedRefId": "0x000213", "formId": "0x00000035", "value": 2277.0 }
+        ],
+        "embeddedDelimiterProof": { "recordIndex": 48, "encodedRefId": "0x00017c", "rawRange": { "offset": 492846, "bytes": 4, "end": 492850 }, "expectedHex": "00017c7c" },
+        "sizeEquation": "3 + 200 * 9 = 1803"
+      },
+      "failClosedDecode": "Decode canonical VSVal 200, then exactly 200 fixed-width RefID/float pairs. Resolve every non-null RefID, reject non-finite floats and duplicate variable FormIDs, and require the record sequence to consume the payload exactly. Parsing by delimiter splitting is forbidden.",
+      "runtimeDomain": "global-variable values used by time, quests, dialogue conditions, factions, and world scripts",
+      "runtimeBlocker": "The native GLOB store and all condition/script readers must observe a single atomic saved-value overlay after exact load-order resolution; parsing alone cannot publish globals piecemeal.",
+      "recommendedParserOrder": 1
+    },
+    {
+      "type": 4,
+      "definition": "Global Data 4: four terminated u32 fields and five fixed manager buckets containing nested lists",
+      "definitionLineRanges": [[2111, 2133]],
+      "entryRange": { "offset": 494214, "bytes": 38, "end": 494252 },
+      "entrySha256": "ef2c593ea9c47d08729210b4494d3f26130b312005d209398d7937a872f9520a",
+      "headerRange": { "offset": 494214, "bytes": 8, "end": 494222 },
+      "headerSha256": "630f4e946e38c53132f3c520e97471832576c97606f4c2bfdade264106d8bbd7",
+      "payloadRange": { "offset": 494222, "bytes": 30, "end": 494252 },
+      "payloadSha256": "9bd7a2f06b3660a4bac454b8b8d10c3b6d2210474d9f2122303faf0cf1513f0e",
+      "currentStatus": "opaque",
+      "observedBranch": {
+        "fixedU32": ["0xbc9cd7fc", "0xbe4f6475", "0x40c25502", "0x00000000"],
+        "fixedOuterBucketCount": 5,
+        "innerListCounts": [0, 0, 0, 0, 0],
+        "nestedListBranchesEntered": false,
+        "sizeEquation": "4 * 5 + 5 * 2 = 30"
+      },
+      "failClosedDecode": "Parse the four version-27 u32 fields and exactly five VSVal inner-list counts. The exact implementation may support only all-zero inner counts initially and must reject nonzero counts until the full nested bound-object/FormID/faction schema is implemented and tested.",
+      "runtimeDomain": "unknown manager buckets whose nonempty branch references bound objects, forms, and factions",
+      "runtimeBlocker": "All five Save330 buckets are empty, so the header can be preserved but no nonempty runtime behavior is evidenced or safely inferable.",
+      "recommendedParserOrder": 7
+    },
+    {
+      "type": 5,
+      "definition": "Global Data 5: combat/pathing manager lists followed by five scalar floats",
+      "definitionLineRanges": [[2020, 2034], [915, 945], [2134, 2254]],
+      "entryRange": { "offset": 494252, "bytes": 44, "end": 494296 },
+      "entrySha256": "c929b8ec8fa93280f21e99889dee8935d85c329dc17071257bd79cd281e3f423",
+      "headerRange": { "offset": 494252, "bytes": 8, "end": 494260 },
+      "headerSha256": "ad822f90ddc8e0e56c3f4bfe4ad3d0ce057778e58377056602afec692d18aa43",
+      "payloadRange": { "offset": 494260, "bytes": 36, "end": 494296 },
+      "payloadSha256": "e38f706b69c6de2eaa8f1f226d424d53d980c95723d258f4c9de81cdb27c4925",
+      "currentStatus": "opaque",
+      "observedBranch": {
+        "unk0034": 1,
+        "lst0044Count": 0,
+        "arr0014Count": 0,
+        "combattantListCount": 0,
+        "nestedCombatAndPathingBranchesEntered": false,
+        "tailFloats": [-3.4028234663852886e+38, -618.7711181640625, 0.0, -0.8150043487548828, 1.0],
+        "sizeEquation": "5 + 3 * 2 + 5 * 5 = 36"
+      },
+      "failClosedDecode": "Parse the u32 and three canonical VSVal counts. For the exact first slice require all three counts zero, then read five finite floats and exact payload end. Preserve -FLT_MAX as a finite sentinel. Reject any nonzero nested list until every pathing/count/conditional branch is implemented.",
+      "runtimeDomain": "combat groups, combatants, pathing locations, and AI-manager timing/scalars",
+      "runtimeBlocker": "Save330 proves only the empty-list branch. The nested schema is large and branch-dependent, and publication requires matching actor identities, navmesh/cell resolution, and AI/combat scheduling.",
+      "recommendedParserOrder": 8
+    },
+    {
+      "type": 6,
+      "definition": "Global Data 6: fixed header plus declared-length raw bytes",
+      "definitionLineRanges": [[2255, 2265]],
+      "entryRange": { "offset": 494296, "bytes": 41, "end": 494337 },
+      "entrySha256": "ac291759c9525c62ac1015c85dd3537d32edcc222d0dd3306b2d3edf80b2793a",
+      "headerRange": { "offset": 494296, "bytes": 8, "end": 494304 },
+      "headerSha256": "5bb15b9515c6df3a0ef159853835cfb93dfd513d8b5b32505506a8022b6043ea",
+      "payloadRange": { "offset": 494304, "bytes": 33, "end": 494337 },
+      "payloadSha256": "1ff0cb01f79c9f20993d8e0d5d132ed00d5f830968143efe92d3fb05ab3bc0b4",
+      "currentStatus": "opaque",
+      "observedBranch": {
+        "unknown0": 1003,
+        "bytes": [0, 0, 4],
+        "unknown1Hex": "0x3f800000",
+        "unknown2Hex": "0x3f800000",
+        "declaredRawLength": 6,
+        "rawRange": { "offset": 494330, "bytes": 6, "end": 494336 },
+        "rawHex": "000000000000",
+        "rawTerminatorOffset": 494336,
+        "sizeEquation": "5 + 3 * 2 + 2 * 5 + 5 + 6 + 1 = 33"
+      },
+      "failClosedDecode": "Parse the fixed fields and declared u32 length with overflow/cap checks, read exactly six raw bytes, require one trailing 0x7C and payload end. Keep the six-byte body semantically opaque; do not split it or interpret an array-of-arrays.",
+      "runtimeDomain": "unknown length-delimited global manager state",
+      "runtimeBlocker": "The authoritative source explicitly says the deeper array interpretation is truncated and hard to code. Raw preservation is structural evidence only and cannot earn semantic/runtime credit.",
+      "recommendedParserOrder": 11
+    },
+    {
+      "type": 7,
+      "definition": "Global Data 7: VSVal-counted image-space-modifier records",
+      "definitionLineRanges": [[2266, 2270]],
+      "entryRange": { "offset": 494337, "bytes": 10, "end": 494347 },
+      "entrySha256": "1f497de87bf76564ae7a2b70c5daccadbb44404f8f22c66713ab8c444666cf11",
+      "headerRange": { "offset": 494337, "bytes": 8, "end": 494345 },
+      "headerSha256": "28bade6573ebdf9afa6b1c4fd22315b11a0fb31c604729dc77eb43135544a530",
+      "payloadRange": { "offset": 494345, "bytes": 2, "end": 494347 },
+      "payloadSha256": "8c8ca8dd8cb2e106e8ccb65ad54edf23964558faea16b2c931a99e5791d779de",
+      "currentStatus": "opaque",
+      "observedBranch": { "count": 0, "countVsvalHex": "00", "sizeEquation": "1 + 1 = 2" },
+      "failClosedDecode": "Decode one canonical VSVal count and its terminator. The exact zero branch must end the payload; reject nonzero until both form-version floats and the image-space-modifier RefID branch are supported.",
+      "runtimeDomain": "active image-space modifiers and post-process state",
+      "runtimeBlocker": "The exact list is empty, which can prove absence only after normal load; it does not authorize any fallback post-process or shader override.",
+      "recommendedParserOrder": 9
+    },
+    {
+      "type": 8,
+      "definition": "Sky: four weather RefIDs, time/transition state, flags, packed unknowns, fog power, and sky mode",
+      "definitionLineRanges": [[2271, 2289]],
+      "entryRange": { "offset": 494347, "bytes": 79, "end": 494426 },
+      "entrySha256": "e262e7d18c1a2a6042d38db1f5b006a155e29359ff970e26c1183eda26d9f80d",
+      "headerRange": { "offset": 494347, "bytes": 8, "end": 494355 },
+      "headerSha256": "1f25a32936c3bff32ff5e39027b31bcb49eb555104844fab18bdefe53c96a79b",
+      "payloadRange": { "offset": 494355, "bytes": 71, "end": 494426 },
+      "payloadSha256": "8492cf418cdf6f301a51d504b6a0b0df842282e77bae5607245d3fee04a71468",
+      "currentStatus": "decoded",
+      "observedBranch": {
+        "currentWeather": { "encodedRefId": "0x004f59", "formIdTableIndex": 20313, "formId": "0x001237d7" },
+        "transitionWeather": null,
+        "defaultWeather": { "encodedRefId": "0x004ad7", "formIdTableIndex": 19159, "formId": "0x000ffc88" },
+        "overrideWeather": null,
+        "gameHour": 14.215002059936523,
+        "lastUpdateHour": 17.606250762939453,
+        "weatherPercent": 1.0,
+        "flagsHex": "0x00000020",
+        "unknownFields": ["0x00000000", "0x00000000", "0x00000000", "0x00000000", "0xa00f0800"],
+        "fogPower": 0.5,
+        "skyMode": 3,
+        "fieldCount": 15,
+        "sizeEquation": "4 * 4 + 11 * 5 = 71"
+      },
+      "failClosedDecode": "Existing engine coverage reads the exact 15 terminated fields, resolves current/default weather, rejects unsupported transition/override state, bounds time and blend values, and consumes the payload exactly. Preserve this as the regression baseline for every later Global Data slice.",
+      "runtimeDomain": "world time, sky, weather transition, fog, and renderer first-frame state",
+      "runtimeBlocker": "Native model resolution exists; atomic normal-save publication into the flat runtime and an admissible full-color Save330 frame remain pending.",
+      "recommendedParserOrder": 0
+    },
+    {
+      "type": 9,
+      "definition": "Global Data 9: one u32 and a VSVal-counted nested spatial/reference list",
+      "definitionLineRanges": [[2290, 2309]],
+      "entryRange": { "offset": 494426, "bytes": 15, "end": 494441 },
+      "entrySha256": "7cec563d9227e4af216a10ff7d2119610a3ce0588f30a951f3ac532987c1375e",
+      "headerRange": { "offset": 494426, "bytes": 8, "end": 494434 },
+      "headerSha256": "ba3cb77c2ca976b870b1e9b50255e280819c7ac057e1ff237b065fab23d43fe6",
+      "payloadRange": { "offset": 494434, "bytes": 7, "end": 494441 },
+      "payloadSha256": "f226ed30dd6c9f8843d6692f654f735dd1f42ac5266b27312c3ffec65f367ee5",
+      "currentStatus": "opaque",
+      "observedBranch": { "unknown11D60CC": 0, "list11D6124Count": 0, "nestedListBranchesEntered": false, "sizeEquation": "5 + 2 = 7" },
+      "failClosedDecode": "Read the terminated u32 and one canonical VSVal count. For Save330 require zero and exact payload end; reject nonzero until coordinate, RefID, nested-list, version-8 byte, and float validation are complete.",
+      "runtimeDomain": "unnamed spatial/transient manager list with coordinates and references",
+      "runtimeBlocker": "The exact branch is empty and the source does not name its runtime consumer; do not map it to actors, projectiles, effects, or placement without retail evidence.",
+      "recommendedParserOrder": 10
+    },
+    {
+      "type": 10,
+      "definition": "Global Data 10: nested dialogue response state, voice filename, sound/topic/quest/speaker references, and radio list",
+      "definitionLineRanges": [[2036, 2055], [2069, 2075], [1465, 1474], [2310, 2336]],
+      "entryRange": { "offset": 494441, "bytes": 277, "end": 494718 },
+      "entrySha256": "5c4d3a66e13b1b70f46e425b688a354cb2db166577cb0974f200637c563a43a7",
+      "headerRange": { "offset": 494441, "bytes": 8, "end": 494449 },
+      "headerSha256": "5ef6ea1d671d0ee03d467f2e36646d98b9e32918c07223ea2add6b13d2078a40",
+      "payloadRange": { "offset": 494449, "bytes": 269, "end": 494718 },
+      "payloadSha256": "91d0078f4013284774ac7278a1dead574a1b2a69ef90213c3a92a5bde72b082d",
+      "currentStatus": "opaque",
+      "observedBranch": {
+        "unknown11DD428": 0,
+        "byte11DD434": 0,
+        "string11DD448Length": 0,
+        "list11DD58CCount": 0,
+        "list11DD554Count": 1,
+        "list11DD554Entry": {
+          "refId": { "encodedRefId": "0x001f2a", "formIdTableIndex": 7978, "formId": "0x0016b74c" },
+          "unk0008": 392918,
+          "unk000c": 239199,
+          "byt0010": 100,
+          "byt0011": 100,
+          "unk0014": 59,
+          "lst0018Count": 0,
+          "hasDialogueItems": 1,
+          "dialogueItemCount": 1,
+          "dialogueResponseCount": 1,
+          "responseText": "  ",
+          "voiceFilename": "Data\\Sound\\Voice\\FalloutNV.esm\\MaleAdult01Default\\vCountryRa_RadioHello_0016B80F_1.ogg",
+          "emotionType": 0,
+          "emotionValue": 50,
+          "useEmotionAnimation": 1,
+          "speakerIdle": null,
+          "listenerIdle": null,
+          "sound": { "encodedRefId": "0x005470", "formId": "0x00169bdc" },
+          "dialogueItemIndex": 0,
+          "topicInfo": { "encodedRefId": "0x005471", "formId": "0x0016b80f" },
+          "topic": { "encodedRefId": "0x004f5d", "formId": "0x00000126" },
+          "quest": { "encodedRefId": "0x001de5", "formId": "0x0016b66e" },
+          "speaker": { "encodedRefId": "0x001f2a", "formId": "0x0016b74c" },
+          "dialogueItemsDataIndex": 0
+        },
+        "boundObjects": [null, null],
+        "radioCount": 18,
+        "radioFormIds": [
+          "0x010062b4", "0x0200e74a", "0x03013654", "0x0016b74c", "0x0014df03", "0x0016b6c5",
+          "0x0015867c", "0x00172fdf", "0x00172d26", "0x00172d1d", "0x0015f9c1", "0x0015f8d9",
+          "0x0014e8b8", "0x0016b74d", "0x0016b74e", "0x01013fd0", "0x0101399d", "0x01012f89"
+        ],
+        "keyRanges": {
+          "list11DD554Entry": { "offset": 494463, "bytes": 173, "end": 494636 },
+          "voiceFilename": { "offset": 494503, "bytes": 87, "end": 494590 },
+          "radios": { "offset": 494644, "bytes": 74, "end": 494718 }
+        }
+      },
+      "failClosedDecode": "Follow every canonical count and HasDialogueItems branch, use width/length parsing rather than delimiter splitting, cap nested products and string bytes, validate all RefIDs before publication, require the exact one-item/one-response/18-radio tree to end at byte 494718, and reject unsupported branches atomically.",
+      "runtimeDomain": "radio selection, dialogue response state, voice/audio asset routing, topic/quest/speaker context",
+      "runtimeBlocker": "A parser must bind the exact INFO/TOPIC/QUST/speaker/SOUN references and voice asset to the live dialogue/radio/audio systems. Raw strings or resolved FormIDs alone do not make radio playback, subtitle state, result scripts, or saved dialogue position work.",
+      "recommendedParserOrder": 4
+    },
+    {
+      "type": 11,
+      "definition": "Global Data 11: one terminated Sound RefID",
+      "definitionLineRanges": [[2337, 2337]],
+      "entryRange": { "offset": 494718, "bytes": 12, "end": 494730 },
+      "entrySha256": "fdaf8b4328758baa1705e347b2fa16da580ca0959aedd50bccb34c9ef3c556be",
+      "headerRange": { "offset": 494718, "bytes": 8, "end": 494726 },
+      "headerSha256": "737ab0ee77e692ff27e6daf726105771f939ea92a5f8e3008d801de3f2fc0e21",
+      "payloadRange": { "offset": 494726, "bytes": 4, "end": 494730 },
+      "payloadSha256": "84789804d136848a462ebc7d3a4340fb2f71660464318454cd0b323e9ccd3275",
+      "currentStatus": "opaque",
+      "observedBranch": {
+        "sound": { "encodedRefId": "0x000225", "formIdTableIndex": 549, "formId": "0x0007db66" },
+        "sizeEquation": "3 + 1 = 4"
+      },
+      "failClosedDecode": "Read one fixed-width RefID and terminator, resolve it in bounds, validate that the resolved master record is a sound record before publication, and require exact payload end.",
+      "runtimeDomain": "saved global/ambient sound selection",
+      "runtimeBlocker": "The native sound record, FNV-only archive asset, playback ownership, and save-resume semantics must all be connected; no Morrowind sound fallback is admissible.",
+      "recommendedParserOrder": 3
+    }
+  ],
+  "recommendedParserAndTestOrder": [
+    {
+      "order": 0,
+      "types": [8, 1000],
+      "reason": "Keep the already-decoded 71-byte Sky state and zero-length type 1000 as permanent regression gates.",
+      "tests": ["exact ranges and hashes", "all 15 type-8 terminators", "weather RefID bounds and WTHR validation", "non-finite/bad-mode/unsupported transition rejection", "type-1000 nonzero-length rejection"]
+    },
+    {
+      "order": 1,
+      "types": [3],
+      "reason": "The regular 200-record layout removes 1,803 opaque bytes first and publishes quest/time-critical globals only after atomic validation.",
+      "tests": ["canonical 200 VSVal", "embedded 0x7C RefID", "truncation at every field width", "bad RefID index", "non-finite float", "duplicate FormID", "exact tail values and payload hash"]
+    },
+    {
+      "order": 2,
+      "types": [1],
+      "reason": "Fixed 57-byte player/objective metadata is small and gameplay-critical, but must retain the explicit non-authoritative-cell guard.",
+      "tests": ["all fixed offsets", "finite coordinates", "world/quest resolution", "missing terminator", "wrong payload length", "proof that (-18,0) never overwrites ACHR-derived (-18,-1)"]
+    },
+    {
+      "order": 3,
+      "types": [11],
+      "reason": "The four-byte Sound reference is the smallest meaningful FNV-only audio slice.",
+      "tests": ["null versus exact RefID", "out-of-range index", "wrong resolved record type", "missing terminator", "no TES3/Morrowind fallback"]
+    },
+    {
+      "order": 4,
+      "types": [10],
+      "reason": "Decode the exact populated radio/dialogue/voice tree after reusable RefID/count/string guards exist.",
+      "tests": ["zero and nonzero string branches", "nested count overflow/caps", "HasDialogueItems zero/nonzero", "exact one-item/one-response/18-radio tree", "bad INFO/TOPIC/QUST/SOUN/speaker types", "voice-length truncation", "atomic rejection with no partial audio/dialogue publication"]
+    },
+    {
+      "order": 5,
+      "types": [0, 2],
+      "reason": "Land the bounded integer vector and the regular actor-base square matrix while preserving their unknown semantics.",
+      "tests": ["type-0 u32 count overflow", "type-0 exact nonzero indexes", "type-2 canonical count", "matrix size multiplication overflow", "null exact branch", "non-null RefID bounds", "trailing-byte rejection"]
+    },
+    {
+      "order": 6,
+      "types": [4, 5],
+      "reason": "Support only Save330's empty nested manager branches plus fixed scalars; reject nonempty branches until full AI/pathing schemas are ready.",
+      "tests": ["exact zero-count vectors", "nonzero-count fail-closed fixtures", "version-27 field presence", "finite -FLT_MAX acceptance", "NaN/infinity rejection", "payload-end equality"]
+    },
+    {
+      "order": 7,
+      "types": [7, 9],
+      "reason": "Prove the exact absence of image-space and unnamed spatial-list entries without installing fallback shader or world behavior.",
+      "tests": ["canonical zero VSVal", "nonzero unsupported rejection", "wrong terminator", "extra-tail rejection"]
+    },
+    {
+      "order": 8,
+      "types": [6],
+      "reason": "Parse and preserve the declared-length envelope last; its six raw bytes remain semantically opaque until an independent runtime meaning is proven.",
+      "tests": ["declared-length truncation", "length cap/overflow", "raw 0x7C safety", "missing final terminator", "explicit no-semantic-credit assertion"]
+    }
+  ],
+  "globalAcceptanceRules": [
+    "Hash-lock the exact Save330 and xEdit definition source in every exact fixture.",
+    "Test successful exact parsing and targeted corruption at every count, length, terminator, RefID, float, branch discriminator, and payload boundary.",
+    "Resolve references against the exact saved master/load order and validate expected native record types before any state mutation.",
+    "Build a detached Global Data plan first; publish it atomically only after Player, changed forms, global tables, FormID tables, and all cross-record validation succeed.",
+    "Never convert a named Unknown/Unk field into gameplay behavior without retail/runtime evidence.",
+    "Keep semantic coverage at 71 decoded and 2,582 opaque until the corresponding engine parser slice compiles and exact plus malformed tests pass."
+  ]
+}
