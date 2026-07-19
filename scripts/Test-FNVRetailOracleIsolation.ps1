@@ -62,6 +62,17 @@ try {
         'Retail sidecar endpoint still clears a coordinator/peer error code during startup.'
     Assert-Contract ($oracleSource -notmatch 'expectedActionIds|seven-action') `
         'Retail sidecar endpoint still hardcodes a fixed action identity list.'
+    Assert-Contract (
+        $oracleSource -match 'sGameSettingCollectionSingletonAddress\s*=\s*0x011C8048' -and
+        $oracleSource -match 'sGameSettingMapLookupAddress\s*=\s*0x00853130' -and
+        $oracleSource -match 'nvse->runtimeVersion\s*!=\s*RUNTIME_VERSION_1_4_0_525') `
+        'Retail GMST probe is not bound to the pinned FNV 1.4.0.525 collection/map contract.'
+    Assert-Contract (
+        $oracleSource -match 'NIKAMI_ORACLE_GAME_SETTINGS' -and
+        $oracleSource -match 'game-setting-probe-complete' -and
+        $oracleSource -match 'requestedEditorId' -and
+        $oracleSource -match 'bytesLittleEndian') `
+        'Retail GMST probe does not expose the requested editor IDs with exact raw-value telemetry.'
     Assert-Contract ($runnerSource -notmatch 'expectedSidecarActions|seven-action') `
         'Retail sidecar runner still hardcodes a fixed action identity list.'
     $manifestGuardIndex = $runnerSource.IndexOf('if (Test-Path -LiteralPath $runManifest)')
@@ -173,6 +184,24 @@ try {
     Assert-Contract (
         $validation.isolationEnvironment.NIKAMI_NVSE_CORE_DLL -eq $runtimeFiles.core) `
         'NIKAMI_NVSE_CORE_DLL did not select the isolated DLL.'
+    $gmstValidation = & $runner @arguments -GameSetting 'iMonthsToRespawn', 'fCorpseClearDelay'
+    Assert-Contract (
+        @($gmstValidation.gameSettings).Count -eq 2 -and
+        $gmstValidation.gameSettings[0] -ceq 'iMonthsToRespawn' -and
+        $gmstValidation.gameSettings[1] -ceq 'fCorpseClearDelay') `
+        'DryRun did not retain the requested GMST editor IDs.'
+    Assert-Contract (
+        $gmstValidation.isolationEnvironment.NIKAMI_ORACLE_GAME_SETTINGS -ceq
+            'iMonthsToRespawn,fCorpseClearDelay') `
+        'DryRun did not bind requested GMST editor IDs to the isolated environment.'
+    Assert-ThrowsLike {
+        & $runner @arguments -GameSetting 'iMonthsToRespawn', 'IMonthsToRespawn'
+    } 'GameSetting contains duplicate editor IDs' `
+        'Runner accepted duplicate case-insensitive GMST editor IDs.'
+    Assert-ThrowsLike {
+        & $runner @arguments -GameSetting 'iMonthsToRespawn;QuitGame'
+    } 'GameSetting must be a canonical GMST editor ID' `
+        'Runner accepted a non-canonical GMST editor ID.'
     Assert-Contract (
         $validation.isolatedPluginDirectory.StartsWith(
             $runtimeRoot + [System.IO.Path]::DirectorySeparatorChar,

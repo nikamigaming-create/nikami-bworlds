@@ -7,6 +7,8 @@ param(
     [string]$SaveFixture = "",
     [string[]]$QuestForm = @("0x00102037", "0x00104C1C", "0x0010A214", "0x0015D912"),
     [string[]]$GlobalForm = @("0x35", "0x36", "0x37", "0x38", "0x39", "0x3A"),
+    [Alias('GMST')]
+    [string[]]$GameSetting = @(),
     [string[]]$Command = @(),
     [string[]]$ActorCommand = @(),
     [string]$SetStageQuestForm = "0",
@@ -365,6 +367,16 @@ foreach ($entry in @($Command) + @($ActorCommand) + @($FurnitureSettledCommand))
     if ($entry -match '[|\r\n]') {
         throw "Retail oracle commands cannot contain pipe or newline characters: $entry"
     }
+}
+$GameSetting = @($GameSetting)
+foreach ($editorId in $GameSetting) {
+    if ($editorId -notmatch '^[A-Za-z][A-Za-z0-9_]{0,255}$') {
+        throw "GameSetting must be a canonical GMST editor ID: $editorId"
+    }
+}
+$canonicalGameSettings = @($GameSetting | ForEach-Object { $_.ToLowerInvariant() })
+if (@($canonicalGameSettings | Select-Object -Unique).Count -ne $canonicalGameSettings.Count) {
+    throw 'GameSetting contains duplicate editor IDs.'
 }
 foreach ($waypoint in @($ObserverWaypoint)) {
     if ($waypoint -notmatch '^-?[0-9]+(?:\.[0-9]+)?,-?[0-9]+(?:\.[0-9]+)?$') {
@@ -802,6 +814,7 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_FOOT_IK_TOGGLE_ENABLED = if ($FootIkToggleEnabled -eq 1) { "1" } else { "0" }
     NIKAMI_ORACLE_QUEST_FORMS = (@($QuestForm) -join ",")
     NIKAMI_ORACLE_GLOBAL_FORMS = (@($GlobalForm) -join ",")
+    NIKAMI_ORACLE_GAME_SETTINGS = (@($GameSetting) -join ",")
     NIKAMI_ORACLE_COMMANDS = (@($Command) -join "|")
     NIKAMI_ORACLE_ACTOR_COMMANDS = (@($ActorCommand) -join "|")
     NIKAMI_ORACLE_BEFORE_FRAME = [string]$BeforeFrame
@@ -873,6 +886,7 @@ if ($DryRun) {
             NIKAMI_NVSE_PLUGIN_DIR = $environment.NIKAMI_NVSE_PLUGIN_DIR
             NIKAMI_NVSE_STEAM_LOADER = $environment.NIKAMI_NVSE_STEAM_LOADER
             NIKAMI_NVSE_CORE_DLL = $environment.NIKAMI_NVSE_CORE_DLL
+            NIKAMI_ORACLE_GAME_SETTINGS = $environment.NIKAMI_ORACLE_GAME_SETTINGS
         }
         output = $output
         runManifest = $runManifest
@@ -904,6 +918,7 @@ if ($DryRun) {
         batchProofMinimumAimHeight = $BatchProofMinimumAimHeight
         batchProofInitializationFrames = $BatchProofInitializationFrames
         batchProofTargetSettleFrames = $BatchProofTargetSettleFrames
+        gameSettings = @($GameSetting)
     }
     return
 }
@@ -1163,6 +1178,51 @@ foreach ($eventLine in [System.IO.File]::ReadLines($output)) {
     $validationEvents.Add(($eventLine | ConvertFrom-Json)) | Out-Null
 }
 $events = @($validationEvents.ToArray())
+$gameSettingEvents = @($events | Where-Object { $_.event -eq 'game-setting' })
+if ($GameSetting.Count -gt 0) {
+    $probeStarts = @($events | Where-Object { $_.event -eq 'game-setting-probe-start' })
+    $probeCompletions = @($events | Where-Object { $_.event -eq 'game-setting-probe-complete' })
+    if ($probeStarts.Count -ne 1 -or $probeCompletions.Count -ne 1) {
+        throw "GameSetting probe requires one start and one completion event (starts=$($probeStarts.Count), completions=$($probeCompletions.Count))."
+    }
+    if (-not [bool]$probeStarts[0].singletonReadable -or
+        -not [bool]$probeStarts[0].collectionResolved) {
+        throw 'GameSetting probe could not resolve the retail GameSettingCollection singleton.'
+    }
+    if ($gameSettingEvents.Count -ne $GameSetting.Count) {
+        throw "GameSetting probe emitted $($gameSettingEvents.Count) values, expected $($GameSetting.Count)."
+    }
+    foreach ($editorId in $GameSetting) {
+        $matches = @($gameSettingEvents | Where-Object {
+            [string]$_.requestedEditorId -ceq $editorId
+        })
+        if ($matches.Count -ne 1) {
+            throw "GameSetting probe did not emit exactly one event for '$editorId'."
+        }
+        $setting = $matches[0]
+        if ([bool]$setting.found -ne [bool]$setting.readable) {
+            throw "GameSetting probe found '$editorId' but could not read its Setting payload."
+        }
+        if ([bool]$setting.found -and
+            ([string]::IsNullOrWhiteSpace([string]$setting.editorId) -or
+                [string]::IsNullOrWhiteSpace([string]$setting.type) -or
+                $setting.PSObject.Properties.Name -notcontains 'typeCode' -or
+                $setting.PSObject.Properties.Name -notcontains 'raw' -or
+                $null -eq $setting.raw -or
+                $setting.raw.PSObject.Properties.Name -notcontains 'hex' -or
+                $setting.raw.PSObject.Properties.Name -notcontains 'bytesLittleEndian' -or
+                @($setting.raw.bytesLittleEndian).Count -ne 4 -or
+                $setting.PSObject.Properties.Name -notcontains 'value')) {
+            throw "GameSetting probe returned an incomplete type/raw/value payload for '$editorId'."
+        }
+    }
+    $foundGameSettingCount = @($gameSettingEvents | Where-Object { [bool]$_.found }).Count
+    if ([int]$probeCompletions[0].requested -ne $GameSetting.Count -or
+        [int]$probeCompletions[0].found -ne $foundGameSettingCount -or
+        [int]$probeCompletions[0].missing -ne ($GameSetting.Count - $foundGameSettingCount)) {
+        throw 'GameSetting probe completion totals do not match the requested editor IDs.'
+    }
+}
 if ($MaterialShaderCapture -and $capturedScreenshots.Count -eq 0 -and
     $ScreenshotFrame.Count -eq 1 -and $ScreenshotFrame[0] -eq $MaterialShaderFrame) {
     $rawFrames = @($events | Where-Object {
@@ -1605,6 +1665,7 @@ $manifestDocument = [ordered]@{
         batchProofMinimumAimHeight = $BatchProofMinimumAimHeight
         batchProofInitializationFrames = $BatchProofInitializationFrames
         batchProofTargetSettleFrames = $BatchProofTargetSettleFrames
+        gameSettings = @($GameSetting)
     }
     overlay = [ordered]@{
         upstream = [string]$overlayLock.overlays.xnvse.upstream
@@ -1655,6 +1716,8 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     saveFixture = $resolvedSaveFixture
     quests = @($QuestForm)
     globals = @($GlobalForm)
+    gameSettings = @($GameSetting)
+    gameSettingTelemetry = @($gameSettingEvents)
     commands = @($Command)
     actorCommands = @($ActorCommand)
     furnitureSettledCommands = @($FurnitureSettledCommand)

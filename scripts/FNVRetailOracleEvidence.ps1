@@ -463,8 +463,10 @@ function Get-FNVExpectedScreenshotNames([int[]]$Frame = @(), [string[]]$BatchTar
 }
 
 function Assert-FNVRetailScreenshotFiles([string[]]$Path, [string[]]$ExpectedName) {
-    $files = @($Path)
-    $expected = @($ExpectedName)
+    $files = [System.Collections.Generic.List[string]]::new()
+    foreach ($file in $Path) { $files.Add($file) | Out-Null }
+    $expected = [System.Collections.Generic.List[string]]::new()
+    foreach ($name in $ExpectedName) { $expected.Add($name) | Out-Null }
     Assert-FNVEvidence ($files.Count -eq $expected.Count) `
         "expected $($expected.Count) screenshot file(s), got $($files.Count)."
     $evidence = New-Object System.Collections.Generic.List[object]

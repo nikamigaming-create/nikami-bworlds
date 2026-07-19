@@ -2,6 +2,7 @@
 #include "nvse/GameForms.h"
 #include "nvse/GameExtraData.h"
 #include "nvse/GameObjects.h"
+#include "nvse/GameSettings.h"
 #include "nvse/NiObjects.h"
 
 #include "sidecar_protocol.h"
@@ -155,6 +156,8 @@ namespace
     std::string gDriveCommand;
     std::vector<UInt32> gQuestForms;
     std::vector<UInt32> gGlobalForms;
+    std::vector<std::string> gGameSettingEditorIds;
+    bool gGameSettingsCaptured = false;
     std::vector<std::string> gBehaviorCommands;
     std::vector<std::string> gActorCommands;
     std::vector<std::string> gFurnitureSettledCommands;
@@ -1276,6 +1279,27 @@ namespace
             const std::size_t last = command.find_last_not_of(" \t");
             if (first != std::string::npos)
                 result.push_back(command.substr(first, last - first + 1));
+            if (separator == std::string::npos)
+                break;
+            offset = separator + 1;
+        }
+        return result;
+    }
+
+    std::vector<std::string> envEditorIdList(const char* name)
+    {
+        std::vector<std::string> result;
+        const std::string value = envString(name);
+        std::size_t offset = 0;
+        while (offset < value.size())
+        {
+            const std::size_t separator = value.find(',', offset);
+            std::string editorId = value.substr(offset,
+                separator == std::string::npos ? std::string::npos : separator - offset);
+            const std::size_t first = editorId.find_first_not_of(" \t");
+            const std::size_t last = editorId.find_last_not_of(" \t");
+            if (first != std::string::npos)
+                result.push_back(editorId.substr(first, last - first + 1));
             if (separator == std::string::npos)
                 break;
             offset = separator + 1;
@@ -2798,6 +2822,182 @@ namespace
             << ",\"rawValue\":" << setting.rawValue
             << ",\"integerValue\":" << static_cast<SInt32>(setting.rawValue)
             << ",\"floatValue\":" << floatValue << '}';
+    }
+
+    // These two fixed addresses are the FalloutNV.exe 1.4.0.525 values in the
+    // pinned xNVSE primary source: GameSettings.cpp::g_GameSettingCollection
+    // and NiTypes.h::_NiTMap_Lookup, respectively.  The probe is enabled only
+    // for that exact runtime version in NVSEPlugin_Load.
+    constexpr std::uintptr_t sGameSettingCollectionSingletonAddress = 0x011C8048;
+    constexpr std::uintptr_t sGameSettingMapLookupAddress = 0x00853130;
+
+    bool lookupRetailGameSetting(
+        GameSettingCollection* collection, const char* editorId, Setting*& setting)
+    {
+        setting = nullptr;
+        if (collection == nullptr || editorId == nullptr || *editorId == '\0')
+            return false;
+        __try
+        {
+            using Lookup = bool(__thiscall*)(
+                GameSettingCollection::SettingMap*, const char*, Setting**);
+            return reinterpret_cast<Lookup>(sGameSettingMapLookupAddress)(
+                &collection->settingMap, editorId, &setting) && setting != nullptr;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            setting = nullptr;
+            return false;
+        }
+    }
+
+    UInt32 gameSettingType(const std::string& name)
+    {
+        if (name.empty())
+            return Setting::kSetting_Other;
+        switch (name.front())
+        {
+            case 'b': return Setting::kSetting_Bool;
+            case 'c': return Setting::kSetting_c;
+            case 'i': return Setting::kSetting_Integer;
+            case 'u': return Setting::kSetting_Unsigned;
+            case 'f': return Setting::kSetting_Float;
+            case 's':
+            case 'S': return Setting::kSetting_String;
+            case 'r': return Setting::kSetting_r;
+            case 'a': return Setting::kSetting_a;
+            default: return Setting::kSetting_Other;
+        }
+    }
+
+    const char* gameSettingTypeName(UInt32 type)
+    {
+        switch (type)
+        {
+            case Setting::kSetting_Bool: return "bool";
+            case Setting::kSetting_c: return "c";
+            case Setting::kSetting_h: return "h";
+            case Setting::kSetting_Integer: return "integer";
+            case Setting::kSetting_Unsigned: return "unsigned";
+            case Setting::kSetting_Float: return "float";
+            case Setting::kSetting_String: return "string";
+            case Setting::kSetting_r: return "r";
+            case Setting::kSetting_a: return "a";
+            default: return "other";
+        }
+    }
+
+    void writeGameSettingRaw(std::ostream& out, UInt32 rawValue)
+    {
+        std::ostringstream rawHex;
+        rawHex << "0x" << std::hex << std::uppercase << std::setw(8)
+               << std::setfill('0') << rawValue;
+        out << "{\"uint32\":" << rawValue
+            << ",\"int32\":" << static_cast<SInt32>(rawValue)
+            << ",\"hex\":" << jsonString(rawHex.str().c_str())
+            << ",\"bytesLittleEndian\":["
+            << (rawValue & 0xff) << ','
+            << ((rawValue >> 8) & 0xff) << ','
+            << ((rawValue >> 16) & 0xff) << ','
+            << ((rawValue >> 24) & 0xff) << "]}";
+    }
+
+    void captureRequestedGameSettings()
+    {
+        if (gGameSettingsCaptured || gGameSettingEditorIds.empty() || !gWorldReady)
+            return;
+        gGameSettingsCaptured = true;
+        openOutput();
+        if (!gOutput)
+            return;
+
+        GameSettingCollection* collection = nullptr;
+        const bool singletonReadable = safeRead(
+            reinterpret_cast<const void*>(sGameSettingCollectionSingletonAddress), collection);
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"game-setting-probe-start\""
+                << ",\"frame\":" << gFrame
+                << ",\"runtime\":\"FalloutNV-1.4.0.525\""
+                << ",\"collectionSingletonAddress\":"
+                << static_cast<unsigned long>(sGameSettingCollectionSingletonAddress)
+                << ",\"mapLookupAddress\":"
+                << static_cast<unsigned long>(sGameSettingMapLookupAddress)
+                << ",\"singletonReadable\":" << (singletonReadable ? "true" : "false")
+                << ",\"collectionResolved\":" << (collection != nullptr ? "true" : "false")
+                << ",\"requested\":" << gGameSettingEditorIds.size() << "}\n";
+
+        unsigned int foundCount = 0;
+        for (const std::string& requestedEditorId : gGameSettingEditorIds)
+        {
+            Setting* setting = nullptr;
+            const bool found = singletonReadable && collection != nullptr
+                && lookupRetailGameSetting(collection, requestedEditorId.c_str(), setting);
+            OracleSetting snapshot = {};
+            const bool readable = found && safeRead(setting, snapshot);
+            const std::string resolvedEditorId
+                = readable ? safeRuntimeString(snapshot.name) : std::string();
+            const UInt32 type = readable ? gameSettingType(resolvedEditorId)
+                                         : Setting::kSetting_Other;
+            if (readable)
+                ++foundCount;
+
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"game-setting\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"requestedEditorId\":" << jsonString(requestedEditorId.c_str())
+                    << ",\"found\":" << (found ? "true" : "false")
+                    << ",\"readable\":" << (readable ? "true" : "false");
+            if (!readable)
+            {
+                gOutput << ",\"editorId\":null,\"type\":null,\"typeCode\":null,"
+                           "\"raw\":null,\"value\":null}\n";
+                continue;
+            }
+
+            gOutput << ",\"editorId\":" << jsonString(resolvedEditorId.c_str())
+                    << ",\"type\":" << jsonString(gameSettingTypeName(type))
+                    << ",\"typeCode\":" << type << ",\"raw\":";
+            writeGameSettingRaw(gOutput, snapshot.rawValue);
+            gOutput << ",\"value\":";
+            switch (type)
+            {
+                case Setting::kSetting_Bool:
+                    gOutput << (snapshot.rawValue != 0 ? "true" : "false");
+                    break;
+                case Setting::kSetting_Integer:
+                    gOutput << static_cast<SInt32>(snapshot.rawValue);
+                    break;
+                case Setting::kSetting_Unsigned:
+                    gOutput << snapshot.rawValue;
+                    break;
+                case Setting::kSetting_Float:
+                {
+                    float value = 0.f;
+                    std::memcpy(&value, &snapshot.rawValue, sizeof(value));
+                    gOutput << std::setprecision((std::numeric_limits<float>::max_digits10));
+                    writeFiniteFloat(gOutput, value);
+                    break;
+                }
+                case Setting::kSetting_String:
+                {
+                    const std::string value = safeRuntimeString(
+                        reinterpret_cast<const char*>(snapshot.rawValue), 16384);
+                    gOutput << jsonString(value.c_str());
+                    break;
+                }
+                default:
+                    gOutput << snapshot.rawValue;
+                    break;
+            }
+            gOutput << "}\n";
+        }
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"game-setting-probe-complete\""
+                << ",\"frame\":" << gFrame
+                << ",\"requested\":" << gGameSettingEditorIds.size()
+                << ",\"found\":" << foundCount
+                << ",\"missing\":" << (gGameSettingEditorIds.size() - foundCount) << "}\n";
+        gOutput.flush();
     }
 
     void writeSequence(std::ostream& out, const BSAnimGroupSequence* sequence)
@@ -7979,7 +8179,11 @@ namespace
                         << ",\"weatherForm\":" << gSidecarPlan.weatherForm
                         << ",\"gameHour\":" << gSidecarPlan.gameHour << "}\n";
                 gOutput.flush();
-                sidecarSetPhase(SidecarPhase::WaitProofVolume, true);
+                // Hidden/minimized retail can advance well below one frame per second while the proof
+                // volume streams.  The initialization gate is frame based, so starting the wall-clock
+                // barrier here can consume the entire timeout before the scene-state commands are even
+                // issued.  Arm the convergence deadline only after both commands have been accepted.
+                sidecarSetPhase(SidecarPhase::WaitProofVolume);
                 break;
             }
             case SidecarPhase::WaitProofVolume:
@@ -8009,6 +8213,12 @@ namespace
                     if (gSidecarSceneStateCommandIndex < 2)
                         break;
                     gSidecarSceneStateRequested = true;
+                    gSidecarBarrierDeadlineMs = GetTickCount64() + gSidecarBarrierTimeoutMs;
+                    gOutput << "{\"schema\":\"nikami-fnv-sidecar-retail/v1\",\"event\":\"sidecar-scene-state-convergence-start\""
+                            << ",\"sequenceId\":" << jsonString(gSidecarPlan.sequenceId.c_str())
+                            << ",\"frame\":" << gFrame
+                            << ",\"timeoutMilliseconds\":" << gSidecarBarrierTimeoutMs << "}\n";
+                    gOutput.flush();
                 }
                 if (gFrame < gSidecarPhaseFrame + gSidecarPlan.initializationFrames || player == nullptr)
                     break;
@@ -8444,6 +8654,7 @@ namespace
             return;
         }
         ++gFrame;
+        captureRequestedGameSettings();
         if (gSidecarPlanActive)
         {
             driveSidecarPlan();
@@ -8674,6 +8885,9 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gDriveCommand = envString("NIKAMI_ORACLE_DRIVE_COMMAND");
     gQuestForms = envUIntList("NIKAMI_ORACLE_QUEST_FORMS");
     gGlobalForms = envUIntList("NIKAMI_ORACLE_GLOBAL_FORMS");
+    gGameSettingEditorIds = envEditorIdList("NIKAMI_ORACLE_GAME_SETTINGS");
+    if (!gGameSettingEditorIds.empty() && nvse->runtimeVersion != RUNTIME_VERSION_1_4_0_525)
+        return false;
     gBehaviorCommands = envCommandList("NIKAMI_ORACLE_COMMANDS");
     gActorCommands = envCommandList("NIKAMI_ORACLE_ACTOR_COMMANDS");
     gFurnitureSettledCommands = envCommandList("NIKAMI_ORACLE_FURNITURE_SETTLED_COMMANDS");
