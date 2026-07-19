@@ -1,0 +1,1104 @@
+{
+  "schema": "nikami-fnv-save330-achr-acre-implementation-matrix/v1",
+  "status": "exact-envelope-classification-payload-semantics-explicitly-uncovered",
+  "scope": {
+    "purpose": "Read-only implementation matrix for every ACHR and ACRE changed-form envelope in pinned retail Save330.",
+    "sourceMutation": "none",
+    "semanticRule": "Only xEdit branch names and byte-shape conditions are named; fields called Unknown/Unk remain unknown.",
+    "records": [
+      "ACHR",
+      "ACRE"
+    ]
+  },
+  "sources": [
+    {
+      "id": "save330",
+      "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
+      "bytes": 3395328,
+      "sha256": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f",
+      "formVersion": 27
+    },
+    {
+      "id": "xedit-fnv-save-definitions",
+      "path": "D:/code/nikami-worlds/external/xedit/Core/wbDefinitionsFNVSaves.pas",
+      "bytes": 253687,
+      "sha256": "701f4b734b4c3bb28b32c6f8d1595b952e536bd7f75358d764eea6bec51db406",
+      "lineReferences": [
+        {
+          "lines": [
+            360,
+            388
+          ],
+          "subject": "raw type and length width"
+        },
+        {
+          "lines": [
+            390,
+            409
+          ],
+          "subject": "created namespace"
+        },
+        {
+          "lines": [
+            773,
+            871
+          ],
+          "subject": "animation, Player and initial-data deciders"
+        },
+        {
+          "lines": [
+            1179,
+            1195
+          ],
+          "subject": "actor Changed Extra mask"
+        },
+        {
+          "lines": [
+            2362,
+            2365
+          ],
+          "subject": "ACHR/ACRE mapping"
+        },
+        {
+          "lines": [
+            2456,
+            2490
+          ],
+          "subject": "ACHR flags"
+        },
+        {
+          "lines": [
+            2492,
+            2526
+          ],
+          "subject": "ACRE flags"
+        },
+        {
+          "lines": [
+            4473,
+            4550
+          ],
+          "subject": "direct flag payloads"
+        },
+        {
+          "lines": [
+            4939,
+            4990
+          ],
+          "subject": "initial reference shapes"
+        },
+        {
+          "lines": [
+            5241,
+            5281
+          ],
+          "subject": "inventory, extra, Changed REFR"
+        },
+        {
+          "lines": [
+            5777,
+            6034
+          ],
+          "subject": "process hierarchy"
+        },
+        {
+          "lines": [
+            6078,
+            6312
+          ],
+          "subject": "Changed Actor/character/creature"
+        },
+        {
+          "lines": [
+            6314,
+            6460
+          ],
+          "subject": "Player ACHR"
+        },
+        {
+          "lines": [
+            6513,
+            6521
+          ],
+          "subject": "top-level dispatch"
+        },
+        {
+          "lines": [
+            6761,
+            6789
+          ],
+          "subject": "envelope"
+        },
+        {
+          "lines": [
+            6804,
+            6834
+          ],
+          "subject": "sections/FormIDs"
+        }
+      ]
+    },
+    {
+      "id": "xedit-save-interface",
+      "path": "D:/code/nikami-worlds/external/xedit/Core/wbSaveInterface.pas",
+      "bytes": 15745,
+      "sha256": "99e9c7a92d4df118cc69eb1b28565c5549416ee1cf54c498daa8cd283d553e4c",
+      "lineReferences": [
+        {
+          "lines": [
+            254,
+            274
+          ],
+          "subject": "FormID array and one-based lookup"
+        }
+      ]
+    }
+  ],
+  "formatContract": {
+    "changedFormEnvelope": {
+      "encodedRefId": "3-byte unsigned big-endian",
+      "changeFlags": "u32 little-endian",
+      "rawType": "u8: low 6 type bits, high 2 length-width bits",
+      "version": "u8",
+      "payloadLength": "little-endian integer, width = 1 << (rawType >> 6)",
+      "sourceLines": [
+        6761,
+        6789
+      ]
+    },
+    "observedActorEnvelopeConstants": {
+      "referenceNamespace": 0,
+      "referenceNamespaceName": "FormIdArray",
+      "version": 27,
+      "lengthWidthBytes": 2,
+      "headerBytes": 11,
+      "ACHRRawType": "0x41",
+      "ACRERawType": "0x42"
+    },
+    "referenceResolution": {
+      "namespaceBits": "encodedRefId >> 22",
+      "payloadBits": "encodedRefId & 0x003FFFFF",
+      "FormIdArrayRule": "payload 0 is explicit null; otherwise FormIDArray[payload - 1]",
+      "createdNamespaceEvidence": "xEdit lines 405 and 863",
+      "playerEvidence": "xEdit lines 831-833"
+    },
+    "orderedEnvelopeClassStreamDecoder": [
+      "Base64-decode then zlib-decompress.",
+      "Decode four unsigned LEB128 values per row.",
+      "Inverse-zigzag second value; accumulate both deltas from zero.",
+      "Flags use per-record dictionary; version/namespace/width are fixed.",
+      "Resolve referencePayloadIndex through pinned FormID table.",
+      "changedFormIndex is zero-based in full 7093-entry section."
+    ]
+  },
+  "sectionAccounting": {
+    "changedForms": {
+      "offset": 494730,
+      "end": 3308279,
+      "bytes": 2813549,
+      "count": 7093,
+      "headerBytes": 77161,
+      "payloadBytes": 2736388,
+      "equation": "3308279 - 494730 = 2813549 = 77161 + 2736388"
+    },
+    "FormIdArray": {
+      "offset": 3308287,
+      "count": 21755,
+      "entryBytes": 87020,
+      "countAndEntriesBytes": 87024,
+      "end": 3395311,
+      "countAndEntriesSha256": "a84b52dbfcf1a5d1d1a93c892d890770887db2207e0fab177ae79b789dcaf504",
+      "entriesSha256": "c2f30dea4991a37965d7d5be3eecfbaf847c92325ceb3b2feac3fd3288feda82"
+    },
+    "actorCreature": {
+      "count": 6207,
+      "payloadBytes": 2686682,
+      "headerBytes": 68277,
+      "envelopeBytes": 2754959,
+      "changedFormPayloadShare": "2686682/2736388",
+      "equations": [
+        "2926 + 3281 = 6207",
+        "1198189 + 1488493 = 2686682",
+        "6207 * 11 = 68277",
+        "2686682 + 68277 = 2754959",
+        "26 + 23 - 13 shared masks = 36 distinct masks",
+        "164 + 77 = 241 flag-length classes"
+      ],
+      "resolvedIdentityEquation": "2925 ACHR + 3281 ACRE + 1 null = 6207"
+    }
+  },
+  "identityExceptionsAndAnchors": [
+    {
+      "kind": "explicit-null-ACHR",
+      "changedFormIndex": 0,
+      "fileOffset": 494730,
+      "encodedRefId": "0x000000",
+      "referencePayloadIndex": 0,
+      "resolvedFormId": null,
+      "changeFlags": "0x00040000",
+      "version": 27,
+      "payloadLength": 297
+    },
+    {
+      "kind": "Player-ACHR-anchor",
+      "changedFormIndex": 6,
+      "fileOffset": 497478,
+      "encodedRefId": "0x00026F",
+      "referencePayloadIndex": 623,
+      "resolvedFormId": "0x00000014",
+      "changeFlags": "0xB0000022",
+      "version": 27,
+      "payloadLength": 5095
+    }
+  ],
+  "records": {
+    "ACHR": {
+      "changeType": 1,
+      "formType": "0x03B",
+      "count": 2926,
+      "payloadBytes": 1198189,
+      "headerBytes": 32186,
+      "envelopeBytes": 1230375,
+      "equations": [
+        "2926 * 11 = 32186",
+        "1198189 + 32186 = 1230375"
+      ],
+      "rawType": "0x41",
+      "versionDistribution": [
+        {
+          "version": 27,
+          "count": 2926,
+          "payloadBytes": 1198189
+        }
+      ],
+      "lengthWidthDistribution": [
+        {
+          "bytes": 2,
+          "count": 2926,
+          "payloadBytes": 1198189
+        }
+      ],
+      "payloadLength": {
+        "minimum": 297,
+        "maximum": 5095,
+        "distinctLengths": 130,
+        "distinctFlagLengthClasses": 164
+      },
+      "changeFlags": {
+        "distinctVariants": 26,
+        "variantsSchema": [
+          "changeFlags",
+          "count",
+          "payloadBytes",
+          "minPayloadLength",
+          "maxPayloadLength",
+          "distinctPayloadLengths"
+        ],
+        "variants": [["0x00000800",305,137266,306,510,6],["0x00000802",184,86405,334,829,14],["0x00000820",2,1132,555,577,2],["0x00040000",1346,403616,297,379,2],["0x00040800",405,196272,321,525,6],["0x00040802",231,121052,349,936,25],["0x08000020",2,753,329,424,2],["0x08040023",4,2020,432,573,4],["0x08040823",2,952,465,487,2],["0x20000802",20,12339,443,973,8],["0x20040802",5,2638,458,574,2],["0x28100822",1,605,605,605,1],["0x30000802",2,5049,2305,2744,2],["0x80000000",17,6392,376,376,1],["0x80000800",88,40684,328,531,11],["0x80000802",170,86332,449,841,17],["0x80000822",1,520,520,520,1],["0x80040000",6,2346,391,391,1],["0x80040800",18,7857,428,455,4],["0x80040802",61,36612,456,1253,25],["0x80400800",1,442,442,442,1],["0x88040823",8,4042,455,538,6],["0xA0000802",44,31236,455,1261,18],["0xB0000022",1,5095,5095,5095,1],["0xB0100802",1,3084,3084,3084,1],["0xB8100823",1,3448,3448,3448,1]]
+      },
+      "referenceIdentity": {
+        "encodedNamespaceDistribution": [
+          {
+            "namespace": 0,
+            "name": "FormIdArray",
+            "count": 2926,
+            "payloadBytes": 1198189
+          }
+        ],
+        "referencePayloadRange": {
+          "minimum": 0,
+          "maximum": 20448
+        },
+        "resolvedCount": 2925,
+        "explicitNullCount": 1,
+        "outOfRangeCount": 0,
+        "emptyResolvedSlotCount": 0,
+        "uniqueResolvedFormIds": 2925,
+        "duplicateResolvedFormIds": 0,
+        "resolvedReferencePayloadRange": {
+          "minimum": 580,
+          "maximum": 20448
+        },
+        "resolvedFormIdRange": {
+          "minimum": "0x00000014",
+          "maximum": "0x0400D99B"
+        },
+        "resolvedFormIdLoadIndexDistribution": [
+          {
+            "loadIndex": "0x00",
+            "count": 2600
+          },
+          {
+            "loadIndex": "0x01",
+            "count": 4
+          },
+          {
+            "loadIndex": "0x02",
+            "count": 181
+          },
+          {
+            "loadIndex": "0x03",
+            "count": 88
+          },
+          {
+            "loadIndex": "0x04",
+            "count": 52
+          }
+        ],
+        "orderedResolvedFormIdSequenceSha256": "8f6611d85054af2f081f933867d4defb8e990fcee9f91b0bbda0f4492d28caeb",
+        "orderedEncodedRefIdSequenceSha256": "98e4d154073ce08a2d0616c1e864fe63d571ec63c535db7a2f6134bd887f0777"
+      },
+      "corpusFingerprints": {
+        "orderedCanonicalRowsSha256": "4bace85d3e6c1fbc7d0ce2a807a0d5906ebee9ec3995a1b95daa8e17dea41183",
+        "concatenatedEnvelopeHeadersSha256": "6d2bacb5a8caf92d46f8ead714f99ab21a59f9592f3929dab6e4e7349fd67661",
+        "concatenatedPayloadsSha256": "92e4a86f890710fd7cb8498b3c275570fadb2710ebc495ec4439d48945055c5d"
+      },
+      "orderedEnvelopeClassStream": {
+        "encoding": "base64(zlib(level=9, four unsigned LEB128 values per row))",
+        "rowFields": [
+          "changedFormIndexDelta",
+          "zigzag(referencePayloadIndexDelta)",
+          "changeFlagsDictionaryIndex",
+          "payloadLength"
+        ],
+        "accumulatorInitialValues": {
+          "changedFormIndex": 0,
+          "referencePayloadIndex": 0
+        },
+        "fixedFields": {
+          "referenceNamespace": "FormIdArray(0)",
+          "version": 27,
+          "lengthWidthBytes": 2
+        },
+        "changeFlagsDictionary": [
+          "0x00000800",
+          "0x00000802",
+          "0x00000820",
+          "0x00040000",
+          "0x00040800",
+          "0x00040802",
+          "0x08000020",
+          "0x08040023",
+          "0x08040823",
+          "0x20000802",
+          "0x20040802",
+          "0x28100822",
+          "0x30000802",
+          "0x80000000",
+          "0x80000800",
+          "0x80000802",
+          "0x80000822",
+          "0x80040000",
+          "0x80040800",
+          "0x80040802",
+          "0x80400800",
+          "0x88040823",
+          "0xA0000802",
+          "0xB0000022",
+          "0xB0100802",
+          "0xB8100823"
+        ],
+        "rowCount": 2926,
+        "rawBytes": 15718,
+        "rawSha256": "9bf8378af3ddd854da3976b7bd7a451ca91a614607045aff6430370f448d5b4b",
+        "zlibBytes": 6823,
+        "zlibSha256": "2075867129e6be3adb3d90d8657c3d2c2e6efd2796e6def4d0073d2533f25bcf",
+        "base64": "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"
+      }
+    },
+    "ACRE": {
+      "changeType": 2,
+      "formType": "0x03C",
+      "count": 3281,
+      "payloadBytes": 1488493,
+      "headerBytes": 36091,
+      "envelopeBytes": 1524584,
+      "equations": [
+        "3281 * 11 = 36091",
+        "1488493 + 36091 = 1524584"
+      ],
+      "rawType": "0x42",
+      "versionDistribution": [
+        {
+          "version": 27,
+          "count": 3281,
+          "payloadBytes": 1488493
+        }
+      ],
+      "lengthWidthDistribution": [
+        {
+          "bytes": 2,
+          "count": 3281,
+          "payloadBytes": 1488493
+        }
+      ],
+      "payloadLength": {
+        "minimum": 293,
+        "maximum": 2944,
+        "distinctLengths": 69,
+        "distinctFlagLengthClasses": 77
+      },
+      "changeFlags": {
+        "distinctVariants": 23,
+        "variantsSchema": [
+          "changeFlags",
+          "count",
+          "payloadBytes",
+          "minPayloadLength",
+          "maxPayloadLength",
+          "distinctPayloadLengths"
+        ],
+        "variants": [["0x00000003",1,309,309,309,1],["0x00000800",705,334945,405,514,5],["0x00000802",53,24414,330,534,7],["0x00040000",673,198337,293,375,2],["0x00040404",453,187921,337,419,2],["0x00040800",1213,621971,317,521,8],["0x00040802",79,42764,345,1024,12],["0x10000802",2,4397,2131,2266,2],["0x20000802",19,16028,439,1052,6],["0x20040802",6,3724,589,665,3],["0x30000802",4,9434,2179,2753,4],["0x30100802",1,2010,2010,2010,1],["0x80000000",4,1502,372,386,2],["0x80000001",1,377,377,377,1],["0x80000800",4,1811,431,518,2],["0x80000802",42,19495,445,546,8],["0x80000803",1,448,448,448,1],["0x80000C05",1,569,569,569,1],["0x80040404",3,1257,419,419,1],["0x80040800",1,465,465,465,1],["0x80040802",11,5450,460,528,3],["0x90100802",1,2262,2262,2262,1],["0xB0000802",3,8603,2800,2944,3]]
+      },
+      "referenceIdentity": {
+        "encodedNamespaceDistribution": [
+          {
+            "namespace": 0,
+            "name": "FormIdArray",
+            "count": 3281,
+            "payloadBytes": 1488493
+          }
+        ],
+        "referencePayloadRange": {
+          "minimum": 587,
+          "maximum": 21149
+        },
+        "resolvedCount": 3281,
+        "explicitNullCount": 0,
+        "outOfRangeCount": 0,
+        "emptyResolvedSlotCount": 0,
+        "uniqueResolvedFormIds": 3281,
+        "duplicateResolvedFormIds": 0,
+        "resolvedReferencePayloadRange": {
+          "minimum": 587,
+          "maximum": 21149
+        },
+        "resolvedFormIdRange": {
+          "minimum": "0x00025DC6",
+          "maximum": "0x0400D88F"
+        },
+        "resolvedFormIdLoadIndexDistribution": [
+          {
+            "loadIndex": "0x00",
+            "count": 2616
+          },
+          {
+            "loadIndex": "0x01",
+            "count": 160
+          },
+          {
+            "loadIndex": "0x02",
+            "count": 156
+          },
+          {
+            "loadIndex": "0x03",
+            "count": 235
+          },
+          {
+            "loadIndex": "0x04",
+            "count": 114
+          }
+        ],
+        "orderedResolvedFormIdSequenceSha256": "fa076e4c6dceb2693cf7784d032a0a0c1c85f7b34b4d849d5989dea292b28079",
+        "orderedEncodedRefIdSequenceSha256": "dc15c23c1711a3f9244ee1f471dc4039a4e3d422ac5efa006b42c38fa54079ca"
+      },
+      "corpusFingerprints": {
+        "orderedCanonicalRowsSha256": "7b664b941b5a36806efc6f51e3848ff340449fbbca9d1fdfc3e86833140a7866",
+        "concatenatedEnvelopeHeadersSha256": "28c2dcdc9c89e7951be5610f32060dbe67c565ac4b970ccbc1f861b59a6b48b5",
+        "concatenatedPayloadsSha256": "6a977740fa8fb55e3a91ce35c47baaec006ec67a1b910fdf232d8db0d40db145"
+      },
+      "orderedEnvelopeClassStream": {
+        "encoding": "base64(zlib(level=9, four unsigned LEB128 values per row))",
+        "rowFields": [
+          "changedFormIndexDelta",
+          "zigzag(referencePayloadIndexDelta)",
+          "changeFlagsDictionaryIndex",
+          "payloadLength"
+        ],
+        "accumulatorInitialValues": {
+          "changedFormIndex": 0,
+          "referencePayloadIndex": 0
+        },
+        "fixedFields": {
+          "referenceNamespace": "FormIdArray(0)",
+          "version": 27,
+          "lengthWidthBytes": 2
+        },
+        "changeFlagsDictionary": [
+          "0x00000003",
+          "0x00000800",
+          "0x00000802",
+          "0x00040000",
+          "0x00040404",
+          "0x00040800",
+          "0x00040802",
+          "0x10000802",
+          "0x20000802",
+          "0x20040802",
+          "0x30000802",
+          "0x30100802",
+          "0x80000000",
+          "0x80000001",
+          "0x80000800",
+          "0x80000802",
+          "0x80000803",
+          "0x80000C05",
+          "0x80040404",
+          "0x80040800",
+          "0x80040802",
+          "0x90100802",
+          "0xB0000802"
+        ],
+        "rowCount": 3281,
+        "rawBytes": 17439,
+        "rawSha256": "d44c457f0d55ba1da12c16d017175ff90883d27fc201dbbc2a26208ceaea75fa",
+        "zlibBytes": 6319,
+        "zlibSha256": "350e66f53894f4256f980429e56837eb3c6d853c36e6f018e268f2f5b741d252",
+        "base64": "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"
+      }
+    }
+  },
+  "observedChangeFlagBits": [
+    {
+      "bit": 0,
+      "mask": "0x00000001",
+      "authoritativeBranchName": "CHANGE_FORM_FLAGS",
+      "observed": {
+        "combined": {
+          "count": 19,
+          "payloadBytes": 12165
+        },
+        "ACHR": {
+          "count": 15,
+          "payloadBytes": 10462
+        },
+        "ACRE": {
+          "count": 4,
+          "payloadBytes": 1703
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2458,
+        "ACRE": 2494
+      },
+      "xEditConditionalDefinitionLines": [
+        4473,
+        4473,
+        5260,
+        5264
+      ],
+      "payloadRoleWithoutSemanticInference": "u32 Flags field inside shared Changed REFR"
+    },
+    {
+      "bit": 1,
+      "mask": "0x00000002",
+      "authoritativeBranchName": "CHANGE_REFR_MOVE",
+      "observed": {
+        "combined": {
+          "count": 959,
+          "payloadBytes": 540767
+        },
+        "ACHR": {
+          "count": 736,
+          "payloadBytes": 401429
+        },
+        "ACRE": {
+          "count": 223,
+          "payloadBytes": 139338
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2459,
+        "ACRE": 2495
+      },
+      "xEditConditionalDefinitionLines": [
+        841,
+        869,
+        4939,
+        4950
+      ],
+      "payloadRoleWithoutSemanticInference": "selects Initial Data Type 04; no standalone payload"
+    },
+    {
+      "bit": 2,
+      "mask": "0x00000004",
+      "authoritativeBranchName": "CHANGE_REFR_HAVOK_MOVE",
+      "observed": {
+        "combined": {
+          "count": 457,
+          "payloadBytes": 189747
+        },
+        "ACHR": {
+          "count": 0,
+          "payloadBytes": 0
+        },
+        "ACRE": {
+          "count": 457,
+          "payloadBytes": 189747
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2460,
+        "ACRE": 2496
+      },
+      "xEditConditionalDefinitionLines": [
+        4477,
+        4482,
+        4939,
+        4950
+      ],
+      "payloadRoleWithoutSemanticInference": "length-prefixed Havok Moved SubBuffer in Initial Data Type 04"
+    },
+    {
+      "bit": 5,
+      "mask": "0x00000020",
+      "authoritativeBranchName": "CHANGE_REFR_INVENTORY",
+      "observed": {
+        "combined": {
+          "count": 22,
+          "payloadBytes": 18567
+        },
+        "ACHR": {
+          "count": 22,
+          "payloadBytes": 18567
+        },
+        "ACRE": {
+          "count": 0,
+          "payloadBytes": 0
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2463,
+        "ACRE": 2499
+      },
+      "xEditConditionalDefinitionLines": [
+        5241,
+        5249,
+        5275,
+        5277
+      ],
+      "payloadRoleWithoutSemanticInference": "shared changed-inventory array; gate is bit 5 OR bit 27"
+    },
+    {
+      "bit": 10,
+      "mask": "0x00000400",
+      "authoritativeBranchName": "CHANGE_ACTOR_LIFESTATE",
+      "observed": {
+        "combined": {
+          "count": 457,
+          "payloadBytes": 189747
+        },
+        "ACHR": {
+          "count": 0,
+          "payloadBytes": 0
+        },
+        "ACRE": {
+          "count": 457,
+          "payloadBytes": 189747
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2468,
+        "ACRE": 2504
+      },
+      "xEditConditionalDefinitionLines": [
+        4511,
+        4511,
+        6113,
+        6117
+      ],
+      "payloadRoleWithoutSemanticInference": "u8 Life State in Changed Actor"
+    },
+    {
+      "bit": 11,
+      "mask": "0x00000800",
+      "authoritativeBranchName": "CHANGE_ACTOR_EXTRA_PACKAGE_DATA",
+      "observed": {
+        "combined": {
+          "count": 3696,
+          "payloadBytes": 1876757
+        },
+        "ACHR": {
+          "count": 1550,
+          "payloadBytes": 777967
+        },
+        "ACRE": {
+          "count": 2146,
+          "payloadBytes": 1098790
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2469,
+        "ACRE": 2505
+      },
+      "xEditConditionalDefinitionLines": [
+        1179,
+        1195,
+        5251,
+        5258
+      ],
+      "payloadRoleWithoutSemanticInference": "participates in actor Changed Extra mask"
+    },
+    {
+      "bit": 18,
+      "mask": "0x00040000",
+      "authoritativeBranchName": "CHANGE_ACTOR_LEVELED_ACTOR",
+      "observed": {
+        "combined": {
+          "count": 4525,
+          "payloadBytes": 1839296
+        },
+        "ACHR": {
+          "count": 2086,
+          "payloadBytes": 777407
+        },
+        "ACRE": {
+          "count": 2439,
+          "payloadBytes": 1061889
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2476,
+        "ACRE": 2512
+      },
+      "xEditConditionalDefinitionLines": [
+        1179,
+        1195,
+        5251,
+        5258
+      ],
+      "payloadRoleWithoutSemanticInference": "participates in actor Changed Extra mask"
+    },
+    {
+      "bit": 20,
+      "mask": "0x00100000",
+      "authoritativeBranchName": "CHANGE_ACTOR_TEMP_MODIFIERS",
+      "observed": {
+        "combined": {
+          "count": 5,
+          "payloadBytes": 11409
+        },
+        "ACHR": {
+          "count": 3,
+          "payloadBytes": 7137
+        },
+        "ACRE": {
+          "count": 2,
+          "payloadBytes": 4272
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2478,
+        "ACRE": 2514
+      },
+      "xEditConditionalDefinitionLines": [
+        4525,
+        4530,
+        5825,
+        5829
+      ],
+      "payloadRoleWithoutSemanticInference": "counted actor-value/float list in Middle Low Process"
+    },
+    {
+      "bit": 22,
+      "mask": "0x00400000",
+      "authoritativeBranchName": "CHANGE_ACTOR_OVERRIDE_MODIFIERS",
+      "observed": {
+        "combined": {
+          "count": 1,
+          "payloadBytes": 442
+        },
+        "ACHR": {
+          "count": 1,
+          "payloadBytes": 442
+        },
+        "ACRE": {
+          "count": 0,
+          "payloadBytes": 0
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2480,
+        "ACRE": 2516
+      },
+      "xEditConditionalDefinitionLines": [
+        4539,
+        4544,
+        6117,
+        6120
+      ],
+      "payloadRoleWithoutSemanticInference": "counted actor-value/float list in Changed Actor"
+    },
+    {
+      "bit": 27,
+      "mask": "0x08000000",
+      "authoritativeBranchName": "CHANGE_REFR_LEVELED_INVENTORY",
+      "observed": {
+        "combined": {
+          "count": 18,
+          "payloadBytes": 11820
+        },
+        "ACHR": {
+          "count": 18,
+          "payloadBytes": 11820
+        },
+        "ACRE": {
+          "count": 0,
+          "payloadBytes": 0
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2485,
+        "ACRE": 2521
+      },
+      "xEditConditionalDefinitionLines": [
+        5241,
+        5249,
+        5275,
+        5277
+      ],
+      "payloadRoleWithoutSemanticInference": "same changed-inventory branch as bit 5"
+    },
+    {
+      "bit": 28,
+      "mask": "0x10000000",
+      "authoritativeBranchName": "CHANGE_REFR_ANIMATION",
+      "observed": {
+        "combined": {
+          "count": 16,
+          "payloadBytes": 43382
+        },
+        "ACHR": {
+          "count": 5,
+          "payloadBytes": 16676
+        },
+        "ACRE": {
+          "count": 11,
+          "payloadBytes": 26706
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2486,
+        "ACRE": 2522
+      },
+      "xEditConditionalDefinitionLines": [
+        773,
+        789,
+        4496,
+        4505
+      ],
+      "payloadRoleWithoutSemanticInference": "actor length-prefixed animation; Player has second branch"
+    },
+    {
+      "bit": 29,
+      "mask": "0x20000000",
+      "authoritativeBranchName": "CHANGE_REFR_EXTRA_ENCOUNTER_ZONE",
+      "observed": {
+        "combined": {
+          "count": 108,
+          "payloadBytes": 103293
+        },
+        "ACHR": {
+          "count": 75,
+          "payloadBytes": 63494
+        },
+        "ACRE": {
+          "count": 33,
+          "payloadBytes": 39799
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2487,
+        "ACRE": 2523
+      },
+      "xEditConditionalDefinitionLines": [
+        1179,
+        1195,
+        5251,
+        5258
+      ],
+      "payloadRoleWithoutSemanticInference": "participates in actor Changed Extra mask"
+    },
+    {
+      "bit": 31,
+      "mask": "0x80000000",
+      "authoritativeBranchName": "CHANGE_REFR_EXTRA_GAME_ONLY",
+      "observed": {
+        "combined": {
+          "count": 489,
+          "payloadBytes": 270329
+        },
+        "ACHR": {
+          "count": 417,
+          "payloadBytes": 228090
+        },
+        "ACRE": {
+          "count": 72,
+          "payloadBytes": 42239
+        }
+      },
+      "xEditFlagNameLines": {
+        "ACHR": 2489,
+        "ACRE": 2525
+      },
+      "xEditConditionalDefinitionLines": [
+        1179,
+        1195,
+        5251,
+        5258
+      ],
+      "payloadRoleWithoutSemanticInference": "participates in actor Changed Extra mask"
+    }
+  ],
+  "flagLengthClassesSchema": [
+    "recordChangeType",
+    "changeFlags",
+    "payloadLength",
+    "count",
+    "payloadBytes"
+  ],
+  "flagLengthClasses": [[1,"0x00000800",306,4,1224],[1,"0x00000800",409,142,58078],[1,"0x00000800",428,21,8988],[1,"0x00000800",439,19,8341],[1,"0x00000800",455,1,455],[1,"0x00000800",510,118,60180],[1,"0x00000802",334,2,668],[1,"0x00000802",437,72,31464],[1,"0x00000802",452,6,2712],[1,"0x00000802",456,4,1824],[1,"0x00000802",467,56,26152],[1,"0x00000802",471,2,942],[1,"0x00000802",475,3,1425],[1,"0x00000802",479,1,479],[1,"0x00000802",490,1,490],[1,"0x00000802",494,1,494],[1,"0x00000802",514,1,514],[1,"0x00000802",538,26,13988],[1,"0x00000802",553,8,4424],[1,"0x00000802",829,1,829],[1,"0x00000820",555,1,555],[1,"0x00000820",577,1,577],[1,"0x00040000",297,1299,385803],[1,"0x00040000",379,47,17813],[1,"0x00040800",321,2,642],[1,"0x00040800",424,124,52576],[1,"0x00040800",443,8,3544],[1,"0x00040800",454,38,17252],[1,"0x00040800",458,1,458],[1,"0x00040800",525,232,121800],[1,"0x00040802",349,2,698],[1,"0x00040802",452,52,23504],[1,"0x00040802",467,2,934],[1,"0x00040802",471,7,3297],[1,"0x00040802",482,58,27956],[1,"0x00040802",486,5,2430],[1,"0x00040802",490,2,980],[1,"0x00040802",494,2,988],[1,"0x00040802",498,2,996],[1,"0x00040802",502,1,502],[1,"0x00040802",513,3,1539],[1,"0x00040802",518,1,518],[1,"0x00040802",522,2,1044],[1,"0x00040802",530,1,530],[1,"0x00040802",553,67,37051],[1,"0x00040802",558,1,558],[1,"0x00040802",566,1,566],[1,"0x00040802",568,4,2272],[1,"0x00040802",574,1,574],[1,"0x00040802",582,1,582],[1,"0x00040802",743,3,2229],[1,"0x00040802",835,3,2505],[1,"0x00040802",844,6,5064],[1,"0x00040802",927,1,927],[1,"0x00040802",936,3,2808],[1,"0x08000020",329,1,329],[1,"0x08000020",424,1,424],[1,"0x08040023",432,1,432],[1,"0x08040023",488,1,488],[1,"0x08040023",527,1,527],[1,"0x08040023",573,1,573],[1,"0x08040823",465,1,465],[1,"0x08040823",487,1,487],[1,"0x20000802",443,3,1329],[1,"0x20000802",458,1,458],[1,"0x20000802",462,1,462],[1,"0x20000802",492,2,984],[1,"0x20000802",559,8,4472],[1,"0x20000802",834,1,834],[1,"0x20000802",927,2,1854],[1,"0x20000802",973,2,1946],[1,"0x20040802",458,2,916],[1,"0x20040802",574,3,1722],[1,"0x28100822",605,1,605],[1,"0x30000802",2305,1,2305],[1,"0x30000802",2744,1,2744],[1,"0x80000000",376,17,6392],[1,"0x80000800",328,1,328],[1,"0x80000800",421,41,17261],[1,"0x80000800",426,1,426],[1,"0x80000800",429,1,429],[1,"0x80000800",435,4,1740],[1,"0x80000800",440,3,1320],[1,"0x80000800",441,1,441],[1,"0x80000800",450,1,450],[1,"0x80000800",522,32,16704],[1,"0x80000800",527,2,1054],[1,"0x80000800",531,1,531],[1,"0x80000802",449,58,26042],[1,"0x80000802",463,3,1389],[1,"0x80000802",464,13,6032],[1,"0x80000802",472,1,472],[1,"0x80000802",483,6,2898],[1,"0x80000802",487,9,4383],[1,"0x80000802",491,6,2946],[1,"0x80000802",495,3,1485],[1,"0x80000802",496,1,496],[1,"0x80000802",503,1,503],[1,"0x80000802",548,2,1096],[1,"0x80000802",550,54,29700],[1,"0x80000802",564,1,564],[1,"0x80000802",565,6,3390],[1,"0x80000802",740,1,740],[1,"0x80000802",832,1,832],[1,"0x80000802",841,4,3364],[1,"0x80000822",520,1,520],[1,"0x80040000",391,6,2346],[1,"0x80040800",428,1,428],[1,"0x80040800",434,1,434],[1,"0x80040800",436,15,6540],[1,"0x80040800",455,1,455],[1,"0x80040802",456,2,912],[1,"0x80040802",464,7,3248],[1,"0x80040802",471,1,471],[1,"0x80040802",479,7,3353],[1,"0x80040802",502,1,502],[1,"0x80040802",506,3,1518],[1,"0x80040802",510,2,1020],[1,"0x80040802",513,1,513],[1,"0x80040802",518,1,518],[1,"0x80040802",521,1,521],[1,"0x80040802",522,2,1044],[1,"0x80040802",526,1,526],[1,"0x80040802",533,1,533],[1,"0x80040802",534,1,534],[1,"0x80040802",538,2,1076],[1,"0x80040802",542,2,1084],[1,"0x80040802",549,1,549],[1,"0x80040802",554,2,1108],[1,"0x80040802",557,1,557],[1,"0x80040802",565,11,6215],[1,"0x80040802",580,3,1740],[1,"0x80040802",985,1,985],[1,"0x80040802",993,1,993],[1,"0x80040802",1040,2,2080],[1,"0x80040802",1253,4,5012],[1,"0x80400800",442,1,442],[1,"0x88040823",455,1,455],[1,"0x88040823",482,2,964],[1,"0x88040823",509,2,1018],[1,"0x88040823",531,1,531],[1,"0x88040823",536,1,536],[1,"0x88040823",538,1,538],[1,"0xA0000802",455,1,455],[1,"0xA0000802",470,7,3290],[1,"0xA0000802",497,1,497],[1,"0xA0000802",504,1,504],[1,"0xA0000802",508,1,508],[1,"0xA0000802",512,1,512],[1,"0xA0000802",516,1,516],[1,"0xA0000802",524,1,524],[1,"0xA0000802",571,12,6852],[1,"0xA0000802",838,4,3352],[1,"0xA0000802",847,1,847],[1,"0xA0000802",939,5,4695],[1,"0xA0000802",949,1,949],[1,"0xA0000802",985,1,985],[1,"0xA0000802",1043,1,1043],[1,"0xA0000802",1077,1,1077],[1,"0xA0000802",1123,3,3369],[1,"0xA0000802",1261,1,1261],[1,"0xB0000022",5095,1,5095],[1,"0xB0100802",3084,1,3084],[1,"0xB8100823",3448,1,3448],[2,"0x00000003",309,1,309],[2,"0x00000800",405,176,71280],[2,"0x00000800",424,36,15264],[2,"0x00000800",435,15,6525],[2,"0x00000800",506,477,241362],[2,"0x00000800",514,1,514],[2,"0x00000802",330,3,990],[2,"0x00000802",433,3,1299],[2,"0x00000802",463,39,18057],[2,"0x00000802",467,2,934],[2,"0x00000802",479,1,479],[2,"0x00000802",519,1,519],[2,"0x00000802",534,4,2136],[2,"0x00040000",293,659,193087],[2,"0x00040000",375,14,5250],[2,"0x00040404",337,23,7751],[2,"0x00040404",419,430,180170],[2,"0x00040800",317,1,317],[2,"0x00040800",420,61,25620],[2,"0x00040800",428,9,3852],[2,"0x00040800",436,3,1308],[2,"0x00040800",439,11,4829],[2,"0x00040800",440,1,440],[2,"0x00040800",450,22,9900],[2,"0x00040800",521,1105,575705],[2,"0x00040802",345,1,345],[2,"0x00040802",448,3,1344],[2,"0x00040802",478,39,18642],[2,"0x00040802",486,2,972],[2,"0x00040802",490,6,2940],[2,"0x00040802",494,2,988],[2,"0x00040802",502,7,3514],[2,"0x00040802",506,2,1012],[2,"0x00040802",510,2,1020],[2,"0x00040802",546,7,3822],[2,"0x00040802",1015,3,3045],[2,"0x00040802",1024,5,5120],[2,"0x10000802",2131,1,2131],[2,"0x10000802",2266,1,2266],[2,"0x20000802",439,1,439],[2,"0x20000802",603,1,603],[2,"0x20000802",776,4,3104],[2,"0x20000802",822,7,5754],[2,"0x20000802",868,1,868],[2,"0x20000802",1052,5,5260],[2,"0x20040802",589,2,1178],[2,"0x20040802",627,3,1881],[2,"0x20040802",665,1,665],[2,"0x30000802",2179,1,2179],[2,"0x30000802",2230,1,2230],[2,"0x30000802",2272,1,2272],[2,"0x30000802",2753,1,2753],[2,"0x30100802",2010,1,2010],[2,"0x80000000",372,3,1116],[2,"0x80000000",386,1,386],[2,"0x80000001",377,1,377],[2,"0x80000800",431,3,1293],[2,"0x80000800",518,1,518],[2,"0x80000802",445,25,11125],[2,"0x80000802",459,2,918],[2,"0x80000802",460,2,920],[2,"0x80000802",479,1,479],[2,"0x80000802",487,2,974],[2,"0x80000802",491,6,2946],[2,"0x80000802",495,1,495],[2,"0x80000802",546,3,1638],[2,"0x80000803",448,1,448],[2,"0x80000C05",569,1,569],[2,"0x80040404",419,3,1257],[2,"0x80040800",465,1,465],[2,"0x80040802",460,5,2300],[2,"0x80040802",510,1,510],[2,"0x80040802",528,5,2640],[2,"0x90100802",2262,1,2262],[2,"0xB0000802",2800,1,2800],[2,"0xB0000802",2859,1,2859],[2,"0xB0000802",2944,1,2944]],
+  "sharedStructures": [
+    {
+      "name": "InitialDataType",
+      "count": 6207,
+      "payloadBytes": 2686682,
+      "xEditLines": [
+        841,
+        871,
+        4939,
+        4990
+      ]
+    },
+    {
+      "name": "ChangedREFR-inside-ChangedMobileObject",
+      "count": 6207,
+      "payloadBytes": 2686682,
+      "xEditLines": [
+        5260,
+        5281,
+        5777,
+        5794
+      ]
+    },
+    {
+      "name": "ProcessHierarchy",
+      "count": 6207,
+      "payloadBytes": 2686682,
+      "xEditLines": [
+        5794,
+        6034
+      ],
+      "note": "internal process data, not flags alone, selects branches"
+    },
+    {
+      "name": "ChangedActor-and-ActorMover",
+      "count": 6207,
+      "payloadBytes": 2686682,
+      "xEditLines": [
+        6078,
+        6297
+      ]
+    },
+    {
+      "name": "ChangedExtraData-and-ChangedInventory",
+      "count": 6207,
+      "payloadBytes": 2686682,
+      "xEditLines": [
+        5000,
+        5258
+      ],
+      "note": "schema shared; presence conditional"
+    }
+  ],
+  "minimalParserVariants": [
+    {
+      "id": "shared-version27-actor-core",
+      "scope": "all ACHR/ACRE",
+      "count": 6207,
+      "payloadBytes": 2686682,
+      "xEditLines": [
+        4939,
+        4990,
+        5777,
+        6312
+      ]
+    },
+    {
+      "id": "non-player-ACHR-character-tail",
+      "count": 2925,
+      "payloadBytes": 1193094,
+      "shape": "shared core + Byt1C0/Byt1C1",
+      "xEditLines": [
+        6299,
+        6322
+      ]
+    },
+    {
+      "id": "Player-ACHR-prefix-and-tail",
+      "count": 1,
+      "payloadBytes": 5095,
+      "shape": "actor-value prefix + Changed Character + second animation/player tail",
+      "xEditLines": [
+        6314,
+        6460
+      ]
+    },
+    {
+      "id": "ACRE-creature",
+      "count": 3281,
+      "payloadBytes": 1488493,
+      "shape": "shared core via Changed Creature, no character tail",
+      "xEditLines": [
+        6310,
+        6312,
+        6519,
+        6521
+      ]
+    },
+    {
+      "id": "conditional-changeFlag-dispatch",
+      "distinctObservedBits": 13,
+      "distinctCombinedMasks": 36,
+      "specializedRecordMaskVariantsIfNotShared": 49,
+      "exactRecordFlagLengthClasses": 241,
+      "shape": "branch on observed bits, then validate nested discriminators"
+    }
+  ],
+  "priorityProfileRankingSchema": [
+    "rank",
+    "changeFlags",
+    "count",
+    "payloadBytes",
+    "ACHRCount",
+    "ACRECount",
+    "cumulativeCount",
+    "cumulativePayloadBytes",
+    "cumulativePayloadFraction"
+  ],
+  "priorityProfileRanking": [[1,"0x00040800",1618,818243,405,1213,1618,818243,"818243/2686682"],[2,"0x00040000",2019,601953,1346,673,3637,1420196,"1420196/2686682"],[3,"0x00000800",1010,472211,305,705,4647,1892407,"1892407/2686682"],[4,"0x00040404",453,187921,0,453,5100,2080328,"2080328/2686682"],[5,"0x00040802",310,163816,231,79,5410,2244144,"2244144/2686682"],[6,"0x00000802",237,110819,184,53,5647,2354963,"2354963/2686682"],[7,"0x80000802",212,105827,170,42,5859,2460790,"2460790/2686682"],[8,"0x80000800",92,42495,88,4,5951,2503285,"2503285/2686682"],[9,"0x80040802",72,42062,61,11,6023,2545347,"2545347/2686682"],[10,"0xA0000802",44,31236,44,0,6067,2576583,"2576583/2686682"],[11,"0x20000802",39,28367,20,19,6106,2604950,"2604950/2686682"],[12,"0x30000802",6,14483,2,4,6112,2619433,"2619433/2686682"],[13,"0xB0000802",3,8603,0,3,6115,2628036,"2628036/2686682"],[14,"0x80040800",19,8322,18,1,6134,2636358,"2636358/2686682"],[15,"0x80000000",21,7894,17,4,6155,2644252,"2644252/2686682"],[16,"0x20040802",11,6362,5,6,6166,2650614,"2650614/2686682"],[17,"0xB0000022",1,5095,1,0,6167,2655709,"2655709/2686682"],[18,"0x10000802",2,4397,0,2,6169,2660106,"2660106/2686682"],[19,"0x88040823",8,4042,8,0,6177,2664148,"2664148/2686682"],[20,"0xB8100823",1,3448,1,0,6178,2667596,"2667596/2686682"],[21,"0xB0100802",1,3084,1,0,6179,2670680,"2670680/2686682"],[22,"0x80040000",6,2346,6,0,6185,2673026,"2673026/2686682"],[23,"0x90100802",1,2262,0,1,6186,2675288,"2675288/2686682"],[24,"0x08040023",4,2020,4,0,6190,2677308,"2677308/2686682"],[25,"0x30100802",1,2010,0,1,6191,2679318,"2679318/2686682"],[26,"0x80040404",3,1257,0,3,6194,2680575,"2680575/2686682"],[27,"0x00000820",2,1132,2,0,6196,2681707,"2681707/2686682"],[28,"0x08040823",2,952,2,0,6198,2682659,"2682659/2686682"],[29,"0x08000020",2,753,2,0,6200,2683412,"2683412/2686682"],[30,"0x28100822",1,605,1,0,6201,2684017,"2684017/2686682"],[31,"0x80000C05",1,569,0,1,6202,2684586,"2684586/2686682"],[32,"0x80000822",1,520,1,0,6203,2685106,"2685106/2686682"],[33,"0x80000803",1,448,0,1,6204,2685554,"2685554/2686682"],[34,"0x80400800",1,442,1,0,6205,2685996,"2685996/2686682"],[35,"0x80000001",1,377,0,1,6206,2686373,"2686373/2686682"],[36,"0x00000003",1,309,0,1,6207,2686682,"2686682/2686682"]],
+  "explicitlyUncovered": [
+    "No payload field is declared semantically understood; this is no parity credit.",
+    "Internal process/package/extra/pathing/inventory/animation/list/subbuffer discriminators are not decoded here.",
+    "Same flags and length do not prove identical nested union choices.",
+    "xEdit Unknown/Unk/Byt/Wrd names remain unknown; no meaning is inferred.",
+    "Resolved FormID is save-reference identity only; winning ESM base/type is not asserted.",
+    "Explicit-null ACHR has no FormID and needs fail-closed policy.",
+    "Namespaces 1/2, versions other than 27, and width 1/4 have zero actor observations.",
+    "Unobserved bits 3,4,6,7,8,9,12,13,14,15,16,17,19,21,23,24,25,26,30 receive no claim.",
+    "Visuals, AI, equipment, combat, furniture, playback, saving and round-trip mutation are out of scope."
+  ],
+  "canonicalFingerprint": {
+    "rowFormat": "changedFormIndex|record|fileOffset|encodedRefIdHex6|namespace|referencePayload|resolvedFormIdHex8-or--|changeFlagsHex8|version|payloadLength|payloadSha256\\n",
+    "combinedOrderedRowsSha256": "abb411940e3f0b3fe3c8d954ae879def35536151dbfd844d11e638a6d32bb19e",
+    "ordering": "full changed-form order filtered to ACHR/ACRE"
+  },
+  "validationEquations": [
+    "parse ends at 3308279",
+    "7093 = 6207 actors/creatures + 886 others",
+    "6207 = 6206 resolved + 1 null",
+    "all 6207 use namespace 0, version 27, width 2",
+    "all 6206 resolved FormIDs unique; duplicate count 0",
+    "241 classes sum to 6207 envelopes and 2686682 payload bytes"
+  ]
+}
