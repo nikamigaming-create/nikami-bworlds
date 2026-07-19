@@ -1,0 +1,113 @@
+{
+  "schema": "nikami-fnv-save330-renderer-provenance-lock/v1",
+  "status": "source-locked-runtime-capture-pending",
+  "candidateEligible": false,
+  "cleanWorktree": {
+    "path": "D:/code/nikami-openmw-save330-clean",
+    "branch": "codex/fnv-save330-clean",
+    "madsBaseline": "33568aec1d425d511f7a0b0eb743b3246da681ba",
+    "windowsBuildBaseline": "2ed153af0647fa6e3b76e7ba6536be744d8f116b",
+    "auditedRendererHead": "85c112f6677c0205131f7cef75827a585fe93819",
+    "currentSourceHeadAtLock": "2b2dead4d1",
+    "changesAfterAuditedRendererHead": [
+      "apps/components_tests/esm4/fonvsavegame.cpp",
+      "components/esm4/fonvsavegame.cpp",
+      "components/esm4/fonvsavegame.hpp"
+    ]
+  },
+  "rendererSubtreeHashes": {
+    "apps/openmw/mwrender": "ed95b3d3242bf5f1095a6d673d08a61df308eb56",
+    "components/nif": "29e631a5ca3617934ebd4645d2e075580868d2a4",
+    "components/nifosg": "7fe5f627cba8a7281ea8abd35809c43e808ce52d",
+    "components/sceneutil": "deb90465bdef23dcb9d6bf309a8559eb9fde2d50",
+    "components/shader": "10086c236da62b6c804028cb161ecef218fcd4a6",
+    "components/fx": "099a2ff34708ea268eb95cd469d16418e2d89bb2",
+    "components/myguiplatform": "e8526924e4691c7500f8020ded5de407cf5c9a4b",
+    "apps/openmw/mwgui": "838d92159bb9c7e90843148f39ef9ecacff9a62e",
+    "files/shaders": "56120792736a1f8c1bb2b6de454ee82382cb1192",
+    "files/data/mygui": "05bd78924f20cde91f16132bb583b6818de1a304",
+    "files/data/scripts/omw/vr": "c154d4e08ba2118cf9cee22a8cfb910305619bf1"
+  },
+  "lastAuditedBuild": {
+    "sourceHead": "85c112f6677c0205131f7cef75827a585fe93819",
+    "binaryPath": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/openmw.exe",
+    "binaryBytes": 71634944,
+    "binarySha256": "18c46c837c27835e1981a407c2ebc7c4e7b7e03a6285069aaa7be3805c2683dd",
+    "resourceRoot": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources",
+    "supersededByParserCommit": true,
+    "candidateEligible": false
+  },
+  "requiredRuntimeIsolation": {
+    "resourceRoot": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources",
+    "config": "new isolated FNV-only config",
+    "settings": "new isolated settings with post-processing disabled",
+    "userData": "new isolated user-data directory",
+    "mode": "flat",
+    "forbiddenEnvironmentPrefixes": ["OPENMW_FNV_"],
+    "forbiddenFeatures": [
+      "post-processing",
+      "diagnostic renderer",
+      "bootstrap scene",
+      "proof camera",
+      "VR",
+      "resource overrides"
+    ]
+  },
+  "deniedInputs": [
+    {
+      "path": "D:/code/nikami-worlds/run/fnv-parity-profile/openmw.cfg",
+      "reason": "points at the mixed experimental openmw-fo4guard resource tree"
+    },
+    {
+      "path": "D:/code/nikami-worlds/local/openmw-fo4guard/resources",
+      "reason": "contains seven semantically altered world shaders, eight extra experimental shaders, six modified MyGUI layouts, and three modified VR scripts"
+    },
+    {
+      "path": "C:/Users/nbrys/OneDrive/Documents/My Games/OpenMW/openmw.cfg",
+      "reason": "large Morrowind modlist including Wareya post-processing"
+    },
+    {
+      "path": "C:/Users/nbrys/OneDrive/Documents/My Games/OpenMW/settings.cfg",
+      "reason": "post-processing enabled and non-proof distant-terrain/object-paging settings"
+    },
+    {
+      "path": "D:/code/nikami-openmw-pristine-mads",
+      "reason": "dirty experimental worktree, including uncommitted GUI shader routing"
+    }
+  ],
+  "historicalRegressionCommits": {
+    "blackWhiteAndExposure": [
+      "6055840718b69f9bad6f9d4a80b98288c7b43bdf",
+      "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
+      "b273f31bdd7158a553512b09f264ed832653989b",
+      "4119a8256435acf1cd33f273cfb4177192e8fd5d",
+      "29ac1925b4f4b2441c653e78f7dc078016e6661e"
+    ],
+    "reflectionAndAlphaBleed": ["c62e736dbbbd4bc6dd0cfb8ece0d6c5cfdd994d8"],
+    "disappearingGeometry": [
+      "6f84bba2024542d785d3e9eaa4a49ef1dcfd87fb",
+      "ea01e3cfdf7f1acd8846469433b496a960eac4e7"
+    ],
+    "hudMenuPointer": [
+      "25d598dd7e88f6d351d68dadeaa64285002f0be6",
+      "ee86bd3c8e4ee58729e5f9acfdc4e9e01df56ad0",
+      "b26fd1a5cffcfbcb2c7fc2e2368baa9caf7f4cc0",
+      "bbf20fd55ff55bac26b5e5515d722ba4add7d960",
+      "b895097fc673c567b4c5fabd68da26d1b7dfe730"
+    ],
+    "madsPointerMenuRestore": "264a2f35a8f9573fb8913e252d9446250ed84784"
+  },
+  "captureGate": {
+    "required": [
+      "rebuild openmw.exe at the exact capture HEAD",
+      "hash executable and adjacent resources/version",
+      "prove every deployed shader, MyGUI file, VR script, and camera script matches the locked source",
+      "bind PID and process path",
+      "hash isolated config and settings",
+      "bind exact Save330 hash and ESM/ESP load order",
+      "prove normal .fos load, flat mode, first-person camera, full-color frame, time, weather, and authored visible-reference set"
+    ],
+    "currentBlocker": "normal atomic Save330 application and complete camera/reference metadata do not exist",
+    "sideBySideStatus": "pending"
+  }
+}
