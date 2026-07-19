@@ -1,0 +1,532 @@
+{
+  "schema": "nikami-fnv-save330-clean-capture-inputs/v1",
+  "auditedAtUtc": "2026-07-19T10:05:47.939Z",
+  "status": "blocked-fail-closed",
+  "candidateEligible": false,
+  "purpose": "Immutable input and isolation contract for a later normal, flat, full-color OpenMW capture of exact retail Save330. This audit performed no build, launch, GUI, browser, staging, or runtime mutation.",
+  "failClosedPolicy": {
+    "rule": "Reject capture eligibility if any pinned path is absent, any byte count or SHA-256 differs, source HEAD or tree differs, source worktree is dirty, official order differs, an unlisted content/data/config layer is present, any forbidden argument/environment/mod is present, or any blocker below remains open.",
+    "pathFormat": "absolute paths with forward slashes",
+    "sha256Format": "uppercase hexadecimal",
+    "treeHashAlgorithm": "Recursively enumerate regular files; compute root-relative paths with forward slashes; sort paths with StringComparer.Ordinal; emit UTF-8 rows relativePath<TAB>decimalBytes<TAB>uppercaseSha256<LF>, including the final LF when nonempty; SHA-256 the resulting bytes.",
+    "eligibilityMutation": "candidateEligible may become true only in a new evidence manifest after all inputs are rematerialized and rehashed; this audit file must remain false."
+  },
+  "cleanSource": {
+    "root": "D:/code/nikami-openmw-save330-clean",
+    "branch": "codex/fnv-save330-clean",
+    "head": "33f6270d5cbb5f1ef646b64f4412828350dd05db",
+    "tree": "764087e6978d749807174bf7fff7884419fba5ae",
+    "parent": "93c135b0a3ee726574711a98088f27a415c9de97",
+    "author": "Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>",
+    "authorDate": "2026-07-19T02:55:20-07:00",
+    "committerDate": "2026-07-19T02:55:58-07:00",
+    "subject": "Decode Save330 player topics and objectives",
+    "worktreeCleanAtAudit": true,
+    "madsBaseline": "33568aec1d425d511f7a0b0eb743b3246da681ba",
+    "windowsBuildBaseline": "2ed153af0647fa6e3b76e7ba6536be744d8f116b",
+    "lastAuditedBuiltSource": "85c112f6677c0205131f7cef75827a585fe93819",
+    "onlyPathsChangedAfterLastAuditedBuiltSource": [
+      "apps/components_tests/esm4/fonvsavegame.cpp",
+      "components/esm4/fonvsavegame.cpp",
+      "components/esm4/fonvsavegame.hpp"
+    ],
+    "rendererBoundary": {
+      "unchangedFromMadsBaseline": true,
+      "gitTreeHashes": {
+        "apps/openmw/mwrender": "ed95b3d3242bf5f1095a6d673d08a61df308eb56",
+        "components/nif": "29e631a5ca3617934ebd4645d2e075580868d2a4",
+        "components/nifosg": "7fe5f627cba8a7281ea8abd35809c43e808ce52d",
+        "components/sceneutil": "deb90465bdef23dcb9d6bf309a8559eb9fde2d50",
+        "components/shader": "10086c236da62b6c804028cb161ecef218fcd4a6",
+        "components/fx": "099a2ff34708ea268eb95cd469d16418e2d89bb2",
+        "components/myguiplatform": "e8526924e4691c7500f8020ded5de407cf5c9a4b",
+        "apps/openmw/mwgui": "838d92159bb9c7e90843148f39ef9ecacff9a62e",
+        "files/shaders": "56120792736a1f8c1bb2b6de454ee82382cb1192",
+        "files/data/mygui": "05bd78924f20cde91f16132bb583b6818de1a304",
+        "files/data/scripts/omw/vr": "c154d4e08ba2118cf9cee22a8cfb910305619bf1",
+        "files/data/scripts/omw/camera": "9ae0b607874bf750e1a7d6a5322afe885a122116"
+      }
+    },
+    "normalLoadSourceAnchors": [
+      {
+        "path": "apps/openmw/mwworld/fnvplayerstate.cpp",
+        "bytes": 30576,
+        "sha256": "27E0A8EB547F18486E66823EE0081FB0B97C7C4830B99523EB99376D032463CC"
+      },
+      {
+        "path": "apps/openmw/mwworld/fnvsavepreflight.cpp",
+        "bytes": 4543,
+        "sha256": "4A76C3A7DCC6A02115C7364ED471090CA99D31C3B2011160ABC517BF2B8438FC"
+      },
+      {
+        "path": "apps/openmw/mwworld/fnvsavepreflight.hpp",
+        "bytes": 2843,
+        "sha256": "3B0C61297B29DC949A3DB945F8F585136E5B78A3DD01B9065561EB43F19D471A"
+      },
+      {
+        "path": "apps/openmw/mwstate/statemanagerimp.cpp",
+        "bytes": 33972,
+        "sha256": "517A0D9B73C7C0B037C62D7079560C5363ADD1C71A6AEB60B747B79B644888BF"
+      },
+      {
+        "path": "components/esm4/fonvsavegame.cpp",
+        "bytes": 125540,
+        "sha256": "488E895D52A1BEAAD9C6A07A9F283443A24B697F4E1B540CC648D8EF32335E58"
+      },
+      {
+        "path": "components/esm4/fonvsavegame.hpp",
+        "bytes": 40357,
+        "sha256": "B10B7106DFB03EF3EB2C5D0432714F1433E8FB8591005B9BB2C600D4E46343E6"
+      },
+      {
+        "path": "apps/components_tests/esm4/fonvsavegame.cpp",
+        "bytes": 172188,
+        "sha256": "C077479B6A446FB38E85A654741DE61D2A6D0C91933F399529FCC059A99EF2C8"
+      }
+    ]
+  },
+  "adjacentBuild": {
+    "root": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo",
+    "modeRequired": "flat",
+    "executable": {
+      "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/openmw.exe",
+      "bytes": 71634944,
+      "sha256": "18C46C837C27835E1981A407C2EBC7C4E7B7E03A6285069AAA7BE3805C2683DD",
+      "lastWriteUtc": "2026-07-19T09:15:22.0973430Z",
+      "auditedBuiltSource": "85c112f6677c0205131f7cef75827a585fe93819",
+      "matchesCurrentHead": false,
+      "eligible": false,
+      "reason": "The executable predates commits 2b2dead4d1, 93c135b0a3, and 33f6270d5c and retains the binary hash previously audited at 85c112f667; a current-HEAD openmw.exe is mandatory."
+    },
+    "resourceVersion": {
+      "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources/version",
+      "bytes": 92,
+      "sha256": "22D35BFBA66D58F02BC2CE9EFADF64AB6C9438239E8669DEE2200EC1E7647D78",
+      "lines": [
+        "0.50.0",
+        "33f6270d5cbb5f1ef646b64f4412828350dd05db",
+        "8a1ad31b2bfd7f3d9b387df0ba216c46ec6a8c96"
+      ],
+      "warning": "The resource version names current HEAD while openmw.exe is stale; this is a split-provenance build directory, not a capturable deployment."
+    },
+    "resourceTrees": {
+      "all": {
+        "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources",
+        "files": 372,
+        "bytes": 2574074,
+        "listingBytes": 38608,
+        "sha256": "FEBA552FCAD546E22964CF161AD7EAE044C57E56F8E53FC029D3AC664125623B"
+      },
+      "shaders": {
+        "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources/shaders",
+        "files": 62,
+        "bytes": 90795,
+        "listingBytes": 6036,
+        "sha256": "A9D7F001975FDC2B4AFED9D3E93F9AC15D9E6983068B031442E4B30C7046B91B",
+        "sourceFilesMatched": 62,
+        "sourceOnly": [
+          "CMakeLists.txt"
+        ],
+        "deployedOnly": [],
+        "contentMismatches": []
+      },
+      "vfs": {
+        "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources/vfs",
+        "files": 269,
+        "bytes": 2070641,
+        "listingBytes": 27106,
+        "sha256": "FD0CFC66F855A846D5D5F1394A7D17F8AB2DC1760D7F642DC725C2238D7912D4"
+      },
+      "vfsMw": {
+        "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources/vfs-mw",
+        "files": 10,
+        "bytes": 11710,
+        "listingBytes": 933,
+        "sha256": "62DC047BC827E3BAA641B6EF2C98CDDCCBD644942398C7AA875D9D343073268B",
+        "allowedAsDataRoot": false
+      },
+      "luaApi": {
+        "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources/lua_api",
+        "files": 26,
+        "bytes": 324267,
+        "listingBytes": 2261,
+        "sha256": "533BFABD386D51788600B2CF35B75E7933EBF6A19799F0D9F6E1B6709ECF994C"
+      },
+      "luaLibs": {
+        "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources/lua_libs",
+        "files": 2,
+        "bytes": 4280,
+        "listingBytes": 160,
+        "sha256": "2DCD56F69DDB769875FF314725D737E7466356AAD290B99A63F29B19A76231CC"
+      }
+    },
+    "adjacentSelectionHashes": {
+      "topLevelDlls": {
+        "selection": "regular files matching *.dll directly under adjacentBuild.root",
+        "files": 24,
+        "bytes": 64039424,
+        "sha256": "525EDFD295A4B2CB8CFCE78867F34907C9BBD01DFE1176AF2A493DBAEA11679E"
+      },
+      "requiredSidecars": {
+        "selection": [
+          "defaults.bin",
+          "defaults-cs.bin",
+          "gamecontrollerdb.txt",
+          "openmw.appdata.xml",
+          "openmw.cfg.install",
+          "openxrinteractionprofiles.xml",
+          "overrides.bin"
+        ],
+        "files": 7,
+        "bytes": 717301,
+        "sha256": "017E1CCBDDE4C4D2C99A087C09BE47F3BE3965E45B8629467373FF0AE5F509BD"
+      }
+    },
+    "forbiddenAmbientConfig": {
+      "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/openmw.cfg",
+      "bytes": 29386,
+      "sha256": "EEFB940803C533B17A6899D951D7B3B58E9758FCE9D4F8A5D42B72A9F07B772A",
+      "reason": "Installed defaults include resources/vfs-mw as a data root and may never be the effective capture config."
+    }
+  },
+  "save330": {
+    "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
+    "bytes": 3395328,
+    "sha256": "07DBDD2D7C4ABE3160628E5463A9603A40F4271042C1DA1B89F1C4A4F7DBD81F",
+    "header": {
+      "saveNumber": 330,
+      "location": "Goodsprings",
+      "playTime": "000.16.45",
+      "screenshotWidth": 512,
+      "screenshotHeight": 320
+    },
+    "embeddedScreenshot": {
+      "offset": 147,
+      "bytes": 491520,
+      "pixelFormat": "RGB24",
+      "sha256": "16C44995EC4BC0EBDE43F2D0FD81BA4CFF2C6901642E288C676EB8BA6CC8E23E"
+    },
+    "masterTable": {
+      "offset": 491672,
+      "bytes": 199,
+      "sha256": "636AE878157CA5C5A7CAB2C9988D98C7270E0A5294482DCC84D1ACFB41B70D97"
+    },
+    "embeddedMasterOrder": [
+      "FalloutNV.esm",
+      "DeadMoney.esm",
+      "HonestHearts.esm",
+      "OldWorldBlues.esm",
+      "LonesomeRoad.esm",
+      "TribalPack.esm",
+      "MercenaryPack.esm",
+      "ClassicPack.esm",
+      "CaravanPack.esm",
+      "GunRunnersArsenal.esm"
+    ],
+    "saveIndexToConfiguredContentIndex": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      9,
+      8,
+      7,
+      6,
+      5
+    ]
+  },
+  "officialContent": {
+    "scopeId": "fnv-ultimate-edition-en-official-v1",
+    "denominatorPath": "D:/code/nikami-worlds-fnv-parity/catalog/fnv-parity-denominators.json",
+    "denominatorBytes": 13848,
+    "denominatorSha256": "983708E08FDB5193C36A669DB3494682020A010CBF64760C73891C758F0D49B3",
+    "observedSteamDataRoot": {
+      "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data",
+      "files": 319,
+      "bytes": 9838477699,
+      "listingBytes": 36910,
+      "sha256": "ADA5E9B92C0F764A485502FA68306E79CD46E37DAA71A8226FE8D8FF546282A4",
+      "allowedAsCaptureDataRoot": false,
+      "reason": "The root contains exact official payloads but is physically contaminated by FNVR.esp and an nvse tooling tree."
+    },
+    "requiredStagedDataRoot": {
+      "path": "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/inputs/fnv-data",
+      "existsAtAudit": false,
+      "mustContain": "Only the exact official masters, archives, and separately provenance-approved retail loose assets required by the normal client.",
+      "mustNotContain": "Any plugin, script extender, diagnostic DLL/data, loose shader/material/model/texture override, graphics mod, VR bridge, or unlisted file.",
+      "treeSha256": null,
+      "eligible": false
+    },
+    "configuredContentOrder": [
+      "FalloutNV.esm",
+      "DeadMoney.esm",
+      "HonestHearts.esm",
+      "OldWorldBlues.esm",
+      "LonesomeRoad.esm",
+      "GunRunnersArsenal.esm",
+      "CaravanPack.esm",
+      "ClassicPack.esm",
+      "MercenaryPack.esm",
+      "TribalPack.esm"
+    ],
+    "masters": [
+      { "order": 0, "name": "FalloutNV.esm", "bytes": 245650747, "sha256": "50991D36804B7D1E70DF1AFD7471B72F0E29D1B456EE2516A9717C002564E7C1" },
+      { "order": 1, "name": "DeadMoney.esm", "bytes": 6274851, "sha256": "31EDE9C21AE6960EC868BF60879C602BF7A13879B2F47E7CFD1AC30B4D4DE329" },
+      { "order": 2, "name": "HonestHearts.esm", "bytes": 17308500, "sha256": "4341D1A35EAAC7D9E7097EBAC8F31A13264CA6DCB33443408BD97E5DDD5D8368" },
+      { "order": 3, "name": "OldWorldBlues.esm", "bytes": 16202800, "sha256": "FD6CC6E582582EC035277150E106D12B6D78C7C60CBB506545E06D1FA7212295" },
+      { "order": 4, "name": "LonesomeRoad.esm", "bytes": 25676818, "sha256": "41BF457C1ED313834407840D2B60447F74264E33B372590454EAD8AC663B0516" },
+      { "order": 5, "name": "GunRunnersArsenal.esm", "bytes": 252445, "sha256": "AEE27930699494F0626D24A3A8AE947FE447E33EDC0ED46762E54FAAB4C05A1E" },
+      { "order": 6, "name": "CaravanPack.esm", "bytes": 3007, "sha256": "0473CFF52D375A77D6585F203A914445FA5A9E6BA726818AA7D8D48CB177EC82" },
+      { "order": 7, "name": "ClassicPack.esm", "bytes": 6523, "sha256": "3B31928DFDAC46028F2E12F25B0DBDD0E809D4D74AC04FB7783E0063E912760B" },
+      { "order": 8, "name": "MercenaryPack.esm", "bytes": 3064, "sha256": "73E76BCADBF326818AF7B58C315773A2D86FE3A8186A778E84A68916CB830C59" },
+      { "order": 9, "name": "TribalPack.esm", "bytes": 2323, "sha256": "342F42CE9835F57EE19BE09F12AD0BA2C6182E86740338202FCEA9011D62F328" }
+    ],
+    "fallbackArchiveOrder": [
+      "Fallout - Meshes.bsa",
+      "Fallout - Misc.bsa",
+      "Fallout - Sound.bsa",
+      "Fallout - Textures.bsa",
+      "Fallout - Textures2.bsa",
+      "Fallout - Voices1.bsa",
+      "DeadMoney - Main.bsa",
+      "DeadMoney - Sounds.bsa",
+      "HonestHearts - Main.bsa",
+      "HonestHearts - Sounds.bsa",
+      "OldWorldBlues - Main.bsa",
+      "OldWorldBlues - Sounds.bsa",
+      "LonesomeRoad - Main.bsa",
+      "LonesomeRoad - Sounds.bsa",
+      "GunRunnersArsenal - Main.bsa",
+      "GunRunnersArsenal - Sounds.bsa",
+      "CaravanPack - Main.bsa",
+      "ClassicPack - Main.bsa",
+      "MercenaryPack - Main.bsa",
+      "TribalPack - Main.bsa",
+      "Update.bsa"
+    ],
+    "archives": [
+      { "order": 0, "name": "Fallout - Meshes.bsa", "bytes": 1061624491, "sha256": "054E299829FF24FD4BD4EDF69F6424346B400C87379CEE39BEC02E4D082BF85A" },
+      { "order": 1, "name": "Fallout - Misc.bsa", "bytes": 1905069, "sha256": "61A2FDCFF07EDA5A19CEEA6BB9CF661B250D36A231818E33D3D23BE94F9299C2" },
+      { "order": 2, "name": "Fallout - Sound.bsa", "bytes": 850985572, "sha256": "B134E1E2381473E9A803FD3631B3DE51184294B912E6120BC53DD3CDE1C3D561" },
+      { "order": 3, "name": "Fallout - Textures.bsa", "bytes": 1196767196, "sha256": "68C0F4BEB00E07CC06361E3A5BE0909873220731DB3BD43BC013E85544B67578" },
+      { "order": 4, "name": "Fallout - Textures2.bsa", "bytes": 961249657, "sha256": "BDAA85989B30A68C2C9CE79A07B167ECD72942DF47F2E58C4A0299B016410DC2" },
+      { "order": 5, "name": "Fallout - Voices1.bsa", "bytes": 1602331889, "sha256": "E6E24F4E4201FD1A31A5A00DB492DFDF82274406660C2ECBFB1ADE9B93E45460" },
+      { "order": 6, "name": "DeadMoney - Main.bsa", "bytes": 358888134, "sha256": "6A40698EA28C380B883A0A06ED42A4A6ACD7B3C2513785E038D75D844D56A3A5" },
+      { "order": 7, "name": "DeadMoney - Sounds.bsa", "bytes": 105097622, "sha256": "8A1C458106FB230A98B4B3E913AAFC85E6D91A99471E4EF7220987AD8A8123A8" },
+      { "order": 8, "name": "HonestHearts - Main.bsa", "bytes": 393526429, "sha256": "282EF809845C09E08BDF0D49D8C3AA0F08AD64BA759D245FDFAD35215C7F45DF" },
+      { "order": 9, "name": "HonestHearts - Sounds.bsa", "bytes": 14267595, "sha256": "4271B3FA8768DEF50613AA002711D0383082A73E0D2BAD2CC2EA9DF5830E82DB" },
+      { "order": 10, "name": "OldWorldBlues - Main.bsa", "bytes": 680808222, "sha256": "09CE146AE06E382916DCB9FADA5236E149E96991EAA3F677B083C862EE9F5CB3" },
+      { "order": 11, "name": "OldWorldBlues - Sounds.bsa", "bytes": 67207292, "sha256": "9CC9902B838945EE700511B32405875E074590B7CB1DFA7FCF4E2962B410D045" },
+      { "order": 12, "name": "LonesomeRoad - Main.bsa", "bytes": 767192969, "sha256": "7A97C20E0356A58347928DA010D06FF61698BAAC937775B63BC39C444994E8F4" },
+      { "order": 13, "name": "LonesomeRoad - Sounds.bsa", "bytes": 28827118, "sha256": "E6E3676C0A9379317EB2ED4F8F490FC8054AEF9E8733F418119D8E119960FE30" },
+      { "order": 14, "name": "GunRunnersArsenal - Main.bsa", "bytes": 122572765, "sha256": "B118999F87827C353664F8A99440FCEA40D20A17EAFFDCC1E78543D81FB51BC4" },
+      { "order": 15, "name": "GunRunnersArsenal - Sounds.bsa", "bytes": 9715305, "sha256": "1C96CCADCE4BCCAD61BA994DC1999609725B8DBE8EADAEFE40901FF3EB975F3B" },
+      { "order": 16, "name": "CaravanPack - Main.bsa", "bytes": 4235371, "sha256": "C4EE871E4C5DCC6FE2206B81C85FB0D8715D060260B9D37738BBBAFCD723FCEA" },
+      { "order": 17, "name": "ClassicPack - Main.bsa", "bytes": 8445542, "sha256": "2D87957A795107EEAF9B4811A7BA29505FF0B7A0D03EC3E5DC2A928DEF0B78BD" },
+      { "order": 18, "name": "MercenaryPack - Main.bsa", "bytes": 1835388, "sha256": "75FA2A35D28FC6F124DC3EE9D49CF3810CBCC92AC3276DD2DB59C6F48EDB2325" },
+      { "order": 19, "name": "TribalPack - Main.bsa", "bytes": 5840168, "sha256": "12E8F8BFEF320374E054A7EBED6E3369696D65DD7ED39C6C19823C5ADF864B4B" },
+      { "order": 20, "name": "Update.bsa", "bytes": 17250402, "sha256": "8CBC13E9B47A73396B9C620A636DA27DCA6E8C715F6E98B4F263347BAEA4D92E" }
+    ],
+    "observedLooseTrees": {
+      "Music": { "files": 199, "bytes": 547662820, "sha256": "55E13CA574DACE132FE611BEABF97E165336F6ACBD6B685E986A484BE5293493", "stagingDisposition": "requires independent retail provenance before admission" },
+      "Sound": { "files": 48, "bytes": 268536397, "sha256": "F82CD67F4C076970EA34BE3ABBEB04930A52862652E3D11D964DAE796057C8B1", "stagingDisposition": "requires independent retail provenance before admission" },
+      "Shaders": { "files": 16, "bytes": 21464624, "sha256": "E5E347FF31CAD3D2BF37D1C5717DABD02C2B381B135E0653CE49E37234813BAE", "stagingDisposition": "requires independent retail provenance before admission; never substitute for OpenMW GLSL resources" },
+      "Video": { "files": 1, "bytes": 353301852, "sha256": "D66D277C0EEDEA1B120752C51CF0D0F769FC0BDD10CB36BFE40651361B5AC189", "stagingDisposition": "requires independent retail provenance before admission" }
+    }
+  },
+  "uiOnlyDataRoots": {
+    "engineUiResources": {
+      "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources/vfs",
+      "allowed": true,
+      "mountContract": "Reach only through the pinned --resources root; do not add as a data= path."
+    },
+    "externalDataRootsAllowed": [],
+    "rejectedCandidates": [
+      {
+        "path": "D:/Modlists/fnv/openmw-config/data",
+        "files": 2428,
+        "bytes": 213729333,
+        "listingBytes": 322770,
+        "sha256": "B19F703E58A1098122AB9B067B67BF650084ED69E536B2C0416ED52B4129A133",
+        "reason": "Not UI-only: alongside menus/icons it contains world water, sky, terrain, architecture, Pip-Boy meshes/textures, and other loose overrides. It may not be mounted wholesale or partially presumed safe."
+      },
+      {
+        "path": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources/vfs-mw",
+        "sha256": "62DC047BC827E3BAA641B6EF2C98CDDCCBD644942398C7AA875D9D343073268B",
+        "reason": "Morrowind-specific Calendar/GMST compatibility data is not an FNV capture input."
+      }
+    ]
+  },
+  "runtimeIsolationContract": {
+    "root": "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture",
+    "existsAtAudit": false,
+    "workingDirectory": "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo",
+    "paths": {
+      "configDirectory": "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/config",
+      "openmwCfg": "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/config/openmw.cfg",
+      "settingsCfg": "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/config/settings.cfg",
+      "userData": "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/user-data",
+      "dataLocal": "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/user-data/data",
+      "evidence": "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/evidence"
+    },
+    "settingsTemplate": {
+      "sourcePath": "D:/code/nikami-worlds-fnv-parity/config/fnv-playable-graphics/settings.cfg",
+      "bytes": 2361,
+      "sha256": "2FAFD68BACD266329F1BB957277D299E6EEC1B08C0282EDB325CF247D14DB13A",
+      "copyMode": "byte-for-byte into isolated config",
+      "requiredInvariants": [
+        "viewing distance = 10000",
+        "distant terrain = false",
+        "object paging = false",
+        "object paging active grid = false",
+        "load unsupported nif files = true",
+        "force shaders = false",
+        "apply lighting to environment maps = false",
+        "enable shadows = false",
+        "no post-processing chain or dynamic shader state in isolated user-data"
+      ]
+    },
+    "openmwCfgDirectives": {
+      "pathLinesFirst": [
+        "user-data=D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/user-data",
+        "data-local=D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/user-data/data",
+        "resources=D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources",
+        "data=D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/inputs/fnv-data"
+      ],
+      "fallbackArchiveLines": "Exactly officialContent.fallbackArchiveOrder, each prefixed fallback-archive=, in array order.",
+      "contentLines": "Exactly officialContent.configuredContentOrder, each prefixed content=, in array order.",
+      "additionalDataOrContentLinesAllowed": false,
+      "materializedBytes": null,
+      "materializedSha256": null
+    },
+    "argv": [
+      "--replace",
+      "config",
+      "--config",
+      "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/config",
+      "--user-data",
+      "D:/code/nikami-worlds-fnv-parity/run/fnv-save330-clean-capture/user-data",
+      "--resources",
+      "D:/code/nikami-openmw-save330-clean/MSVC2022_64/RelWithDebInfo/resources"
+    ],
+    "argvPolicy": "Exact ordered argv only; no additional arguments.",
+    "normalLoadAction": "Use the ordinary load-game UI to select exact Save330; no save path, cell, player, state, script, or camera is supplied on the command line.",
+    "forbiddenArgumentTokens": [
+      "--start",
+      "--skip-menu",
+      "--new-game",
+      "--script-run",
+      "--script-all",
+      "--data",
+      "--content",
+      "--fallback-archive",
+      "--no-grab"
+    ],
+    "forbiddenEnvironment": {
+      "exactNames": [
+        "OPENMW_FNV_SAVE330_FIXTURE",
+        "SteamAppId",
+        "SteamGameId",
+        "__COMPAT_LAYER"
+      ],
+      "prefixes": [
+        "OPENMW_",
+        "NIKAMI_",
+        "MESA_",
+        "OSG_",
+        "VK_",
+        "XR_",
+        "LIBGL_",
+        "DXVK_",
+        "VKD3D_",
+        "RESHADE_"
+      ],
+      "matchingVariablesObservedAtAudit": []
+    },
+    "forbiddenModsAndLayers": [
+      "FNVR.esp",
+      "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/nvse",
+      "D:/Modlists/fnv/openmw-config/data",
+      "NMCs Textures NV SMALL Pack SINGLE FILE FOR NMM-43135-1-0.7z",
+      "any ReShade, Special K, DXVK, post-processing, graphics injector, loose world shader/material/model/texture override, proof/diagnostic Lua, bootstrap scene, synthetic player, forced weather/time, VR, hand, or pointer layer",
+      "any Morrowind data, content, sounds, sky model, calendar, GMST fallback, or resource tree"
+    ],
+    "knownForbiddenPhysicalInputs": [
+      {
+        "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/FNVR.esp",
+        "bytes": 12476,
+        "sha256": "58D76A38736D127BD767915A4C8D52B1A40B47C08374B01BB86D42A31DE36344"
+      },
+      {
+        "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/nvse",
+        "files": 12,
+        "bytes": 75434419,
+        "sha256": "7B0798EBF1009216E33286A27F713E436153274F937BC1CCFDBA36DD19373F3F"
+      }
+    ],
+    "knownForbiddenConfigs": [
+      { "path": "D:/code/nikami-worlds/profiles/fallout_new_vegas/openmw.cfg", "bytes": 16938, "sha256": "D3AD4A04E7C53F272C913F5A208C0E8B688026948A4FBEA801C0C721B1458F20" },
+      { "path": "D:/code/nikami-worlds/profiles/fallout_new_vegas/settings.cfg", "bytes": 3563, "sha256": "39F627CA816E7048034D36535967D97301F4D2421D3C305754F5F7A7E2EB0F1B" },
+      { "path": "C:/Users/nbrys/OneDrive/Documents/My Games/OpenMW/openmw.cfg", "bytes": 69303, "sha256": "9DD8A8EC2170C212C1A7B25C7B12DAE5A9FD4D170502C86A84F009ED3E5EBADC" },
+      { "path": "C:/Users/nbrys/OneDrive/Documents/My Games/OpenMW/settings.cfg", "bytes": 2030, "sha256": "BC020F7C207CC21AD21F0110860B54D678A1BCB5BB50283F7A0053511970C535" }
+    ]
+  },
+  "retailVisualOracle": {
+    "imagePath": "D:/code/nikami-worlds-fnv-parity/oracles/fnv_save330_visual/retail-save330-reference.png",
+    "imageBytes": 317441,
+    "imageSha256": "859FA4A89D0CC5EFB16693A0AA104C264A1F9BC6C0BB257706B5401CEB8FD008",
+    "manifestPath": "D:/code/nikami-worlds-fnv-parity/oracles/fnv_save330_visual/retail-save330-reference.manifest.json",
+    "manifestBytes": 6272,
+    "manifestSha256": "6D8490C1896EABA39C81AAD7E89C0B9AC2DB238988795F98EF90D40A148832C7",
+    "use": "Fixed left-hand reference for the later side-by-side; it does not make an OpenMW frame eligible."
+  },
+  "remainingNormalLoadBlockers": {
+    "sourceList": {
+      "path": "apps/openmw/mwworld/fnvplayerstate.cpp",
+      "function": "falloutSaveLoadBlockers",
+      "lines": "145-155",
+      "exact": [
+        "player-runtime-actor-values-modifiers-health-limbs-perks",
+        "player-inventory-equipment-ammo",
+        "player-factions-reputation-crime-disguise",
+        "quest-stages-objectives-variables",
+        "global-variables",
+        "world-change-forms-doors-containers-actors-unloaded-references",
+        "dynamic-forms-refid-array-visited-worldspaces"
+      ]
+    },
+    "terminalApplicationBlocker": {
+      "path": "apps/openmw/mwstate/statemanagerimp.cpp",
+      "lines": "472-484",
+      "exactError": "native FNV save application transaction is not implemented",
+      "effect": "Even a blocker-free preflight deliberately throws before cleanup or any partial application."
+    },
+    "inputAndBuildBlockers": [
+      "openmw.exe does not match cleanSource.head",
+      "the adjacent build directory has split executable/resource provenance",
+      "the filtered official-only staged data root does not exist and has no tree hash",
+      "isolated openmw.cfg, settings.cfg, user-data, data-local, and evidence paths do not exist and have no capture-time hashes"
+    ],
+    "captureOnlyBlockersAfterNormalLoad": [
+      "no PID/process-path binding exists",
+      "no normal Save330 load log or runtime state manifest exists",
+      "no first-person camera transform/FOV/crop binding exists",
+      "no authored visible-reference set or several-second actor trace exists",
+      "no full-color OpenMW frame exists",
+      "no side-by-side comparison against the pinned retail oracle exists"
+    ]
+  },
+  "validationAtAudit": {
+    "officialMasterFiles": "10/10 path, byte count, SHA-256, and configured order verified",
+    "officialArchiveFiles": "21/21 path, byte count, SHA-256, and fallback order verified",
+    "save330": "path, 3,395,328 bytes, whole-file hash, embedded screenshot range/hash, master-table range/hash, and embedded master order verified",
+    "resources": "all recorded tree counts, byte sums, tree hashes, and the 62/62 deployed shader/source matches verified",
+    "source": "HEAD, tree, branch, clean status, renderer Git trees, and source-anchor file hashes verified",
+    "launchPerformed": false,
+    "buildPerformed": false,
+    "filesCreatedByAudit": [
+      "D:/code/nikami-worlds-fnv-parity/catalog/fnv-save330-clean-capture-inputs.json"
+    ]
+  }
+}
