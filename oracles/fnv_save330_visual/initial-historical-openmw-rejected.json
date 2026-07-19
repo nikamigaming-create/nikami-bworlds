@@ -31,6 +31,18 @@
     }
   },
   "openmw": {
+    "sourceRecording": {
+      "path": "C:/Users/nbrys/Downloads/Recording 2026-07-16 200412.mp4",
+      "bytes": 414638235,
+      "sha256": "5174cb0150b0542a0afa773823d7d161ce2504a87f8eee872d3e701bb98de7e0",
+      "durationSeconds": 340.031979,
+      "denseReview": {
+        "samplePeriodSeconds": 2,
+        "sampleCount": 170,
+        "exactFirstPersonSave330SceneMatchFound": false,
+        "selectedFrameRationale": "closest historical exterior composition; retained despite third-person camera because no sampled first-person frame matches the retail Save330 scene"
+      }
+    },
     "path": "D:/code/nikami-worlds-fnv-parity/run/baseline-video-audit-20260718/frame-011.png",
     "bytes": 754412,
     "sha256": "406f22112bbd94bcc9b1c986d725451192fed01ad7828e1e580a58e50812974c",

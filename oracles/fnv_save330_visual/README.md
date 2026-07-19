@@ -21,7 +21,10 @@ with the closest exterior frame found in the user's earlier OpenMW recording.
 The OpenMW half is rejected evidence: it has no normal-Save330 provenance, uses
 third person instead of the retail first-person view, is not camera-aligned,
 shows a different/duplicated stop-sign reference set, and cannot certify the
-current renderer or load path.
+current renderer or load path. A 170-frame review of the pinned 340.031979-second
+recording at two-second intervals found no first-person frame matching the
+retail Save330 scene, so the closer third-person composition remains the honest
+historical baseline rather than a fabricated camera match.
 
 Generate a review pair with `scripts/render_fnv_retail_openmw_pair.py`. A future
 right-hand image may be labelled `candidate` only when `--source-provenance`
