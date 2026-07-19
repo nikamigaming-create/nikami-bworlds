@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$BinaryRoot = "local/openmw-fo4guard",
+    [string]$BinaryRoot = "local/openmw-pristine-mads-33568a",
     [string]$OutputRoot = "run/fnv-multi-response-voice-proof",
     [string]$ExistingRunDirectory = "",
     [ValidateRange(20, 120)]

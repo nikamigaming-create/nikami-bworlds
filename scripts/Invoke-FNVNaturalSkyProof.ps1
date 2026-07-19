@@ -1,6 +1,6 @@
 param(
     [string]$OutputRoot = "run/fnv-natural-sky-proof",
-    [string]$BinaryRoot = "local/openmw-fo4guard",
+    [string]$BinaryRoot = "local/openmw-pristine-mads-33568a",
     [int]$RunSeconds = 26,
     [int]$CaptureSecond = 13,
     [int]$NativeScreenshotWaitSeconds = 15

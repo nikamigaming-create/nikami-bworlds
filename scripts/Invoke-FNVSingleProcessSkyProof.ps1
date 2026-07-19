@@ -1,6 +1,6 @@
 param(
     [string]$OutputRoot = "run/fnv-sky-single-process",
-    [string]$BinaryRoot = "local/openmw-fo4guard",
+    [string]$BinaryRoot = "local/openmw-pristine-mads-33568a",
     [int]$RunSeconds = 30,
     [int]$CaptureSecond = 15,
     [int]$NativeScreenshotWaitSeconds = 15,

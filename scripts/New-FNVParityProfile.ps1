@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)]
     [string]$DataRoot,
-    [string]$BinaryRoot = "local/openmw-fo4guard",
+    [string]$BinaryRoot = "local/openmw-pristine-mads-33568a",
     [string]$OutputPath = "run/fnv-parity-profile/openmw.cfg",
     [string]$DenominatorPath = "catalog/fnv-parity-denominators.json",
     [switch]$SkipFileValidation

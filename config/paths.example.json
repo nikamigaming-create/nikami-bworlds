@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "openmwSource": "X:/path/to/external/openmw-source",
   "openmwBuild": "X:/path/to/external/openmw-source/MSVC2022_64",
-  "openmwBinaryRoot": "local/openmw-fo4guard",
-  "openmwResources": "local/openmw-fo4guard/resources",
+  "openmwBinaryRoot": "local/openmw-pristine-mads-33568a",
+  "openmwResources": "local/openmw-pristine-mads-33568a/resources",
   "fnvRoot": "X:/path/to/fnv-modlist-or-launcher-root",
   "fnvDataPaths": [
     "X:/path/to/extracted/OpenMW-ready/FNV-mod-data-root"

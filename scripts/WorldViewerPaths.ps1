@@ -1,6 +1,26 @@
 Set-StrictMode -Version Latest
 
 $script:NikamiRepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+$script:NikamiCurrentOpenMWRuntimeDirectory = "openmw-pristine-mads-33568a"
+$script:NikamiRejectedOpenMWRuntimeDirectories = @(
+    "openmw-fo4guard",
+    "openmw-clean-recovery-6a5576"
+)
+
+function Assert-NikamiOpenMWRuntimeIsNotRejected {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$RuntimeRoot
+    )
+
+    $normalized = [IO.Path]::GetFullPath($RuntimeRoot).TrimEnd(
+        [IO.Path]::DirectorySeparatorChar,
+        [IO.Path]::AltDirectorySeparatorChar)
+    $directory = Split-Path -Leaf $normalized
+    if ($script:NikamiRejectedOpenMWRuntimeDirectories -icontains $directory) {
+        throw "Rejected obsolete OpenMW runtime '$directory'. Ordinary FNV launches are locked to local/$($script:NikamiCurrentOpenMWRuntimeDirectory)."
+    }
+}
 
 function Get-NikamiLocalConfig {
     param(
@@ -135,7 +155,7 @@ function Resolve-NikamiRepoRelativePath {
 }
 
 function Get-NikamiOpenMWRuntimeRoot {
-    return (Join-Path $script:NikamiRepoRoot "local\openmw-fo4guard")
+    return (Join-Path $script:NikamiRepoRoot "local\$($script:NikamiCurrentOpenMWRuntimeDirectory)")
 }
 
 function Get-NikamiOpenMWResourcesRoot {
@@ -144,7 +164,8 @@ function Get-NikamiOpenMWResourcesRoot {
 
 function Resolve-NikamiOpenMWRuntimeRoot {
     param(
-        [string]$ParameterValue = ""
+        [string]$ParameterValue = "",
+        [switch]$RequireCurrent
     )
 
     $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWRuntimeRoot)
@@ -157,6 +178,10 @@ function Resolve-NikamiOpenMWRuntimeRoot {
     $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
     if (-not $candidateRoot.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw "External OpenMW runtime roots are not allowed. Runtime must be under $allowedRoot. Requested: $candidateRoot."
+    }
+    Assert-NikamiOpenMWRuntimeIsNotRejected -RuntimeRoot $candidateRoot
+    if ($RequireCurrent -and $candidateRoot -ine $defaultRoot) {
+        throw "Ordinary OpenMW launches are locked to $defaultRoot. Requested: $candidateRoot."
     }
 
     if (-not (Test-Path -LiteralPath $candidateRoot)) {
@@ -188,7 +213,8 @@ function Resolve-NikamiOpenMWRuntimeRoot {
 
 function Resolve-NikamiOpenMWResourcesRoot {
     param(
-        [string]$ParameterValue = ""
+        [string]$ParameterValue = "",
+        [switch]$RequireCurrent
     )
 
     $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWResourcesRoot)
@@ -201,6 +227,11 @@ function Resolve-NikamiOpenMWResourcesRoot {
     $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
     if (-not $candidateRoot.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw "External OpenMW resources roots are not allowed. Resources must be under $allowedRoot. Requested: $candidateRoot."
+    }
+    $runtimeRoot = Split-Path -Parent $candidateRoot
+    Assert-NikamiOpenMWRuntimeIsNotRejected -RuntimeRoot $runtimeRoot
+    if ($RequireCurrent -and $candidateRoot -ine $defaultRoot) {
+        throw "Ordinary OpenMW launches are locked to $defaultRoot. Requested: $candidateRoot."
     }
 
     if (-not (Test-Path -LiteralPath $candidateRoot)) {

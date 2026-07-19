@@ -65,8 +65,8 @@ $startCell = if ($slice.PSObject.Properties.Name -contains "startCell") {
     [string](Get-RequiredProperty $worldStart "startCell" $WorldId)
 }
 
-$runtimeRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
-$resourcesRoot = Resolve-NikamiOpenMWResourcesRoot
+$runtimeRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot -RequireCurrent
+$resourcesRoot = Resolve-NikamiOpenMWResourcesRoot -RequireCurrent
 $binary = Join-Path $runtimeRoot "openmw.exe"
 if (-not (Test-Path -LiteralPath $binary)) {
     throw "Missing OpenMW binary: $binary"

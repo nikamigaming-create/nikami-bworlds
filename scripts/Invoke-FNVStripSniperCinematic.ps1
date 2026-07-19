@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$OutputRoot = "run/fnv-strip-sniper-cinematic",
-    [string]$BinaryRoot = "local/openmw-fo4guard",
+    [string]$BinaryRoot = "local/openmw-pristine-mads-33568a",
     [string]$GraphicsConfig = "config/fnv-cinematic-graphics",
     [ValidateRange(30, 600)]
     [int]$TimeoutSeconds = 120,

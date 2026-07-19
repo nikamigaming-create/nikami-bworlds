@@ -48,8 +48,8 @@ $slice = $worldStart.slices.$sliceName
 if ($null -eq $slice) { throw "Missing walkaround slice '$sliceName'." }
 $anchor = $slice.anchor
 
-$runtimeRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
-$resourcesRoot = Resolve-NikamiOpenMWResourcesRoot
+$runtimeRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot -RequireCurrent
+$resourcesRoot = Resolve-NikamiOpenMWResourcesRoot -RequireCurrent
 $binary = Join-Path $runtimeRoot "openmw_vr.exe"
 $profile = [IO.Path]::GetFullPath([string]$world.profileDirectory)
 $playableBaseline = Join-Path $repoRoot "config/playable-baseline"

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$OpenMWExe = "local/openmw-fo4guard/openmw.exe",
-    [string]$ResourcesRoot = "local/openmw-fo4guard/resources",
+    [string]$OpenMWExe = "local/openmw-pristine-mads-33568a/openmw.exe",
+    [string]$ResourcesRoot = "local/openmw-pristine-mads-33568a/resources",
     [string]$ProfileDirectory = "profiles/fallout_new_vegas",
     [string]$MorrowindProfileDirectory = "profiles/morrowind",
     [string]$StartupScript = "config/starts/fnv-level-one-goodsprings.txt",

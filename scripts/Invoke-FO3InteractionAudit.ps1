@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$OpenMWExe = "local/openmw-fo4guard/openmw.exe",
-    [string]$ResourcesRoot = "local/openmw-fo4guard/resources",
+    [string]$OpenMWExe = "local/openmw-pristine-mads-33568a/openmw.exe",
+    [string]$ResourcesRoot = "local/openmw-pristine-mads-33568a/resources",
     [string]$ProfileDirectory = "profiles/fallout3",
     [string]$StartupScript = "config/starts/fo3-level-one-megaton.txt",
     [string]$PreDoorScript = "config/proofs/fo3-moriartys-front-door.txt",

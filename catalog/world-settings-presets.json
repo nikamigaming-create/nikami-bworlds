@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "asOf": "2026-07-05",
+  "asOf": "2026-07-18",
   "purpose": "Per-world OpenMW settings presets for the world viewer. These keep detail, cache, model, terrain, map, and VR-adjacent settings isolated from Morrowind defaults and from each other.",
   "presets": {
     "morrowind_full_balanced": {
@@ -160,7 +160,7 @@
     "fnv_balanced": {
       "Camera": {
         "field of view": 75,
-        "viewing distance": 32768,
+        "viewing distance": 10000,
         "reverse z": false,
         "small feature culling": false,
         "small feature culling pixel size": 0.5
@@ -182,13 +182,13 @@
         "pointers cache size": 100
       },
       "Terrain": {
-        "distant terrain": true,
+        "distant terrain": false,
         "lod factor": 1.0,
         "vertex lod mod": 0,
         "composite map level": 0,
         "composite map resolution": 512,
         "max composite geometry size": 4.0,
-        "object paging": true,
+        "object paging": false,
         "object paging active grid": false,
         "object paging merge factor": 250,
         "object paging min size": 0.01,
@@ -197,11 +197,7 @@
         "water culling": true
       },
       "Models": {
-        "load unsupported nif files": true,
-        "skyatmosphere": "meshes/sky/atmosphere.nif",
-        "skyclouds": "meshes/sky/clouds.nif",
-        "skynight01": "meshes/sky/stars.nif",
-        "skynight02": "meshes/sky/stars_oblivion.nif"
+        "load unsupported nif files": true
       },
       "General": {
         "anisotropy": 8,
@@ -215,10 +211,10 @@
         "framerate limit": 60
       },
       "Shaders": {
-        "force shaders": true,
+        "force shaders": false,
         "force per pixel lighting": false,
         "clamp lighting": false,
-        "apply lighting to environment maps": true,
+        "apply lighting to environment maps": false,
         "lighting method": "shaders compatibility",
         "maximum light distance": 4096,
         "light fade start": 0.9,
@@ -229,7 +225,7 @@
         "weather particle occlusion": false
       },
       "Shadows": {
-        "enable shadows": true,
+        "enable shadows": false,
         "number of shadow maps": 2,
         "maximum shadow map distance": 4096,
         "shadow fade start": 0.9,
@@ -237,10 +233,10 @@
         "shadow map resolution": 1024,
         "split point uniform logarithmic ratio": 0.7,
         "split point bias": 0,
-        "actor shadows": true,
-        "player shadows": true,
+        "actor shadows": false,
+        "player shadows": false,
         "terrain shadows": false,
-        "object shadows": true,
+        "object shadows": false,
         "enable indoor shadows": false
       },
       "Water": {

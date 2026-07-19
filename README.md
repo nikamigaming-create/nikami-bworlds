@@ -17,8 +17,8 @@ few complete upstream files changed for isolated loading live under
 `upstream-overrides/`. Pinned patches remain under `patches/` as review and
 exact-replay artifacts. The complete compile-ready OpenMW composite is published
 separately in `nikami-openmw-lab`. Runtime launches use the repo-local OpenMW
-bundle under `local/openmw-fo4guard` so profile tests do not silently bind to
-some other build.
+bundle under `local/openmw-pristine-mads-33568a` so profile tests do not
+silently bind to the retired `openmw-fo4guard` or 6a5576 recovery builds.
 
 If a downstream patch becomes generally useful, split it into a clean branch in
 the external OpenMW checkout and submit a normal upstream PR. Once accepted, drop
@@ -42,8 +42,8 @@ Then edit `local/paths.json`, or set the equivalent environment variables:
 
 - `NIKAMI_OPENMW_SOURCE`
 - `NIKAMI_OPENMW_BUILD`
-- `NIKAMI_OPENMW_BINARY_ROOT` (legacy only; real launches are locked to `local/openmw-fo4guard`)
-- `NIKAMI_OPENMW_RESOURCES` (legacy only; generated profiles are locked to `local/openmw-fo4guard/resources`)
+- `NIKAMI_OPENMW_BINARY_ROOT` (legacy only; ordinary launches are locked to `local/openmw-pristine-mads-33568a`)
+- `NIKAMI_OPENMW_RESOURCES` (legacy only; generated profiles are locked to `local/openmw-pristine-mads-33568a/resources`)
 - `NIKAMI_FNV_ROOT`
 - `NIKAMI_FNV_DATA_PATHS` (semicolon-separated OpenMW-ready loose mod data roots)
 - `NIKAMI_STEAM_APPS_ROOTS`

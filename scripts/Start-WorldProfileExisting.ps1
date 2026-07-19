@@ -62,8 +62,8 @@ if ($world.readyForWorldWalker -ne $true) {
     throw "World '$WorldId' is not ready for the world walker. installStatus=$($world.installStatus) profileStatus=$($world.profileStatus)"
 }
 
-$BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
-$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot
+$BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot -RequireCurrent
+$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -RequireCurrent
 
 if (-not $world.profileDirectory -or -not (Test-Path -LiteralPath $world.profileDirectory)) {
     throw "Missing profile directory for '$WorldId': $($world.profileDirectory)"

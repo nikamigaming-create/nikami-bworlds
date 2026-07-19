@@ -48,8 +48,8 @@ $FnvRoot = Resolve-NikamiPath `
     -ConfigName "fnvRoot" `
     -Required `
     -Description "Mads-calibrated FNV/OpenMW VR root"
-$BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
-$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot
+$BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot -RequireCurrent
+$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -RequireCurrent
 if ([string]::IsNullOrWhiteSpace($BridgeRoot)) {
     $BridgeRoot = Join-Path $repoRoot "local\fnv-parity-vr-live"
 }
