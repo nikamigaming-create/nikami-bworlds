@@ -1,6 +1,6 @@
 {
   "schema": "nikami-fnv-save330-player-payload-ledger/v1",
-  "status": "offline-schema-accounted-not-yet-engine-decoded",
+  "status": "offline-schema-accounted-and-partially-engine-decoded",
   "save": {
     "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
     "bytes": 3395328,
@@ -12,7 +12,9 @@
     "changeFlags": "0xB0000022",
     "payload": { "offset": 497489, "bytes": 5095, "end": 502584 },
     "engineDecodedMovement": { "offset": 497489, "bytes": 28, "end": 497517 },
+    "engineDecodedActorValueArrays": { "offset": 497517, "bytes": 1160, "end": 498677 },
     "auditedRemainder": { "offset": 497517, "bytes": 5067, "end": 502584 },
+    "engineOpaqueTail": { "offset": 498677, "bytes": 3907, "end": 502584 },
     "unaccountedBytes": 0
   },
   "remainderCoverage": [
@@ -113,14 +115,14 @@
     { "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/FalloutNV.esm", "bytes": 245650747, "sha256": "50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1" }
   ],
   "nextImplementationSlice": {
-    "range": { "offset": 497517, "bytes": 1160, "end": 498677 },
+    "range": { "offset": 498677, "bytes": 835, "end": 499512 },
     "requirements": [
       "require canonical Player ACHR and form version 27",
-      "parse three distinct 77-element float-plus-delimiter arrays",
-      "preserve raw float bits and absolute ranges",
-      "require every 0x7C delimiter",
-      "parse final uint32 plus delimiter",
-      "finish exactly at byte 498677 and leave the remaining 3907 bytes opaque"
+      "parse process level, top actor ExtraData, and exactly 50 inventory entries",
+      "resolve packed RefIDs only through the pinned save FormID table",
+      "preserve every item delta, stack count, ExtraHealth float, ExtraWorn marker, and absolute range",
+      "reject unknown extra types, invalid counts, bad delimiters, and section overruns",
+      "finish exactly at byte 499512 and leave the remaining 3072 bytes opaque"
     ]
   }
 }

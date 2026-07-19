@@ -1,0 +1,145 @@
+{
+  "schema": "nikami-fnv-save330-weather-ledger/v1",
+  "status": "exact-source-audited-runtime-bridge-pending",
+  "sourceMaster": {
+    "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/FalloutNV.esm",
+    "bytes": 245650747,
+    "sha256": "50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1"
+  },
+  "worldChain": {
+    "worldspace": { "formId": "0x000DA726", "editorId": "WastelandNV" },
+    "climate": { "formId": "0x0008809B", "editorId": "NVDefaultClimate" },
+    "explicitlyWrongNearbyClimate": { "formId": "0x001237D8", "editorId": "NVDefaultClimateGSTest" }
+  },
+  "saveState": {
+    "gameTimeHours": 14.215002059936523,
+    "currentWeatherFormId": "0x001237D7",
+    "defaultWeatherFormId": "0x000FFC88",
+    "transitionWeatherFormId": null,
+    "overrideWeatherFormId": null,
+    "weatherPercent": 1.0,
+    "fogPower": 0.5,
+    "skyMode": 3,
+    "flags": "0x00000020"
+  },
+  "currentWeather": {
+    "formId": "0x001237D7",
+    "editorId": "NVWastelandGS",
+    "recordOffset": 13687130,
+    "recordBytes": 886,
+    "formVersion": 15,
+    "recordBodySha256": "7c79649d387d997a043ad76e058ecf3c14966c1c06c54261ab7a580d8e78bcbf",
+    "imageSpaceModifiers": {
+      "sunrise": "0x000CEE1A",
+      "day": "0x000CEE18",
+      "sunset": "0x000CEE19",
+      "night": "0x000CEE1B",
+      "highNoon": "0x000CEE18",
+      "midnight": null
+    },
+    "cloudTextures": [
+      "sky/alpha.dds",
+      "sky/alpha.dds",
+      "sky/alpha.dds",
+      "sky/NVCloudlight.dds"
+    ],
+    "cloudSpeedBytes": [52, 0, 0, 65],
+    "cloudSpeedRuntime": [0.0203921569, 0.0, 0.0, 0.0254901961],
+    "visibleCloudLayer": {
+      "index": 3,
+      "texture": "sky/NVCloudlight.dds",
+      "rgbByTime": {
+        "sunrise": [230, 190, 182],
+        "day": [232, 235, 238],
+        "sunset": [233, 203, 189],
+        "night": [24, 28, 35],
+        "highNoon": [232, 235, 238],
+        "midnight": [37, 44, 56]
+      },
+      "runtimeAlpha": 1.0,
+      "alphaProvenance": "WTHR color byte four is unused and zero; it must never be mapped to alpha"
+    },
+    "fog": {
+      "dayNear": 10.0,
+      "dayFar": 120000.0,
+      "nightNear": 0.0,
+      "nightFar": 150000.0,
+      "dayPower": 0.5,
+      "nightPower": 0.5
+    },
+    "data": {
+      "raw15": [50, 45, 45, 255, 54, 0, 0, 0, 0, 0, 255, 1, 0, 0, 0],
+      "windRuntime": 0.1960784314,
+      "transitionDeltaRuntime": 0.255,
+      "glareRuntime": 0.2117647059,
+      "classification": "pleasant",
+      "precipitation": null
+    },
+    "inam": {
+      "bytes": 304,
+      "sha256": "a94a66750f1f4778321671d153e0d6189aa3d8d5c3ff10ec7245cc407015d972",
+      "semantics": "unused-by-authoritative-definition; preserve without invention"
+    }
+  },
+  "defaultWeather": {
+    "formId": "0x000FFC88",
+    "editorId": "NVWastelandClear",
+    "recordOffset": 13690791,
+    "recordBytes": 889,
+    "recordBodySha256": "c7236832cd73657fc2a426a051d7c42234aa5823ef04d5b6d66304f514de48da",
+    "fog": {
+      "dayNear": -10.0,
+      "dayFar": 200000.0,
+      "nightNear": -10.0,
+      "nightFar": 200000.0,
+      "dayPower": 0.6,
+      "nightPower": 0.5
+    }
+  },
+  "climate": {
+    "formId": "0x0008809B",
+    "editorId": "NVDefaultClimate",
+    "recordOffset": 13725051,
+    "recordBytes": 129,
+    "recordBodySha256": "834525760ee6e0151095115b532f14dcbc96f0d736ee219a880105b207fb482c",
+    "weatherList": [
+      { "weatherFormId": "0x00176574", "chance": 100, "globalFormId": "0x00176537" },
+      { "weatherFormId": "0x000FFC88", "chance": 100, "globalFormId": null }
+    ],
+    "sunTexture": "Sky/Sun.dds",
+    "sunGlareTexture": "sky/NV_sunglare.dds",
+    "nightModel": "Sky/Stars.nif",
+    "timeBytes": [36, 48, 108, 120, 0, 131],
+    "time": {
+      "sunriseBegin": "06:00",
+      "sunriseEnd": "08:00",
+      "sunsetBegin": "18:00",
+      "sunsetEnd": "20:00",
+      "volatility": 0,
+      "moon": "Masser only, phase length 3"
+    }
+  },
+  "expectedFirstFrame": {
+    "sixSlotBlend": { "from": "highNoon", "to": "day", "strength": 0.369167 },
+    "skyUpperRgb": [0.250503242, 0.327908456, 0.5887843],
+    "fogRgb": [0.5882353, 0.65882355, 0.745098054],
+    "ambientRgb": [0.370862722, 0.448872536, 0.580758154],
+    "sunlightRgb": [1.0, 0.8901961, 0.6666667],
+    "sunDiscRgb": [0.998552263, 0.979732037, 0.9363006],
+    "skyLowerRgb": [0.360784322, 0.4509804, 0.5803922],
+    "horizonRgb": [0.8666667, 0.9137255, 0.9254902],
+    "visibleCloudLayer3Rgba": [0.9098039, 0.921568632, 0.933333337, 1.0],
+    "fogNearFarPower": [10.0, 120000.0, 0.5],
+    "sunOrbit": -0.173571721,
+    "sunVisiblePosition": [-138.857376, -100.0, 661.142639]
+  },
+  "forbiddenFallbacks": [
+    "TES3 Weather_Clear values",
+    "TES3 region weather selection",
+    "TES3 PRNG wind or thunder",
+    "TES3 fog-density calculation",
+    "fog-plus-0.13 cloud tint",
+    "mapping WTHR unused color byte four to cloud alpha",
+    "using CLMT 0x001237D8 for WastelandNV"
+  ]
+}
