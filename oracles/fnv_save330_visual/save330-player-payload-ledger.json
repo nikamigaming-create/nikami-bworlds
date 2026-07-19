@@ -8,9 +8,9 @@
   },
   "parserCoverage": {
     "saveBytes": 3395328,
-    "nonOpaqueBytes": 660561,
-    "nonOpaquePercent": 19.454998162,
-    "semanticOpaqueBytes": 2734767
+    "nonOpaqueBytes": 660709,
+    "nonOpaquePercent": 19.459357093041,
+    "semanticOpaqueBytes": 2734619
   },
   "playerChangeForm": {
     "actorReferenceFormId": "0x00000014",
@@ -27,28 +27,39 @@
       "end": 501697,
       "sha256": "3802ba9e14fc6a31cba704aa523ea18205e06d65ec537815ee75425422175c7a"
     },
+    "engineDecodedSecondAnimationBuffer": {
+      "offset": 501697,
+      "bytes": 148,
+      "end": 501845,
+      "sha256": "eff4c16d299aa5c2b3b0385001d8340a165b4db3d13dc09ebe7886c98daf6206",
+      "bodyOffset": 501700,
+      "bodyBytes": 145,
+      "bodySha256": "3b1a3de703fc484c1271076cbdac4e155531c2f794b0e7a7c49e418329090376"
+    },
     "auditedRemainder": { "offset": 497517, "bytes": 5067, "end": 502584 },
     "engineOpaqueTail": {
-      "offset": 501697,
-      "bytes": 887,
+      "offset": 501845,
+      "bytes": 739,
       "end": 502584,
-      "sha256": "e2c332386e74a5114e27997356e9fe24cb4d49c876847b283604b4f56e4fc9d7"
+      "sha256": "71e6d95f325b5d4b7a8db31b4abbf185944b7fb936d4a54f09d4243ecfa1021f"
     },
     "unaccountedBytes": 0
   },
   "engineImplementation": {
-    "decodedPlayerPayload": { "offset": 497489, "bytes": 4208, "end": 501697 },
-    "decodedAuditedRemainderBytes": 4180,
-    "opaqueAuditedRemainderBytes": 887,
+    "decodedPlayerPayload": { "offset": 497489, "bytes": 4356, "end": 501845 },
+    "decodedAuditedRemainderBytes": 4328,
+    "opaqueAuditedRemainderBytes": 739,
     "commits": [
       "9fbb611ab5 Decode the Save330 player movement prefix",
       "d7a2d1731b Decode Save330 player actor-value arrays",
       "d66d24c62b Decode Save330 player inventory payload",
       "29686400a3 Decode Save330 player process state",
       "ff64fcaf22 Decode Save330 actor mover state",
-      "85c112f667 Clean-engine cherry-pick of the identical actor mover decoder"
+      "85c112f667 Clean-engine cherry-pick of the identical actor mover decoder",
+      "267b7dce87 Decode Save330 second player animation buffer",
+      "2b2dead4d1 Clean-engine cherry-pick of the identical animation-buffer decoder"
     ],
-    "verification": "20/20 FONVSaveGame tests passed against the committed parser with the pinned external Save330 fixture, including exact range/hash plus delimiter, RefID, branch, count, non-finite, truncation, and ChangedCharacter corruption cases."
+    "verification": "22/22 FONVSaveGame tests passed against both committed worktrees with the pinned external Save330 fixture, including exact animation range/hash and noncanonical-width, bad-delimiter, truncation, and overrun cases."
   },
   "remainderCoverage": [
     { "offset": 497517, "bytes": 385, "end": 497902, "domain": "ActorValues244[77]" },
@@ -180,7 +191,7 @@
       "finish exactly at byte 501697 and leave the remaining 887 bytes opaque"
     ]
   },
-  "nextImplementationSlice": {
+  "implementedSecondAnimationBufferSlice": {
     "range": { "offset": 501697, "bytes": 148, "end": 501845 },
     "domain": "second player animation buffer",
     "sha256": "eff4c16d299aa5c2b3b0385001d8340a165b4db3d13dc09ebe7886c98daf6206",
@@ -189,6 +200,16 @@
       "preserve the 145-byte animation body at [501700,501845) opaque with SHA-256 3b1a3de703fc484c1271076cbdac4e155531c2f794b0e7a7c49e418329090376",
       "reject non-canonical lengths, bad delimiters, and container overruns",
       "finish exactly at byte 501845 and hand the remaining PlayerCharacter state to the following slice"
+    ]
+  },
+  "nextImplementationSlice": {
+    "range": { "offset": 501845, "bytes": 287, "end": 502132 },
+    "domain": "PlayerCharacter scalar and reference state",
+    "requirements": [
+      "follow the exact form-version-27 PlayerCharacter field order in wbDefinitionsFNVSaves.pas",
+      "preserve every delimited scalar and resolved RefID with its raw bytes and absolute range",
+      "retain first-person mode and the 55-degree/75-degree FOV values without inferring camera eye, heading, or crop",
+      "finish exactly at byte 502132 and hand the remaining 452 bytes to the topics, notes, lists, magic-target, and final-flags slices"
     ]
   }
 }

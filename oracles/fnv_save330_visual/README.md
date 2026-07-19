@@ -12,16 +12,17 @@ The same pinned save now proves the Player ACHR movement prefix at
 payload bytes are fully schema-accounted offline. The committed engine parser
 decodes the first `4,180` of them through actor values, factions, encounter
 zone, all 50 inventory entries, mobile-object base/low/middle/high process
-state, and the exact ChangedActor/ActorMover/ChangedCharacter continuation at
+state, the exact ChangedActor/ActorMover/ChangedCharacter continuation at
 `[501187,501697)`. That 510-byte continuation has SHA-256
 `3802ba9e14fc6a31cba704aa523ea18205e06d65ec537815ee75425422175c7a`.
-The remaining `[501697,502584)` 887-byte tail is explicitly opaque with
-SHA-256
-`e2c332386e74a5114e27997356e9fe24cb4d49c876847b283604b4f56e4fc9d7`;
-the next implementation slice is its 148-byte second animation buffer at
-`[501697,501845)`. Across the complete Save330 file, parser non-opaque
-coverage is now `660,561 / 3,395,328` bytes (`19.454998162%`), leaving
-`2,734,767` semantically opaque bytes. The decoder passed 20/20 FONVSaveGame
+The canonical second Player animation-buffer envelope at `[501697,501845)` is
+also decoded; its 145-byte body remains byte-exact and opaque by definition.
+The remaining `[501845,502584)` 739-byte tail is explicit with SHA-256
+`71e6d95f325b5d4b7a8db31b4abbf185944b7fb936d4a54f09d4243ecfa1021f`;
+the next implementation slice is the 287-byte PlayerCharacter scalar/reference
+state at `[501845,502132)`. Across the complete Save330 file, parser non-opaque
+coverage is now `660,709 / 3,395,328` bytes (`19.459357093041%`), leaving
+`2,734,619` semantically opaque bytes. The decoder passed 22/22 FONVSaveGame
 tests, including the pinned external Save330 and corruption cases. This proves a player-reference
 transform, inventory, process, and actor-mover payload, not the
 screenshot-bound camera eye/heading/crop or authored visible-reference set;
