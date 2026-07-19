@@ -1,0 +1,1223 @@
+{
+  "schema": "nikami-fnv-save330-retail-camera-scene-oracle/v1",
+  "status": "exact-partial-evidence-fail-closed",
+  "candidateEligible": false,
+  "scope": {
+    "purpose": "Hash-locked retail Save330 camera/scene evidence for registering a clean OpenMW screenshot against the exact embedded retail frame.",
+    "retailFrameAvailable": true,
+    "exactCameraRegistrationAvailable": false,
+    "visibleAuthoredReferenceOracleAvailable": false,
+    "parityCredit": "none until every blocking field below is resolved",
+    "mutation": "none outside this new catalog file",
+    "prohibitionsApplied": [
+      "no game, GUI, browser, or historical-image launch",
+      "no screenshot object identification by appearance",
+      "no reinterpretation of Unknown/Unk save fields",
+      "no saved-reference rotation promoted to retail camera heading"
+    ]
+  },
+  "sources": [
+    {
+      "id": "retail-save330",
+      "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
+      "bytes": 3395328,
+      "sha256": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f",
+      "lineReferences": []
+    },
+    {
+      "id": "exact-retail-save330-png",
+      "path": "D:/code/nikami-worlds-fnv-parity/oracles/fnv_save330_visual/retail-save330-reference.png",
+      "bytes": 317441,
+      "sha256": "859fa4a89d0cc5efb16693a0aa104c264a1f9bc6c0bb257706b5401ceb8fd008",
+      "lineReferences": []
+    },
+    {
+      "id": "falloutnv-esm",
+      "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/FalloutNV.esm",
+      "bytes": 245650747,
+      "sha256": "50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1",
+      "lineReferences": []
+    },
+    {
+      "id": "xedit-fnv-save-definitions",
+      "path": "D:/code/nikami-worlds/external/xedit/Core/wbDefinitionsFNVSaves.pas",
+      "bytes": 253687,
+      "sha256": "701f4b734b4c3bb28b32c6f8d1595b952e536bd7f75358d764eea6bec51db406",
+      "lineReferences": [
+        {
+          "lines": [
+            2271,
+            2289
+          ],
+          "subject": "Sky serialized shape"
+        },
+        {
+          "lines": [
+            4939,
+            4990
+          ],
+          "subject": "initial reference movement shape"
+        },
+        {
+          "lines": [
+            6314,
+            6460
+          ],
+          "subject": "Player ACHR serialized branch"
+        },
+        {
+          "lines": [
+            6761,
+            6789
+          ],
+          "subject": "changed-form envelope"
+        },
+        {
+          "lines": [
+            6804,
+            6834
+          ],
+          "subject": "save sections and FormID array"
+        }
+      ]
+    },
+    {
+      "id": "xedit-save-reference-interface",
+      "path": "D:/code/nikami-worlds/external/xedit/Core/wbSaveInterface.pas",
+      "bytes": 15745,
+      "sha256": "99e9c7a92d4df118cc69eb1b28565c5549416ee1cf54c498daa8cd283d553e4c",
+      "lineReferences": [
+        {
+          "lines": [
+            254,
+            274
+          ],
+          "subject": "one-based save RefID lookup"
+        }
+      ]
+    },
+    {
+      "id": "jip-runtime-player-layout",
+      "path": "D:/code/nikami-worlds/external/jip-ln-nvse/nvse/GameObjects.h",
+      "bytes": 47674,
+      "sha256": "baae17665682530b2aecb75457f972f4be99668bc6f3b4d11e5d379b7bb5564e",
+      "lineReferences": [
+        {
+          "lines": [
+            950,
+            1007
+          ],
+          "subject": "first-person flag, FOV members, seated rotation and placed marker"
+        },
+        {
+          "lines": [
+            1030,
+            1036
+          ],
+          "subject": "runtime fly-camera values"
+        },
+        {
+          "lines": [
+            1043,
+            1065
+          ],
+          "subject": "runtime camera positions"
+        }
+      ]
+    },
+    {
+      "id": "jip-runtime-sky-layout",
+      "path": "D:/code/nikami-worlds/external/jip-ln-nvse/nvse/GameData.h",
+      "bytes": 32694,
+      "sha256": "d78f150ea33e4bab8e76500cb5e1262baed3a17981b222d8fb313b83fba914c8",
+      "lineReferences": [
+        {
+          "lines": [
+            520,
+            550
+          ],
+          "subject": "runtime sky state including gameHour"
+        }
+      ]
+    },
+    {
+      "id": "jip-viewport-implementation",
+      "path": "D:/code/nikami-worlds/external/jip-ln-nvse/internal/Ni_types.cpp",
+      "bytes": 31104,
+      "sha256": "14b0924e34e02a23115c6f19b26c92d973bbbd12d205e2996ecce5fbd3e0c9d4",
+      "lineReferences": [
+        {
+          "lines": [
+            1356,
+            1375
+          ],
+          "subject": "NiViewport::SetFOV and frustum-plane setup"
+        }
+      ]
+    },
+    {
+      "id": "jip-viewport-layout",
+      "path": "D:/code/nikami-worlds/external/jip-ln-nvse/internal/Ni_types.h",
+      "bytes": 32284,
+      "sha256": "043163bd4cd10d3576c572e75c2633b01b243ceee0d84fcb13c16d8f3b818dd0",
+      "lineReferences": [
+        {
+          "lines": [
+            542,
+            578
+          ],
+          "subject": "NiViewport and NiFrustum members"
+        }
+      ]
+    },
+    {
+      "id": "pinned-local-esm4-catalog-parser",
+      "path": "D:/code/nikami-worlds-fnv-parity/scripts/export_esm4_catalog.py",
+      "bytes": 40373,
+      "sha256": "fb51d1ad00bb1646cc18e26887acf0615e6b2269aab4cf8ca8c6e820a1ff7c7d",
+      "lineReferences": [
+        {
+          "lines": [
+            77,
+            104
+          ],
+          "subject": "header-size detection and parse entry"
+        },
+        {
+          "lines": [
+            332,
+            376
+          ],
+          "subject": "group/record walk and payload decompression"
+        },
+        {
+          "lines": [
+            498,
+            590
+          ],
+          "subject": "placement extraction and parent-cell context"
+        }
+      ]
+    }
+  ],
+  "retailFrame": {
+    "pngPath": "D:/code/nikami-worlds-fnv-parity/oracles/fnv_save330_visual/retail-save330-reference.png",
+    "pngBytes": 317441,
+    "pngSha256": "859fa4a89d0cc5efb16693a0aa104c264a1f9bc6c0bb257706b5401ceb8fd008",
+    "pngStructure": {
+      "signatureHex": "89504E470D0A1A0A",
+      "chunks": [
+        [
+          "IHDR",
+          13
+        ],
+        [
+          "IDAT",
+          65536
+        ],
+        [
+          "IDAT",
+          65536
+        ],
+        [
+          "IDAT",
+          65536
+        ],
+        [
+          "IDAT",
+          65536
+        ],
+        [
+          "IDAT",
+          55192
+        ],
+        [
+          "IEND",
+          0
+        ]
+      ],
+      "ihdr": {
+        "width": 512,
+        "height": 320,
+        "bitDepth": 8,
+        "colorType": 2,
+        "colorTypeMeaning": "truecolor RGB",
+        "compressionMethod": 0,
+        "filterMethod": 0,
+        "interlaceMethod": 0
+      },
+      "idatBytes": 317336,
+      "inflatedFilteredBytes": 491840
+    },
+    "embeddedSaveBuffer": {
+      "offset": 147,
+      "bytes": 491520,
+      "end": 491667,
+      "pixelLayout": "row-major RGB24, top-to-bottom as decoded PNG scanlines",
+      "width": 512,
+      "height": 320,
+      "strideBytes": 1536,
+      "aspectRatioExact": "512/320 = 8/5",
+      "sha256": "16c44995ec4bc0ebde43f2d0fd81ba4cff2c6901642e288c676eb8ba6cc8e23e",
+      "row0Sha256": "de6ec54778dea1c2cd061f4d13f27de0316d99e5d3ef64cfe6bb469e052f9e57",
+      "row319Sha256": "1a6ecbe4d0b3f8de1f65c3db17f6f09820e9a3f089ae6a4912b9218f5cd41498",
+      "first24Hex": "948F8D95908E938E8E9993909D9691A39B93A49C93A89F95",
+      "last24Hex": "4F432D4A3F27433926544A32756540483D2A4B402C4A3F2B"
+    },
+    "pixelIdentityProof": {
+      "pngDecodedRgbBytes": 491520,
+      "pngDecodedRgbSha256": "16c44995ec4bc0ebde43f2d0fd81ba4cff2c6901642e288c676eb8ba6cc8e23e",
+      "embeddedBufferSha256": "16c44995ec4bc0ebde43f2d0fd81ba4cff2c6901642e288c676eb8ba6cc8e23e",
+      "byteExactEqual": true,
+      "equation": "512 * 320 * 3 = 491520 bytes; decoded PNG RGB == save[147:491667]"
+    },
+    "viewportMeaning": "unresolved: the stored 512x320 frame is exact, but the pre-thumbnail render dimensions, viewport, resample, and crop are not serialized here."
+  },
+  "saveReferenceTable": {
+    "countOffset": 3308287,
+    "count": 21755,
+    "entriesOffset": 3308291,
+    "entryBytes": 87020,
+    "entriesEnd": 3395311,
+    "entriesSha256": "c2f30dea4991a37965d7d5be3eecfbaf847c92325ceb3b2feac3fd3288feda82",
+    "resolutionRule": "namespace 0 payload N resolves to FormIDArray[N-1] when N > 0; payload 0 is null",
+    "worldspaceResolution": {
+      "encodedRefIdRange": {
+        "offset": 497489,
+        "bytes": 3,
+        "end": 497492,
+        "sha256": "af5a9059fdb269dd880435f17a945a78ab048619f14de5b8f089eb3a1b0e2afe",
+        "hex": "000247"
+      },
+      "oneBasedIndex": 583,
+      "entryOffset": 3310619,
+      "entryLittleEndianHex": "26A70D00",
+      "resolvedFormId": "0x000DA726"
+    },
+    "weatherResolution": {
+      "encodedRefIdRange": {
+        "offset": 494355,
+        "bytes": 3,
+        "end": 494358,
+        "sha256": "19d3397e51a3eab01cbcfd608363df79481bb749488203c05b35f28f999ffc6a",
+        "hex": "004F59"
+      },
+      "oneBasedIndex": 20313,
+      "entryOffset": 3389539,
+      "entryLittleEndianHex": "D7371200",
+      "resolvedFormId": "0x001237D7"
+    }
+  },
+  "savedPlayerEvidence": {
+    "actorReferenceFormId": "0x00000014",
+    "movementPrefix": {
+      "offset": 497489,
+      "bytes": 28,
+      "end": 497517,
+      "sha256": "a628c2b8286bd8e27a0ba514d22d6deb5e461dd85be104f34caaf76c6fcadcc2",
+      "hex": "0002476C648DC72B069BC4B14CFE4524DF83BD0000008085BB3B407C"
+    },
+    "worldspace": {
+      "formId": "0x000DA726",
+      "recordType": "WRLD",
+      "editorId": "WastelandNV",
+      "fullName": "Mojave Wasteland"
+    },
+    "position": {
+      "valuesFloat32": [
+        -72392.84375,
+        -1240.1927490234375,
+        8137.58642578125
+      ],
+      "ieee754Bits": [
+        "0xC78D646C",
+        "0xC49B062B",
+        "0x45FE4CB1"
+      ],
+      "saveRange": {
+        "offset": 497492,
+        "bytes": 12,
+        "end": 497504,
+        "sha256": "0a6897f6a64f36b31e2fbdaf662e81795a0e14920f47c9428b39b3cd43973f7d",
+        "hex": "6C648DC72B069BC4B14CFE45"
+      }
+    },
+    "serializedReferenceRotation": {
+      "valuesRadiansFloat32": [
+        -0.06439045071601868,
+        -0.0,
+        2.9333202838897705
+      ],
+      "ieee754Bits": [
+        "0xBD83DF24",
+        "0x80000000",
+        "0x403BBB85"
+      ],
+      "componentwiseDegreesInformational": [
+        -3.689301066973,
+        -0.0,
+        168.06687222700035
+      ],
+      "degreeEquation": "degrees[i] = radiansFloat32[i] * 180 / pi",
+      "semanticClaim": "reference rotation components only; not camera eye, heading, pitch, roll, or view matrix",
+      "saveRange": {
+        "offset": 497504,
+        "bytes": 12,
+        "end": 497516,
+        "sha256": "f07f4bcc6b5d8d3c9fd33b43a811104adedb993ca2155bc8b2c5f460c2795070",
+        "hex": "24DF83BD0000008085BB3B40"
+      }
+    },
+    "movementTerminator": {
+      "offset": 497516,
+      "bytes": 1,
+      "end": 497517,
+      "sha256": "cbe5cfdf7c2118a9c3d78ef1d684f3afa089201352886449a06a6511cfef74a7",
+      "hex": "7C"
+    },
+    "derivedExteriorCell": {
+      "formId": "0x000E1AA7",
+      "recordType": "CELL",
+      "parentWorldFormId": "0x000DA726",
+      "grid": [
+        -18,
+        -1
+      ],
+      "cellSizeWorldUnits": 4096,
+      "halfOpenBounds": {
+        "x": [
+          -73728,
+          -69632
+        ],
+        "y": [
+          -4096,
+          0
+        ],
+        "notation": "[minimum, maximum)"
+      },
+      "equations": [
+        "floor(-72392.84375 / 4096) = -18",
+        "floor(-1240.1927490234375 / 4096) = -1",
+        "x bounds = [-18*4096, (-18+1)*4096) = [-73728, -69632)",
+        "y bounds = [-1*4096, (-1+1)*4096) = [-4096, 0)"
+      ],
+      "serializedFieldStatus": "derived from exact position and pinned authored CELL data; not asserted as a direct Save Global Data cell field"
+    }
+  },
+  "cameraEvidence": {
+    "metadataStatus": "incomplete",
+    "firstPersonMode": {
+      "saveRange": {
+        "offset": 501845,
+        "bytes": 1,
+        "end": 501846,
+        "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+        "hex": "00"
+      },
+      "serializedValue": 0,
+      "runtimeMappedMember": "PlayerCharacter::is3rdPerson at 0x64A",
+      "interpretation": "false, therefore first-person mode"
+    },
+    "fieldOfViewScalars": {
+      "firstPersonModel": {
+        "value": 55.0,
+        "ieee754Bits": "0x425C0000",
+        "saveRange": {
+          "offset": 501942,
+          "bytes": 4,
+          "end": 501946,
+          "sha256": "e0c47cd112af99e9a5c07c5cf9cdfff4df8a953dcddcefbe4704713cdb2254fa",
+          "hex": "00005C42"
+        },
+        "runtimeMappedMember": "PlayerCharacter::firstPersonFOV at 0x674"
+      },
+      "world": {
+        "value": 75.0,
+        "ieee754Bits": "0x42960000",
+        "saveRange": {
+          "offset": 501947,
+          "bytes": 4,
+          "end": 501951,
+          "sha256": "9632ddc11e5773b9628d763905ef88eda14df211530375e43d85d005a49190c4",
+          "hex": "00009642"
+        },
+        "runtimeMappedMember": "PlayerCharacter::worldFOV at 0x670"
+      }
+    },
+    "playerScalarReferenceBlock": {
+      "offset": 501845,
+      "bytes": 287,
+      "end": 502132,
+      "sha256": "03c6a113c7aafe5b32d19038468e70d7a877670e6ef9a5ddcc35898c9c2c8c4f"
+    },
+    "refr6F4Pos": {
+      "saveRange": {
+        "offset": 501907,
+        "bytes": 12,
+        "end": 501919,
+        "sha256": "15ec7bf0b50732b49f8228e07d24365338f9e3ab994b00af08e5a3bffe55fd8b",
+        "hex": "000000000000000000000000"
+      },
+      "decodedFloat32": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraUseRejected": true,
+      "reason": "xEdit names this Refr6F4 Pos; the pinned runtime layout identifies 0x6F4 as placedMarkerRef followed by placedMarkerData, not a camera member."
+    },
+    "runtimeOnlyMappingsThatDoNotResolveTheSave": [
+      {
+        "member": "flycamZRot",
+        "runtimeOffsetHex": "0x7E0",
+        "sourceLine": 1034
+      },
+      {
+        "member": "flycamXRot",
+        "runtimeOffsetHex": "0x7E4",
+        "sourceLine": 1035
+      },
+      {
+        "member": "flycamPos",
+        "runtimeOffsetHex": "0x7E8",
+        "sourceLine": 1036
+      },
+      {
+        "member": "cameraPos3rdPerson",
+        "runtimeOffsetHex": "0xD58",
+        "sourceLine": 1055
+      },
+      {
+        "member": "cameraPos1stPerson",
+        "runtimeOffsetHex": "0xDD4",
+        "sourceLine": 1063
+      },
+      {
+        "member": "cameraPos",
+        "runtimeOffsetHex": "0xDE0",
+        "sourceLine": 1064
+      }
+    ],
+    "serializationConclusion": "The authoritative save schema has no independently mapped cameraPos/flycam field in the Player ACHR branch. Unknown fields remain unknown and are not repurposed.",
+    "eyeWorldPosition": {
+      "status": "unresolved",
+      "value": null,
+      "blocker": "no hash-accounted retail runtime camera sample or save field mapping"
+    },
+    "headingPitchRoll": {
+      "status": "unresolved",
+      "value": null,
+      "blocker": "serialized reference rotation is not proven equal to the final retail view rotation"
+    },
+    "projection": {
+      "status": "unresolved",
+      "matrix": null,
+      "provenInputsOnly": {
+        "storedFrameAspectRatio": "8/5",
+        "worldFovScalar": 75.0,
+        "firstPersonModelFovScalar": 55.0
+      },
+      "blockers": [
+        "no proven horizontal-versus-vertical FOV convention for this stored frame",
+        "no exact near/far values for this frame",
+        "no exact NiViewport l/r/t/b values for this frame",
+        "no exact original render aspect or thumbnail transform",
+        "NiViewport::SetFOV source alone does not prove the complete screenshot projection path"
+      ]
+    },
+    "cropNormalized": {
+      "status": "unresolved",
+      "value": null,
+      "provenOnly": "the final stored rectangle is exactly 512x320 RGB24"
+    }
+  },
+  "sceneEvidence": {
+    "gameTime": {
+      "hours": 14.215002059936523,
+      "ieee754Bits": "0x416370A6",
+      "saveRange": {
+        "offset": 494371,
+        "bytes": 4,
+        "end": 494375,
+        "sha256": "2dccb9b11bf81a6dd760b8d2a88f1d494b7c1fd75a4662d51035d369e25b8e3d",
+        "hex": "A6706341"
+      },
+      "skyPayloadRange": {
+        "offset": 494355,
+        "bytes": 71,
+        "end": 494426,
+        "sha256": "8492cf418cdf6f301a51d504b6a0b0df842282e77bae5607245d3fee04a71468"
+      },
+      "runtimeMappedMember": "Sky::gameHour at 0xEC"
+    },
+    "weather": {
+      "formId": "0x001237D7",
+      "recordType": "WTHR",
+      "editorId": "NVWastelandGS",
+      "saveRefResolution": "saveReferenceTable.weatherResolution"
+    },
+    "esmRawRecordRanges": {
+      "0x000DA726": {
+        "type": "WRLD",
+        "offset": 27392581,
+        "bytes": 177445,
+        "sha256": "96b1e2c485a0a8134057b594113edbf785a8b628fabe003ea5f3a8065251131b"
+      },
+      "0x000E1AA7": {
+        "type": "CELL",
+        "offset": 158786090,
+        "bytes": 120,
+        "sha256": "19eef314f19c883fe74b381c63b5a8f9deb934fd5c69dd11fa614a83fe2ff143"
+      },
+      "0x000846EA": {
+        "type": "CELL",
+        "offset": 27570050,
+        "bytes": 96,
+        "sha256": "f99e092e6fb03d3285b39cbb648ade9598d7fd6604cafa158c1d2aba41827494"
+      },
+      "0x001237D7": {
+        "type": "WTHR",
+        "offset": 13687130,
+        "bytes": 910,
+        "sha256": "2059024f4c1800ee09dc3f3cd2600972ec252362f0901c81b2b08f2c27a25650"
+      }
+    },
+    "esmParseAccounting": {
+      "recordHeaderBytes": 24,
+      "indexedNonzeroFormIdRecords": 465016,
+      "rawRecordsIncludingTES4FormIdZero": 465017,
+      "groups": 77000,
+      "cells": 30497,
+      "placements": 314269,
+      "equation": "465017 raw records = 465016 nonzero-FormID records + TES4 FormID-zero record",
+      "rawRangeRule": "record bytes = 24-byte header + u32LE payload size at header+4; GRUP bytes = u32LE size at group+4 and children begin at group+24"
+    },
+    "sameGridAuthoredOriginCorpus": {
+      "visibilityStatus": "candidate origins only; zero visibility credit",
+      "selectionRule": "placement.parentCell == 0x000E1AA7 OR (placement.parentCell == 0x000846EA AND position exists AND -73728 <= x < -69632 AND -4096 <= y < 0)",
+      "persistentCellFormId": "0x000846EA",
+      "count": 151,
+      "typeCounts": {
+        "ACHR": 1,
+        "ACRE": 3,
+        "REFR": 147
+      },
+      "membershipReasonCounts": {
+        "direct-current-cell": 138,
+        "persistent-origin-in-current-grid": 13
+      },
+      "formIdsSorted": [
+        "0x00104F03",
+        "0x00105228",
+        "0x00105693",
+        "0x00105A17",
+        "0x00105A1A",
+        "0x00105A1B",
+        "0x00105A1C",
+        "0x00105A1D",
+        "0x00105A20",
+        "0x00105A21",
+        "0x00105A22",
+        "0x00105A23",
+        "0x00105A51",
+        "0x00105A52",
+        "0x00105A62",
+        "0x0010631B",
+        "0x00106377",
+        "0x00106378",
+        "0x00106379",
+        "0x0010637A",
+        "0x0010637B",
+        "0x0010637C",
+        "0x0010637D",
+        "0x0010637E",
+        "0x0010637F",
+        "0x00106380",
+        "0x00106381",
+        "0x00106382",
+        "0x00106383",
+        "0x00106385",
+        "0x00106386",
+        "0x00106387",
+        "0x00106388",
+        "0x00106389",
+        "0x0010638A",
+        "0x0010638B",
+        "0x0010638C",
+        "0x00106BB8",
+        "0x00106BC1",
+        "0x00106BC2",
+        "0x00106BC3",
+        "0x00106BC7",
+        "0x00106BC8",
+        "0x00106BDC",
+        "0x00106BDF",
+        "0x00106BE0",
+        "0x0010706C",
+        "0x0010706E",
+        "0x00107077",
+        "0x00107095",
+        "0x00107096",
+        "0x00107097",
+        "0x001070CE",
+        "0x001070D6",
+        "0x0010765C",
+        "0x0010765D",
+        "0x0010765E",
+        "0x0010765F",
+        "0x00107660",
+        "0x00107661",
+        "0x00107662",
+        "0x00107663",
+        "0x00107664",
+        "0x00107665",
+        "0x00107666",
+        "0x00107667",
+        "0x00107668",
+        "0x00107669",
+        "0x0010766A",
+        "0x0010766B",
+        "0x0010766C",
+        "0x0010766D",
+        "0x0010766E",
+        "0x00107671",
+        "0x00107672",
+        "0x00107673",
+        "0x00107674",
+        "0x00107675",
+        "0x00107676",
+        "0x00107684",
+        "0x00107685",
+        "0x00107689",
+        "0x0010768A",
+        "0x0010768B",
+        "0x0010768C",
+        "0x0010768D",
+        "0x0010768E",
+        "0x0010768F",
+        "0x00107690",
+        "0x00107691",
+        "0x00107692",
+        "0x00107693",
+        "0x00107694",
+        "0x00107698",
+        "0x001076A5",
+        "0x001076A9",
+        "0x00107B67",
+        "0x00107B68",
+        "0x00107B69",
+        "0x00107B6A",
+        "0x00107B6B",
+        "0x00107B6C",
+        "0x00107B6D",
+        "0x00107B6E",
+        "0x00107B6F",
+        "0x0010A1B5",
+        "0x0010A1B6",
+        "0x0010A1B7",
+        "0x0010A997",
+        "0x0010AB7A",
+        "0x0010AEC1",
+        "0x0010AEC2",
+        "0x0010AEC3",
+        "0x0010AEC4",
+        "0x0010AEC5",
+        "0x0010AEC6",
+        "0x0010AEC7",
+        "0x0010AEC8",
+        "0x0010AEC9",
+        "0x0010AECA",
+        "0x0010AECB",
+        "0x0010AECC",
+        "0x0010B1A6",
+        "0x0010B1A7",
+        "0x0013005C",
+        "0x0015EF63",
+        "0x0015EFB6",
+        "0x0015EFB7",
+        "0x0016ADC5",
+        "0x0016ADCB",
+        "0x00177471",
+        "0x00177472",
+        "0x00177473",
+        "0x00177474",
+        "0x00177CAE",
+        "0x001788DA",
+        "0x001788DB",
+        "0x001788DC",
+        "0x00178A61",
+        "0x0017B645",
+        "0x0017B646",
+        "0x0017B647",
+        "0x0017B648",
+        "0x0017B649",
+        "0x0017B64A",
+        "0x0017B64B",
+        "0x0017B64C",
+        "0x0017B64D",
+        "0x0017B64E",
+        "0x0017B64F",
+        "0x0017B650"
+      ],
+      "canonicalRowFormat": "FORMID_HEX8|TYPE|PARENT_CELL_HEX8|RECORD_OFFSET_DEC|RECORD_BYTES_DEC|RAW_RECORD_SHA256|MEMBERSHIP_REASON\\n",
+      "canonicalRowsSha256": "c4daeab26e92ffa9269d80c29f5ea3e1e98eb253109a79d8edd15196d0f534f8",
+      "concatenatedRawRecordsOrdering": "ascending placement FormID",
+      "concatenatedRawRecordsSha256": "5df9ae304f163942b8cbef751a52df43c9675e1481e9e157967520018fd5202c",
+      "limitations": [
+        "does not include adjacent-cell or LOD visibility",
+        "does not apply camera frustum, mesh bounds, occlusion, enable parents, or runtime movement",
+        "persistent placement inclusion is based only on authored origin point, not mesh extent"
+      ]
+    },
+    "saveChangedFormsIntersectingSameGridCorpus": {
+      "count": 15,
+      "entries": [
+        {
+          "formId": "0x0010AEC1",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 530,
+          "fileOffset": 736996,
+          "encodedRefId": "0x004B4F",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 19279,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x90000000",
+          "payloadOffset": 737006,
+          "payloadBytes": 30,
+          "payloadSha256": "6c385ef0167f61842e546dd1d0a7abaaf6c3f2f129c2066cc2fcae46a83e5d80",
+          "envelopeBytes": 40
+        },
+        {
+          "formId": "0x0010AEC7",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 533,
+          "fileOffset": 738108,
+          "encodedRefId": "0x004B51",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 19281,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x90000000",
+          "payloadOffset": 738118,
+          "payloadBytes": 30,
+          "payloadSha256": "2422e5ed87edd78bbe72500b2caa023a6d23b74fd22662f30508f33f844a9b2c",
+          "envelopeBytes": 40
+        },
+        {
+          "formId": "0x0010AEC8",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 534,
+          "fileOffset": 738148,
+          "encodedRefId": "0x004B52",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 19282,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x90000000",
+          "payloadOffset": 738158,
+          "payloadBytes": 30,
+          "payloadSha256": "2422e5ed87edd78bbe72500b2caa023a6d23b74fd22662f30508f33f844a9b2c",
+          "envelopeBytes": 40
+        },
+        {
+          "formId": "0x0010AECB",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 536,
+          "fileOffset": 738681,
+          "encodedRefId": "0x004B53",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 19283,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x90000000",
+          "payloadOffset": 738691,
+          "payloadBytes": 30,
+          "payloadSha256": "2422e5ed87edd78bbe72500b2caa023a6d23b74fd22662f30508f33f844a9b2c",
+          "envelopeBytes": 40
+        },
+        {
+          "formId": "0x0010AECC",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 538,
+          "fileOffset": 739214,
+          "encodedRefId": "0x004B54",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 19284,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x90000000",
+          "payloadOffset": 739224,
+          "payloadBytes": 30,
+          "payloadSha256": "2422e5ed87edd78bbe72500b2caa023a6d23b74fd22662f30508f33f844a9b2c",
+          "envelopeBytes": 40
+        },
+        {
+          "formId": "0x00178A61",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 543,
+          "fileOffset": 741304,
+          "encodedRefId": "0x004B55",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 19285,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x20000004",
+          "payloadOffset": 741314,
+          "payloadBytes": 70,
+          "payloadSha256": "5440ae1bb0181a256b1a000a07fe933cc983e65817072c43d57bb6bea7929412",
+          "envelopeBytes": 80
+        },
+        {
+          "formId": "0x0010B1A6",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 659,
+          "fileOffset": 782992,
+          "encodedRefId": "0x004CB8",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 19640,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x80000000",
+          "payloadOffset": 783002,
+          "payloadBytes": 2,
+          "payloadSha256": "8c8ca8dd8cb2e106e8ccb65ad54edf23964558faea16b2c931a99e5791d779de",
+          "envelopeBytes": 12
+        },
+        {
+          "formId": "0x0010B1A7",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 660,
+          "fileOffset": 783004,
+          "encodedRefId": "0x004B93",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 19347,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x80000000",
+          "payloadOffset": 783014,
+          "payloadBytes": 2,
+          "payloadSha256": "8c8ca8dd8cb2e106e8ccb65ad54edf23964558faea16b2c931a99e5791d779de",
+          "envelopeBytes": 12
+        },
+        {
+          "formId": "0x00104F03",
+          "esmRecordType": "ACHR",
+          "changedFormIndex": 2033,
+          "fileOffset": 1339708,
+          "encodedRefId": "0x0029F9",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 10745,
+          "changeType": 1,
+          "rawType": "0x41",
+          "version": 27,
+          "changeFlags": "0x30000802",
+          "payloadOffset": 1339719,
+          "payloadBytes": 2744,
+          "payloadSha256": "835492b48cba76c38dd010b91b8cef7c4bfbe46641869478803839b423d606ad",
+          "envelopeBytes": 2755
+        },
+        {
+          "formId": "0x0010706E",
+          "esmRecordType": "ACRE",
+          "changedFormIndex": 3965,
+          "fileOffset": 2152064,
+          "encodedRefId": "0x001FFC",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 8188,
+          "changeType": 2,
+          "rawType": "0x42",
+          "version": 27,
+          "changeFlags": "0x30000802",
+          "payloadOffset": 2152075,
+          "payloadBytes": 2753,
+          "payloadSha256": "92197406096dad04f0bfcc455e0db6087029b413604dab2f8436ce4afb940d25",
+          "envelopeBytes": 2764
+        },
+        {
+          "formId": "0x00107077",
+          "esmRecordType": "ACRE",
+          "changedFormIndex": 3977,
+          "fileOffset": 2159692,
+          "encodedRefId": "0x00200B",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 8203,
+          "changeType": 2,
+          "rawType": "0x42",
+          "version": 27,
+          "changeFlags": "0x10000802",
+          "payloadOffset": 2159703,
+          "payloadBytes": 2266,
+          "payloadSha256": "546ff4d50355cf533abece602d4436e6623bb164c4d1e731d4b4bae26ff6d596",
+          "envelopeBytes": 2277
+        },
+        {
+          "formId": "0x0010765C",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 4291,
+          "fileOffset": 2278106,
+          "encodedRefId": "0x004E2A",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 20010,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x10000000",
+          "payloadOffset": 2278116,
+          "payloadBytes": 13,
+          "payloadSha256": "04795aaca55b4aa70ce1c55c3d25c58575da725a658b56d3fea67a4c974ce21d",
+          "envelopeBytes": 23
+        },
+        {
+          "formId": "0x00107684",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 4298,
+          "fileOffset": 2280660,
+          "encodedRefId": "0x004E2B",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 20011,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x10000000",
+          "payloadOffset": 2280670,
+          "payloadBytes": 13,
+          "payloadSha256": "04795aaca55b4aa70ce1c55c3d25c58575da725a658b56d3fea67a4c974ce21d",
+          "envelopeBytes": 23
+        },
+        {
+          "formId": "0x00107685",
+          "esmRecordType": "REFR",
+          "changedFormIndex": 4299,
+          "fileOffset": 2280683,
+          "encodedRefId": "0x004E2C",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 20012,
+          "changeType": 0,
+          "rawType": "0x00",
+          "version": 27,
+          "changeFlags": "0x10000000",
+          "payloadOffset": 2280693,
+          "payloadBytes": 13,
+          "payloadSha256": "04795aaca55b4aa70ce1c55c3d25c58575da725a658b56d3fea67a4c974ce21d",
+          "envelopeBytes": 23
+        },
+        {
+          "formId": "0x0015EF63",
+          "esmRecordType": "ACRE",
+          "changedFormIndex": 5810,
+          "fileOffset": 2837150,
+          "encodedRefId": "0x001798",
+          "referenceNamespace": 0,
+          "referencePayloadIndex": 6040,
+          "changeType": 2,
+          "rawType": "0x42",
+          "version": 27,
+          "changeFlags": "0x30000802",
+          "payloadOffset": 2837161,
+          "payloadBytes": 2272,
+          "payloadSha256": "d711f729e8b719f934f6cec16f5a6d3f0fd66d19a8da54ad9175cb1f8eaa07ec",
+          "envelopeBytes": 2283
+        }
+      ],
+      "conclusion": "At least these authored candidates have Save330 changed-form state; ESM-only scene reconstruction cannot be treated as the retail runtime scene."
+    },
+    "visibleAuthoredReferences": {
+      "status": "unresolved",
+      "creditedFormIds": [],
+      "noCreditPolicy": true,
+      "blockers": [
+        "exact camera eye and final view rotation are unresolved",
+        "projection and thumbnail crop are unresolved",
+        "mesh/model bounds and LOD choice are not evaluated",
+        "occlusion and renderer culling are not reconstructed",
+        "enable-parent and disabled/deleted state are not fully decoded",
+        "changed reference transforms and dynamic actor/creature positions are not fully decoded",
+        "screenshot morphology is not accepted as FormID proof"
+      ]
+    }
+  },
+  "failClosedCaptureGate": {
+    "eligibleNow": false,
+    "nullToleranceMeaning": "unresolved and rejects the comparison; null is never a wildcard",
+    "provenExactRequirements": [
+      {
+        "field": "retail PNG SHA256",
+        "target": "859fa4a89d0cc5efb16693a0aa104c264a1f9bc6c0bb257706b5401ceb8fd008",
+        "tolerance": 0
+      },
+      {
+        "field": "retail RGB SHA256",
+        "target": "16c44995ec4bc0ebde43f2d0fd81ba4cff2c6901642e288c676eb8ba6cc8e23e",
+        "tolerance": 0
+      },
+      {
+        "field": "candidate frame dimensions",
+        "target": [
+          512,
+          320
+        ],
+        "tolerancePixels": [
+          0,
+          0
+        ]
+      },
+      {
+        "field": "candidate pixel layout",
+        "target": "RGB24 row-major",
+        "tolerance": 0
+      },
+      {
+        "field": "mode",
+        "target": "first-person",
+        "tolerance": 0
+      },
+      {
+        "field": "world FOV float bits",
+        "target": "0x42960000",
+        "toleranceUlp": 0
+      },
+      {
+        "field": "first-person model FOV float bits",
+        "target": "0x425C0000",
+        "toleranceUlp": 0
+      },
+      {
+        "field": "player position float bits",
+        "target": [
+          "0xC78D646C",
+          "0xC49B062B",
+          "0x45FE4CB1"
+        ],
+        "toleranceUlp": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "field": "serialized reference rotation float bits",
+        "target": [
+          "0xBD83DF24",
+          "0x80000000",
+          "0x403BBB85"
+        ],
+        "toleranceUlp": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "field": "game-hour float bits",
+        "target": "0x416370A6",
+        "toleranceUlp": 0
+      },
+      {
+        "field": "weather FormID",
+        "target": "0x001237D7",
+        "tolerance": 0
+      }
+    ],
+    "blockingUnresolvedRequirements": [
+      {
+        "field": "camera eye world position",
+        "target": null,
+        "maximumAbsoluteErrorWorldUnits": null,
+        "pass": false
+      },
+      {
+        "field": "camera heading/pitch/roll",
+        "target": null,
+        "maximumAbsoluteErrorDegrees": null,
+        "pass": false
+      },
+      {
+        "field": "projection matrix/convention",
+        "target": null,
+        "maximumElementError": null,
+        "pass": false
+      },
+      {
+        "field": "viewport crop/resample transform",
+        "target": null,
+        "maximumNormalizedError": null,
+        "pass": false
+      },
+      {
+        "field": "complete visible authored FormID set",
+        "target": null,
+        "maximumSymmetricDifferenceCount": 0,
+        "pass": false
+      }
+    ],
+    "pixelComparison": {
+      "enabled": false,
+      "maximumPerChannelAbsoluteError": null,
+      "maximumDifferentPixelCount": null,
+      "minimumSimilarity": null,
+      "reason": "A pixel threshold before exact camera/projection/crop registration would measure misregistration, not renderer parity."
+    },
+    "candidateCaptureRequirements": [
+      "load the hash-locked Save330 through the normal save-load path",
+      "record OpenMW executable/build hash, content order, settings hash, save-import hash, and capture timestamp",
+      "capture flat first-person output without VR, overlays, telemetry, postprocessing, resizing, or manual crop",
+      "preserve the original candidate frame and separately derive any 512x320 comparison image with a hashed transform recipe",
+      "reject black-and-white, diagnostic-buffer, depth, normal, stencil, alpha-only, shader-test, or placeholder output",
+      "show the exact retail frame and candidate frame side by side, labeled with their hashes; do not label it parity until this gate is eligible"
+    ]
+  },
+  "bestKnownExactInputsForNonCreditBearingApproximation": {
+    "purpose": "These exact values may seed a closest-available OpenMW capture, but cannot close the camera/visibility gate.",
+    "worldspaceFormId": "0x000DA726",
+    "derivedCellFormId": "0x000E1AA7",
+    "playerPositionFloat32": [
+      -72392.84375,
+      -1240.1927490234375,
+      8137.58642578125
+    ],
+    "serializedReferenceRotationFloat32": [
+      -0.06439045071601868,
+      -0.0,
+      2.9333202838897705
+    ],
+    "firstPerson": true,
+    "worldFov": 75.0,
+    "firstPersonModelFov": 55.0,
+    "gameTimeHours": 14.215002059936523,
+    "weatherFormId": "0x001237D7",
+    "retailComparisonFrame": "D:/code/nikami-worlds-fnv-parity/oracles/fnv_save330_visual/retail-save330-reference.png",
+    "warning": "camera eye/heading/projection/crop must remain labeled approximate or unresolved"
+  },
+  "unresolved": [
+    "retail camera eye world position",
+    "retail final camera heading/pitch/roll",
+    "retail projection matrix and FOV convention",
+    "pre-thumbnail viewport and 512x320 crop/resample transform",
+    "complete Save330 runtime visible authored FormID set",
+    "runtime transforms/animation state for visible dynamic actors and creatures",
+    "pixel-difference tolerance after registration"
+  ],
+  "validationEquations": [
+    "SHA256(save) = 07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f",
+    "SHA256(FalloutNV.esm) = 50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1",
+    "SHA256(retail PNG) = 859fa4a89d0cc5efb16693a0aa104c264a1f9bc6c0bb257706b5401ceb8fd008",
+    "decoded PNG RGB = save[147:491667] byte-for-byte",
+    "512 * 320 * 3 = 491520",
+    "FormIDArray[583-1] = 0x000DA726",
+    "FormIDArray[20313-1] = 0x001237D7",
+    "floor(player.x/4096), floor(player.y/4096) = (-18,-1)",
+    "138 direct current-cell placements + 13 persistent-origin placements = 151 authored-origin candidates",
+    "147 REFR + 1 ACHR + 3 ACRE = 151",
+    "15 of 151 authored-origin candidates have Save330 changed forms",
+    "visible authored references credited = 0 while visibility status is unresolved"
+  ]
+}
