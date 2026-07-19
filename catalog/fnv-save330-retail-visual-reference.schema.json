@@ -70,7 +70,8 @@
         "mode": { "const": "first-person" },
         "position": { "$ref": "#/$defs/vector3" },
         "headingDegrees": { "type": "number" },
-        "fieldOfViewDegrees": { "type": "number" },
+        "fieldOfViewDegrees": { "const": 75.0 },
+        "firstPersonModelFieldOfViewDegrees": { "const": 55.0 },
         "viewportCropNormalized": { "$ref": "#/$defs/vector4" }
       }
     },
@@ -79,8 +80,8 @@
       "required": ["metadataStatus"],
       "properties": {
         "metadataStatus": { "enum": ["incomplete", "complete"] },
-        "gameTimeHours": { "type": "number" },
-        "weatherFormId": { "type": "string" },
+        "gameTimeHours": { "const": 14.215002059936523 },
+        "weatherFormId": { "const": "0x001237D7" },
         "visibleAuthoredReferences": { "type": "array", "items": { "type": "string" } }
       }
     },
@@ -112,6 +113,7 @@
               "position",
               "headingDegrees",
               "fieldOfViewDegrees",
+              "firstPersonModelFieldOfViewDegrees",
               "viewportCropNormalized"
             ]
           },
