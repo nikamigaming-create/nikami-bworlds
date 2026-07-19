@@ -31,31 +31,35 @@ Assert-Ledger ([string]$ledger.overallStatus -eq "fail") `
     "FNV overall acceptance must remain red while any subsystem is not pass."
 Assert-Ledger ([string]$ledger.vrGate -eq "blocked") `
     "VR gate must remain blocked until the complete flat ledger is green."
-Assert-Ledger ([string]$ledger.normalSessionBaseline.status -eq "fail") `
-    "Normal-session baseline is incorrectly promoted."
-Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.actorNeutralized) `
-    "Normal-session baseline neutralizes Easy Pete."
-Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.dryStart) `
-    "Normal-session baseline uses a dry proof cell."
-Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.forcedWeather) `
-    "Normal-session baseline forces weather."
-Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.forcedImageSpace) `
-    "Normal-session baseline forces image space."
-Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.foregroundInputUsed) `
-    "Normal-session baseline used foreground input."
-Assert-Ledger ([int]$ledger.normalSessionBaseline.facts.implicitPlayerEquipmentOverrides -eq 0) `
-    "Normal-session baseline contains an implicit player-equipment override."
-Assert-Ledger ([bool]$ledger.normalSessionBaseline.facts.isolatedWritableConfigAndUserData) `
-    "Normal-session baseline did not isolate writable config and user-data."
-Assert-Ledger ([string]$ledger.promotedRuntime.labCommit -eq [string]$baseLock.compositeCheckpoint.commit) `
-    "Acceptance ledger lab commit differs from the replay lock."
-Assert-Ledger ([string]$ledger.promotedRuntime.labTree -eq [string]$baseLock.compositeCheckpoint.tree) `
-    "Acceptance ledger lab tree differs from the replay lock."
-Assert-Ledger ([int]$ledger.promotedRuntime.patchCount -eq [int]$baseLock.replayVerification.patchCount) `
-    "Acceptance ledger patch count differs from the replay lock."
-Assert-Ledger ([string]$ledger.promotedRuntime.runtimeBinarySha256 -eq `
-    [string]$ledger.normalSessionBaseline.runtimeBinarySha256) `
-    "Normal session did not use the promoted runtime binary."
+Assert-Ledger ([int]$ledger.certifiedPlayableParityPercent -eq 0) `
+    "Playable parity must remain zero until a normal Save330 baseline has durable evidence."
+Assert-Ledger ([string]$ledger.provenanceGate.status -eq "fail") `
+    "Provenance gate must remain red until a normal Save330 baseline exists."
+Assert-Ledger ([string]$ledger.provenanceGate.requiredSave.sha256 -eq `
+    "07DBDD2D7C4ABE3160628E5463A9603A40F4271042C1DA1B89F1C4A4F7DBD81F") `
+    "Provenance gate does not lock exact Save330."
+Assert-Ledger ([long]$ledger.provenanceGate.requiredSave.bytes -eq 3395328) `
+    "Provenance gate has the wrong Save330 size."
+Assert-Ledger ([string]$ledger.invalidatedIncident.status -eq "discarded") `
+    "The monochrome synthetic run is not explicitly discarded."
+Assert-Ledger ([string]$ledger.normalSessionBaseline.status -eq "unproven") `
+    "Normal-session baseline must remain unproven until Save330 loads normally."
+Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.normalLoadGamePath) `
+    "Normal-session baseline incorrectly claims the normal load-game path."
+Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.save330ActuallyLoaded) `
+    "Normal-session baseline incorrectly claims Save330 was loaded."
+Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.committedRuntime) `
+    "Normal-session baseline incorrectly claims a committed runtime."
+Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.durableEvidencePresent) `
+    "Normal-session baseline incorrectly claims durable evidence."
+Assert-Ledger (-not [bool]$ledger.normalSessionBaseline.facts.visualParity) `
+    "Normal-session baseline incorrectly claims visual parity."
+Assert-Ledger ([string]$ledger.legacyPromotedRuntime.labCommit -eq [string]$baseLock.compositeCheckpoint.commit) `
+    "Legacy acceptance-ledger commit differs from the replay lock."
+Assert-Ledger ([string]$ledger.legacyPromotedRuntime.labTree -eq [string]$baseLock.compositeCheckpoint.tree) `
+    "Legacy acceptance-ledger tree differs from the replay lock."
+Assert-Ledger ([int]$ledger.legacyPromotedRuntime.patchCount -eq [int]$baseLock.replayVerification.patchCount) `
+    "Legacy acceptance-ledger patch count differs from the replay lock."
 
 $requiredSubsystems = @(
     "session-integrity",

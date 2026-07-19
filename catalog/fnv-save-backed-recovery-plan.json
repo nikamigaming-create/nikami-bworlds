@@ -1,0 +1,133 @@
+{
+  "schema": "nikami-fnv-save-backed-recovery-plan/v1",
+  "asOf": "2026-07-18",
+  "objective": "Make the official Fallout: New Vegas Ultimate Edition corpus playable through the normal OpenMW load-game path, in flat mode first, with Mads VR layered last and no regression hidden by synthetic proof paths.",
+  "currentTruth": {
+    "certifiedPlayableParityPercent": 0,
+    "reason": "No current committed runtime has durably loaded exact Save330 through the normal load-game path and produced an admissible gameplay frame.",
+    "validOfflineWork": [
+      "exact Save330 size and SHA-256 lock",
+      "save envelope parser and deterministic tests",
+      "retail GMST oracle values with raw float/integer bytes",
+      "source inspection, compilation, and unit tests"
+    ],
+    "diagnosticOnly": [
+      "fnv-pristine-mads-flat-diag-* --start probes",
+      "startup exception-loop counts",
+      "radius/grid cell-load logs without natural traversal"
+    ],
+    "discarded": [
+      "fnv-cell-stats-smoke-20260718-213158 and every visual, gameplay, streaming, or latency conclusion from it"
+    ]
+  },
+  "nonNegotiableRules": [
+    "No OpenMW, OpenMW VR, retail client, browser, or desktop launch without explicit user authorization in the current conversation.",
+    "No --start, --new-game, script-run, PositionCell, teleport, staged actor, neutralization, or forced proof state may contribute parity credit.",
+    "No uncommitted binary may be promoted or used for an acceptance percentage.",
+    "No evidence counts unless its files exist, hashes match, and the manifest locks source commit, binary, config, ordered content, data roots, and input save.",
+    "Any black/white pixels, missing world geometry, bad alpha, shader corruption, or disappearing set piece stops the slice immediately and rolls back to the last renderer-green commit.",
+    "Renderer, gameplay, and VR changes are isolated into separate commits; a slice cannot mix those boundaries.",
+    "Flat gameplay must be green before any VR parity work resumes."
+  ],
+  "phases": [
+    {
+      "id": 0,
+      "name": "Contain and account",
+      "status": "complete",
+      "outputs": [
+        "zero openmw/openmw_vr processes",
+        "temporary synthetic benchmark deleted",
+        "all streaming/profile edits from the invalid run rolled back",
+        "invalid incident recorded in catalog/fnv-flat-acceptance-ledger.json",
+        "missing acceptance evidence revoked",
+        "certified playable parity reset to zero"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "Lock the pristine renderer boundary",
+      "status": "in_progress",
+      "actions": [
+        "diff every renderer, GUI shader, runtime resource, shaders.yaml, and graphics setting against baseline commit 2ed153af06 and the pristine Mads package",
+        "separate the GUI filename compatibility change from world rendering",
+        "remove or quarantine every unproven reflection/environment-map/material override",
+        "produce a hash manifest of the renderer source, deployed resources, and settings without launching the game"
+      ],
+      "gate": "The candidate renderer is byte-accounted against pristine Mads; no unexplained world shader/resource/config delta remains. Visual green still requires the later user-authorized Save330 run."
+    },
+    {
+      "id": 2,
+      "name": "Finish native Save330 loading",
+      "status": "pending",
+      "actions": [
+        "finish semantic decoding of the remaining save payloads rather than only their envelopes",
+        "restore Player FormID 0x00000007 from the winning FalloutNV.esm record",
+        "restore worldspace, exterior/interior cell, position, rotation, time, weather, actor state, inventory, equipment, factions, quest stages, globals, and changed references",
+        "connect this state to OpenMW's ordinary load-game menu/path",
+        "add deterministic cold-reload tests and fail closed on any uncovered required state"
+      ],
+      "gate": "A committed flat binary consumes the exact Save330 hash through normal load-game code with no bootstrap flag and produces a complete state manifest."
+    },
+    {
+      "id": 3,
+      "name": "First admissible flat frame",
+      "status": "pending",
+      "actions": [
+        "prepare a normal launcher that selects/loads Save330 and nothing else",
+        "wait for explicit user authorization before any visible launch",
+        "capture exact launch, source, binary, config, content, save, log, and frame provenance",
+        "review full-color world geometry, alpha, sky, HUD, player, and nearby actors before exercising gameplay"
+      ],
+      "gate": "No monochrome output, missing set pieces, bad alpha/reflection bleed, shader errors, substitute player, or invalid camera/world state. Any failure returns to phase 1."
+    },
+    {
+      "id": 4,
+      "name": "Layer flat gameplay slices",
+      "status": "pending",
+      "orderedSlices": [
+        "static world, terrain, cells, doors, sky, weather, lighting, materials, alpha",
+        "save persistence and cold reload",
+        "actor and creature identity, placement, grounding, equipment, body, face, hair",
+        "idle, locomotion, furniture, AI packages, pathing, hostility, combat animation",
+        "HUD, Pip-Boy, inventory, barter, equipment, ammo, quests",
+        "dialogue selection, facing, voice, LIP, result scripts, quest progression",
+        "combat, hitscan/projectiles, damage, reactions, death, loot",
+        "containers, radios, terminals, crafting/workbenches, activators",
+        "Fallout-only music, ambience, UI, weapon, actor, world, and dialogue audio"
+      ],
+      "gatePerSlice": "One focused commit, deterministic tests, normal Save330 cold reload, no renderer regression, durable evidence, and explicit ledger update. A failed prior gate blocks the next slice."
+    },
+    {
+      "id": 5,
+      "name": "Seamless cell transitions",
+      "status": "pending",
+      "actions": [
+        "measure normal walking from the Save330 state across exterior boundaries and authored doors",
+        "run one uninstrumented visual/feel pass and a separate explicitly authorized profiler pass",
+        "A/B preload, cache, paging, asset, physics, and navmesh changes without touching shader/material behavior",
+        "compare cold and warm OpenMW crossings with the same retail route"
+      ],
+      "gate": "No loading-screen frame on exterior crossings, no recurring error/warning growth, no missing/changed scenery, p95 frame time <= 20 ms, p99 <= 25 ms, max <= 33.333 ms, no two consecutive frames over 20 ms, and crossing p99 penalty <= 5 ms versus steady travel."
+    },
+    {
+      "id": 6,
+      "name": "Mads VR layer last",
+      "status": "pending",
+      "actions": [
+        "start from the exact flat-green commit",
+        "retain Mads' original hands, red grip ray, input mapping, menu quads, compositor, and shaders",
+        "add only the minimum FNV compatibility glue",
+        "repeat every flat save/gameplay/transition gate in VR"
+      ],
+      "gate": "VR may not mask or replace a flat failure; any menu, pointer, hand, shader, actor, or save regression rolls back the VR-only commit."
+    }
+  ],
+  "percentagePolicy": {
+    "retailDenominator": 628395,
+    "source": "catalog/fnv-parity-denominators.json",
+    "unknownCountsAs": "fail",
+    "creditRule": "A record or behavioral case earns credit only on the single current promoted Save330-capable binary with durable evidence. Offline parsing and synthetic diagnostics report engineering coverage separately and never increase playable parity.",
+    "currentCertifiedAccepted": 0,
+    "currentCertifiedPercent": 0
+  }
+}

@@ -1,82 +1,73 @@
 {
   "schema": "nikami-fnv-flat-acceptance-ledger/v1",
-  "asOf": "2026-07-17",
+  "asOf": "2026-07-18",
   "scope": "Complete retail Fallout: New Vegas data in flat OpenMW, beginning with a normal level-one Goodsprings session and ending with the retail intro and Doc Mitchell character creation.",
   "overallStatus": "fail",
   "vrGate": "blocked",
-  "greenRule": "Every subsystem must be pass on the same promoted OpenMW queue with natural authored state, current FNV/FO3/Morrowind controls, native background captures, exact provenance, and no staged references, substitute player, actor neutralization, dry cell, forced proof weather/image-space, diagnostic chatter, or unresolved visual review.",
-  "promotedRuntime": {
+  "greenRule": "Every gameplay subsystem must pass on the same committed OpenMW binary after the normal load-game path loads exact Save330, with natural authored state, exact binary/config/save provenance, durable hashed artifacts, and no --start bootstrap, script-run placement, substitute player, staged references, actor neutralization, forced proof state, or unresolved visual review. Synthetic starts are diagnostic only and can never increase parity percentage.",
+  "certifiedPlayableParityPercent": 0,
+  "provenanceGate": {
+    "status": "fail",
+    "reason": "No durable, hash-verifiable normal Save330 gameplay run exists on the current clean-recovery runtime. The prior acceptance ledger also referenced twelve evidence files that are absent on disk.",
+    "requiredSave": {
+      "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
+      "bytes": 3395328,
+      "sha256": "07DBDD2D7C4ABE3160628E5463A9603A40F4271042C1DA1B89F1C4A4F7DBD81F"
+    },
+    "requirements": [
+      "normal load-game path; no --start, --new-game, script-run, PositionCell, teleport, or proof bootstrap",
+      "committed engine source and exact binary SHA-256",
+      "exact ordered config/data/content hashes",
+      "exact input save SHA-256 and proof that the save was actually consumed",
+      "existing hashed stdout, frame statistics, screenshots/video, and result manifest",
+      "zero unresolved black/white, missing-geometry, shader, alpha, or material regression"
+    ]
+  },
+  "invalidatedIncident": {
+    "id": "fnv-cell-stats-smoke-20260718-213158",
+    "status": "discarded",
+    "binarySha256": "B2C023815EB7C9EA3D6A3684A1510B8DB813303CA5118DA6D90E72D723053F2E",
+    "launchPath": "synthetic --start=Goodsprings --skip-menu; no .fos was loaded",
+    "observedFailure": "A visible OpenMW window rendered black-and-white garbage/pixels instead of a valid Fallout: New Vegas gameplay frame.",
+    "accounting": "The run was wrongly initiated as a hidden profiler probe. Windows CreateNoWindow hid only the console, not OpenMW's GUI render window. The exact monochrome pixel cause is not yet proven; the same log confirms forced shaders plus unsupported FNV alpha/color interpolators and texture stages. No visual, timing, streaming, or gameplay claim from this run is admissible.",
+    "containment": [
+      "terminated exact launched PIDs 30008 and 48796",
+      "verified zero openmw/openmw_vr processes remain",
+      "deleted the temporary synthetic crossing harness",
+      "rolled back every streaming/profile/preset/contract edit made in that turn",
+      "froze automated OpenMW launches pending explicit user authorization"
+    ]
+  },
+  "legacyPromotedRuntime": {
     "labCommit": "f8863dd47a608c5534d1a89dc6d1584b4c79fd12",
     "labTree": "1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a",
     "patchCount": 24,
     "runtimeBinarySha256": "29FBA414C9A73E951620A583F2807C31B934791A0BD95F1B9CB876431330C541"
   },
   "normalSessionBaseline": {
-    "status": "fail",
-    "run": "run/playable-session-baseline/fnv-normal-session-after-0024",
-    "runtimeBinarySha256": "29FBA414C9A73E951620A583F2807C31B934791A0BD95F1B9CB876431330C541",
+    "status": "unproven",
+    "run": null,
+    "runtimeBinarySha256": null,
     "facts": {
-      "retailPlayerRecord": true,
-      "level": 1,
-      "authoredGoodspringsExterior": "FormId:0x10daebb",
-      "authoredEasyPeteReference": "FormId:0x1104c80",
-      "actorNeutralized": false,
-      "dryStart": false,
-      "forcedWeather": false,
-      "forcedImageSpace": false,
-      "foregroundInputUsed": false,
-      "implicitPlayerEquipmentOverrides": 0,
-      "isolatedWritableConfigAndUserData": true,
-      "movementTelemetry": "pass",
-      "cameraTelemetry": "pass",
-      "nativeCaptureCount": 3
+      "normalLoadGamePath": false,
+      "save330ActuallyLoaded": false,
+      "committedRuntime": false,
+      "durableEvidencePresent": false,
+      "visualParity": false
     },
-    "failure": "Session integrity now passes without implicit player equipment, but native visual review, authored inventory/equipment behavior and the retail HUD/Pip-Boy remain failing or unproven.",
-    "evidence": [
-      {
-        "path": "run/playable-session-baseline/fnv-normal-session-after-0024/fallout_new_vegas/result.json",
-        "sha256": "2244D60BEFD53DC741F6C804F7B858A85E5921C2528833454C8BF5E5FF9953D6"
-      },
-      {
-        "path": "run/playable-session-baseline/fnv-normal-session-after-0024/fallout_new_vegas/stdout.log",
-        "sha256": "8E56CDB2B1289D84EB400FDCB2BA86D3F95A4E8B74A3E6C1759B1B023668ECD0"
-      },
-      {
-        "path": "run/playable-session-baseline/fnv-normal-session-after-0024/fallout_new_vegas/fallout_new_vegas-01.png",
-        "sha256": "5670F1A9DA39EF233D0BA13BACD90D820B2DFBDC4367BB3403DC72866F081E55"
-      },
-      {
-        "path": "run/playable-session-baseline/fnv-normal-session-after-0024/fallout_new_vegas/fallout_new_vegas-02.png",
-        "sha256": "63C3438DD67AFB2BC55E8140CEEA0A9EF764B8EAA0CC2F2934B01C39661BE52C"
-      },
-      {
-        "path": "run/playable-session-baseline/fnv-normal-session-after-0024/fallout_new_vegas/fallout_new_vegas-03.png",
-        "sha256": "9BBEEC643BA3C924EC6E683A7B810F115C39B6669D59E8FCAD4DEDAE3931A257"
-      }
-    ],
+    "failure": "There is no current normal Save330-backed gameplay baseline. Prior files named normal-session were synthetic/proof harness outputs or are absent and cannot certify session state.",
+    "evidence": [],
     "visualReview": [
-      "fail: the authored vertex-alpha shadow plane in NV_ProspectorSaloon-Neon.NIF renders opaque black instead of blending over the Prospector Saloon facade",
-      "fail: the native Player body/equipment presentation is incomplete and not a retail level-one Courier",
-      "fail: the displayed HUD is the shared OpenMW fallback rather than the retail FNV HUD/Pip-Boy presentation",
-      "fail: sky, clouds, lighting and final color remain visibly non-retail and lack a same-frame oracle match",
-      "unproven: duplicate/invisible actor and object absence has not been exhaustively enumerated"
+      "fail: black-and-white garbage/pixels were visible in the invalidated 2026-07-18 synthetic launch",
+      "unproven: no admissible Save330-loaded frame exists for renderer review",
+      "unproven: player, actors, HUD/Pip-Boy, sky, world materials, alpha, and final color all require a normal-load proof"
     ]
   },
   "subsystems": [
     {
       "id": "session-integrity",
-      "status": "pass",
-      "reason": "Patch 0023 keeps the native retail Player proxy but applies no outfit or headgear without an explicit override or proof bootstrap; the isolated normal run reports zero override lines.",
-      "evidence": [
-        {
-          "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/result.json",
-          "sha256": "861A4CD81143571E9F9B01D8510195B679FA02020503780C2094BC1B8CEB2B38"
-        },
-        {
-          "path": "run/playable-session-baseline/fnv-normal-session-after-0023-isolated-v2/fallout_new_vegas/stdout.log",
-          "sha256": "CE7C44F63C767090D9A9F28C0D521C62C655032AB34D47466F90518466F12983"
-        }
-      ]
+      "status": "unproven",
+      "reason": "No current normal Save330 load proves the native Player, quest/world state, position, inventory, equipment, or faction state. The former passing evidence is absent and is revoked."
     },
     {
       "id": "level-movement-camera-scale-first-third-person",
@@ -86,22 +77,12 @@
     {
       "id": "neighboring-exterior-cell-streaming",
       "status": "unproven",
-      "reason": "Radius-one cells load in the smoke run; traversal across boundaries and hitch timing are not yet measured against retail."
+      "reason": "Synthetic radius-one startup loads are inadmissible. No natural boundary crossing has been measured after a normal Save330 load; the 2026-07-18 smoke run is explicitly discarded."
     },
     {
       "id": "interior-doors-and-transition-preload",
       "status": "unproven",
-      "reason": "Patch 0021 proves the authored Goodsprings door destination completes preload before activation and proves interior return under isolated writable state with no cache-capacity warning, with FO3 and Morrowind controls; same-frame retail transition latency and hitch parity remain unmeasured.",
-      "evidence": [
-        {
-          "path": "run/fnv-interaction-audit/door-preload-after-0023-isolated-v2/20260712-144855/manifest.json",
-          "sha256": "CE5267CC830A0B7490690BBB6275095934DCBB1D7CBF41D397EDB528A514541E"
-        },
-        {
-          "path": "run/fnv-interaction-audit/door-preload-after-0023-isolated-v2/20260712-144855/stdout.log",
-          "sha256": "F0B6BF2D66FF8378F806535EE2E8D3A18AF276596C4C235800DB11B0DF0A28B1"
-        }
-      ]
+      "reason": "The former door audit artifacts are absent and cannot prove activation or return. Normal Save330-backed authored door traversal and latency are unproven."
     },
     {
       "id": "natural-npcs-easy-pete-and-identity",
@@ -121,7 +102,7 @@
     {
       "id": "terrain-sky-clouds-weather-lighting-image-space",
       "status": "fail",
-      "reason": "Post-promoted local gates now pass natural Goodsprings WTHR FormId:0x11237d7 selection without a force, four cardinal cloud captures, exterior-interior-exterior weather retention, and authored FNAM near/far/power 10/120000/0.5 on runtime SHA-256 183CFC672F984CB041492567B6009176C46576C102213C2712AF1ACC0123BA19. The promoted queue and full surface remain red: same-frame retail pixels, broader weather/time coverage, precipitation, lightning, lighting/image-space parity and the black facade material are unresolved."
+      "reason": "Renderer acceptance is red. The 2026-07-18 synthetic launch visibly produced black-and-white garbage/pixels, and no current normal Save330-loaded frame proves terrain, sky, clouds, weather, lighting, alpha, materials, image-space, or final color."
     },
     {
       "id": "sound-music-ambience",
@@ -131,7 +112,7 @@
     {
       "id": "activation-dialogue-voice-lip-result-scripts-quests",
       "status": "unproven",
-      "reason": "Post-promoted local slices unit-prove direct-dialogue facing policy and runtime-prove Easy Pete INFO FormId:0x1106635 responses 1 then 2 with matching per-line LIP playback. Facing still lacks a native pose/differential gate, and broad dialogue selection, interruption behavior, result scripts and natural quest progression remain unproven."
+      "reason": "Static and isolated dialogue work exists, but no admissible normal Save330 run proves Easy Pete or any broad dialogue selection, facing, voice/LIP, result scripts, interruption behavior, or natural quest progression."
     },
     {
       "id": "inventory-hud-pip-boy-equipment",
@@ -150,29 +131,13 @@
     },
     {
       "id": "fallout3-control",
-      "status": "pass",
-      "reason": "The isolated FO3 interaction control passes all actor, dialogue, door, interior, radio and return gates on the patch-0023 binary with no preloader-capacity warning.",
-      "evidence": [
-        {
-          "path": "run/fo3-interaction-audit/door-preload-control-0023-isolated-v2/20260712-144925/manifest.json",
-          "sha256": "25F8113ACA93A5CEE5D871AE0100CC9CC8D66660B4226E255AE60B80DABC5A78"
-        },
-        {
-          "path": "run/fo3-interaction-audit/door-preload-control-0023-isolated-v2/20260712-144925/stdout.log",
-          "sha256": "3F8D9175185E9464DA9942EE5671C1E4881B9CD14246336C4B79A3105616F1C2"
-        }
-      ]
+      "status": "unproven",
+      "reason": "The former FO3 control artifacts are absent; the control is revoked until durable hashed evidence is regenerated."
     },
     {
       "id": "morrowind-regression",
-      "status": "pass",
-      "reason": "The isolated Morrowind normal-session control passes movement, camera, authored Fargoth and three native captures on the patch-0023 binary.",
-      "evidence": [
-        {
-          "path": "run/playable-session-baseline/morrowind-control-0023-isolated/ledger.json",
-          "sha256": "BF7DCD033E6156701B6835A5A83BE7E682C067912B2132E39B03678A2E487254"
-        }
-      ]
+      "status": "unproven",
+      "reason": "The former Morrowind control artifact is absent; the control is revoked until durable hashed evidence is regenerated."
     },
     {
       "id": "openmw-queue-replay",
