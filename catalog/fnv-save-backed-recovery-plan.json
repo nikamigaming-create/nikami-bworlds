@@ -50,6 +50,11 @@
       "actions": [
         "diff every renderer, GUI shader, runtime resource, shaders.yaml, and graphics setting against baseline commit 2ed153af06 and the pristine Mads package",
         "separate the GUI filename compatibility change from world rendering",
+        "keep the MyGUI gui.vert/gui.frag filename correction; it is the only renderer-source delta and points at the packaged shaders",
+        "restore the known working visual boundary: viewing distance 10000, load unsupported NIF files true, distant terrain false, object paging false, object paging active grid false, force shaders false, environment-map lighting false, and shadows false",
+        "remove the four forced FNV sky-model overrides until SkyShaderProperty is implemented",
+        "lock ordinary launch routing to local/openmw-pristine-mads-33568a and reject the old openmw-fo4guard and 6a5576 recovery defaults",
+        "use D:/Modlists/fnv/openmw-config/flat-ui-proof/20260611_232015/settings.cfg (174 bytes, SHA-256 670F5DC9FDF3EDC199EF4BCD6190BBE5D3DE1090F2C5CE466590E2582F8C582A) as the last known working minimal-settings reference",
         "remove or quarantine every unproven reflection/environment-map/material override",
         "produce a hash manifest of the renderer source, deployed resources, and settings without launching the game"
       ],
