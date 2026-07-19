@@ -9,27 +9,33 @@ The same pinned save now proves the Player ACHR movement prefix at
 `497489+28`: ACHR `0x00000014` targets the Mojave Wasteland WRLD
 `0x000DA726`, position `(-72392.84375, -1240.19275, 8137.58643)`, and rotation
 `(-0.0643904507, -0.0, 2.93332028)` radians. The following `5,067` Player
-  payload bytes are fully schema-accounted offline. The committed engine parser
-  decodes the first `4,762` of them through actor values, factions, encounter
-  zone, all 50 inventory entries, mobile-object base/low/middle/high process
-  state, the exact ChangedActor/ActorMover/ChangedCharacter continuation at
+payload bytes are fully schema-accounted offline and decoded by the committed
+engine parser through actor values, factions, encounter zone, all 50 inventory
+entries, mobile-object base/low/middle/high process state, and the exact
+ChangedActor/ActorMover/ChangedCharacter continuation at
 `[501187,501697)`. That 510-byte continuation has SHA-256
 `3802ba9e14fc6a31cba704aa523ea18205e06d65ec537815ee75425422175c7a`.
 The canonical second Player animation-buffer envelope at `[501697,501845)` is
-  also decoded; its 145-byte body remains byte-exact and opaque by definition.
-  The following 287-byte PlayerCharacter scalar/reference block at
-  `[501845,502132)` and 147-byte topics/notes/lists/perks/cards/stages/objectives
-  block at `[502132,502279)` are decoded as well. The remaining
-  `[502279,502584)` 305-byte tail is explicit with SHA-256
-  `54c70a2c054231d134ae65f1d26c23e8ed57b7385d7baaa6d6ff15a62264b07b`;
-  the next implementation slice is the 234-byte magic-target list and entries
-  at `[502279,502513)`. Across the complete Save330 file, parser non-opaque
-  coverage is now `661,143 / 3,395,328` bytes (`19.472139363266%`), leaving
-  `2,734,185` semantically opaque bytes. The decoder passed 26/26 FONVSaveGame
-tests, including the pinned external Save330 and corruption cases. This proves a player-reference
-transform, inventory, process, and actor-mover payload, not the
-screenshot-bound camera eye/heading/crop or authored visible-reference set;
-those gates remain closed.
+also decoded; its 145-byte body remains byte-exact and opaque by definition.
+The following 287-byte PlayerCharacter scalar/reference block at
+`[501845,502132)` and 147-byte topics/notes/lists/perks/cards/stages/objectives
+block at `[502132,502279)` are decoded as well. The 234-byte magic-target state
+at `[502279,502513)` has SHA-256
+`2eb27ee12ad512bf549eddddd4d16f0b8b130a4c81dd550f636618c9becb03d4`,
+and the final 71-byte Player state at `[502513,502584)` has SHA-256
+`7e88d94efc5f64bbf8ca213e2d0759f4b3b3e4012a486145f9d5531af1de039f`.
+The complete Player payload `[497489,502584)` is therefore `5,095` decoded
+bytes with a zero-byte remainder. Original commits `0609952d60` and
+`da7b22122e`, plus clean commits `e336013feb` and `3963af2952`, implement the
+two completion slices. Across the complete Save330 file, parser non-opaque
+coverage is now `661,448 / 3,395,328` bytes (`19.4811222951067%`), leaving
+`2,733,880` semantically opaque bytes across `7,089` ranges. The changed-form
+split is `5,095` decoded plus `2,731,293` opaque payload bytes. The decoder
+passed 30/30 FONVSaveGame tests against both worktrees, including the pinned
+external Save330 and corruption cases. This proves a player-reference
+transform, inventory, process, actor-mover, and complete Player payload, not
+the screenshot-bound camera eye/heading/crop or authored visible-reference
+set; those gates remain closed.
 
 `initial-historical-openmw-rejected.png` deliberately pairs that retail oracle
 with the closest exterior frame found in the user's earlier OpenMW recording.

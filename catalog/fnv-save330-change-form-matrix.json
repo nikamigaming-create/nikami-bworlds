@@ -29,21 +29,24 @@
     { "type": 50, "formType": "0x071", "record": "CHAL", "count": 2, "payloadBytes": 20, "maxPayloadBytes": 10, "version": 27, "flagVariants": 1, "payloadPercent": 0.000730891 }
   ],
   "semanticAccountingAtEngineCommit": {
-    "engineCommit": "55b22d6d9d",
-    "cleanEngineCommit": "33f6270d5c",
-    "decodedChangedFormPayloadBytes": 4790,
-    "opaqueChangedFormPayloadBytes": 2731598,
+    "originalEngineCommits": ["0609952d60", "da7b22122e"],
+    "cleanEngineCommits": ["e336013feb", "3963af2952"],
+    "tests": { "passed": 30, "total": 30 },
+    "decodedPlayerPayload": { "offset": 497489, "bytes": 5095, "end": 502584, "remainderBytes": 0 },
+    "decodedChangedFormPayloadBytes": 5095,
+    "opaqueChangedFormPayloadBytes": 2731293,
     "opaqueGlobalDataPayloadBytes": 2582,
     "opaqueUnknownTableBytes": 5,
-    "semanticOpaqueBytes": 2734185,
-    "equation": "2731598 + 2582 + 5 = 2734185"
+    "semanticOpaqueBytes": 2733880,
+    "semanticOpaqueRanges": 7089,
+    "changedFormEquation": "5095 + 2731293 = 2736388",
+    "equation": "2731293 + 2582 + 5 = 2733880"
   },
   "dominantWork": {
     "actorAndCreaturePayloadBytes": 2686682,
     "percentOfChangedFormPayload": 98.183517834,
-    "percentOfCurrentSemanticOpaqueBytes": 98.262626706,
+    "percentOfCurrentSemanticOpaqueBytes": 98.273589185,
     "priority": [
-      "finish the exact 305-byte Player ACHR tail",
       "decode generic version-27 ACHR payloads by observed change-flag branch",
       "decode generic version-27 ACRE payloads by observed change-flag branch",
       "decode REFR, QUST, FACT, FLST, CELL, CREA, LVLI, and CHAL payloads",

@@ -71,13 +71,26 @@
         "end": 502279,
         "sha256": "cec00de438e97af6429ad69dc1b514b67a287e04a71146cbe114e24ac322da3c"
       },
-      "engineOpaqueTail": {
+      "engineDecodedPlayerCharacterMagicTargetState": {
         "offset": 502279,
-        "bytes": 305,
-        "end": 502584,
-        "sha256": "54c70a2c054231d134ae65f1d26c23e8ed57b7385d7baaa6d6ff15a62264b07b"
+        "bytes": 234,
+        "end": 502513,
+        "sha256": "2eb27ee12ad512bf549eddddd4d16f0b8b130a4c81dd550f636618c9becb03d4"
       },
-      "nextPlayerCharacterMagicTargetState": { "offset": 502279, "bytes": 234, "end": 502513 }
+      "engineDecodedPlayerCharacterFinalState": {
+        "offset": 502513,
+        "bytes": 71,
+        "end": 502584,
+        "sha256": "7e88d94efc5f64bbf8ca213e2d0759f4b3b3e4012a486145f9d5531af1de039f"
+      },
+      "engineDecodedPlayerPayload": { "offset": 497489, "bytes": 5095, "end": 502584 },
+      "enginePlayerRemainder": { "offset": 502584, "bytes": 0, "end": 502584 }
+    },
+    "engineParserVerification": {
+      "originalCommits": ["0609952d60", "da7b22122e"],
+      "cleanCommits": ["e336013feb", "3963af2952"],
+      "testsPassed": 30,
+      "testsTotal": 30
     },
     "derivedExteriorPlacement": {
       "derivation": "OpenMW floor(position/4096) containment resolved against authored WastelandNV exterior CELL records",
