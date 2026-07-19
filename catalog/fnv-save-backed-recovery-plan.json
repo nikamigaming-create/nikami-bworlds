@@ -9,9 +9,9 @@
       "saveBytes": 3395328,
       "structurallyAccountedBytes": 3395328,
       "structurallyAccountedPercent": 100.0,
-      "parserReportedSemanticOpaqueBytes": 2734619,
-      "parserReportedNonOpaqueBytes": 660709,
-      "parserReportedNonOpaquePercent": 19.459357093041,
+      "parserReportedSemanticOpaqueBytes": 2734332,
+      "parserReportedNonOpaqueBytes": 660996,
+      "parserReportedNonOpaquePercent": 19.467809884642,
       "playableParityCreditPercent": 0.0
     },
     "validOfflineWork": [
@@ -21,7 +21,7 @@
       "engine-derived Save330 placement in authored WastelandNV CELL 0x000E1AA7 at grid (-18,-1)",
       "save-backed game hour 14.215002059936523 and current weather 0x001237D7 / NVWastelandGS",
       "complete offline schema accounting of the 5,067-byte Player ACHR remainder with zero leftover",
-      "committed engine decoding through byte 501845: movement, actor-value arrays, factions, encounter zone, all 50 Player inventory entries, mobile-object process state, ChangedActor fixed state, ActorMover, detailed path handler, PlayerMover, character tail, and the second animation-buffer envelope",
+      "committed engine decoding through byte 502132: movement, actor-value arrays, factions, encounter zone, all 50 Player inventory entries, mobile-object process state, ChangedActor fixed state, ActorMover, detailed path handler, PlayerMover, character tail, the second animation-buffer envelope, and the PlayerCharacter scalar/reference block",
       "save-backed first-person mode, 55-degree first-person model FOV, and 75-degree world FOV",
       "exact WastelandNV climate and Save330 current/default WTHR records with first-frame color, cloud, fog, and timing targets",
       "pinned retail Save330 screenshot oracle and fail-closed side-by-side candidate gate",
@@ -109,11 +109,12 @@
         "engine commit 29686400a3 decodes the exact 1,675-byte Player mobile-object base/low/middle/high process state through byte 501187, reducing parser-reported semantic gaps to 2,735,277 bytes",
         "engine commit ff64fcaf22 decodes the exact 510-byte ChangedActor/ActorMover/ChangedCharacter slice at [501187,501697), SHA-256 3802ba9e14fc6a31cba704aa523ea18205e06d65ec537815ee75425422175c7a, reducing parser-reported semantic gaps to 2,734,767 bytes; clean-engine cherry-pick 85c112f667 carries the identical source",
         "engine commit 267b7dce87 decodes the canonical 148-byte second Player animation buffer at [501697,501845), preserves its 145-byte body, and reduces parser-reported semantic gaps to 2,734,619 bytes; clean-engine cherry-pick 2b2dead4d1 carries the identical source",
+        "engine commit 283b0432bf decodes the canonical 287-byte PlayerCharacter scalar/reference block at [501845,502132), including the first-person flag, 55-degree first-person-model FOV, 75-degree world FOV, and eleven fail-closed RefIDs, reducing parser-reported semantic gaps to 2,734,332 bytes; clean-engine cherry-pick 93c135b0a3 carries the identical source",
         "clean-engine commits b2d2f74380, a3e8ee90fd, and 3967ab2cea register native FNV Class, GameSetting, Climate, and Weather stores at tuple-tail ABI-safe positions",
         "clean-engine commit 5e14992d66 resolves the exact Save330 WRLD-to-CLMT-to-current/default-WTHR model, forces every unused WTHR color byte to opaque alpha, retains all four native cloud layers, and never imports TES3 Clear",
-        "22/22 exact FONVSaveGame tests including the pinned external Save330 and animation-buffer corruption cases, 18/18 Player/native-record tests, and 7/7 exact weather/climate tests pass after compilation",
-        "the complete Player ACHR remainder 497517+5067 is schema-accounted offline with zero leftover; 4,328 bytes are represented by the current parser and the remaining [501845,502584) 739-byte tail is explicit with SHA-256 71e6d95f325b5d4b7a8db31b4abbf185944b7fb936d4a54f09d4243ecfa1021f",
-        "the next exact Player slice is the 287-byte PlayerCharacter scalar/reference state at [501845,502132)",
+        "24/24 exact FONVSaveGame tests including the pinned external Save330 and scalar/reference corruption cases, 18/18 Player/native-record tests, and 7/7 exact weather/climate tests pass after compilation",
+        "the complete Player ACHR remainder 497517+5067 is schema-accounted offline with zero leftover; 4,615 bytes are represented by the current parser and the remaining [502132,502584) 452-byte tail is explicit with SHA-256 bb677eb06efd1a806ddc715269f3da7dee84353bbdb564a1fd4eee19bff9f6d3",
+        "the next exact Player slice is the 147-byte topics, notes, lists, perks, cards, stages, and objectives state at [502132,502279)",
         "Save Global Data type 1 stores (-18,0) and remains opaque rather than being invented as the transform-containing cell"
       ],
       "gate": "A committed flat binary consumes the exact Save330 hash through normal load-game code with no bootstrap flag and produces a complete state manifest."

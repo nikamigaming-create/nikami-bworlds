@@ -59,12 +59,19 @@
         "bodyBytes": 145,
         "bodySha256": "3b1a3de703fc484c1271076cbdac4e155531c2f794b0e7a7c49e418329090376"
       },
-      "engineOpaqueTail": {
+      "engineDecodedPlayerCharacterScalarReferenceState": {
         "offset": 501845,
-        "bytes": 739,
-        "sha256": "71e6d95f325b5d4b7a8db31b4abbf185944b7fb936d4a54f09d4243ecfa1021f"
+        "bytes": 287,
+        "end": 502132,
+        "sha256": "03c6a113c7aafe5b32d19038468e70d7a877670e6ef9a5ddcc35898c9c2c8c4f"
       },
-      "nextPlayerCharacterScalarReferenceState": { "offset": 501845, "bytes": 287, "end": 502132 }
+      "engineOpaqueTail": {
+        "offset": 502132,
+        "bytes": 452,
+        "end": 502584,
+        "sha256": "bb677eb06efd1a806ddc715269f3da7dee84353bbdb564a1fd4eee19bff9f6d3"
+      },
+      "nextPlayerCharacterTopicsAndListsState": { "offset": 502132, "bytes": 147, "end": 502279 }
     },
     "derivedExteriorPlacement": {
       "derivation": "OpenMW floor(position/4096) containment resolved against authored WastelandNV exterior CELL records",
