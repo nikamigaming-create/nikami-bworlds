@@ -143,6 +143,19 @@ class ESM4Catalog:
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XESP" and len(raw) >= 8:
                 fields["enableParent"] = form_from_raw(raw, self.mod_index)
                 fields["enableParentFlags"] = u32(raw, 4)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XOWN" and len(raw) >= 4:
+                fields["owner"] = form_from_raw(raw, self.mod_index)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XGLB" and len(raw) >= 4:
+                fields["global"] = form_from_raw(raw, self.mod_index)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XRNK" and len(raw) >= 4:
+                fields["factionRank"] = i32(raw, 0)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XCNT" and len(raw) >= 4:
+                fields["count"] = i32(raw, 0)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XLOC" and len(raw) >= 8:
+                fields["isLocked"] = True
+                fields["lockLevel"] = struct.unpack_from("<b", raw, 0)[0]
+                fields["lockKey"] = form_from_raw(raw[4:], self.mod_index)
+                fields["lockDataBytes"] = len(raw)
             elif rtype in ("NPC_", "CREA") and name == "ACBS" and len(raw) >= 4:
                 fields["actorFlags"] = u32(raw, 0)
                 # TES4-family actor flags use bit 0 for female on the games we mine here.
@@ -496,6 +509,7 @@ class ESM4Catalog:
                     record["outfitItems"] = [form_hex(entry) for entry in fields["outfitItems"] if entry]
                     record["openmwOutfitItems"] = [openmw_form_id(entry) for entry in fields["outfitItems"] if entry]
                 if rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD"):
+                    record["recordFlags"] = flags
                     record["parentCell"] = form_hex(current_cell)
                     record["openmwParentCell"] = openmw_form_id(current_cell)
                     record["base"] = form_hex(fields.get("base"))
@@ -513,6 +527,17 @@ class ESM4Catalog:
                     record["teleportFlags"] = fields.get("teleportFlags", 0)
                     record["audioLocation"] = form_hex(fields.get("audioLocation"))
                     record["radio"] = fields.get("radio")
+                    record["owner"] = form_hex(fields.get("owner"))
+                    record["openmwOwner"] = openmw_form_id(fields.get("owner"))
+                    record["global"] = form_hex(fields.get("global"))
+                    record["openmwGlobal"] = openmw_form_id(fields.get("global"))
+                    record["factionRank"] = fields.get("factionRank", -1)
+                    record["count"] = fields.get("count", 1)
+                    record["isLocked"] = fields.get("isLocked", False)
+                    record["lockLevel"] = fields.get("lockLevel", 0)
+                    record["lockKey"] = form_hex(fields.get("lockKey"))
+                    record["openmwLockKey"] = openmw_form_id(fields.get("lockKey"))
+                    record["lockDataBytes"] = fields.get("lockDataBytes", 0)
                 matches = self.record_matches_terms(record)
                 if matches:
                     record["matches"] = matches
@@ -565,6 +590,7 @@ class ESM4Catalog:
                     "id": form_hex(rec_form),
                     "openmwId": openmw_form_id(rec_form),
                     "type": rtype,
+                    "recordFlags": flags,
                     "parentCell": form_hex(current_cell),
                     "openmwParentCell": openmw_form_id(current_cell),
                     "base": form_hex(fields.get("base")),
@@ -586,6 +612,17 @@ class ESM4Catalog:
                     "audioLocation": form_hex(fields.get("audioLocation")),
                     "openmwAudioLocation": openmw_form_id(fields.get("audioLocation")),
                     "radio": fields.get("radio"),
+                    "owner": form_hex(fields.get("owner")),
+                    "openmwOwner": openmw_form_id(fields.get("owner")),
+                    "global": form_hex(fields.get("global")),
+                    "openmwGlobal": openmw_form_id(fields.get("global")),
+                    "factionRank": fields.get("factionRank", -1),
+                    "count": fields.get("count", 1),
+                    "isLocked": fields.get("isLocked", False),
+                    "lockLevel": fields.get("lockLevel", 0),
+                    "lockKey": form_hex(fields.get("lockKey")),
+                    "openmwLockKey": openmw_form_id(fields.get("lockKey")),
+                    "lockDataBytes": fields.get("lockDataBytes", 0),
                 }
                 self.placements.append(placement)
 
