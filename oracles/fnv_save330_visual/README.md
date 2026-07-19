@@ -10,9 +10,10 @@ The same pinned save now proves the Player ACHR movement prefix at
 `0x000DA726`, position `(-72392.84375, -1240.19275, 8137.58643)`, and rotation
 `(-0.0643904507, -0.0, 2.93332028)` radians. The following `5,067` Player
 payload bytes are fully schema-accounted offline. The committed engine now
-decodes the first `1,995` of them through actor values, factions, encounter
-zone, and all 50 inventory entries; the remaining `3,072` bytes are explicitly
-opaque. This proves a player-reference transform and inventory payload, not the
+decodes the first `3,670` of them through actor values, factions, encounter
+zone, all 50 inventory entries, and the mobile-object base/low/middle/high
+process state; the remaining `1,397` bytes are explicitly opaque. This proves a
+player-reference transform, inventory, and process payload, not the
 screenshot-bound camera eye/heading/crop or authored visible-reference set;
 those gates remain closed.
 

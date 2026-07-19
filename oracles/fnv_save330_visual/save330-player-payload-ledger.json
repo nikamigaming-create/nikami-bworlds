@@ -1,6 +1,6 @@
 {
   "schema": "nikami-fnv-save330-player-payload-ledger/v1",
-  "status": "offline-schema-accounted-and-engine-decoded-through-inventory",
+  "status": "offline-schema-accounted-and-engine-decoded-through-mobile-object-process-state",
   "save": {
     "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
     "bytes": 3395328,
@@ -14,20 +14,22 @@
     "engineDecodedMovement": { "offset": 497489, "bytes": 28, "end": 497517 },
     "engineDecodedActorValueArrays": { "offset": 497517, "bytes": 1160, "end": 498677 },
     "engineDecodedProcessAndInventory": { "offset": 498677, "bytes": 835, "end": 499512 },
+    "engineDecodedMobileObjectProcessState": { "offset": 499512, "bytes": 1675, "end": 501187 },
     "auditedRemainder": { "offset": 497517, "bytes": 5067, "end": 502584 },
-    "engineOpaqueTail": { "offset": 499512, "bytes": 3072, "end": 502584 },
+    "engineOpaqueTail": { "offset": 501187, "bytes": 1397, "end": 502584 },
     "unaccountedBytes": 0
   },
   "engineImplementation": {
-    "decodedPlayerPayload": { "offset": 497489, "bytes": 2023, "end": 499512 },
-    "decodedAuditedRemainderBytes": 1995,
-    "opaqueAuditedRemainderBytes": 3072,
+    "decodedPlayerPayload": { "offset": 497489, "bytes": 3698, "end": 501187 },
+    "decodedAuditedRemainderBytes": 3670,
+    "opaqueAuditedRemainderBytes": 1397,
     "commits": [
       "9fbb611ab5 Decode the Save330 player movement prefix",
       "d7a2d1731b Decode Save330 player actor-value arrays",
-      "d66d24c62b Decode Save330 player inventory payload"
+      "d66d24c62b Decode Save330 player inventory payload",
+      "29686400a3 Decode Save330 player process state"
     ],
-    "verification": "18/18 FONVSaveGame tests passed against the committed parser, including the exact external Save330 fixture and fail-closed process/inventory corruption cases"
+    "verification": "19/19 FONVSaveGame tests passed against the committed parser when the exact external Save330 fixture is supplied, including fail-closed process-state corruption cases"
   },
   "remainderCoverage": [
     { "offset": 497517, "bytes": 385, "end": 497902, "domain": "ActorValues244[77]" },
@@ -138,7 +140,7 @@
       "finish exactly at byte 499512 and leave the remaining 3072 bytes opaque"
     ]
   },
-  "nextImplementationSlice": {
+  "implementedMobileObjectProcessStateSlice": {
     "range": { "offset": 499512, "bytes": 1675, "end": 501187 },
     "domain": "mobile-object base/low/middle/high process state",
     "requirements": [
@@ -146,6 +148,16 @@
       "preserve every raw byte and absolute range alongside its semantic value",
       "fail closed on unsupported process levels, invalid delimiters, impossible counts, and section overruns",
       "finish exactly at byte 501187 and leave the remaining 1397 bytes opaque"
+    ]
+  },
+  "nextImplementationSlice": {
+    "range": { "offset": 501187, "bytes": 510, "end": 501697 },
+    "domain": "ChangedActor fixed state, ActorMover, and character tail",
+    "requirements": [
+      "decode only fields whose FNV save layout is pinned to authoritative definitions or exact retail evidence",
+      "preserve every raw byte and absolute range alongside its semantic value",
+      "fail closed on invalid delimiters, impossible counts, unsupported conditional branches, non-finite values, and section overruns",
+      "finish exactly at byte 501697 and leave the remaining 887 bytes opaque"
     ]
   }
 }
