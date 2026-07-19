@@ -1,0 +1,93 @@
+﻿{
+    "schema":  "nikami-fnv-renderer-boundary-manifest/v1",
+    "generatedAt":  "2026-07-19T05:09:05.6169117Z",
+    "pass":  true,
+    "acceptanceEligible":  false,
+    "acceptanceNote":  "Offline byte accounting only. Visual acceptance requires an explicitly authorized normal Save330 run.",
+    "engine":  {
+                   "root":  "D:/code/nikami-openmw-pristine-mads",
+                   "baselineCommit":  "2ed153af0647fa6e3b76e7ba6536be744d8f116b",
+                   "headCommit":  "2ed153af0647fa6e3b76e7ba6536be744d8f116b",
+                   "boundaryRoots":  [
+                                         "apps/openmw/mwrender",
+                                         "apps/openmw/mwvr",
+                                         "components/myguiplatform",
+                                         "components/nif",
+                                         "components/nifosg",
+                                         "components/resource",
+                                         "components/sceneutil",
+                                         "components/shader",
+                                         "components/stereo",
+                                         "components/vr",
+                                         "files/shaders"
+                                     ],
+                   "changedBoundaryPaths":  [
+                                                "components/myguiplatform/myguirendermanager.cpp"
+                                            ],
+                   "expectedBoundaryPaths":  [
+                                                 "components/myguiplatform/myguirendermanager.cpp"
+                                             ],
+                   "boundaryDeltaPass":  true,
+                   "baselineEntryCount":  394,
+                   "baselineEntriesSha256":  "D272ACB40973363C3C697F1D8FABD2A52B36AC839DCAE56E1155FBD44D5AC215",
+                   "currentEntryCount":  394,
+                   "currentEntriesSha256":  "9FBC786769CAC1D4B74B8B5225B9AA4802BDBB0DCC8E04CB1787637060B4471A",
+                   "guiFilenameCorrectionPass":  true,
+                   "guiCurrentBlob":  "2662c3b7ffbd2b40f11098d18ab3b32faa589a62",
+                   "guiBaselineBlob":  "09123dca60c5766e3a5b67c30210b91995161988"
+               },
+    "deployedRuntime":  {
+                            "root":  "D:/code/nikami-worlds-fnv-parity/local/openmw-pristine-mads-33568a",
+                            "flatBinarySha256":  "B2C023815EB7C9EA3D6A3684A1510B8DB813303CA5118DA6D90E72D723053F2E",
+                            "vrBinarySha256":  "3744605CB91FB8AF3AFBFFB83BF7326F1EF7B8C99C854AC03B13F895DF306E26",
+                            "sourceProvenanceComplete":  false,
+                            "acceptanceEligible":  false
+                        },
+    "shaders":  {
+                    "pass":  true,
+                    "sourceRoot":  "D:/code/nikami-openmw-pristine-mads/files/shaders",
+                    "deployedRoot":  "D:/code/nikami-worlds-fnv-parity/local/openmw-pristine-mads-33568a/resources/shaders",
+                    "sourceCount":  62,
+                    "deployedCount":  62,
+                    "sourceTreeSha256":  "A9D7F001975FDC2B4AFED9D3E93F9AC15D9E6983068B031442E4B30C7046B91B",
+                    "deployedTreeSha256":  "A9D7F001975FDC2B4AFED9D3E93F9AC15D9E6983068B031442E4B30C7046B91B",
+                    "mismatches":  [
+
+                                   ]
+                },
+    "settings":  {
+                     "pass":  true,
+                     "sourcePath":  "D:/code/nikami-worlds-fnv-parity/config/fnv-playable-graphics/settings.cfg",
+                     "sourceSha256":  "2FAFD68BACD266329F1BB957277D299E6EEC1B08C0282EDB325CF247D14DB13A",
+                     "presetPath":  "D:/code/nikami-worlds-fnv-parity/catalog/world-settings-presets.json",
+                     "presetSha256":  "80309099AC5A455412F3594F75DED8E9C0C1A217ED4D7BB1BEE6908335DAA883",
+                     "invariants":  {
+                                        "viewingDistance10000":  true,
+                                        "unsupportedNifFiles":  true,
+                                        "distantTerrainDisabled":  true,
+                                        "objectPagingDisabled":  true,
+                                        "activeGridPagingDisabled":  true,
+                                        "forcedShadersDisabled":  true,
+                                        "environmentMapLightingDisabled":  true,
+                                        "shadowsDisabled":  true,
+                                        "skyModelOverridesAbsent":  true
+                                    },
+                     "knownWorkingReference":  {
+                                                   "path":  "D:/Modlists/fnv/openmw-config/flat-ui-proof/20260611_232015/settings.cfg",
+                                                   "bytes":  174,
+                                                   "sha256":  "670F5DC9FDF3EDC199EF4BCD6190BBE5D3DE1090F2C5CE466590E2582F8C582A",
+                                                   "expectedSha256":  "670F5DC9FDF3EDC199EF4BCD6190BBE5D3DE1090F2C5CE466590E2582F8C582A",
+                                                   "pass":  true
+                                               },
+                     "generatedProfile":  {
+                                              "settingsPath":  "D:/code/nikami-worlds-fnv-parity/run/fnv-pristine-mads-profile/33568a/settings.cfg",
+                                              "settingsPresent":  true,
+                                              "settingsSha256":  "04E9574CB15CE7CD521FC6676CB795B4324765FC4F3B812BFC5251DEAABF774E",
+                                              "existingManifestPath":  "D:/code/nikami-worlds-fnv-parity/run/fnv-pristine-mads-profile/33568a/manifest.json",
+                                              "manifestPresent":  true,
+                                              "manifestFresh":  false,
+                                              "acceptanceEligible":  false,
+                                              "reason":  "The ignored profile settings were safety-patched after its existing manifest was written; regenerate a new profile after a committed engine build."
+                                          }
+                 }
+}
