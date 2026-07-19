@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nikami.local/schemas/fnv-retail-openmw-visual-pair.schema.json",
+  "title": "Save330 retail/OpenMW visual review pair",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "status",
+    "accepted",
+    "visualReviewRequired",
+    "candidateGate",
+    "retail",
+    "openmw",
+    "comparison",
+    "output"
+  ],
+  "properties": {
+    "schema": { "const": "nikami-fnv-retail-openmw-visual-pair/v2" },
+    "status": { "enum": ["rejected", "pending", "candidate"] },
+    "accepted": { "const": false },
+    "visualReviewRequired": { "const": true },
+    "candidateGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eligible",
+        "normalSave330Provenance",
+        "flatFirstPersonCameraAndSceneMatched",
+        "fullColorFrame",
+        "diagnosticOrBootstrap",
+        "reasons"
+      ],
+      "properties": {
+        "eligible": { "type": "boolean" },
+        "normalSave330Provenance": { "type": "boolean" },
+        "flatFirstPersonCameraAndSceneMatched": { "type": "boolean" },
+        "fullColorFrame": { "type": "boolean" },
+        "diagnosticOrBootstrap": { "type": ["boolean", "null"] },
+        "reasons": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "openmw": {
+      "type": "object",
+      "required": ["path", "bytes", "sha256", "imageQuality", "sourceProvenance"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "imageQuality": {
+          "type": "object",
+          "required": ["schema", "status", "fullColor", "reasons"],
+          "properties": {
+            "schema": { "const": "nikami-fnv-openmw-frame-quality/v1" },
+            "status": { "enum": ["passed", "rejected"] },
+            "fullColor": { "type": "boolean" },
+            "reasons": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "sourceProvenance": { "type": ["object", "null"] }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "candidate" } } },
+      "then": {
+        "properties": {
+          "candidateGate": {
+            "properties": {
+              "eligible": { "const": true },
+              "normalSave330Provenance": { "const": true },
+              "flatFirstPersonCameraAndSceneMatched": { "const": true },
+              "fullColorFrame": { "const": true },
+              "diagnosticOrBootstrap": { "const": false },
+              "reasons": { "maxItems": 0 }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

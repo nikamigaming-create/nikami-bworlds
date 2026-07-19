@@ -1,0 +1,76 @@
+{
+  "schema": "nikami-fnv-save330-retail-visual-reference/v1",
+  "status": "fixed",
+  "saveSha256": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f",
+  "save": {
+    "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
+    "bytes": 3395328,
+    "sha256": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f"
+  },
+  "image": {
+    "path": "retail-save330-reference.png",
+    "bytes": 317441,
+    "sha256": "859fa4a89d0cc5efb16693a0aa104c264a1f9bc6c0bb257706b5401ceb8fd008",
+    "width": 512,
+    "height": 320,
+    "pixelFormat": "rgb24",
+    "saveOffset": 147,
+    "saveBytes": 491520
+  },
+  "playerReference": {
+    "metadataStatus": "partial",
+    "actorReferenceFormId": "0x00000014",
+    "baseNpcFormId": "0x00000007",
+    "changeFlags": "0xB0000022",
+    "worldspace": {
+      "formId": "0x000DA726",
+      "recordType": "WRLD",
+      "editorId": "WastelandNV",
+      "name": "Mojave Wasteland",
+      "sourcePlugin": {
+        "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/FalloutNV.esm",
+        "bytes": 245650747,
+        "sha256": "50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1"
+      }
+    },
+    "position": [-72392.84375, -1240.19275, 8137.58643],
+    "rotationRadians": [-0.0643904507, -0.0, 2.93332028],
+    "saveRanges": {
+      "movementPrefix": { "offset": 497489, "bytes": 28 },
+      "worldspaceRefId": { "offset": 497489, "bytes": 3, "encoded": "0x000247", "formIdArrayOneBasedIndex": 583 },
+      "position": { "offset": 497492, "bytes": 12 },
+      "rotationRadians": { "offset": 497504, "bytes": 12 },
+      "terminator": { "offset": 497516, "bytes": 1, "value": "0x7C" },
+      "opaqueRemainder": { "offset": 497517, "bytes": 5067 }
+    },
+    "unresolvedFields": [
+      "exteriorCellGrid",
+      "cameraEyeOffset",
+      "cameraFieldOfView",
+      "cameraViewportCrop"
+    ]
+  },
+  "camera": {
+    "metadataStatus": "incomplete",
+    "mode": "first-person",
+    "unresolvedFields": [
+      "position",
+      "headingDegrees",
+      "fieldOfViewDegrees",
+      "viewportCropNormalized"
+    ]
+  },
+  "scene": {
+    "metadataStatus": "incomplete",
+    "unresolvedFields": [
+      "gameTimeHours",
+      "weatherFormId",
+      "visibleAuthoredReferences"
+    ]
+  },
+  "candidatePolicy": {
+    "eligibleNow": false,
+    "reason": "The fixed pixels and first-person perspective are proven, but exact retail camera and scene metadata have not yet been decoded from Save330/runtime evidence. Unknown fields fail closed.",
+    "requiredCompletion": "Set both metadataStatus fields to complete only with hash-accounted retail evidence, populate every unresolved field, and regenerate any OpenMW capture manifest that references this manifest hash."
+  }
+}

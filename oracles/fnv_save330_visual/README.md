@@ -5,6 +5,14 @@ embedded at byte 147 of the exact 3,395,328-byte Save330 file with SHA-256
 `07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f`.
 Its decoded dimensions are 512x320.
 
+The same pinned save now proves the Player ACHR movement prefix at
+`497489+28`: ACHR `0x00000014` targets the Mojave Wasteland WRLD
+`0x000DA726`, position `(-72392.84375, -1240.19275, 8137.58643)`, and rotation
+`(-0.0643904507, -0.0, 2.93332028)` radians. The following `5,067` Player
+payload bytes remain opaque. This proves a player-reference transform, not the
+exterior cell grid, eye-level camera transform, field of view, time, weather,
+or authored visible-reference set; those gates remain closed.
+
 `initial-historical-openmw-rejected.png` deliberately pairs that retail oracle
 with the closest exterior frame found in the user's earlier OpenMW recording.
 The OpenMW half is rejected evidence: it has no normal-Save330 provenance, uses
@@ -14,10 +22,26 @@ current renderer or load path.
 
 Generate a review pair with `scripts/render_fnv_retail_openmw_pair.py`. A future
 right-hand image may be labelled `candidate` only when `--source-provenance`
-points to an existing manifest for a committed binary that consumed this exact
-Save330 through the ordinary `.fos` load path. The generated manifest always
-starts with `accepted: false`; visual review must explicitly close all of these
-gates:
+is a valid `nikami-fnv-save330-openmw-capture/v1` manifest. Existence alone is
+not enough: the tool re-hashes the supplied screenshot, Save330, binary,
+configuration, log, retail-reference manifest, and every referenced file. It
+also rejects a dirty/uncommitted runtime, VR, diagnostics, bootstrap or state
+injection, forbidden launch arguments/environment, a substitute Player FormID,
+wrong content order, and a monochrome/one-color/black frame.
+
+The retail-reference manifest currently marks exact position, heading, FOV,
+crop, time, weather, and visible-reference metadata as incomplete. Therefore no
+OpenMW frame can become a candidate yet. Those fields must first be populated
+from hash-accounted retail evidence in
+`retail-save330-reference.manifest.json`; unknown values fail closed. Once that
+oracle is complete, the pairing tool independently applies the maximum camera
+and time tolerances declared by the capture schema and requires exact weather
+and visible-authored-reference sets.
+
+Candidate generation additionally requires the pinned `--retail-save`, a
+written `--manifest`, and visible left/right labels. The generated manifest
+always starts with `accepted: false`; visual review must explicitly close all
+of these gates:
 
 - full-color image with no monochrome/black-white corruption;
 - first-person camera and closely matched pose, heading, field of view, and crop;

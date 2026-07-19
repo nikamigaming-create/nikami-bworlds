@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nikami.local/schemas/fnv-save330-openmw-capture.schema.json",
+  "title": "Candidate-eligible flat OpenMW Save330 screenshot provenance",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "status",
+    "candidateEligible",
+    "launch",
+    "inputSave",
+    "runtime",
+    "capture",
+    "retailReferenceManifest",
+    "matchingTolerances",
+    "pairing"
+  ],
+  "properties": {
+    "schema": { "const": "nikami-fnv-save330-openmw-capture/v1" },
+    "status": { "const": "passed" },
+    "candidateEligible": { "const": true },
+    "launch": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "engine",
+        "mode",
+        "kind",
+        "normalLoadGamePath",
+        "diagnostic",
+        "bootstrap",
+        "synthetic",
+        "stateInjection",
+        "injectedState",
+        "arguments",
+        "environment"
+      ],
+      "properties": {
+        "engine": { "const": "OpenMW" },
+        "mode": { "const": "flat" },
+        "kind": { "const": "normal-save330-load" },
+        "normalLoadGamePath": { "const": true },
+        "diagnostic": { "const": false },
+        "bootstrap": { "const": false },
+        "synthetic": { "const": false },
+        "stateInjection": { "const": false },
+        "injectedState": { "type": "array", "maxItems": 0 },
+        "arguments": { "type": "array", "items": { "type": "string" } },
+        "environment": { "type": "object" }
+      }
+    },
+    "inputSave": {
+      "allOf": [
+        { "$ref": "#/$defs/fileEvidence" },
+        {
+          "type": "object",
+          "required": ["consumedByRuntime", "normalLoadCompleted", "loadedPlayerFormId"],
+          "properties": {
+            "bytes": { "const": 3395328 },
+            "sha256": { "const": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f" },
+            "consumedByRuntime": { "const": true },
+            "normalLoadCompleted": { "const": true },
+            "loadedPlayerFormId": { "pattern": "^0[xX]0{7}7$" }
+          }
+        }
+      ]
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "committedSource",
+        "sourceDirty",
+        "sourceCommit",
+        "binary",
+        "configuration",
+        "contentOrder",
+        "dataRoots",
+        "log"
+      ],
+      "properties": {
+        "committedSource": { "const": true },
+        "sourceDirty": { "const": false },
+        "sourceCommit": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+        "binary": { "$ref": "#/$defs/fileEvidence" },
+        "configuration": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fileEvidence" }
+        },
+        "contentOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "FalloutNV.esm" },
+            { "const": "DeadMoney.esm" },
+            { "const": "HonestHearts.esm" },
+            { "const": "OldWorldBlues.esm" },
+            { "const": "LonesomeRoad.esm" },
+            { "const": "GunRunnersArsenal.esm" },
+            { "const": "CaravanPack.esm" },
+            { "const": "ClassicPack.esm" },
+            { "const": "MercenaryPack.esm" },
+            { "const": "TribalPack.esm" }
+          ],
+          "minItems": 10,
+          "maxItems": 10
+        },
+        "dataRoots": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "log": { "$ref": "#/$defs/fileEvidence" }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind", "diagnostic", "screenshot", "camera", "scene"],
+      "properties": {
+        "kind": { "const": "normal-gameplay-screenshot" },
+        "diagnostic": { "const": false },
+        "screenshot": {
+          "allOf": [
+            { "$ref": "#/$defs/fileEvidence" },
+            {
+              "type": "object",
+              "required": ["width", "height"],
+              "properties": {
+                "width": { "type": "integer", "minimum": 1 },
+                "height": { "type": "integer", "minimum": 1 }
+              }
+            }
+          ]
+        },
+        "camera": { "$ref": "#/$defs/camera" },
+        "scene": { "$ref": "#/$defs/scene" }
+      }
+    },
+    "retailReferenceManifest": { "$ref": "#/$defs/fileEvidence" },
+    "matchingTolerances": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "positionUnitsMaximum",
+        "headingDegreesMaximum",
+        "fieldOfViewDegreesMaximum",
+        "gameTimeHoursMaximum"
+      ],
+      "properties": {
+        "positionUnitsMaximum": { "type": "number", "minimum": 0, "maximum": 32 },
+        "headingDegreesMaximum": { "type": "number", "minimum": 0, "maximum": 2 },
+        "fieldOfViewDegreesMaximum": { "type": "number", "minimum": 0, "maximum": 1 },
+        "gameTimeHoursMaximum": { "type": "number", "minimum": 0, "maximum": 0.1 }
+      }
+    },
+    "pairing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["openmwCropPixels", "fitOpenmw", "comparisonCropPixels"],
+      "properties": {
+        "openmwCropPixels": { "$ref": "#/$defs/nullablePixelBox" },
+        "fitOpenmw": { "type": "boolean" },
+        "comparisonCropPixels": { "$ref": "#/$defs/nullablePixelBox" }
+      }
+    }
+  },
+  "$defs": {
+    "fileEvidence": {
+      "type": "object",
+      "required": ["path", "bytes", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+      }
+    },
+    "camera": {
+      "type": "object",
+      "required": ["mode", "position", "headingDegrees", "fieldOfViewDegrees", "viewportCropNormalized"],
+      "properties": {
+        "mode": { "const": "first-person" },
+        "position": {
+          "type": "array",
+          "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "headingDegrees": { "type": "number" },
+        "fieldOfViewDegrees": { "type": "number", "exclusiveMinimum": 1, "exclusiveMaximum": 180 },
+        "viewportCropNormalized": { "$ref": "#/$defs/normalizedBox" }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "required": ["gameTimeHours", "weatherFormId", "visibleAuthoredReferences"],
+      "properties": {
+        "gameTimeHours": { "type": "number" },
+        "weatherFormId": { "type": "string", "minLength": 1 },
+        "visibleAuthoredReferences": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "normalizedBox": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 }
+      ],
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "pixelBox": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "integer", "minimum": 0 },
+        { "type": "integer", "minimum": 1 },
+        { "type": "integer", "minimum": 1 }
+      ],
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "nullablePixelBox": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/pixelBox" }]
+    }
+  }
+}

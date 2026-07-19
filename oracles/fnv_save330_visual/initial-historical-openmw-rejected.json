@@ -4,6 +4,18 @@
   "status": "rejected",
   "accepted": false,
   "visualReviewRequired": true,
+  "candidateGate": {
+    "eligible": false,
+    "normalSave330Provenance": false,
+    "flatFirstPersonCameraAndSceneMatched": false,
+    "fullColorFrame": null,
+    "diagnosticOrBootstrap": null,
+    "reasons": [
+      "OpenMW source provenance is absent",
+      "the frame came from a historical recording rather than a normal Save330 load",
+      "the frame is third-person and camera/scene metadata do not match the retail oracle"
+    ]
+  },
   "retail": {
     "kind": "pinned-save330-rgb24",
     "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",

@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nikami.local/schemas/fnv-save330-retail-visual-reference.schema.json",
+  "title": "Pinned retail Save330 embedded visual reference",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "status", "saveSha256", "save", "image", "playerReference", "camera", "scene", "candidatePolicy"],
+  "properties": {
+    "schema": { "const": "nikami-fnv-save330-retail-visual-reference/v1" },
+    "status": { "const": "fixed" },
+    "saveSha256": { "const": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f" },
+    "save": {
+      "allOf": [
+        { "$ref": "#/$defs/fileEvidence" },
+        {
+          "type": "object",
+          "properties": {
+            "bytes": { "const": 3395328 },
+            "sha256": { "const": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f" }
+          }
+        }
+      ]
+    },
+    "image": {
+      "allOf": [
+        { "$ref": "#/$defs/fileEvidence" },
+        {
+          "type": "object",
+          "required": ["width", "height", "pixelFormat", "saveOffset", "saveBytes"],
+          "properties": {
+            "bytes": { "const": 317441 },
+            "sha256": { "const": "859fa4a89d0cc5efb16693a0aa104c264a1f9bc6c0bb257706b5401ceb8fd008" },
+            "width": { "const": 512 },
+            "height": { "const": 320 },
+            "pixelFormat": { "const": "rgb24" },
+            "saveOffset": { "const": 147 },
+            "saveBytes": { "const": 491520 }
+          }
+        }
+      ]
+    },
+    "playerReference": {
+      "type": "object",
+      "required": [
+        "metadataStatus",
+        "actorReferenceFormId",
+        "baseNpcFormId",
+        "changeFlags",
+        "worldspace",
+        "position",
+        "rotationRadians",
+        "saveRanges",
+        "unresolvedFields"
+      ],
+      "properties": {
+        "metadataStatus": { "const": "partial" },
+        "actorReferenceFormId": { "const": "0x00000014" },
+        "baseNpcFormId": { "const": "0x00000007" },
+        "changeFlags": { "const": "0xB0000022" },
+        "position": { "$ref": "#/$defs/vector3" },
+        "rotationRadians": { "$ref": "#/$defs/vector3" },
+        "unresolvedFields": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "camera": {
+      "type": "object",
+      "required": ["metadataStatus", "mode"],
+      "properties": {
+        "metadataStatus": { "enum": ["incomplete", "complete"] },
+        "mode": { "const": "first-person" },
+        "position": { "$ref": "#/$defs/vector3" },
+        "headingDegrees": { "type": "number" },
+        "fieldOfViewDegrees": { "type": "number" },
+        "viewportCropNormalized": { "$ref": "#/$defs/vector4" }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "required": ["metadataStatus"],
+      "properties": {
+        "metadataStatus": { "enum": ["incomplete", "complete"] },
+        "gameTimeHours": { "type": "number" },
+        "weatherFormId": { "type": "string" },
+        "visibleAuthoredReferences": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "candidatePolicy": {
+      "type": "object",
+      "required": ["eligibleNow", "reason", "requiredCompletion"],
+      "properties": {
+        "eligibleNow": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 },
+        "requiredCompletion": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "candidatePolicy": {
+            "properties": { "eligibleNow": { "const": true } },
+            "required": ["eligibleNow"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "camera": {
+            "properties": { "metadataStatus": { "const": "complete" } },
+            "required": [
+              "position",
+              "headingDegrees",
+              "fieldOfViewDegrees",
+              "viewportCropNormalized"
+            ]
+          },
+          "scene": {
+            "properties": { "metadataStatus": { "const": "complete" } },
+            "required": ["gameTimeHours", "weatherFormId", "visibleAuthoredReferences"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "fileEvidence": {
+      "type": "object",
+      "required": ["path", "bytes", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+      }
+    },
+    "vector3": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "vector4": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "minItems": 4,
+      "maxItems": 4
+    }
+  }
+}
