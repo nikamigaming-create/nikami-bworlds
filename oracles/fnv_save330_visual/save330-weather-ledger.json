@@ -1,11 +1,18 @@
 {
   "schema": "nikami-fnv-save330-weather-ledger/v1",
-  "status": "exact-engine-decoded-runtime-bridge-pending",
+  "status": "exact-engine-decoded-native-model-committed-runtime-publication-pending",
   "engineDecode": {
     "commit": "9877e22413 Decode exact FNV weather and climate records",
     "scope": "strict native FNV WTHR and CLMT record loaders; no runtime weather/store publication",
     "verification": "7/7 exact weather/climate fixtures and malformed-size tests passed after a full openmw-tests/components-tests build",
     "preservationRule": "the fourth WTHR color byte remains unused raw data and is never promoted to alpha"
+  },
+  "nativeModel": {
+    "branch": "codex/fnv-save330-clean",
+    "commit": "5e14992d66 Resolve exact Save330 weather model",
+    "scope": "pure fail-closed WRLD-to-CLMT-to-saved-WTHR resolution, exact captured afternoon blending, four native cloud-layer snapshots, and value-initialized generic render values; no runtime or renderer mutation",
+    "verification": "6/6 FNVWeatherModel tests, 27/27 combined native Player/store/weather tests, and 26/26 exact Save330 plus CLMT/WTHR component tests passed in the clean worktree",
+    "publicationStatus": "pending atomic normal-.fos transaction and native World weather publisher"
   },
   "sourceMaster": {
     "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/FalloutNV.esm",

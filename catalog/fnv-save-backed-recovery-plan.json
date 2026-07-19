@@ -107,6 +107,8 @@
         "engine commit 9877e22413 decodes the exact FNV WTHR and CLMT records while preserving the unused color byte instead of inventing cloud alpha",
         "engine commit d66d24c62b decodes Player process level, faction and encounter-zone extras, and all 50 inventory entries at 498677+835, reducing parser-reported semantic gaps to 2,736,952 bytes",
         "engine commit 29686400a3 decodes the exact 1,675-byte Player mobile-object base/low/middle/high process state through byte 501187, reducing parser-reported semantic gaps to 2,735,277 bytes",
+        "clean-engine commits b2d2f74380, a3e8ee90fd, and 3967ab2cea register native FNV Class, GameSetting, Climate, and Weather stores at tuple-tail ABI-safe positions",
+        "clean-engine commit 5e14992d66 resolves the exact Save330 WRLD-to-CLMT-to-current/default-WTHR model, forces every unused WTHR color byte to opaque alpha, retains all four native cloud layers, and never imports TES3 Clear",
         "19/19 exact FONVSaveGame tests including the exact external Save330 fixture, 18/18 Player/native-record tests, and 7/7 exact weather/climate tests pass after compilation",
         "the complete Player ACHR remainder 497517+5067 is schema-accounted offline with zero leftover; 3,670 bytes are now engine-decoded and the remaining 1,397-byte tail is explicit",
         "Save Global Data type 1 stores (-18,0) and remains opaque rather than being invented as the transform-containing cell"
