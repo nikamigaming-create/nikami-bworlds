@@ -1,10 +1,16 @@
 {
   "schema": "nikami-fnv-save330-player-payload-ledger/v1",
-  "status": "offline-schema-accounted-and-engine-decoded-through-mobile-object-process-state",
+  "status": "offline-schema-accounted-and-engine-decoded-through-changed-character-state",
   "save": {
     "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
     "bytes": 3395328,
     "sha256": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f"
+  },
+  "parserCoverage": {
+    "saveBytes": 3395328,
+    "nonOpaqueBytes": 660561,
+    "nonOpaquePercent": 19.454998162,
+    "semanticOpaqueBytes": 2734767
   },
   "playerChangeForm": {
     "actorReferenceFormId": "0x00000014",
@@ -15,21 +21,34 @@
     "engineDecodedActorValueArrays": { "offset": 497517, "bytes": 1160, "end": 498677 },
     "engineDecodedProcessAndInventory": { "offset": 498677, "bytes": 835, "end": 499512 },
     "engineDecodedMobileObjectProcessState": { "offset": 499512, "bytes": 1675, "end": 501187 },
+    "engineDecodedChangedCharacterState": {
+      "offset": 501187,
+      "bytes": 510,
+      "end": 501697,
+      "sha256": "3802ba9e14fc6a31cba704aa523ea18205e06d65ec537815ee75425422175c7a"
+    },
     "auditedRemainder": { "offset": 497517, "bytes": 5067, "end": 502584 },
-    "engineOpaqueTail": { "offset": 501187, "bytes": 1397, "end": 502584 },
+    "engineOpaqueTail": {
+      "offset": 501697,
+      "bytes": 887,
+      "end": 502584,
+      "sha256": "e2c332386e74a5114e27997356e9fe24cb4d49c876847b283604b4f56e4fc9d7"
+    },
     "unaccountedBytes": 0
   },
   "engineImplementation": {
-    "decodedPlayerPayload": { "offset": 497489, "bytes": 3698, "end": 501187 },
-    "decodedAuditedRemainderBytes": 3670,
-    "opaqueAuditedRemainderBytes": 1397,
+    "decodedPlayerPayload": { "offset": 497489, "bytes": 4208, "end": 501697 },
+    "decodedAuditedRemainderBytes": 4180,
+    "opaqueAuditedRemainderBytes": 887,
     "commits": [
       "9fbb611ab5 Decode the Save330 player movement prefix",
       "d7a2d1731b Decode Save330 player actor-value arrays",
       "d66d24c62b Decode Save330 player inventory payload",
-      "29686400a3 Decode Save330 player process state"
+      "29686400a3 Decode Save330 player process state",
+      "ff64fcaf22 Decode Save330 actor mover state",
+      "85c112f667 Clean-engine cherry-pick of the identical actor mover decoder"
     ],
-    "verification": "19/19 FONVSaveGame tests passed against the committed parser when the exact external Save330 fixture is supplied, including fail-closed process-state corruption cases"
+    "verification": "20/20 FONVSaveGame tests passed against the committed parser with the pinned external Save330 fixture, including exact range/hash plus delimiter, RefID, branch, count, non-finite, truncation, and ChangedCharacter corruption cases."
   },
   "remainderCoverage": [
     { "offset": 497517, "bytes": 385, "end": 497902, "domain": "ActorValues244[77]" },
@@ -150,14 +169,26 @@
       "finish exactly at byte 501187 and leave the remaining 1397 bytes opaque"
     ]
   },
-  "nextImplementationSlice": {
+  "implementedChangedCharacterStateSlice": {
     "range": { "offset": 501187, "bytes": 510, "end": 501697 },
     "domain": "ChangedActor fixed state, ActorMover, and character tail",
+    "sha256": "3802ba9e14fc6a31cba704aa523ea18205e06d65ec537815ee75425422175c7a",
     "requirements": [
       "decode only fields whose FNV save layout is pinned to authoritative definitions or exact retail evidence",
       "preserve every raw byte and absolute range alongside its semantic value",
       "fail closed on invalid delimiters, impossible counts, unsupported conditional branches, non-finite values, and section overruns",
       "finish exactly at byte 501697 and leave the remaining 887 bytes opaque"
+    ]
+  },
+  "nextImplementationSlice": {
+    "range": { "offset": 501697, "bytes": 148, "end": 501845 },
+    "domain": "second player animation buffer",
+    "sha256": "eff4c16d299aa5c2b3b0385001d8340a165b4db3d13dc09ebe7886c98daf6206",
+    "requirements": [
+      "decode the canonical U6to30 length 145 from encoded bytes 45 02 followed by delimiter 7C",
+      "preserve the 145-byte animation body at [501700,501845) opaque with SHA-256 3b1a3de703fc484c1271076cbdac4e155531c2f794b0e7a7c49e418329090376",
+      "reject non-canonical lengths, bad delimiters, and container overruns",
+      "finish exactly at byte 501845 and hand the remaining PlayerCharacter state to the following slice"
     ]
   }
 }

@@ -45,7 +45,17 @@
       "engineDecodedActorValueArrays": { "offset": 497517, "bytes": 1160 },
       "engineDecodedProcessAndInventory": { "offset": 498677, "bytes": 835 },
       "engineDecodedMobileObjectProcessState": { "offset": 499512, "bytes": 1675 },
-      "engineOpaqueTail": { "offset": 501187, "bytes": 1397 }
+      "engineDecodedChangedCharacterState": {
+        "offset": 501187,
+        "bytes": 510,
+        "sha256": "3802ba9e14fc6a31cba704aa523ea18205e06d65ec537815ee75425422175c7a"
+      },
+      "engineOpaqueTail": {
+        "offset": 501697,
+        "bytes": 887,
+        "sha256": "e2c332386e74a5114e27997356e9fe24cb4d49c876847b283604b4f56e4fc9d7"
+      },
+      "nextSecondAnimationBuffer": { "offset": 501697, "bytes": 148, "end": 501845 }
     },
     "derivedExteriorPlacement": {
       "derivation": "OpenMW floor(position/4096) containment resolved against authored WastelandNV exterior CELL records",

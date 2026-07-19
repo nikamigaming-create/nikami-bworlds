@@ -9,9 +9,9 @@
       "saveBytes": 3395328,
       "structurallyAccountedBytes": 3395328,
       "structurallyAccountedPercent": 100.0,
-      "parserReportedSemanticOpaqueBytes": 2735277,
-      "parserReportedNonOpaqueBytes": 660051,
-      "parserReportedNonOpaquePercent": 19.439977522,
+      "parserReportedSemanticOpaqueBytes": 2734767,
+      "parserReportedNonOpaqueBytes": 660561,
+      "parserReportedNonOpaquePercent": 19.454998162,
       "playableParityCreditPercent": 0.0
     },
     "validOfflineWork": [
@@ -21,7 +21,7 @@
       "engine-derived Save330 placement in authored WastelandNV CELL 0x000E1AA7 at grid (-18,-1)",
       "save-backed game hour 14.215002059936523 and current weather 0x001237D7 / NVWastelandGS",
       "complete offline schema accounting of the 5,067-byte Player ACHR remainder with zero leftover",
-      "committed engine decoding through byte 501187: movement, actor-value arrays, factions, encounter zone, all 50 Player inventory entries, and mobile-object base/low/middle/high process state",
+      "committed engine decoding through byte 501697: movement, actor-value arrays, factions, encounter zone, all 50 Player inventory entries, mobile-object process state, ChangedActor fixed state, ActorMover, detailed path handler, PlayerMover, and character tail",
       "save-backed first-person mode, 55-degree first-person model FOV, and 75-degree world FOV",
       "exact WastelandNV climate and Save330 current/default WTHR records with first-frame color, cloud, fog, and timing targets",
       "pinned retail Save330 screenshot oracle and fail-closed side-by-side candidate gate",
@@ -107,10 +107,12 @@
         "engine commit 9877e22413 decodes the exact FNV WTHR and CLMT records while preserving the unused color byte instead of inventing cloud alpha",
         "engine commit d66d24c62b decodes Player process level, faction and encounter-zone extras, and all 50 inventory entries at 498677+835, reducing parser-reported semantic gaps to 2,736,952 bytes",
         "engine commit 29686400a3 decodes the exact 1,675-byte Player mobile-object base/low/middle/high process state through byte 501187, reducing parser-reported semantic gaps to 2,735,277 bytes",
+        "engine commit ff64fcaf22 decodes the exact 510-byte ChangedActor/ActorMover/ChangedCharacter slice at [501187,501697), SHA-256 3802ba9e14fc6a31cba704aa523ea18205e06d65ec537815ee75425422175c7a, reducing parser-reported semantic gaps to 2,734,767 bytes; clean-engine cherry-pick 85c112f667 carries the identical source",
         "clean-engine commits b2d2f74380, a3e8ee90fd, and 3967ab2cea register native FNV Class, GameSetting, Climate, and Weather stores at tuple-tail ABI-safe positions",
         "clean-engine commit 5e14992d66 resolves the exact Save330 WRLD-to-CLMT-to-current/default-WTHR model, forces every unused WTHR color byte to opaque alpha, retains all four native cloud layers, and never imports TES3 Clear",
-        "19/19 exact FONVSaveGame tests including the exact external Save330 fixture, 18/18 Player/native-record tests, and 7/7 exact weather/climate tests pass after compilation",
-        "the complete Player ACHR remainder 497517+5067 is schema-accounted offline with zero leftover; 3,670 bytes are now engine-decoded and the remaining 1,397-byte tail is explicit",
+        "20/20 exact FONVSaveGame tests including the pinned external Save330 and ChangedCharacter corruption cases, 18/18 Player/native-record tests, and 7/7 exact weather/climate tests pass after compilation",
+        "the complete Player ACHR remainder 497517+5067 is schema-accounted offline with zero leftover; 4,180 bytes are represented by the current parser source and the remaining [501697,502584) 887-byte tail is explicit with SHA-256 e2c332386e74a5114e27997356e9fe24cb4d49c876847b283604b4f56e4fc9d7",
+        "the next exact Player slice is the 148-byte second animation buffer at [501697,501845)",
         "Save Global Data type 1 stores (-18,0) and remains opaque rather than being invented as the transform-containing cell"
       ],
       "gate": "A committed flat binary consumes the exact Save330 hash through normal load-game code with no bootstrap flag and produces a complete state manifest."

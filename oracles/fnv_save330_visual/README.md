@@ -9,11 +9,21 @@ The same pinned save now proves the Player ACHR movement prefix at
 `497489+28`: ACHR `0x00000014` targets the Mojave Wasteland WRLD
 `0x000DA726`, position `(-72392.84375, -1240.19275, 8137.58643)`, and rotation
 `(-0.0643904507, -0.0, 2.93332028)` radians. The following `5,067` Player
-payload bytes are fully schema-accounted offline. The committed engine now
-decodes the first `3,670` of them through actor values, factions, encounter
-zone, all 50 inventory entries, and the mobile-object base/low/middle/high
-process state; the remaining `1,397` bytes are explicitly opaque. This proves a
-player-reference transform, inventory, and process payload, not the
+payload bytes are fully schema-accounted offline. The committed engine parser
+decodes the first `4,180` of them through actor values, factions, encounter
+zone, all 50 inventory entries, mobile-object base/low/middle/high process
+state, and the exact ChangedActor/ActorMover/ChangedCharacter continuation at
+`[501187,501697)`. That 510-byte continuation has SHA-256
+`3802ba9e14fc6a31cba704aa523ea18205e06d65ec537815ee75425422175c7a`.
+The remaining `[501697,502584)` 887-byte tail is explicitly opaque with
+SHA-256
+`e2c332386e74a5114e27997356e9fe24cb4d49c876847b283604b4f56e4fc9d7`;
+the next implementation slice is its 148-byte second animation buffer at
+`[501697,501845)`. Across the complete Save330 file, parser non-opaque
+coverage is now `660,561 / 3,395,328` bytes (`19.454998162%`), leaving
+`2,734,767` semantically opaque bytes. The decoder passed 20/20 FONVSaveGame
+tests, including the pinned external Save330 and corruption cases. This proves a player-reference
+transform, inventory, process, and actor-mover payload, not the
 screenshot-bound camera eye/heading/crop or authored visible-reference set;
 those gates remain closed.
 
