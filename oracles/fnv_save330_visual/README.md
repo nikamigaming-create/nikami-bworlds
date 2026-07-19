@@ -10,7 +10,7 @@ The same pinned save now proves the Player ACHR movement prefix at
 `0x000DA726`, position `(-72392.84375, -1240.19275, 8137.58643)`, and rotation
 `(-0.0643904507, -0.0, 2.93332028)` radians. The following `5,067` Player
   payload bytes are fully schema-accounted offline. The committed engine parser
-  decodes the first `4,615` of them through actor values, factions, encounter
+  decodes the first `4,762` of them through actor values, factions, encounter
   zone, all 50 inventory entries, mobile-object base/low/middle/high process
   state, the exact ChangedActor/ActorMover/ChangedCharacter continuation at
 `[501187,501697)`. That 510-byte continuation has SHA-256
@@ -18,13 +18,14 @@ The same pinned save now proves the Player ACHR movement prefix at
 The canonical second Player animation-buffer envelope at `[501697,501845)` is
   also decoded; its 145-byte body remains byte-exact and opaque by definition.
   The following 287-byte PlayerCharacter scalar/reference block at
-  `[501845,502132)` is decoded as well. The remaining `[502132,502584)` 452-byte
-  tail is explicit with SHA-256
-  `bb677eb06efd1a806ddc715269f3da7dee84353bbdb564a1fd4eee19bff9f6d3`;
-  the next implementation slice is the 147-byte topics, notes, lists, perks,
-  cards, stages, and objectives state at `[502132,502279)`. Across the complete
-  Save330 file, parser non-opaque coverage is now `660,996 / 3,395,328` bytes
-  (`19.467809884642%`), leaving `2,734,332` semantically opaque bytes. The decoder passed 24/24 FONVSaveGame
+  `[501845,502132)` and 147-byte topics/notes/lists/perks/cards/stages/objectives
+  block at `[502132,502279)` are decoded as well. The remaining
+  `[502279,502584)` 305-byte tail is explicit with SHA-256
+  `54c70a2c054231d134ae65f1d26c23e8ed57b7385d7baaa6d6ff15a62264b07b`;
+  the next implementation slice is the 234-byte magic-target list and entries
+  at `[502279,502513)`. Across the complete Save330 file, parser non-opaque
+  coverage is now `661,143 / 3,395,328` bytes (`19.472139363266%`), leaving
+  `2,734,185` semantically opaque bytes. The decoder passed 26/26 FONVSaveGame
 tests, including the pinned external Save330 and corruption cases. This proves a player-reference
 transform, inventory, process, and actor-mover payload, not the
 screenshot-bound camera eye/heading/crop or authored visible-reference set;

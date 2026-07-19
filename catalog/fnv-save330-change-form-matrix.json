@@ -29,21 +29,21 @@
     { "type": 50, "formType": "0x071", "record": "CHAL", "count": 2, "payloadBytes": 20, "maxPayloadBytes": 10, "version": 27, "flagVariants": 1, "payloadPercent": 0.000730891 }
   ],
   "semanticAccountingAtEngineCommit": {
-    "engineCommit": "283b0432bf",
-    "cleanEngineCommit": "93c135b0a3",
-    "decodedChangedFormPayloadBytes": 4643,
-    "opaqueChangedFormPayloadBytes": 2731745,
+    "engineCommit": "55b22d6d9d",
+    "cleanEngineCommit": "33f6270d5c",
+    "decodedChangedFormPayloadBytes": 4790,
+    "opaqueChangedFormPayloadBytes": 2731598,
     "opaqueGlobalDataPayloadBytes": 2582,
     "opaqueUnknownTableBytes": 5,
-    "semanticOpaqueBytes": 2734332,
-    "equation": "2731745 + 2582 + 5 = 2734332"
+    "semanticOpaqueBytes": 2734185,
+    "equation": "2731598 + 2582 + 5 = 2734185"
   },
   "dominantWork": {
     "actorAndCreaturePayloadBytes": 2686682,
     "percentOfChangedFormPayload": 98.183517834,
-    "percentOfCurrentSemanticOpaqueBytes": 98.257344024,
+    "percentOfCurrentSemanticOpaqueBytes": 98.262626706,
     "priority": [
-      "finish the exact 452-byte Player ACHR tail",
+      "finish the exact 305-byte Player ACHR tail",
       "decode generic version-27 ACHR payloads by observed change-flag branch",
       "decode generic version-27 ACRE payloads by observed change-flag branch",
       "decode REFR, QUST, FACT, FLST, CELL, CREA, LVLI, and CHAL payloads",

@@ -1,6 +1,6 @@
 {
   "schema": "nikami-fnv-save330-player-payload-ledger/v1",
-  "status": "offline-schema-accounted-and-engine-decoded-through-player-scalar-reference-state",
+  "status": "offline-schema-accounted-and-engine-decoded-through-player-lists-state",
   "save": {
     "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
     "bytes": 3395328,
@@ -8,9 +8,9 @@
   },
   "parserCoverage": {
     "saveBytes": 3395328,
-    "nonOpaqueBytes": 660996,
-    "nonOpaquePercent": 19.467809884642,
-    "semanticOpaqueBytes": 2734332
+    "nonOpaqueBytes": 661143,
+    "nonOpaquePercent": 19.472139363266,
+    "semanticOpaqueBytes": 2734185
   },
   "playerChangeForm": {
     "actorReferenceFormId": "0x00000014",
@@ -42,19 +42,25 @@
       "end": 502132,
       "sha256": "03c6a113c7aafe5b32d19038468e70d7a877670e6ef9a5ddcc35898c9c2c8c4f"
     },
+    "engineDecodedPlayerCharacterListsState": {
+      "offset": 502132,
+      "bytes": 147,
+      "end": 502279,
+      "sha256": "cec00de438e97af6429ad69dc1b514b67a287e04a71146cbe114e24ac322da3c"
+    },
     "auditedRemainder": { "offset": 497517, "bytes": 5067, "end": 502584 },
     "engineOpaqueTail": {
-      "offset": 502132,
-      "bytes": 452,
+      "offset": 502279,
+      "bytes": 305,
       "end": 502584,
-      "sha256": "bb677eb06efd1a806ddc715269f3da7dee84353bbdb564a1fd4eee19bff9f6d3"
+      "sha256": "54c70a2c054231d134ae65f1d26c23e8ed57b7385d7baaa6d6ff15a62264b07b"
     },
     "unaccountedBytes": 0
   },
   "engineImplementation": {
-    "decodedPlayerPayload": { "offset": 497489, "bytes": 4643, "end": 502132 },
-    "decodedAuditedRemainderBytes": 4615,
-    "opaqueAuditedRemainderBytes": 452,
+    "decodedPlayerPayload": { "offset": 497489, "bytes": 4790, "end": 502279 },
+    "decodedAuditedRemainderBytes": 4762,
+    "opaqueAuditedRemainderBytes": 305,
     "commits": [
       "9fbb611ab5 Decode the Save330 player movement prefix",
       "d7a2d1731b Decode Save330 player actor-value arrays",
@@ -65,9 +71,11 @@
       "267b7dce87 Decode Save330 second player animation buffer",
       "2b2dead4d1 Clean-engine cherry-pick of the identical animation-buffer decoder",
       "283b0432bf Decode Save330 player scalar reference state",
-      "93c135b0a3 Clean-engine cherry-pick of the identical scalar/reference decoder"
+      "93c135b0a3 Clean-engine cherry-pick of the identical scalar/reference decoder",
+      "55b22d6d9d Decode Save330 player topics and objectives",
+      "33f6270d5c Clean-engine cherry-pick of the identical topics/objectives decoder"
     ],
-    "verification": "24/24 FONVSaveGame tests passed against both committed worktrees with the pinned external Save330 fixture, including exact scalar/reference range/hash and noncanonical-width, bad-delimiter, invalid-RefID, non-finite-value, truncation, and overrun cases."
+    "verification": "26/26 FONVSaveGame tests passed against both committed worktrees with the pinned external Save330 fixture, including exact Player-list range/hash and noncanonical-count, bad-delimiter, invalid-RefID, non-finite-value, truncation, and overrun cases."
   },
   "remainderCoverage": [
     { "offset": 497517, "bytes": 385, "end": 497902, "domain": "ActorValues244[77]" },
@@ -221,14 +229,25 @@
       "finish exactly at byte 502132 and hand the remaining 452 bytes to the topics, notes, lists, magic-target, and final-flags slices"
     ]
   },
-  "nextImplementationSlice": {
+  "implementedPlayerCharacterListsStateSlice": {
     "range": { "offset": 502132, "bytes": 147, "end": 502279 },
     "domain": "topics, notes, player list, perks, cards, stages, and objectives",
+    "sha256": "cec00de438e97af6429ad69dc1b514b67a287e04a71146cbe114e24ac322da3c",
     "requirements": [
       "follow the exact form-version-27 PlayerCharacter count/list order in wbDefinitionsFNVSaves.pas",
-      "preserve every count, list entry, value, resolved RefID, and absolute range",
-      "fail closed on non-canonical counts, invalid RefIDs, missing delimiters, and payload overruns",
+      "preserve every count, list entry, value, resolved RefID, raw byte, and absolute range",
+      "fail closed on non-canonical counts, invalid RefIDs, non-finite floats, missing delimiters, and payload overruns",
       "finish exactly at byte 502279 and hand the remaining 305 bytes to the magic-target and final-flags slices"
+    ]
+  },
+  "nextImplementationSlice": {
+    "range": { "offset": 502279, "bytes": 234, "end": 502513 },
+    "domain": "magic-target list count and four entries",
+    "requirements": [
+      "decode the canonical count at [502279,502281) and exactly four 58-byte entries",
+      "preserve every nested field, resolved RefID, raw byte, and absolute range",
+      "fail closed on non-canonical counts, invalid RefIDs, non-finite values, missing delimiters, unsupported branches, and payload overruns",
+      "finish exactly at byte 502513 and hand the remaining 71 bytes to the final-flags slice"
     ]
   }
 }
