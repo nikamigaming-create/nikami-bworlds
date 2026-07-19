@@ -7,7 +7,9 @@
     "reason": "No current committed runtime has durably loaded exact Save330 through the normal load-game path and produced an admissible gameplay frame.",
     "validOfflineWork": [
       "exact Save330 size and SHA-256 lock",
-      "save envelope parser and deterministic tests",
+      "complete structural Save330 accounting plus exact Player movement-prefix parsing and deterministic tests",
+      "native FalloutNV.esm Player NPC_ 0x00000007 and ACHR 0x00000014 identity resolution",
+      "pinned retail Save330 screenshot oracle and fail-closed side-by-side candidate gate",
       "retail GMST oracle values with raw float/integer bytes",
       "source inspection, compilation, and unit tests"
     ],
@@ -69,13 +71,20 @@
     {
       "id": 2,
       "name": "Finish native Save330 loading",
-      "status": "pending",
+      "status": "in_progress",
       "actions": [
         "finish semantic decoding of the remaining save payloads rather than only their envelopes",
         "restore Player FormID 0x00000007 from the winning FalloutNV.esm record",
         "restore worldspace, exterior/interior cell, position, rotation, time, weather, actor state, inventory, equipment, factions, quest stages, globals, and changed references",
         "connect this state to OpenMW's ordinary load-game menu/path",
         "add deterministic cold-reload tests and fail closed on any uncovered required state"
+      ],
+      "outputs": [
+        "engine commit 89b5dbf4ce structurally accounts for all 3,395,328 Save330 bytes and exposes every semantically opaque range",
+        "engine commit aaa3729b28 resolves exact native Player NPC_ 0x00000007 and ACHR 0x00000014 provenance, exact ESM/ESP master order, and fails closed on unsupported state",
+        "engine commit 9fbb611ab5 decodes Save330 Player movement bytes 497489+28 as Mojave WRLD 0x000DA726, XYZ (-72392.84375,-1240.19275,8137.58643), and rotation (-0.0643904507,-0.0,2.93332028) radians",
+        "15/15 exact FONVSaveGame tests pass against the pinned Save330 and 11/11 FalloutPlayerState tests pass",
+        "2,739,018 save bytes remain explicitly semantically unparsed; the Player ACHR remainder is 5,067 bytes and exterior cell-grid identity remains unproven"
       ],
       "gate": "A committed flat binary consumes the exact Save330 hash through normal load-game code with no bootstrap flag and produces a complete state manifest."
     },
@@ -91,6 +100,11 @@
         "wait for explicit user authorization before any visible launch",
         "capture exact launch, source, binary, config, content, save, log, and frame provenance",
         "review full-color world geometry, alpha, sky, HUD, player, and nearby actors before exercising gameplay"
+      ],
+      "outputs": [
+        "parity commit 9fb025f installs schemas and eight regression tests that reject black/white, void, bootstrap, diagnostic, synthetic, injected, dirty-source, wrong-camera, and hash-mismatched OpenMW frames",
+        "oracles/fnv_save330_visual/initial-historical-openmw-rejected.png is the explicit zero-credit baseline: retail Save330 left, historical third-person OpenMW right",
+        "retail camera/scene metadata remains incomplete, so no OpenMW image is currently candidate-eligible"
       ],
       "gate": "No monochrome output, missing set pieces, bad alpha/reflection bleed, shader errors, substitute player, or invalid camera/world state. Any failure returns to phase 1."
     },
