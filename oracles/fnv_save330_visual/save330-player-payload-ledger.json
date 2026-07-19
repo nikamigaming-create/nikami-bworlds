@@ -1,0 +1,126 @@
+{
+  "schema": "nikami-fnv-save330-player-payload-ledger/v1",
+  "status": "offline-schema-accounted-not-yet-engine-decoded",
+  "save": {
+    "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
+    "bytes": 3395328,
+    "sha256": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f"
+  },
+  "playerChangeForm": {
+    "actorReferenceFormId": "0x00000014",
+    "baseNpcFormId": "0x00000007",
+    "changeFlags": "0xB0000022",
+    "payload": { "offset": 497489, "bytes": 5095, "end": 502584 },
+    "engineDecodedMovement": { "offset": 497489, "bytes": 28, "end": 497517 },
+    "auditedRemainder": { "offset": 497517, "bytes": 5067, "end": 502584 },
+    "unaccountedBytes": 0
+  },
+  "remainderCoverage": [
+    { "offset": 497517, "bytes": 385, "end": 497902, "domain": "ActorValues244[77]" },
+    { "offset": 497902, "bytes": 385, "end": 498287, "domain": "ActorValues378[77] / permAVMods" },
+    { "offset": 498287, "bytes": 385, "end": 498672, "domain": "ActorValues4B0[77]" },
+    { "offset": 498672, "bytes": 5, "end": 498677, "domain": "Unk4AC plus delimiter" },
+    { "offset": 498677, "bytes": 2, "end": 498679, "domain": "process level plus delimiter" },
+    { "offset": 498679, "bytes": 30, "end": 498709, "domain": "top actor ExtraData" },
+    { "offset": 498709, "bytes": 803, "end": 499512, "domain": "changed inventory, 50 entries" },
+    { "offset": 499512, "bytes": 1675, "end": 501187, "domain": "mobile-object base/low/middle/high process state" },
+    { "offset": 501187, "bytes": 510, "end": 501697, "domain": "ChangedActor fixed state, ActorMover, character tail" },
+    { "offset": 501697, "bytes": 148, "end": 501845, "domain": "second player animation buffer" },
+    { "offset": 501845, "bytes": 287, "end": 502132, "domain": "PlayerCharacter scalar and reference state" },
+    { "offset": 502132, "bytes": 147, "end": 502279, "domain": "topics, notes, player list, perks, cards, stages, objectives" },
+    { "offset": 502279, "bytes": 2, "end": 502281, "domain": "magic-target list count" },
+    { "offset": 502281, "bytes": 232, "end": 502513, "domain": "four 58-byte magic-target entries" },
+    { "offset": 502513, "bytes": 71, "end": 502584, "domain": "final player flags, fixed forms, empty lists" }
+  ],
+  "changeFlagSemantics": {
+    "present": [
+      "CHANGE_REFR_MOVE",
+      "CHANGE_REFR_INVENTORY",
+      "CHANGE_REFR_ANIMATION",
+      "CHANGE_REFR_EXTRA_ENCOUNTER_ZONE",
+      "CHANGE_REFR_EXTRA_GAME_ONLY"
+    ],
+    "absent": [
+      "life-state",
+      "dismembered-limbs",
+      "disposition-modifiers",
+      "temporary-actor-value-modifiers",
+      "damage-actor-value-modifiers",
+      "override-actor-value-modifiers",
+      "permanent-actor-value-modifiers"
+    ]
+  },
+  "actorValues": {
+    "arrayShape": { "arrays": 3, "valuesPerArray": 77, "element": "float32 plus 0x7C delimiter" },
+    "nonzero": [
+      { "array": "ActorValues244", "index": 38, "actorValue": "Melee Weapons", "offset": 497707, "value": 2.0 },
+      { "array": "ActorValues244", "index": 43, "actorValue": "Speech", "offset": 497732, "value": 2.0 },
+      { "array": "ActorValues378", "index": 24, "actorValue": "XP", "offset": 498022, "value": 10.0 }
+    ],
+    "allOtherValues": 0.0,
+    "healthAndLimbConclusion": "No serialized override is present in these arrays/change blocks; current total health and limb condition are not thereby proven."
+  },
+  "topExtras": {
+    "factionChanges": [
+      { "formId": "0x0200B42E", "editorId": "NVDLC02PlayerFaction", "rank": 1 },
+      { "formId": "0x04003E41", "editorId": "NVDLC04PlayerFaction", "rank": 1 },
+      { "formId": "0x03016154", "editorId": "NVDLC03PlayerFaction", "rank": 1 }
+    ],
+    "encounterZone": { "formId": "0x0000001E", "nameStatus": "unresolved-hardcoded-or-unauthored" }
+  },
+  "inventory": {
+    "range": { "offset": 498709, "bytes": 803, "end": 499512 },
+    "entryCount": 50,
+    "provenEquipped": [
+      "0x00025B83 Pip-Boy Glove",
+      "0x00015038 Pip-Boy 3000",
+      "one 99.9000015-health 0x0000431E Vault 101 Jumpsuit"
+    ],
+    "equippedWeaponStatus": "none proven by ExtraWorn in this inventory block",
+    "ammo": [
+      { "formId": "0x00004241", "name": "10mm Round", "count": 250 },
+      { "formId": "0x0002935B", "name": "BB", "count": 50 },
+      { "formId": "0x000E86F2", "name": "20 Gauge Round", "count": 40 },
+      { "formId": "0x0007EA26", "name": "40mm Grenade", "count": 20 }
+    ],
+    "unresolvedCreatedOrDynamicForms": [
+      "0x001735D1", "0x001735D2", "0x001735D4", "0x001735E0", "0x001735E1",
+      "0x001735E2", "0x001735E3", "0x001735E4", "0x001735E5"
+    ]
+  },
+  "camera": {
+    "firstPersonMode": { "offset": 501845, "bytes": 1, "encoded": "00", "value": 0 },
+    "firstPersonModelFieldOfViewDegrees": { "offset": 501942, "bytes": 4, "encodedLittleEndian": "00005C42", "value": 55.0 },
+    "worldFieldOfViewDegrees": { "offset": 501947, "bytes": 4, "encodedLittleEndian": "00009642", "value": 75.0 }
+  },
+  "nativePlayerIdentity": {
+    "sex": "male",
+    "race": { "formId": "0x00000019", "name": "Caucasian" },
+    "class": { "formId": "0x00057E6A", "editorId": "PlayerClass", "name": "Vault Dweller" },
+    "baseHealth": 100,
+    "special": [5, 5, 5, 5, 5, 5, 5],
+    "voice": { "formId": "0x0002853B", "editorId": "PlayerVoiceMale" },
+    "hair": { "formId": "0x0002DDEE", "editorId": "HairWavy", "name": "Smooth Wave" },
+    "eyes": { "formId": "0x00004253", "editorId": "EyeBlue", "name": "Blue" },
+    "displayNameStatus": "unproven; both native FULL and Save330 header name are empty",
+    "customAppearanceStatus": "no override appears in this ACHR schema, but absence outside this payload is not yet proven"
+  },
+  "definitionEvidence": [
+    { "path": "D:/code/nikami-worlds/external/xedit/Core/wbDefinitionsFNVSaves.pas", "bytes": 253687, "sha256": "701f4b734b4c3bb28b32c6f8d1595b952e536bd7f75358d764eea6bec51db406" },
+    { "path": "D:/code/nikami-worlds/external/xedit/Core/wbDefinitionsFNV.pas", "bytes": 325415, "sha256": "175360dfac2f51ba1f041e916ed82732c8698f84d010c9c64b20da3b224cd5ec" },
+    { "path": "D:/code/nikami-worlds/external/xnvse/nvse/nvse/GameExtraData.h", "bytes": 30303, "sha256": "8dc35fc4189a688693dfae4345dc707a0e1a5da22cad2771ccdaf5ba4653343c" },
+    { "path": "D:/code/nikami-worlds/external/xnvse/nvse/nvse/GameObjects.h", "bytes": 23212, "sha256": "f074809303c4028bda8f60fc76a7e6b896d5d794792c601f69cf81c802c8b147" },
+    { "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/FalloutNV.esm", "bytes": 245650747, "sha256": "50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1" }
+  ],
+  "nextImplementationSlice": {
+    "range": { "offset": 497517, "bytes": 1160, "end": 498677 },
+    "requirements": [
+      "require canonical Player ACHR and form version 27",
+      "parse three distinct 77-element float-plus-delimiter arrays",
+      "preserve raw float bits and absolute ranges",
+      "require every 0x7C delimiter",
+      "parse final uint32 plus delimiter",
+      "finish exactly at byte 498677 and leave the remaining 3907 bytes opaque"
+    ]
+  }
+}

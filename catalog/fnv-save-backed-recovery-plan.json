@@ -11,6 +11,8 @@
       "native FalloutNV.esm Player NPC_ 0x00000007 and ACHR 0x00000014 identity resolution",
       "engine-derived Save330 placement in authored WastelandNV CELL 0x000E1AA7 at grid (-18,-1)",
       "save-backed game hour 14.215002059936523 and current weather 0x001237D7 / NVWastelandGS",
+      "complete offline schema accounting of the 5,067-byte Player ACHR remainder with zero leftover",
+      "save-backed first-person mode, 55-degree first-person model FOV, and 75-degree world FOV",
       "pinned retail Save330 screenshot oracle and fail-closed side-by-side candidate gate",
       "retail GMST oracle values with raw float/integer bytes",
       "source inspection, compilation, and unit tests"
@@ -86,8 +88,12 @@
         "engine commit aaa3729b28 resolves exact native Player NPC_ 0x00000007 and ACHR 0x00000014 provenance, exact ESM/ESP master order, and fails closed on unsupported state",
         "engine commit 9fbb611ab5 decodes Save330 Player movement bytes 497489+28 as Mojave WRLD 0x000DA726, XYZ (-72392.84375,-1240.19275,8137.58643), and rotation (-0.0643904507,-0.0,2.93332028) radians",
         "engine commit 920f1ef1fc resolves that transform through OpenMW's 4096-unit exterior containment rule to authored CELL 0x000E1AA7 at grid (-18,-1) and fails closed when the WRLD/CELL identity is absent or mismatched",
-        "15/15 exact FONVSaveGame tests pass against the pinned Save330 and 11/11 FalloutPlayerState tests pass",
-        "2,739,018 save bytes remain explicitly semantically unparsed; the Player ACHR remainder is 5,067 bytes; Save Global Data type 1 stores (-18,0) and remains opaque rather than being invented as the transform-containing cell"
+        "engine commit c62ab8e1ab decodes the exact 71-byte delimited Sky state, resolves current/default weather through the save FormID table, and reduces parser-reported semantic gaps to 2,738,947 bytes",
+        "engine commit eeddc188aa normalizes Save330 current/default/optional weather into the current content order and carries exact time, transition, fog, flags, mode, and payload provenance in the detached load plan",
+        "engine commit 9e607ee3df decodes exact native FNV CLAS DATA/ATTR and RACE DATA layouts without mapping raw FNV flags into TES3 semantics",
+        "16/16 exact FONVSaveGame tests, 11/11 FalloutPlayerState tests, and 3/3 native Class/Race tests pass",
+        "the Player ACHR remainder 497517+5067 is fully schema-accounted offline with zero leftover, but remains engine-opaque until its fixed and variable domains land as reviewed parser slices",
+        "Save Global Data type 1 stores (-18,0) and remains opaque rather than being invented as the transform-containing cell"
       ],
       "gate": "A committed flat binary consumes the exact Save330 hash through normal load-game code with no bootstrap flag and produces a complete state manifest."
     },
@@ -107,8 +113,9 @@
       "outputs": [
         "parity commit 9fb025f installs schemas and eight regression tests that reject black/white, void, bootstrap, diagnostic, synthetic, injected, dirty-source, wrong-camera, and hash-mismatched OpenMW frames",
         "parity commit 43e3363 pins Save330 game hour 14.215002059936523 and weather 0x001237D7 / NVWastelandGS with exact save offsets and definition-source hashes",
+        "oracles/fnv_save330_visual/save330-player-payload-ledger.json accounts every byte of the Player remainder and pins first-person mode, first-person model FOV 55, and world FOV 75 to exact Save330 ranges",
         "oracles/fnv_save330_visual/initial-historical-openmw-rejected.png is the explicit zero-credit baseline: retail Save330 left, historical third-person OpenMW right",
-        "retail screenshot-bound camera/FOV/crop and complete visible-reference metadata remain incomplete, so no OpenMW image is currently candidate-eligible"
+        "retail screenshot-bound camera eye/heading/crop and complete visible-reference metadata remain incomplete, so no OpenMW image is currently candidate-eligible"
       ],
       "gate": "No monochrome output, missing set pieces, bad alpha/reflection bleed, shader errors, substitute player, or invalid camera/world state. Any failure returns to phase 1."
     },

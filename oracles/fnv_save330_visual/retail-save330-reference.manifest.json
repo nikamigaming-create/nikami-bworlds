@@ -52,17 +52,37 @@
     "unresolvedFields": [
       "exteriorCellGrid",
       "cameraEyeOffset",
-      "cameraFieldOfView",
       "cameraViewportCrop"
     ]
   },
   "camera": {
     "metadataStatus": "incomplete",
     "mode": "first-person",
+    "fieldOfViewDegrees": 75.0,
+    "firstPersonModelFieldOfViewDegrees": 55.0,
+    "saveRanges": {
+      "firstPersonMode": {
+        "offset": 501845,
+        "bytes": 1,
+        "encoded": "00",
+        "value": 0
+      },
+      "firstPersonModelFieldOfViewDegrees": {
+        "offset": 501942,
+        "bytes": 4,
+        "encodedLittleEndian": "00005C42",
+        "value": 55.0
+      },
+      "worldFieldOfViewDegrees": {
+        "offset": 501947,
+        "bytes": 4,
+        "encodedLittleEndian": "00009642",
+        "value": 75.0
+      }
+    },
     "unresolvedFields": [
       "position",
       "headingDegrees",
-      "fieldOfViewDegrees",
       "viewportCropNormalized"
     ]
   },
@@ -106,7 +126,7 @@
   },
   "candidatePolicy": {
     "eligibleNow": false,
-    "reason": "The fixed pixels, first-person perspective, Save330 time, weather, player transform, and derived authored exterior placement are proven. Exact screenshot-bound camera/FOV/crop and complete visible authored references remain unresolved and fail closed.",
+    "reason": "The fixed pixels, first-person mode, Save330 world FOV, first-person model FOV, time, weather, player transform, and derived authored exterior placement are proven. Exact screenshot-bound camera eye/heading/crop and complete visible authored references remain unresolved and fail closed.",
     "requiredCompletion": "Set both metadataStatus fields to complete only with hash-accounted retail evidence, populate every unresolved field, and regenerate any OpenMW capture manifest that references this manifest hash."
   }
 }
