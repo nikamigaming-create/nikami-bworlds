@@ -43,6 +43,12 @@
       "terminator": { "offset": 497516, "bytes": 1, "value": "0x7C" },
       "opaqueRemainder": { "offset": 497517, "bytes": 5067 }
     },
+    "derivedExteriorPlacement": {
+      "derivation": "OpenMW floor(position/4096) containment resolved against authored WastelandNV exterior CELL records",
+      "cellFormId": "0x000E1AA7",
+      "grid": [-18, -1],
+      "serializedSaveFieldStatus": "unresolved; Save Global Data type 1 contains (-18,0) and is not being treated as the player transform cell"
+    },
     "unresolvedFields": [
       "exteriorCellGrid",
       "cameraEyeOffset",
@@ -62,15 +68,45 @@
   },
   "scene": {
     "metadataStatus": "incomplete",
+    "gameTimeHours": 14.215002059936523,
+    "weatherFormId": "0x001237D7",
+    "weatherEditorId": "NVWastelandGS",
+    "saveRanges": {
+      "skyPayload": {
+        "offset": 494355,
+        "bytes": 71,
+        "sha256": "8492cf418cdf6f301a51d504b6a0b0df842282e77bae5607245d3fee04a71468"
+      },
+      "currentWeatherRefId": {
+        "offset": 494355,
+        "bytes": 3,
+        "encoded": "0x004F59",
+        "formIdArrayOneBasedIndex": 20313,
+        "formIdArrayEntryOffset": 3389539
+      },
+      "gameTimeHours": {
+        "offset": 494371,
+        "bytes": 4,
+        "encodedLittleEndian": "A6706341"
+      }
+    },
+    "definitionEvidence": [
+      {
+        "path": "D:/code/nikami-worlds/external/xedit/Core/wbDefinitionsFNVSaves.pas",
+        "sha256": "701f4b734b4c3bb28b32c6f8d1595b952e536bd7f75358d764eea6bec51db406"
+      },
+      {
+        "path": "D:/code/nikami-worlds/external/jip-ln-nvse/nvse/GameData.h",
+        "sha256": "d78f150ea33e4bab8e76500cb5e1262baed3a17981b222d8fb313b83fba914c8"
+      }
+    ],
     "unresolvedFields": [
-      "gameTimeHours",
-      "weatherFormId",
       "visibleAuthoredReferences"
     ]
   },
   "candidatePolicy": {
     "eligibleNow": false,
-    "reason": "The fixed pixels and first-person perspective are proven, but exact retail camera and scene metadata have not yet been decoded from Save330/runtime evidence. Unknown fields fail closed.",
+    "reason": "The fixed pixels, first-person perspective, Save330 time, weather, player transform, and derived authored exterior placement are proven. Exact screenshot-bound camera/FOV/crop and complete visible authored references remain unresolved and fail closed.",
     "requiredCompletion": "Set both metadataStatus fields to complete only with hash-accounted retail evidence, populate every unresolved field, and regenerate any OpenMW capture manifest that references this manifest hash."
   }
 }
