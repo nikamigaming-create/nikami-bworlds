@@ -9,9 +9,12 @@ The same pinned save now proves the Player ACHR movement prefix at
 `497489+28`: ACHR `0x00000014` targets the Mojave Wasteland WRLD
 `0x000DA726`, position `(-72392.84375, -1240.19275, 8137.58643)`, and rotation
 `(-0.0643904507, -0.0, 2.93332028)` radians. The following `5,067` Player
-payload bytes remain opaque. This proves a player-reference transform, not the
-exterior cell grid, eye-level camera transform, field of view, time, weather,
-or authored visible-reference set; those gates remain closed.
+payload bytes are fully schema-accounted offline. The committed engine now
+decodes the first `1,995` of them through actor values, factions, encounter
+zone, and all 50 inventory entries; the remaining `3,072` bytes are explicitly
+opaque. This proves a player-reference transform and inventory payload, not the
+screenshot-bound camera eye/heading/crop or authored visible-reference set;
+those gates remain closed.
 
 `initial-historical-openmw-rejected.png` deliberately pairs that retail oracle
 with the closest exterior frame found in the user's earlier OpenMW recording.

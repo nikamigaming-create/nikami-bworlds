@@ -1,6 +1,12 @@
 {
   "schema": "nikami-fnv-save330-weather-ledger/v1",
-  "status": "exact-source-audited-runtime-bridge-pending",
+  "status": "exact-engine-decoded-runtime-bridge-pending",
+  "engineDecode": {
+    "commit": "9877e22413 Decode exact FNV weather and climate records",
+    "scope": "strict native FNV WTHR and CLMT record loaders; no runtime weather/store publication",
+    "verification": "7/7 exact weather/climate fixtures and malformed-size tests passed after a full openmw-tests/components-tests build",
+    "preservationRule": "the fourth WTHR color byte remains unused raw data and is never promoted to alpha"
+  },
   "sourceMaster": {
     "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/FalloutNV.esm",
     "bytes": 245650747,

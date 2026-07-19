@@ -1,6 +1,6 @@
 {
   "schema": "nikami-fnv-save330-player-payload-ledger/v1",
-  "status": "offline-schema-accounted-and-partially-engine-decoded",
+  "status": "offline-schema-accounted-and-engine-decoded-through-inventory",
   "save": {
     "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
     "bytes": 3395328,
@@ -13,9 +13,21 @@
     "payload": { "offset": 497489, "bytes": 5095, "end": 502584 },
     "engineDecodedMovement": { "offset": 497489, "bytes": 28, "end": 497517 },
     "engineDecodedActorValueArrays": { "offset": 497517, "bytes": 1160, "end": 498677 },
+    "engineDecodedProcessAndInventory": { "offset": 498677, "bytes": 835, "end": 499512 },
     "auditedRemainder": { "offset": 497517, "bytes": 5067, "end": 502584 },
-    "engineOpaqueTail": { "offset": 498677, "bytes": 3907, "end": 502584 },
+    "engineOpaqueTail": { "offset": 499512, "bytes": 3072, "end": 502584 },
     "unaccountedBytes": 0
+  },
+  "engineImplementation": {
+    "decodedPlayerPayload": { "offset": 497489, "bytes": 2023, "end": 499512 },
+    "decodedAuditedRemainderBytes": 1995,
+    "opaqueAuditedRemainderBytes": 3072,
+    "commits": [
+      "9fbb611ab5 Decode the Save330 player movement prefix",
+      "d7a2d1731b Decode Save330 player actor-value arrays",
+      "d66d24c62b Decode Save330 player inventory payload"
+    ],
+    "verification": "18/18 FONVSaveGame tests passed against the committed parser, including the exact external Save330 fixture and fail-closed process/inventory corruption cases"
   },
   "remainderCoverage": [
     { "offset": 497517, "bytes": 385, "end": 497902, "domain": "ActorValues244[77]" },
@@ -71,6 +83,7 @@
     "encounterZone": { "formId": "0x0000001E", "nameStatus": "unresolved-hardcoded-or-unauthored" }
   },
   "inventory": {
+    "engineStatus": "decoded by commit d66d24c62b",
     "range": { "offset": 498709, "bytes": 803, "end": 499512 },
     "entryCount": 50,
     "provenEquipped": [
@@ -114,7 +127,7 @@
     { "path": "D:/code/nikami-worlds/external/xnvse/nvse/nvse/GameObjects.h", "bytes": 23212, "sha256": "f074809303c4028bda8f60fc76a7e6b896d5d794792c601f69cf81c802c8b147" },
     { "path": "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data/FalloutNV.esm", "bytes": 245650747, "sha256": "50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1" }
   ],
-  "nextImplementationSlice": {
+  "implementedProcessInventorySlice": {
     "range": { "offset": 498677, "bytes": 835, "end": 499512 },
     "requirements": [
       "require canonical Player ACHR and form version 27",
@@ -123,6 +136,16 @@
       "preserve every item delta, stack count, ExtraHealth float, ExtraWorn marker, and absolute range",
       "reject unknown extra types, invalid counts, bad delimiters, and section overruns",
       "finish exactly at byte 499512 and leave the remaining 3072 bytes opaque"
+    ]
+  },
+  "nextImplementationSlice": {
+    "range": { "offset": 499512, "bytes": 1675, "end": 501187 },
+    "domain": "mobile-object base/low/middle/high process state",
+    "requirements": [
+      "decode only fields whose FNV save layout is pinned to authoritative definitions or exact retail evidence",
+      "preserve every raw byte and absolute range alongside its semantic value",
+      "fail closed on unsupported process levels, invalid delimiters, impossible counts, and section overruns",
+      "finish exactly at byte 501187 and leave the remaining 1397 bytes opaque"
     ]
   }
 }

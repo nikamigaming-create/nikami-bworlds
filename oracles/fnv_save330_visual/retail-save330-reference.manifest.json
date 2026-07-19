@@ -41,7 +41,10 @@
       "position": { "offset": 497492, "bytes": 12 },
       "rotationRadians": { "offset": 497504, "bytes": 12 },
       "terminator": { "offset": 497516, "bytes": 1, "value": "0x7C" },
-      "opaqueRemainder": { "offset": 497517, "bytes": 5067 }
+      "schemaAccountedRemainder": { "offset": 497517, "bytes": 5067 },
+      "engineDecodedActorValueArrays": { "offset": 497517, "bytes": 1160 },
+      "engineDecodedProcessAndInventory": { "offset": 498677, "bytes": 835 },
+      "engineOpaqueTail": { "offset": 499512, "bytes": 3072 }
     },
     "derivedExteriorPlacement": {
       "derivation": "OpenMW floor(position/4096) containment resolved against authored WastelandNV exterior CELL records",
