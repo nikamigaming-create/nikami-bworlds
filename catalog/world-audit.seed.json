@@ -1,0 +1,965 @@
+{
+    "schemaVersion":  1,
+    "generatedAt":  "2026-07-07T15:47:51.6831485-07:00",
+    "worldCatalogPath":  "catalog/worlds.local.json",
+    "contractPath":  "catalog/world-audit-contract.json",
+    "summary":  {
+                    "worlds":  10,
+                    "passes":  10,
+                    "readyPasses":  59,
+                    "blockedPasses":  13
+                },
+    "worlds":  [
+                   {
+                       "id":  "morrowind",
+                       "displayName":  "The Elder Scrolls III: Morrowind",
+                       "order":  10,
+                       "track":  "runtime",
+                       "runtimePromotionAllowed":  true,
+                       "supportTier":  "full",
+                       "installStatus":  "ready",
+                       "profileStatus":  "generated",
+                       "profileDirectory":  "D:/code/nikami-worlds/profiles/morrowind",
+                       "dataPaths":  "D:/SteamLibrary/steamapps/common/Morrowind/Data Files",
+                       "passes":  [
+                                      {
+                                          "id":  "profile-isolation",
+                                          "order":  10,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/worlds.local.json",
+                                                           "profiles/\u003cworld\u003e/openmw.cfg",
+                                                           "profiles/\u003cworld\u003e/settings.cfg"
+                                                       ],
+                                          "gate":  "Generated profile uses --replace config, profile-local user-data/data-local, and no unrelated game content."
+                                      },
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "cell-catalog",
+                                          "order":  40,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/cells/\u003cworld\u003e.cells.json"
+                                                       ],
+                                          "gate":  "Every known interior and exterior cell/grid has a stable id and reference counts."
+                                      },
+                                      {
+                                          "id":  "cell-load-smoke",
+                                          "order":  50,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Real OpenMW native screenshots and logs prove representative cells load without profile contamination."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      },
+                                      {
+                                          "id":  "actor-catalog",
+                                          "order":  70,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actors.jsonl",
+                                                           "run/audit/\u003cworld\u003e/actor-summary.json"
+                                                       ],
+                                          "gate":  "Every placed actor maps to base actor, skeleton, model parts, face/head data, equipment, animation roots, and voice/material expectations."
+                                      },
+                                      {
+                                          "id":  "actor-render-proof",
+                                          "order":  80,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actor-render-ledger.jsonl",
+                                                           "run/audit/actor-visual-review.jsonl",
+                                                           "run/audit/actor-runtime-warnings.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Curated actor classes render from real cells with no zero-geometry, one-color, or magenta fallback evidence."
+                                      },
+                                      {
+                                          "id":  "zone-traversal",
+                                          "order":  90,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/zones.jsonl",
+                                                           "run/audit/\u003cworld\u003e/zone-summary.json"
+                                                       ],
+                                          "gate":  "Exterior grids and door-linked interiors are covered by slices with crash/missing/visual failures logged."
+                                      },
+                                      {
+                                          "id":  "regression-promotion",
+                                          "order":  100,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/promotion.json"
+                                                       ],
+                                          "gate":  "The current pass stays green after the proposed fix and before VR or next-world promotion."
+                                      }
+                                  ]
+                   },
+                   {
+                       "id":  "oblivion",
+                       "displayName":  "The Elder Scrolls IV: Oblivion",
+                       "order":  20,
+                       "track":  "walking-sim",
+                       "runtimePromotionAllowed":  true,
+                       "supportTier":  "walking-sim",
+                       "installStatus":  "ready",
+                       "profileStatus":  "generated",
+                       "profileDirectory":  "D:/code/nikami-worlds/profiles/oblivion",
+                       "dataPaths":  "D:/SteamLibrary/steamapps/common/Oblivion/Data",
+                       "passes":  [
+                                      {
+                                          "id":  "profile-isolation",
+                                          "order":  10,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/worlds.local.json",
+                                                           "profiles/\u003cworld\u003e/openmw.cfg",
+                                                           "profiles/\u003cworld\u003e/settings.cfg"
+                                                       ],
+                                          "gate":  "Generated profile uses --replace config, profile-local user-data/data-local, and no unrelated game content."
+                                      },
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "cell-catalog",
+                                          "order":  40,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/cells/\u003cworld\u003e.cells.json"
+                                                       ],
+                                          "gate":  "Every known interior and exterior cell/grid has a stable id and reference counts."
+                                      },
+                                      {
+                                          "id":  "cell-load-smoke",
+                                          "order":  50,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Real OpenMW native screenshots and logs prove representative cells load without profile contamination."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      },
+                                      {
+                                          "id":  "actor-catalog",
+                                          "order":  70,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actors.jsonl",
+                                                           "run/audit/\u003cworld\u003e/actor-summary.json"
+                                                       ],
+                                          "gate":  "Every placed actor maps to base actor, skeleton, model parts, face/head data, equipment, animation roots, and voice/material expectations."
+                                      },
+                                      {
+                                          "id":  "actor-render-proof",
+                                          "order":  80,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actor-render-ledger.jsonl",
+                                                           "run/audit/actor-visual-review.jsonl",
+                                                           "run/audit/actor-runtime-warnings.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Curated actor classes render from real cells with no zero-geometry, one-color, or magenta fallback evidence."
+                                      },
+                                      {
+                                          "id":  "zone-traversal",
+                                          "order":  90,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/zones.jsonl",
+                                                           "run/audit/\u003cworld\u003e/zone-summary.json"
+                                                       ],
+                                          "gate":  "Exterior grids and door-linked interiors are covered by slices with crash/missing/visual failures logged."
+                                      },
+                                      {
+                                          "id":  "regression-promotion",
+                                          "order":  100,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/promotion.json"
+                                                       ],
+                                          "gate":  "The current pass stays green after the proposed fix and before VR or next-world promotion."
+                                      }
+                                  ]
+                   },
+                   {
+                       "id":  "fallout3",
+                       "displayName":  "Fallout 3",
+                       "order":  30,
+                       "track":  "walking-sim",
+                       "runtimePromotionAllowed":  true,
+                       "supportTier":  "walking-sim",
+                       "installStatus":  "ready",
+                       "profileStatus":  "generated",
+                       "profileDirectory":  "D:/code/nikami-worlds/profiles/fallout3",
+                       "dataPaths":  "D:/SteamLibrary/steamapps/common/Fallout 3 goty/Data",
+                       "passes":  [
+                                      {
+                                          "id":  "profile-isolation",
+                                          "order":  10,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/worlds.local.json",
+                                                           "profiles/\u003cworld\u003e/openmw.cfg",
+                                                           "profiles/\u003cworld\u003e/settings.cfg"
+                                                       ],
+                                          "gate":  "Generated profile uses --replace config, profile-local user-data/data-local, and no unrelated game content."
+                                      },
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "cell-catalog",
+                                          "order":  40,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/cells/\u003cworld\u003e.cells.json"
+                                                       ],
+                                          "gate":  "Every known interior and exterior cell/grid has a stable id and reference counts."
+                                      },
+                                      {
+                                          "id":  "cell-load-smoke",
+                                          "order":  50,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Real OpenMW native screenshots and logs prove representative cells load without profile contamination."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      },
+                                      {
+                                          "id":  "actor-catalog",
+                                          "order":  70,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actors.jsonl",
+                                                           "run/audit/\u003cworld\u003e/actor-summary.json"
+                                                       ],
+                                          "gate":  "Every placed actor maps to base actor, skeleton, model parts, face/head data, equipment, animation roots, and voice/material expectations."
+                                      },
+                                      {
+                                          "id":  "actor-render-proof",
+                                          "order":  80,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actor-render-ledger.jsonl",
+                                                           "run/audit/actor-visual-review.jsonl",
+                                                           "run/audit/actor-runtime-warnings.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Curated actor classes render from real cells with no zero-geometry, one-color, or magenta fallback evidence."
+                                      },
+                                      {
+                                          "id":  "zone-traversal",
+                                          "order":  90,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/zones.jsonl",
+                                                           "run/audit/\u003cworld\u003e/zone-summary.json"
+                                                       ],
+                                          "gate":  "Exterior grids and door-linked interiors are covered by slices with crash/missing/visual failures logged."
+                                      },
+                                      {
+                                          "id":  "regression-promotion",
+                                          "order":  100,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/promotion.json"
+                                                       ],
+                                          "gate":  "The current pass stays green after the proposed fix and before VR or next-world promotion."
+                                      }
+                                  ]
+                   },
+                   {
+                       "id":  "fallout_new_vegas",
+                       "displayName":  "Fallout: New Vegas",
+                       "order":  40,
+                       "track":  "walking-sim",
+                       "runtimePromotionAllowed":  true,
+                       "supportTier":  "walking-sim",
+                       "installStatus":  "ready",
+                       "profileStatus":  "generated",
+                       "profileDirectory":  "D:/code/nikami-worlds/profiles/fallout_new_vegas",
+                       "dataPaths":  [
+                                         "D:/Modlists/fnv/openmw-config/data",
+                                         "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data"
+                                     ],
+                       "passes":  [
+                                      {
+                                          "id":  "profile-isolation",
+                                          "order":  10,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/worlds.local.json",
+                                                           "profiles/\u003cworld\u003e/openmw.cfg",
+                                                           "profiles/\u003cworld\u003e/settings.cfg"
+                                                       ],
+                                          "gate":  "Generated profile uses --replace config, profile-local user-data/data-local, and no unrelated game content."
+                                      },
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "cell-catalog",
+                                          "order":  40,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/cells/\u003cworld\u003e.cells.json"
+                                                       ],
+                                          "gate":  "Every known interior and exterior cell/grid has a stable id and reference counts."
+                                      },
+                                      {
+                                          "id":  "cell-load-smoke",
+                                          "order":  50,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Real OpenMW native screenshots and logs prove representative cells load without profile contamination."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      },
+                                      {
+                                          "id":  "actor-catalog",
+                                          "order":  70,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actors.jsonl",
+                                                           "run/audit/\u003cworld\u003e/actor-summary.json"
+                                                       ],
+                                          "gate":  "Every placed actor maps to base actor, skeleton, model parts, face/head data, equipment, animation roots, and voice/material expectations."
+                                      },
+                                      {
+                                          "id":  "actor-render-proof",
+                                          "order":  80,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actor-render-ledger.jsonl",
+                                                           "run/audit/actor-visual-review.jsonl",
+                                                           "run/audit/actor-runtime-warnings.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Curated actor classes render from real cells with no zero-geometry, one-color, or magenta fallback evidence."
+                                      },
+                                      {
+                                          "id":  "zone-traversal",
+                                          "order":  90,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/zones.jsonl",
+                                                           "run/audit/\u003cworld\u003e/zone-summary.json"
+                                                       ],
+                                          "gate":  "Exterior grids and door-linked interiors are covered by slices with crash/missing/visual failures logged."
+                                      },
+                                      {
+                                          "id":  "regression-promotion",
+                                          "order":  100,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/promotion.json"
+                                                       ],
+                                          "gate":  "The current pass stays green after the proposed fix and before VR or next-world promotion."
+                                      }
+                                  ]
+                   },
+                   {
+                       "id":  "skyrim_2011",
+                       "displayName":  "The Elder Scrolls V: Skyrim",
+                       "order":  50,
+                       "track":  "walking-sim",
+                       "runtimePromotionAllowed":  false,
+                       "supportTier":  "walking-sim",
+                       "installStatus":  "missing",
+                       "profileStatus":  "not-generated",
+                       "profileDirectory":  null,
+                       "dataPaths":  {
+
+                                     },
+                       "passes":  [
+                                      {
+                                          "id":  "profile-isolation",
+                                          "order":  10,
+                                          "status":  "blocked",
+                                          "blocker":  "requires ready generated profile",
+                                          "evidence":  [
+                                                           "catalog/worlds.local.json",
+                                                           "profiles/\u003cworld\u003e/openmw.cfg",
+                                                           "profiles/\u003cworld\u003e/settings.cfg"
+                                                       ],
+                                          "gate":  "Generated profile uses --replace config, profile-local user-data/data-local, and no unrelated game content."
+                                      },
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "blocked",
+                                          "blocker":  "world install not discovered",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "blocked",
+                                          "blocker":  "world install not discovered",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "cell-catalog",
+                                          "order":  40,
+                                          "status":  "blocked",
+                                          "blocker":  "requires ready generated profile",
+                                          "evidence":  [
+                                                           "catalog/cells/\u003cworld\u003e.cells.json"
+                                                       ],
+                                          "gate":  "Every known interior and exterior cell/grid has a stable id and reference counts."
+                                      },
+                                      {
+                                          "id":  "cell-load-smoke",
+                                          "order":  50,
+                                          "status":  "blocked",
+                                          "blocker":  "requires ready generated profile",
+                                          "evidence":  [
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Real OpenMW native screenshots and logs prove representative cells load without profile contamination."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "blocked",
+                                          "blocker":  "world install not discovered",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      },
+                                      {
+                                          "id":  "actor-catalog",
+                                          "order":  70,
+                                          "status":  "blocked",
+                                          "blocker":  "requires ready generated profile",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actors.jsonl",
+                                                           "run/audit/\u003cworld\u003e/actor-summary.json"
+                                                       ],
+                                          "gate":  "Every placed actor maps to base actor, skeleton, model parts, face/head data, equipment, animation roots, and voice/material expectations."
+                                      },
+                                      {
+                                          "id":  "actor-render-proof",
+                                          "order":  80,
+                                          "status":  "blocked",
+                                          "blocker":  "requires ready generated profile",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actor-render-ledger.jsonl",
+                                                           "run/audit/actor-visual-review.jsonl",
+                                                           "run/audit/actor-runtime-warnings.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Curated actor classes render from real cells with no zero-geometry, one-color, or magenta fallback evidence."
+                                      },
+                                      {
+                                          "id":  "zone-traversal",
+                                          "order":  90,
+                                          "status":  "blocked",
+                                          "blocker":  "requires ready generated profile",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/zones.jsonl",
+                                                           "run/audit/\u003cworld\u003e/zone-summary.json"
+                                                       ],
+                                          "gate":  "Exterior grids and door-linked interiors are covered by slices with crash/missing/visual failures logged."
+                                      },
+                                      {
+                                          "id":  "regression-promotion",
+                                          "order":  100,
+                                          "status":  "blocked",
+                                          "blocker":  "requires ready generated profile",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/promotion.json"
+                                                       ],
+                                          "gate":  "The current pass stays green after the proposed fix and before VR or next-world promotion."
+                                      }
+                                  ]
+                   },
+                   {
+                       "id":  "skyrim_vr",
+                       "displayName":  "The Elder Scrolls V: Skyrim VR",
+                       "order":  60,
+                       "track":  "asset-research",
+                       "runtimePromotionAllowed":  false,
+                       "supportTier":  "walking-sim",
+                       "installStatus":  "ready",
+                       "profileStatus":  "generated",
+                       "profileDirectory":  "D:/code/nikami-worlds/profiles/skyrim_vr",
+                       "dataPaths":  "D:/SteamLibrary/steamapps/common/SkyrimVR/Data",
+                       "passes":  [
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      }
+                                  ]
+                   },
+                   {
+                       "id":  "fallout4",
+                       "displayName":  "Fallout 4",
+                       "order":  70,
+                       "track":  "walking-sim",
+                       "runtimePromotionAllowed":  true,
+                       "supportTier":  "walking-sim",
+                       "installStatus":  "ready",
+                       "profileStatus":  "generated",
+                       "profileDirectory":  "D:/code/nikami-worlds/profiles/fallout4",
+                       "dataPaths":  "D:/SteamLibrary/steamapps/common/Fallout 4 VR/Data",
+                       "passes":  [
+                                      {
+                                          "id":  "profile-isolation",
+                                          "order":  10,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/worlds.local.json",
+                                                           "profiles/\u003cworld\u003e/openmw.cfg",
+                                                           "profiles/\u003cworld\u003e/settings.cfg"
+                                                       ],
+                                          "gate":  "Generated profile uses --replace config, profile-local user-data/data-local, and no unrelated game content."
+                                      },
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "cell-catalog",
+                                          "order":  40,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "catalog/cells/\u003cworld\u003e.cells.json"
+                                                       ],
+                                          "gate":  "Every known interior and exterior cell/grid has a stable id and reference counts."
+                                      },
+                                      {
+                                          "id":  "cell-load-smoke",
+                                          "order":  50,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Real OpenMW native screenshots and logs prove representative cells load without profile contamination."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      },
+                                      {
+                                          "id":  "actor-catalog",
+                                          "order":  70,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actors.jsonl",
+                                                           "run/audit/\u003cworld\u003e/actor-summary.json"
+                                                       ],
+                                          "gate":  "Every placed actor maps to base actor, skeleton, model parts, face/head data, equipment, animation roots, and voice/material expectations."
+                                      },
+                                      {
+                                          "id":  "actor-render-proof",
+                                          "order":  80,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/actor-render-ledger.jsonl",
+                                                           "run/audit/actor-visual-review.jsonl",
+                                                           "run/audit/actor-runtime-warnings.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/real-world-screenshots/\u003cworld\u003e-\u003cstamp\u003e/manifest.json"
+                                                       ],
+                                          "gate":  "Curated actor classes render from real cells with no zero-geometry, one-color, or magenta fallback evidence."
+                                      },
+                                      {
+                                          "id":  "zone-traversal",
+                                          "order":  90,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/zones.jsonl",
+                                                           "run/audit/\u003cworld\u003e/zone-summary.json"
+                                                       ],
+                                          "gate":  "Exterior grids and door-linked interiors are covered by slices with crash/missing/visual failures logged."
+                                      },
+                                      {
+                                          "id":  "regression-promotion",
+                                          "order":  100,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/promotion.json"
+                                                       ],
+                                          "gate":  "The current pass stays green after the proposed fix and before VR or next-world promotion."
+                                      }
+                                  ]
+                   },
+                   {
+                       "id":  "fallout4_vr",
+                       "displayName":  "Fallout 4 VR",
+                       "order":  80,
+                       "track":  "asset-research",
+                       "runtimePromotionAllowed":  false,
+                       "supportTier":  "walking-sim",
+                       "installStatus":  "ready",
+                       "profileStatus":  "generated",
+                       "profileDirectory":  "D:/code/nikami-worlds/profiles/fallout4_vr",
+                       "dataPaths":  "D:/SteamLibrary/steamapps/common/Fallout 4 VR/Data",
+                       "passes":  [
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      }
+                                  ]
+                   },
+                   {
+                       "id":  "fallout76",
+                       "displayName":  "Fallout 76",
+                       "order":  90,
+                       "track":  "asset-research",
+                       "runtimePromotionAllowed":  false,
+                       "supportTier":  "asset-research",
+                       "installStatus":  "incomplete",
+                       "profileStatus":  "not-generated",
+                       "profileDirectory":  null,
+                       "dataPaths":  {
+
+                                     },
+                       "passes":  [
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "blocked",
+                                          "blocker":  "requires discovered data path",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "blocked",
+                                          "blocker":  "requires discovered data path",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "blocked",
+                                          "blocker":  "requires discovered data path",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      }
+                                  ]
+                   },
+                   {
+                       "id":  "starfield",
+                       "displayName":  "Starfield",
+                       "order":  100,
+                       "track":  "asset-research",
+                       "runtimePromotionAllowed":  false,
+                       "supportTier":  "asset-research",
+                       "installStatus":  "ready",
+                       "profileStatus":  "generated",
+                       "profileDirectory":  "D:/code/nikami-worlds/profiles/starfield",
+                       "dataPaths":  "D:/SteamLibrary/steamapps/common/Starfield/Data",
+                       "passes":  [
+                                      {
+                                          "id":  "archive-inventory",
+                                          "order":  20,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/archives.jsonl"
+                                                       ],
+                                          "gate":  "Every configured archive is present, listable, and classified by path family."
+                                      },
+                                      {
+                                          "id":  "plugin-record-inventory",
+                                          "order":  30,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/records.jsonl",
+                                                           "run/audit/\u003cworld\u003e/record-summary.json"
+                                                       ],
+                                          "gate":  "Every content file has record counts and parse failures are explicit ledger rows."
+                                      },
+                                      {
+                                          "id":  "asset-decode",
+                                          "order":  60,
+                                          "status":  "ready",
+                                          "blocker":  "",
+                                          "evidence":  [
+                                                           "run/audit/\u003cworld\u003e/assets.jsonl",
+                                                           "run/audit/actor-animation-assets.jsonl",
+                                                           "run/audit/\u003cworld\u003e/asset-summary.json"
+                                                       ],
+                                          "gate":  "Every referenced mesh, texture, material, animation, sound, voice, UI, and video path is resolved or classified."
+                                      }
+                                  ]
+                   }
+               ],
+    "guardrails":  [
+                       "Real native OpenMW screenshots are baseline evidence; synthetic screenshots are diagnostic only.",
+                       "Starfield and Fallout 76 stay asset-research until this contract is deliberately updated.",
+                       "No Starfield-specific change is promoted unless Morrowind and the current ESM4 baseline still pass.",
+                       "A screenshot without a manifest, log, and failure classification is not accepted as proof."
+                   ]
+}

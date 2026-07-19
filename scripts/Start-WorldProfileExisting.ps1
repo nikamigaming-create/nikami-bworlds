@@ -18,6 +18,27 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 
+if ($Mode -eq "vr" -and $WorldId -eq "fallout_new_vegas") {
+    $fnvVrLauncher = Join-Path $PSScriptRoot "Start-FNVParityVRExisting.ps1"
+    if (-not (Test-Path -LiteralPath $fnvVrLauncher -PathType Leaf)) {
+        throw "Missing calibrated FNV VR launcher: $fnvVrLauncher"
+    }
+
+    $fnvVrParameters = @{}
+    if ($DryRun) {
+        $fnvVrParameters.DryRun = $true
+    }
+    if ($Wait) {
+        $fnvVrParameters.Wait = $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace($BinaryRoot)) {
+        $fnvVrParameters.BinaryRoot = $BinaryRoot
+    }
+
+    & $fnvVrLauncher @fnvVrParameters
+    return
+}
+
 function Quote-CommandArg([string]$Arg) {
     if ($Arg -match '[\s"]') {
         return '"' + ($Arg -replace '"', '\"') + '"'
@@ -41,12 +62,8 @@ if ($world.readyForWorldWalker -ne $true) {
     throw "World '$WorldId' is not ready for the world walker. installStatus=$($world.installStatus) profileStatus=$($world.profileStatus)"
 }
 
-$BinaryRoot = Resolve-NikamiPath `
-    -ParameterValue $BinaryRoot `
-    -EnvName "NIKAMI_OPENMW_BINARY_ROOT" `
-    -ConfigName "openmwBinaryRoot" `
-    -Required `
-    -Description "OpenMW binary root"
+$BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
+$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot
 
 if (-not $world.profileDirectory -or -not (Test-Path -LiteralPath $world.profileDirectory)) {
     throw "Missing profile directory for '$WorldId': $($world.profileDirectory)"
@@ -63,6 +80,8 @@ $argsList.Add("--replace")
 $argsList.Add("config")
 $argsList.Add("--config")
 $argsList.Add($world.profileDirectory)
+$argsList.Add("--resources")
+$argsList.Add($ResourcesRoot)
 
 if ($SkipMenu) {
     $argsList.Add("--skip-menu")
@@ -87,12 +106,10 @@ $commandLine = "$(Quote-CommandArg $binary) $argumentLine"
 Write-Host "World:   $($world.displayName) [$WorldId]"
 Write-Host "Mode:    $Mode"
 Write-Host "Exe:     $binary"
+Write-Host "Resources: $ResourcesRoot"
 Write-Host "Profile: $($world.profileDirectory)"
 Write-Host "Command: $commandLine"
-
-if ($Mode -eq "vr" -and $WorldId -eq "fallout_new_vegas") {
-    Write-Host "Note: calibrated FNV VR hands/Pip-Boy testing still uses scripts/Start-FNVVRExisting.ps1."
-}
+Write-Host "Runtime: real OpenMW profile launch; proof/viewer environment is cleared before start."
 
 if ($DryRun) {
     Write-Host "Dry run only; not starting OpenMW."
@@ -104,7 +121,15 @@ if (-not $AllowDuplicate -and (Get-Process -Name $processName -ErrorAction Silen
     throw "$processName is already running. Close it first or pass -AllowDuplicate."
 }
 
-$process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory $workingDirectory -PassThru
+Clear-NikamiWorldViewerRuntimeEnvironment
+$previousDebugLevel = $env:OPENMW_DEBUG_LEVEL
+try {
+    $env:OPENMW_DEBUG_LEVEL = "INFO"
+    $process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory $workingDirectory -PassThru
+}
+finally {
+    $env:OPENMW_DEBUG_LEVEL = $previousDebugLevel
+}
 Write-Host "Started PID $($process.Id)."
 
 if ($Wait) {
