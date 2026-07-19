@@ -84,6 +84,9 @@
       "name": "First admissible flat frame",
       "status": "pending",
       "actions": [
+        "use the exact Save330 embedded 512x320 RGB24 screenshot in oracles/fnv_save330_visual/retail-save330-reference.png as the fixed retail visual oracle",
+        "generate a labelled retail/OpenMW side-by-side for every candidate; no log-only, telemetry-only, or standalone OpenMW frame can close the visual gate",
+        "require first-person camera plus closely matched position, heading, field of view, crop, time, weather, and visible authored references before pixel/material review",
         "prepare a normal launcher that selects/loads Save330 and nothing else",
         "wait for explicit user authorization before any visible launch",
         "capture exact launch, source, binary, config, content, save, log, and frame provenance",

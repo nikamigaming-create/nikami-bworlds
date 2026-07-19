@@ -1,0 +1,57 @@
+{
+  "schema": "nikami-fnv-retail-openmw-visual-pair/v1",
+  "generatedAt": "2026-07-19T05:19:48.352100+00:00",
+  "status": "rejected",
+  "accepted": false,
+  "visualReviewRequired": true,
+  "retail": {
+    "kind": "pinned-save330-rgb24",
+    "path": "C:/Users/nbrys/OneDrive/Documents/My Games/FalloutNV/Saves/Save 330     Goodsprings  00 16 45.fos",
+    "bytes": 3395328,
+    "sha256": "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f",
+    "screenshotOffset": 147,
+    "screenshotBytes": 491520,
+    "pixelFormat": "rgb24",
+    "extractedPng": {
+      "path": "D:/code/nikami-worlds-fnv-parity/oracles/fnv_save330_visual/retail-save330-reference.png",
+      "bytes": 317441,
+      "sha256": "859fa4a89d0cc5efb16693a0aa104c264a1f9bc6c0bb257706b5401ceb8fd008"
+    }
+  },
+  "openmw": {
+    "path": "D:/code/nikami-worlds-fnv-parity/run/baseline-video-audit-20260718/frame-011.png",
+    "bytes": 754412,
+    "sha256": "406f22112bbd94bcc9b1c986d725451192fed01ad7828e1e580a58e50812974c",
+    "crop": [
+      0,
+      24,
+      960,
+      624
+    ],
+    "fitToRetail": true,
+    "sourceProvenance": null
+  },
+  "comparison": {
+    "width": 512,
+    "height": 320,
+    "metrics": {
+      "meanAbsoluteChannelDifference": [
+        70.505127,
+        63.054309,
+        49.710736
+      ],
+      "rootMeanSquareChannelDifference": [
+        85.638828,
+        78.090228,
+        67.436206
+      ],
+      "openmwLumaMean": 66.925604,
+      "openmwLumaStdDev": 49.851639
+    }
+  },
+  "output": {
+    "path": "D:/code/nikami-worlds-fnv-parity/oracles/fnv_save330_visual/initial-historical-openmw-rejected.png",
+    "bytes": 604920,
+    "sha256": "4f105b29a663cbb5b74df434b060f836ca68e79250a502c92739b698f50c80db"
+  }
+}
