@@ -5465,6 +5465,7 @@ namespace
         UInt32 equippedWeapon = 0;
         UInt32 linkedAmmo = 0;
         SInt32 linkedAmmoCount = 0;
+        std::string firstTargetRecordHex;
     };
 
     bool sidecarReadActorValueUnsafe(PlayerCharacter* player, UInt32 actorValue, float& result)
@@ -5507,11 +5508,29 @@ namespace
         {
             auto* nodeAddress = camera.targets->Head();
             constexpr UInt32 maximumTargets = 256;
-            for (; nodeAddress != nullptr && result.targetCount < maximumTargets; ++result.targetCount)
+            for (; nodeAddress != nullptr && result.targetCount < maximumTargets;)
             {
                 ListNode<void*> node = {};
                 if (!safeRead(nodeAddress, node))
                     break;
+                if (node.data != nullptr)
+                {
+                    ++result.targetCount;
+                    if (result.firstTargetRecordHex.empty())
+                    {
+                        std::array<UInt8, 256> targetBytes = {};
+                        if (safeRead(node.data, targetBytes))
+                        {
+                            static constexpr char hexDigits[] = "0123456789abcdef";
+                            result.firstTargetRecordHex.reserve(targetBytes.size() * 2);
+                            for (UInt8 value : targetBytes)
+                            {
+                                result.firstTargetRecordHex.push_back(hexDigits[value >> 4]);
+                                result.firstTargetRecordHex.push_back(hexDigits[value & 0x0f]);
+                            }
+                        }
+                    }
+                }
                 nodeAddress = node.next;
             }
             result.targetListTruncated = nodeAddress != nullptr;
@@ -5554,7 +5573,9 @@ namespace
                 << ",\"health\":" << vats.health
                 << ",\"equippedWeapon\":" << vats.equippedWeapon
                 << ",\"linkedAmmo\":" << vats.linkedAmmo
-                << ",\"linkedAmmoCount\":" << vats.linkedAmmoCount;
+                << ",\"linkedAmmoCount\":" << vats.linkedAmmoCount
+                << ",\"firstTargetRecordBytes\":256"
+                << ",\"firstTargetRecordHex\":" << jsonString(vats.firstTargetRecordHex.c_str());
         }
         out << '}';
     }
