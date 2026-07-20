@@ -27,6 +27,8 @@
     "containers": 10778,
     "terminals": 357,
     "craftingStationsCandidate": 304,
+    "craftingStationCandidateBases": 12,
+    "recipes": 291,
     "radios": 425,
     "dialogueInfos": 28896,
     "dialogueResponses": 37403,
@@ -76,6 +78,52 @@
         "take/store mutation persists through save/load",
         "icons/text remain legible and non-placeholder when assets exist"
       ]
+    },
+    {
+      "id": "weapons-mods-ammo-repair",
+      "denominator": "WEAP + AMMO + weapon-mod items + equipped weapon save extras",
+      "requiredEvidence": [
+        "weapon rows, condition, ammo selection, hotkey/equip state, and item cards are sourced from WEAP/AMMO/save runtime data",
+        "weapon mod install/remove/eligibility uses authored weapon-mod records and changes model/stat/runtime state",
+        "ammo type switching validates weapon compatibility including FormIdList ammo groups and persists through save/load",
+        "firing consumes the selected ammo stack and updates HUD/Pip-Boy counts",
+        "condition loss changes weapon value/damage/jam behavior and persists",
+        "repair by compatible item, repair kit, and vendor service uses authored skill/perk/service/caps rules",
+        "all visual attachments, projectile helpers, reload/jam/fire sounds, impacts, hit reactions, corpse loot, and XP are proven through normal in-game combat"
+      ],
+      "currentStatus": {
+        "ammoSelectionSaveData": "implemented evidence exists in InventoryStore/FNV save preflight paths",
+        "weaponFireAmmoConsumption": "bounded combat proof exists, not exhaustive",
+        "weaponMods": "uncovered",
+        "repairConditionEconomy": "uncovered/failing",
+        "acceptedParityCredit": 0
+      }
+    },
+    {
+      "id": "crafting-workbench-reloading-campfire",
+      "denominator": "craftingStationsCandidate + recipes",
+      "requiredEvidence": [
+        "station activation is by normal raycast/use on authored ACTI references",
+        "Workbench, Reloading Bench, and Campfire categories are selected from authored RCCT/RCPE/script links",
+        "recipe list, requirements, ingredient counts, skill/perk/condition checks, blocked states, selection, confirmation, sounds, animation, and messages match retail",
+        "ingredient consumption and output creation mutate the live player inventory atomically",
+        "ammo breakdown/hand-load recipes create the exact authored AMMO outputs and byproducts",
+        "crafted weapons/armor/aid/misc outputs have correct condition, ownership, icons, stats, effects, and save/load persistence",
+        "all 291 recipes are classified; every unsupported CTDA/item-kind/script blocker is explicit and tracked until implemented"
+      ],
+      "currentStatus": {
+        "recipeParser": "291/291 live official RCPE records parsed/stored in focused tests",
+        "strictTransactionCore": "conditionless supported subset exists",
+        "stationActivation": "Workbench and Reloading Bench bounded activation exists",
+        "unsupportedKnownBlockers": [
+          "conditional recipe CTDA evaluation",
+          "CMNY output/input type",
+          "retail crafting UI/layout/input/sound/animation",
+          "Campfire and special station behavior",
+          "natural journey save/load proof"
+        ],
+        "acceptedParityCredit": 0
+      }
     },
     {
       "id": "doors-world-state",
@@ -145,6 +193,9 @@
   "nextSlicesInOrder": [
     "Make Goodsprings interaction audit pass without weakening fog proof by adding real authored fog/light telemetry.",
     "Fix gecko creature visible rig topology/crash so the 11-target Goodsprings actor audit completes.",
+    "Run a flat normal-game inventory/equipment slice that equips weapons, switches ammo, fires, observes HUD/Pip-Boy count deltas, and save-loads the result.",
+    "Implement/prove weapon mod installation and repair/condition services from authored records; no proof-only item injection gets parity credit.",
+    "Run Workbench, Reloading Bench, and Campfire normal activation slices; classify all 291 recipes and promote only real inventory mutation plus save/load evidence.",
     "Generate shard manifests for every cell with actors/interactables and every directed door teleport.",
     "Run flat background shards by connected region; promote only runs with real cell streaming, actor/dialogue/container evidence, and no synthetic content.",
     "Only after flat crawl is stable, rerun representative VR slices for Mads pointer/hands/menu placement compatibility."
