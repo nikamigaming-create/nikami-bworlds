@@ -10,6 +10,7 @@ param(
     [Alias('GMST')]
     [string[]]$GameSetting = @(),
     [string[]]$Command = @(),
+    [string[]]$ScheduledCommand = @(),
     [string[]]$ActorCommand = @(),
     [string]$SetStageQuestForm = "0",
     [int]$SetStageIndex = 65535,
@@ -98,6 +99,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
 $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $evidenceHelperPath = Join-Path $PSScriptRoot 'FNVRetailOracleEvidence.ps1'
 if (-not (Test-Path -LiteralPath $evidenceHelperPath -PathType Leaf)) {
@@ -816,6 +818,7 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_GLOBAL_FORMS = (@($GlobalForm) -join ",")
     NIKAMI_ORACLE_GAME_SETTINGS = (@($GameSetting) -join ",")
     NIKAMI_ORACLE_COMMANDS = (@($Command) -join "|")
+    NIKAMI_ORACLE_SCHEDULED_COMMANDS = (@($ScheduledCommand) -join "|")
     NIKAMI_ORACLE_ACTOR_COMMANDS = (@($ActorCommand) -join "|")
     NIKAMI_ORACLE_BEFORE_FRAME = [string]$BeforeFrame
     NIKAMI_ORACLE_COMMAND_FRAME = [string]$CommandFrame
@@ -1038,7 +1041,6 @@ try {
     if ($null -eq $gameProcess) {
         throw "Isolated nvse_loader did not start FalloutNV within 20 seconds (loader PID $($launcherProcess.Id))."
     }
-
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while (-not $gameProcess.HasExited -and (Get-Date) -lt $deadline) {
         $gameProcess.WaitForExit(250) | Out-Null

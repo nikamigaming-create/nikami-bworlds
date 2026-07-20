@@ -35,6 +35,13 @@ namespace
         float y = 0.f;
     };
 
+    struct ScheduledConsoleCommand
+    {
+        UInt32 frame = 0;
+        UInt32 targetForm = 0;
+        std::string command;
+    };
+
     struct SidecarActionPlan
     {
         UInt32 index = 0;
@@ -159,6 +166,11 @@ namespace
     std::vector<std::string> gGameSettingEditorIds;
     bool gGameSettingsCaptured = false;
     std::vector<std::string> gBehaviorCommands;
+    std::vector<ScheduledConsoleCommand> gScheduledCommands;
+    std::size_t gScheduledCommandIndex = 0;
+    UInt32 gScheduledSpawnBaseForm = 0;
+    Actor* gScheduledSpawnedActor = nullptr;
+    std::set<UInt32> gScheduledSpawnBaselineRefs;
     std::vector<std::string> gActorCommands;
     std::vector<std::string> gFurnitureSettledCommands;
     std::vector<UInt32> gScreenshotFrames;
@@ -1286,6 +1298,48 @@ namespace
         return result;
     }
 
+    std::vector<ScheduledConsoleCommand> envScheduledCommandList(const char* name)
+    {
+        std::vector<ScheduledConsoleCommand> result;
+        for (const std::string& token : envCommandList(name))
+        {
+            const std::size_t colon = token.find(':');
+            if (colon == std::string::npos || colon == 0 || colon + 1 >= token.size())
+                return {};
+            const std::string scheduleText = token.substr(0, colon);
+            const std::size_t at = scheduleText.find('@');
+            const std::string frameText = scheduleText.substr(0, at);
+            char* end = nullptr;
+            const unsigned long frame = std::strtoul(frameText.c_str(), &end, 0);
+            if (end == frameText.c_str() || *end != '\0' || frame == 0
+                || frame > (std::numeric_limits<UInt32>::max)())
+                return {};
+            UInt32 targetForm = 0;
+            if (at != std::string::npos)
+            {
+                const std::string targetText = scheduleText.substr(at + 1);
+                char* targetEnd = nullptr;
+                const unsigned long parsedTarget = std::strtoul(targetText.c_str(), &targetEnd, 0);
+                if (targetText.empty() || targetEnd == targetText.c_str() || *targetEnd != '\0'
+                    || parsedTarget == 0 || parsedTarget > (std::numeric_limits<UInt32>::max)())
+                    return {};
+                targetForm = static_cast<UInt32>(parsedTarget);
+            }
+            std::string command = token.substr(colon + 1);
+            const std::size_t first = command.find_first_not_of(" \t");
+            const std::size_t last = command.find_last_not_of(" \t");
+            if (first == std::string::npos || command.find('\n') != std::string::npos
+                || command.find('\r') != std::string::npos)
+                return {};
+            command = command.substr(first, last - first + 1);
+            result.push_back({ static_cast<UInt32>(frame), targetForm, std::move(command) });
+        }
+        std::stable_sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
+            return left.frame < right.frame;
+        });
+        return result;
+    }
+
     std::vector<std::string> envEditorIdList(const char* name)
     {
         std::vector<std::string> result;
@@ -1870,11 +1924,45 @@ namespace
         gOutput.open(outputPath, std::ios::out | std::ios::trunc);
         if (gOutput)
         {
+            std::array<UInt8, 2048> vatsControlBytes = {};
+            std::array<UInt8, 512> vatsBeginBytes = {};
+            const bool vatsControlBytesReadable
+                = safeRead(reinterpret_cast<const void*>(0x00942700), vatsControlBytes);
+            const bool vatsBeginBytesReadable
+                = safeRead(reinterpret_cast<const void*>(0x00705640), vatsBeginBytes);
+            std::string vatsControlHex;
+            std::string vatsBeginHex;
+            if (vatsControlBytesReadable)
+            {
+                static constexpr char hexDigits[] = "0123456789abcdef";
+                vatsControlHex.reserve(vatsControlBytes.size() * 2);
+                for (UInt8 value : vatsControlBytes)
+                {
+                    vatsControlHex.push_back(hexDigits[value >> 4]);
+                    vatsControlHex.push_back(hexDigits[value & 0x0f]);
+                }
+            }
+            if (vatsBeginBytesReadable)
+            {
+                static constexpr char hexDigits[] = "0123456789abcdef";
+                vatsBeginHex.reserve(vatsBeginBytes.size() * 2);
+                for (UInt8 value : vatsBeginBytes)
+                {
+                    vatsBeginHex.push_back(hexDigits[value >> 4]);
+                    vatsBeginHex.push_back(hexDigits[value & 0x0f]);
+                }
+            }
             gOutput << "{\"schema\":" << jsonString(sSchema) << ",\"event\":\"start\","
                        "\"runtime\":\"FalloutNV-1.4.0.525\","
                        "\"boneLodWriterCallsHooked\":" << (gBoneLodWriterCallsHooked ? "true" : "false") << ','
                     << "\"highProcessBoneLodPathHooked\":"
                     << (gHighProcessBoneLodPathHooked ? "true" : "false") << ','
+                    << "\"vatsControlBytesAddress\":9709312,"
+                    << "\"vatsControlBytesReadable\":" << (vatsControlBytesReadable ? "true" : "false") << ','
+                    << "\"vatsControlBytesHex\":" << jsonString(vatsControlHex.c_str()) << ','
+                    << "\"vatsBeginBytesAddress\":7362112,"
+                    << "\"vatsBeginBytesReadable\":" << (vatsBeginBytesReadable ? "true" : "false") << ','
+                    << "\"vatsBeginBytesHex\":" << jsonString(vatsBeginHex.c_str()) << ','
                     << "\"niAvObjectTransformLayout\":\"local@0x34/world@0x68/NiTransform@0x34\","
                     << "\"batchProofStaging\":" << (gBatchProofStaging ? "true" : "false")
                     << ",\"batchProofAnchorForm\":" << gBatchProofAnchorForm
@@ -5560,10 +5648,9 @@ namespace
         return result;
     }
 
-    void sidecarWriteVatsTelemetry(std::ostringstream& out)
+    void writeVatsSnapshotJson(std::ostream& out, const SidecarVatsSnapshot& vats)
     {
-        const SidecarVatsSnapshot vats = sidecarReadVatsSnapshot();
-        out << ",\"vats\":{\"available\":" << (vats.available ? "true" : "false");
+        out << "{\"available\":" << (vats.available ? "true" : "false");
         if (vats.available)
         {
             out << ",\"mode\":" << vats.mode
@@ -5578,6 +5665,189 @@ namespace
                 << ",\"firstTargetRecordHex\":" << jsonString(vats.firstTargetRecordHex.c_str());
         }
         out << '}';
+    }
+
+    void sidecarWriteVatsTelemetry(std::ostringstream& out)
+    {
+        out << ",\"vats\":";
+        writeVatsSnapshotJson(out, sidecarReadVatsSnapshot());
+    }
+
+    bool scheduledSpawnActor(UInt32 spawnBaseForm)
+    {
+        TESForm* base = lookupForm(spawnBaseForm);
+        if (base == nullptr || gConsole == nullptr)
+            return false;
+        gScheduledSpawnBaseForm = spawnBaseForm;
+        gScheduledSpawnedActor = nullptr;
+        gScheduledSpawnBaselineRefs.clear();
+        std::set<Actor*> actors;
+        sidecarCollectActors(actors);
+        for (Actor* actor : actors)
+        {
+            UInt32 reference = 0;
+            UInt32 actorBase = 0;
+            if (sidecarReadActorIdentity(actor, reference, actorBase))
+                gScheduledSpawnBaselineRefs.insert(reference);
+        }
+        char command[96] = {};
+        sprintf_s(command, "player.placeatme %08X 1", spawnBaseForm);
+        return gConsole->RunScriptLine2(command, nullptr, true);
+    }
+
+    bool scheduledResolveSpawnedActor()
+    {
+        if (gScheduledSpawnBaseForm == 0)
+            return false;
+        std::set<Actor*> actors;
+        sidecarCollectActors(actors);
+        std::vector<std::pair<UInt32, Actor*>> matches;
+        for (Actor* actor : actors)
+        {
+            UInt32 reference = 0;
+            UInt32 actorBase = 0;
+            if (sidecarReadActorIdentity(actor, reference, actorBase)
+                && actorBase == gScheduledSpawnBaseForm
+                && gScheduledSpawnBaselineRefs.find(reference) == gScheduledSpawnBaselineRefs.end())
+                matches.emplace_back(reference, actor);
+        }
+        if (matches.size() != 1)
+            return false;
+        gScheduledSpawnedActor = matches.front().second;
+        return true;
+    }
+
+    bool scheduledStageActorInFront(TESObjectREFR* target, float distance)
+    {
+        TESForm* playerForm = lookupForm(0x14);
+        if (target == nullptr || playerForm == nullptr || !playerForm->GetIsReference()
+            || gConsole == nullptr || distance < 64.f || distance > 2048.f)
+            return false;
+
+        TESObjectREFR* player = static_cast<TESObjectREFR*>(playerForm);
+        float playerYaw = 0.f;
+        if (!safeRead(&player->rotZ, playerYaw))
+            return false;
+
+        const float targetX = player->posX + std::sin(playerYaw) * distance;
+        const float targetY = player->posY + std::cos(playerYaw) * distance;
+        const float targetZ = player->posZ;
+        const float targetYawDegrees = playerYaw * 57.29577951308232f + 180.f;
+        return runReferenceFloatCommand(target, "SetPos X", targetX)
+            && runReferenceFloatCommand(target, "SetPos Y", targetY)
+            && runReferenceFloatCommand(target, "SetPos Z", targetZ)
+            && runReferenceFloatCommand(target, "SetAngle X", 0.f)
+            && runReferenceFloatCommand(target, "SetAngle Y", 0.f)
+            && runReferenceFloatCommand(target, "SetAngle Z", targetYawDegrees);
+    }
+
+    bool runScheduledConsoleCommand(const ScheduledConsoleCommand& scheduled, TESObjectREFR* target)
+    {
+        UInt32 spawnBaseForm = 0;
+        if (scheduled.targetForm == 0
+            && sscanf_s(scheduled.command.c_str(), "SpawnActor %x", &spawnBaseForm) == 1
+            && spawnBaseForm != 0)
+            return scheduledSpawnActor(spawnBaseForm);
+        if (scheduled.targetForm == 0 && scheduled.command == "ResolveSpawnedActor")
+            return scheduledResolveSpawnedActor();
+        float stageDistance = 0.f;
+        if (target != nullptr
+            && sscanf_s(scheduled.command.c_str(), "StageInFrontOfPlayer %f", &stageDistance) == 1)
+            return scheduledStageActorInFront(target, stageDistance);
+        if (scheduled.targetForm == 0 && scheduled.command == "EnterVats")
+        {
+            bool invoked = false;
+            __try
+            {
+                const UInt32 cameraState = reinterpret_cast<UInt32(__cdecl*)()>(0x005D2860)();
+                reinterpret_cast<void(__cdecl*)(UInt32)>(0x00529C90)(cameraState);
+                void* playerCamera = *reinterpret_cast<void**>(0x011DEA0C);
+                if (playerCamera == nullptr)
+                    return false;
+                reinterpret_cast<void(__thiscall*)(void*, UInt32)>(0x0086FD90)(playerCamera, 1);
+                reinterpret_cast<void(__cdecl*)()>(0x00705640)();
+                invoked = true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                invoked = false;
+            }
+            return invoked;
+        }
+        if (target != nullptr && scheduled.targetForm == 0x14 && scheduled.command == "FirstPerson")
+        {
+            PlayerCharacter* player = static_cast<PlayerCharacter*>(target);
+            player->bThirdPerson = false;
+            if (player->playerNode != nullptr)
+                reinterpret_cast<void(__thiscall*)(PlayerCharacter*, UInt8, UInt8)>(0x0094AE40)(player, 0, 0);
+            return true;
+        }
+        if (target != nullptr && target->IsActor_Runtime() && scheduled.command == "SetWeaponOut 1")
+            return setWeaponOutUnsafe(static_cast<Actor*>(target));
+        UInt32 equipForm = 0;
+        if (target != nullptr && target->IsActor_Runtime()
+            && sscanf_s(scheduled.command.c_str(), "EquipExact %x", &equipForm) == 1
+            && equipForm != 0)
+            return equipItemUnsafe(static_cast<Actor*>(target), equipForm);
+        UInt32 itemForm = 0;
+        SInt32 count = 0;
+        if (target != nullptr && target->IsActor_Runtime()
+            && sscanf_s(scheduled.command.c_str(), "AddItem %x %d", &itemForm, &count) == 2
+            && itemForm != 0 && count > 0)
+        {
+            TESForm* item = lookupForm(itemForm);
+            if (item == nullptr)
+                return false;
+            bool applied = false;
+            __try
+            {
+                static_cast<Actor*>(target)->AddItem(item, nullptr, count);
+                applied = true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                applied = false;
+            }
+            return applied;
+        }
+        return gConsole != nullptr && (scheduled.targetForm == 0 || target != nullptr)
+            && gConsole->RunScriptLine2(scheduled.command.c_str(), target, true);
+    }
+
+    void driveScheduledConsoleCommands()
+    {
+        while (gScheduledCommandIndex < gScheduledCommands.size()
+            && gFrame >= gScheduledCommands[gScheduledCommandIndex].frame)
+        {
+            const ScheduledConsoleCommand& scheduled = gScheduledCommands[gScheduledCommandIndex];
+            const SidecarVatsSnapshot before = sidecarReadVatsSnapshot();
+            TESObjectREFR* target = nullptr;
+            if (scheduled.targetForm == 0xffffffff)
+                target = gScheduledSpawnedActor;
+            else if (scheduled.targetForm != 0)
+            {
+                TESForm* form = lookupForm(scheduled.targetForm);
+                if (form != nullptr && form->GetIsReference())
+                    target = static_cast<TESObjectREFR*>(form);
+            }
+            const bool accepted = runScheduledConsoleCommand(scheduled, target);
+            const SidecarVatsSnapshot after = sidecarReadVatsSnapshot();
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"scheduled-console-command\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"requestedFrame\":" << scheduled.frame
+                    << ",\"index\":" << gScheduledCommandIndex
+                    << ",\"targetForm\":" << scheduled.targetForm
+                    << ",\"resolvedTargetForm\":" << (target != nullptr ? target->refID : 0)
+                    << ",\"command\":" << jsonString(scheduled.command.c_str())
+                    << ",\"accepted\":" << (accepted ? "true" : "false")
+                    << ",\"vatsBefore\":";
+            writeVatsSnapshotJson(gOutput, before);
+            gOutput << ",\"vatsAfter\":";
+            writeVatsSnapshotJson(gOutput, after);
+            gOutput << "}\n";
+            ++gScheduledCommandIndex;
+        }
     }
 
     bool sidecarAddAndEquipUnsafe(Actor* actor, TESForm* requested)
@@ -8791,6 +9061,15 @@ namespace
         driveBatchTargetLoading();
         captureTargetAppearance();
         captureAppearanceBatch();
+        driveScheduledConsoleCommands();
+        if (!gScheduledCommands.empty() && gFrame % gSampleEvery == 0)
+        {
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"vats-observer-snapshot\""
+                    << ",\"frame\":" << gFrame << ",\"vats\":";
+            writeVatsSnapshotJson(gOutput, sidecarReadVatsSnapshot());
+            gOutput << "}\n";
+        }
         if (!gBehaviorBeforeCaptured && gFrame >= gBehaviorBeforeFrame)
         {
             gBehaviorBeforeCaptured = true;
@@ -9016,6 +9295,7 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     if (!gGameSettingEditorIds.empty() && nvse->runtimeVersion != RUNTIME_VERSION_1_4_0_525)
         return false;
     gBehaviorCommands = envCommandList("NIKAMI_ORACLE_COMMANDS");
+    gScheduledCommands = envScheduledCommandList("NIKAMI_ORACLE_SCHEDULED_COMMANDS");
     gActorCommands = envCommandList("NIKAMI_ORACLE_ACTOR_COMMANDS");
     gFurnitureSettledCommands = envCommandList("NIKAMI_ORACLE_FURNITURE_SETTLED_COMMANDS");
     gScreenshotFrames = envUIntList("NIKAMI_ORACLE_SCREENSHOT_FRAMES");
