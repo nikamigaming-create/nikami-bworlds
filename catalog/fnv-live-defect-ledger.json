@@ -1,6 +1,6 @@
 {
   "schema": "nikami-fnv-live-defect-ledger/v1",
-  "asOf": "2026-07-18",
+  "asOf": "2026-07-20",
   "scopeId": "fnv-ultimate-edition-en-official-v1",
   "purpose": "Persistent fail-closed ledger for every defect reported during natural Fallout: New Vegas play. Chat recollection is never used as the source of truth.",
   "policy": {
@@ -24,7 +24,7 @@
     "correlation": "The pinned revision and binary were logged at 20:54 local, bracketing the 20:04 user recording before the next engine animation commits. Profile provenance still requires recovery, so this is a bounded visual baseline rather than certification."
   },
   "statusCounts": {
-    "open": 30,
+    "open": 36,
     "fixedAwaitingDifferential": 0,
     "closed": 0
   },
@@ -47,6 +47,8 @@
       "title": "Buildings, floors, rocks, furniture, boxes, and chairs blink or disappear",
       "symptoms": ["Geometry becomes transparent or vanishes by view/cell", "Layer ordering allows seeing through authored set pieces", "Doc Mitchell's house and floors can nearly disappear"],
       "requiredGate": "Camera-path screenshot and draw-state differential has zero unexplained visibility, depth-write, alpha-test, blend, cull, or render-bin changes from the known-good baseline.",
+      "currentFindings": ["Unflagged Fallout diffuse-alpha leakage was isolated and repaired, including the view-dependent Doc Mitchell house failure; natural camera-path and retail differential gates remain outstanding."],
+      "implementationCommits": ["648d6b93b9"],
       "status": "open",
       "owner": "C++/shader",
       "closingCommit": null
@@ -69,6 +71,8 @@
       "title": "Lighting and image space swing between black-and-white, muddy, overbright, and nuclear-winter states",
       "symptoms": ["Interior entry can become black and white", "Night and Strip transitions become muddy or extremely bright", "Exposure changes make the world unreadable"],
       "requiredGate": "Retail/OpenMW time-and-weather matrix plus interior/exterior door loop matches weather, image-space, fog, ambient, sun, exposure, and transition state without synthetic overrides.",
+      "currentFindings": ["Interior CELL XCIM now takes precedence, weather IMAD remains exterior-only, and missing or unresolved interior image space clears stale grading; the natural transition matrix remains outstanding."],
+      "implementationCommits": ["e8636b1f9f"],
       "status": "open",
       "owner": "C++/shader",
       "closingCommit": null
@@ -93,6 +97,32 @@
       "requiredGate": "Retail/OpenMW node census and timed transform trace match instance count and controller motion.",
       "status": "open",
       "owner": "C++/assets",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-RENDER-007",
+      "priority": "P0",
+      "subsystem": "renderer/LOD-object-paging",
+      "title": "Distant scenery and buildings use incorrect paging or disappear by view distance",
+      "symptoms": ["Large-distance scenery is absent or pops", "Doc Mitchell's house can lose exterior sections from specific views", "Scenery can appear through incomplete foreground geometry"],
+      "requiredGate": "Retail/OpenMW paired camera paths across near, active-grid, and distant ranges match authored visible-distant flags, proxy selection, full-model fallback, occlusion, and transition timing without new holes or duplicate geometry.",
+      "currentFindings": ["Fallout 132-134 object paging now rejects unflagged far references and pages authored VisDistant references through proxy or full-model fallback while preserving active-grid behavior."],
+      "implementationCommits": ["3760c4d19c"],
+      "status": "open",
+      "owner": "C++/renderer",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-RENDER-008",
+      "priority": "P1",
+      "subsystem": "renderer/emissive-distance-shadows",
+      "title": "Static signs and distant objects do not receive authored lighting and shadows",
+      "symptoms": ["Goodsprings stop signs render nearly black", "Large-distance shadows and practical lights do not match retail"],
+      "requiredGate": "Day, dusk, and night retail/OpenMW captures match sign material emissive response, light controllers, shadow-caster selection, shadow distance, and distant-object illumination at fixed camera checkpoints.",
+      "currentFindings": ["Static sign material lighting and authored Fallout light-loop playback have bounded repairs, but distance-shadow and day/night retail gates remain outstanding."],
+      "implementationCommits": ["cbace7acec", "241cf83233"],
+      "status": "open",
+      "owner": "C++/renderer",
       "closingCommit": null
     },
     {
@@ -124,6 +154,8 @@
       "title": "Easy Pete and Doc Mitchell do not sit correctly",
       "symptoms": ["Actors stand instead of using authored furniture", "Prior sit attempts were misaligned or malformed"],
       "requiredGate": "Retail/OpenMW furniture reservation, entry, loop, exit, transform, IK, and save-load trace matches for every Goodsprings furniture package.",
+      "currentFindings": ["Furniture travel now completes the authored approach before seating and furniture state survives cell reload; natural Easy Pete and Doc Mitchell entry/loop/exit gates remain outstanding."],
+      "implementationCommits": ["d40a87b961", "ec99b173cd"],
       "status": "open",
       "owner": "C++/Lua",
       "closingCommit": null
@@ -137,6 +169,32 @@
       "requiredGate": "Retail/OpenMW actor root, collision foot plane, navmesh height, skeleton bound, and animation root differential stays within authored tolerance across representative races and creatures.",
       "status": "open",
       "owner": "C++",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-CAMERA-001",
+      "priority": "P0",
+      "subsystem": "player/third-person-orientation",
+      "title": "Third-person player faces left and walks sideways when forward input is pressed",
+      "symptoms": ["The player model remains turned left in third person", "Forward locomotion translates along the camera path while the body faces the wrong direction"],
+      "requiredGate": "Flat retail/OpenMW traces match camera yaw, actor yaw, movement vector, turn interpolation, animation direction, and save-load restoration across idle, forward, strafe, turn, and camera-mode transitions.",
+      "currentFindings": ["Flat Fallout player yaw is now synchronized to the resolved movement heading; a natural third-person movement matrix remains outstanding."],
+      "implementationCommits": ["5b9bc72410"],
+      "status": "open",
+      "owner": "C++/camera/animation",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-CAMERA-002",
+      "priority": "P0",
+      "subsystem": "player/first-person-rig",
+      "title": "First-person view exposes malformed body geometry or loses authored hands",
+      "symptoms": ["Scrolling fully into first person can produce no hands", "Looking up reveals a large ring or body shell", "Looking down exposes legs, cloth spikes, and malformed wrist geometry", "Unarmed arms and Pip-Boy can float far from the retail pose"],
+      "requiredGate": "Flat retail/OpenMW first-person matrix matches camera origin, FOV, first-person skeleton, hidden body partitions, arms, hands, weapon, Pip-Boy, animation groups, clipping, and third/first-person transitions for unarmed and every representative weapon class.",
+      "currentFindings": ["Native first-person rig selection, authored unarmed arms, authored weapon models, and equipment refresh have bounded repairs; full natural camera and weapon coverage remains outstanding."],
+      "implementationCommits": ["feabc3787b", "4ec02f4fe3", "7c60c7aec7", "2e00be8ddc"],
+      "status": "open",
+      "owner": "C++/camera/animation",
       "closingCommit": null
     },
     {
@@ -197,6 +255,8 @@
       "title": "Hostile actors react but remain stationary or warp in place",
       "symptoms": ["Enemies acquire hostility and turn", "They do not pursue or attack", "Mobs animate or warp without traversing routes"],
       "requiredGate": "Natural combat differential matches detection, target selection, combat package, nav path, locomotion, attack selection, hit event, damage, death, and save-load.",
+      "currentFindings": ["Fallout package goals now produce walking movement, and the diagnostic package-disable environment no longer zeroes authored aggression; natural hostile pursuit and attack traces remain outstanding."],
+      "implementationCommits": ["6fd729eeac", "fc109653ab"],
       "status": "open",
       "owner": "C++/Lua",
       "closingCommit": null
@@ -208,6 +268,8 @@
       "title": "Animals animate in place instead of following idle routes",
       "symptoms": ["Animals move their bodies but not through the world", "Authored idle and wander routes do not complete"],
       "requiredGate": "Retail/OpenMW package, path, transform, root-motion, idle-marker, and loop timing differential passes for Goodsprings animals.",
+      "currentFindings": ["Authored Fallout package goals now feed continuous walking movement; retained proof runs that set OPENMW_FNV_DISABLE_AI_PACKAGES cannot certify organic coyote, Cheyenne, or bighorner routes."],
+      "implementationCommits": ["6fd729eeac"],
       "status": "open",
       "owner": "C++/Lua",
       "closingCommit": null
@@ -219,6 +281,8 @@
       "title": "Robots rotate incorrectly and interaction alignment spins or never settles",
       "symptoms": ["Robot turning is misaligned", "Interaction can spin indefinitely", "Target alignment does not converge"],
       "requiredGate": "Retail/OpenMW robot controller, root axis, turn state, interaction target, and activation trace converges for representative securitrons.",
+      "currentFindings": ["Victor's authored patrol can yield to greeting without destroying the patrol sequence; natural pad heading, turn convergence, dialogue, and resume gates remain outstanding."],
+      "implementationCommits": ["1d661d0a38"],
       "status": "open",
       "owner": "C++",
       "closingCommit": null
@@ -263,6 +327,8 @@
       "title": "Goodsprings actors appear stuck in incorrect quest and dialogue state",
       "symptoms": ["Many actors repeat Powder Ganger or Khan topics", "Dialogue availability does not match expected progression", "Package state appears quest-stuck"],
       "requiredGate": "Natural Goodsprings quest spine matches retail stages, objectives, variables, conditions, topics, results, package overrides, rewards, save-load, and alternate branches.",
+      "currentFindings": ["Flat quest rows now retain header/objective identity and exact quest FormID through active-first reorder, and controller activation skips objective rows; natural quest progression remains outstanding."],
+      "implementationCommits": ["7dcea47d61"],
       "status": "open",
       "owner": "C++/Lua",
       "closingCommit": null
@@ -285,8 +351,34 @@
       "title": "Pip-Boy, inventory buttons, and barter inventory are incomplete or empty",
       "symptoms": ["Pip-Boy controls do not reliably respond", "Barter panes can be empty", "Inventory interaction is unstable"],
       "requiredGate": "Retail/OpenMW permutation covers every pane, tab, button, sort/filter, item action, barter mutation, caps transfer, quest item, save-load, flat input, and VR pointer input.",
+      "currentFindings": ["Native save inventory, equipment, stats, quest panes, pane input, item condition, selection bounds, Fallout carry capacity, and active quest identity now have bounded implementations; the natural full-menu permutation remains outstanding."],
+      "implementationCommits": ["3fd919af9b", "85e8486d8a", "6ef876f6cb", "5766ea8241", "95b5dac6c7", "7a10ed549f", "7dcea47d61", "e372207d94"],
       "status": "open",
       "owner": "C++/Lua/UI",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-UI-002",
+      "priority": "P0",
+      "subsystem": "Pip-Boy/model-attachment",
+      "title": "Pip-Boy model is misaligned in first person and detached on the ground in third person",
+      "symptoms": ["The first-person Pip-Boy is oversized or rotated away from the wrist", "The third-person Pip-Boy appears at the player's feet", "Screen and indicator lighting do not align with the device"],
+      "requiredGate": "Flat retail/OpenMW captures and attachment traces match first- and third-person parent node, local transform, scale, screen surface, emissive lights, equip persistence, animation, and camera-mode transitions.",
+      "status": "open",
+      "owner": "C++/animation/UI",
+      "closingCommit": null
+    },
+    {
+      "id": "FNV-UI-003",
+      "priority": "P0",
+      "subsystem": "HUD/menu-rendering/fonts",
+      "title": "Flat HUD and menus render magenta, faint, incomplete, or with placeholder icons",
+      "symptoms": ["The HUD can be entirely absent", "Inventory and exit menus can show magenta borders or isolated magenta bars", "Text is too faint", "Item and quest icons can render as question-mark placeholders", "Paper-doll presentation can be T-posed or visually corrupted"],
+      "requiredGate": "Flat retail/OpenMW menu matrix matches HUD visibility, pane composition, RTT and shader state, font color and contrast, icon resolution, paper-doll pose, item population, controller and mouse input, close behavior, and save-load persistence at 1080p.",
+      "currentFindings": ["Native Fallout HUD policy, post-load HUD restore, inventory/stats/paper-doll data paths, and paper-doll hair alpha have bounded implementations; the 1080p natural menu and icon differential remains outstanding."],
+      "implementationCommits": ["b276f42a1c", "3e63c6e685", "85e8486d8a", "c1127fc584"],
+      "status": "open",
+      "owner": "C++/renderer/UI",
       "closingCommit": null
     },
     {
@@ -307,6 +399,8 @@
       "title": "Combat does not complete from attack through damage and death",
       "symptoms": ["Mobs become angry but do not attack", "Player attacks do not provide proven hit, damage, reaction, or death behavior"],
       "requiredGate": "Retail/OpenMW matrix covers melee, hitscan, projectile, ammo, armor, limb damage, stagger, hit reaction, AI pursuit, death, loot, XP, save-load, and representative creatures/NPCs.",
+      "currentFindings": ["Authored first-person weapon models and sounds, melee damage, corpse loot, attack cadence, thrown weapons, ammo/hotkeys/stance, and proof-mode creature aggression have bounded implementations; natural all-weapon kill and hostile-pursuit matrices remain outstanding."],
+      "implementationCommits": ["7c60c7aec7", "7fb8e8326c", "89e445269b", "220471390c", "d78e1bceb2", "fc109653ab"],
       "status": "open",
       "owner": "C++/Lua",
       "closingCommit": null
@@ -318,6 +412,8 @@
       "title": "Fallout ambience, footsteps, combat, equipment, radio, and world sounds are largely absent",
       "symptoms": ["Only some doors and voices are audible", "World is otherwise nearly silent"],
       "requiredGate": "Retail/OpenMW event and waveform matrix resolves only FNV SOUN/SNDR/REGN/WTHR/material/animation sources for ambience, footsteps, combat, equipment, UI, radio, music, creatures, and activators.",
+      "currentFindings": ["Authored Fallout weapon and animation sound events now resolve through Fallout paths; the natural ambience, footsteps, UI, radio, creature, and world-event matrix remains outstanding."],
+      "implementationCommits": ["220471390c", "ee24b4920b"],
       "status": "open",
       "owner": "C++",
       "closingCommit": null
