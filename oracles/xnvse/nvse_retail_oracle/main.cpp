@@ -5454,6 +5454,111 @@ namespace
         return result;
     }
 
+    struct SidecarVatsSnapshot
+    {
+        bool available = false;
+        UInt32 mode = VATSCameraData::kVATSMode_None;
+        UInt32 targetCount = 0;
+        bool targetListTruncated = false;
+        float actionPoints = 0.f;
+        float health = 0.f;
+        UInt32 equippedWeapon = 0;
+        UInt32 linkedAmmo = 0;
+        SInt32 linkedAmmoCount = 0;
+    };
+
+    bool sidecarReadActorValueUnsafe(PlayerCharacter* player, UInt32 actorValue, float& result)
+    {
+        bool accepted = false;
+        __try
+        {
+            result = player->avOwner.Fn_03(actorValue);
+            accepted = std::isfinite(result);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            accepted = false;
+        }
+        return accepted;
+    }
+
+    SidecarVatsSnapshot sidecarReadVatsSnapshot()
+    {
+        SidecarVatsSnapshot result;
+        PlayerCharacter* player = nullptr;
+        if (!safeRead(reinterpret_cast<PlayerCharacter**>(0x011DEA3C), player) || player == nullptr)
+            return result;
+
+        VATSCameraData camera = {};
+        VATSCameraData* cameraAddress = VATSCameraData::GetSingleton();
+        if (cameraAddress == nullptr || !safeRead(cameraAddress, camera))
+            return result;
+
+        result.available = true;
+        result.mode = camera.mode;
+        if (!sidecarReadActorValueUnsafe(player, eActorVal_ActionPoints, result.actionPoints)
+            || !sidecarReadActorValueUnsafe(player, eActorVal_Health, result.health))
+        {
+            result.available = false;
+            return result;
+        }
+
+        if (camera.targets != nullptr)
+        {
+            auto* nodeAddress = camera.targets->Head();
+            constexpr UInt32 maximumTargets = 256;
+            for (; nodeAddress != nullptr && result.targetCount < maximumTargets; ++result.targetCount)
+            {
+                ListNode<void*> node = {};
+                if (!safeRead(nodeAddress, node))
+                    break;
+                nodeAddress = node.next;
+            }
+            result.targetListTruncated = nodeAddress != nullptr;
+        }
+
+        result.equippedWeapon = sidecarEquippedWeaponForm(player);
+        if (result.equippedWeapon != 0)
+        {
+            TESForm* form = lookupForm(result.equippedWeapon);
+            UInt8 type = 0;
+            if (form != nullptr && safeRead(&form->typeID, type) && type == kFormType_TESObjectWEAP)
+            {
+                TESForm* ammo = nullptr;
+                if (safeRead(&static_cast<TESObjectWEAP*>(form)->ammo.ammo, ammo) && ammo != nullptr)
+                {
+                    safeRead(&ammo->refID, result.linkedAmmo);
+                    std::map<UInt32, SidecarInventoryItem> inventory;
+                    if (sidecarReadInventory(player, inventory))
+                    {
+                        const auto found = inventory.find(result.linkedAmmo);
+                        if (found != inventory.end())
+                            result.linkedAmmoCount = found->second.count;
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    void sidecarWriteVatsTelemetry(std::ostringstream& out)
+    {
+        const SidecarVatsSnapshot vats = sidecarReadVatsSnapshot();
+        out << ",\"vats\":{\"available\":" << (vats.available ? "true" : "false");
+        if (vats.available)
+        {
+            out << ",\"mode\":" << vats.mode
+                << ",\"targetCount\":" << vats.targetCount
+                << ",\"targetListTruncated\":" << (vats.targetListTruncated ? "true" : "false")
+                << ",\"actionPoints\":" << vats.actionPoints
+                << ",\"health\":" << vats.health
+                << ",\"equippedWeapon\":" << vats.equippedWeapon
+                << ",\"linkedAmmo\":" << vats.linkedAmmo
+                << ",\"linkedAmmoCount\":" << vats.linkedAmmoCount;
+        }
+        out << '}';
+    }
+
     bool sidecarAddAndEquipUnsafe(Actor* actor, TESForm* requested)
     {
         bool applied = false;
@@ -7101,6 +7206,7 @@ namespace
                 << ",\"accepted\":" << (gSidecarActionAccepted ? "true" : "false") << '}';
         }
         sidecarWriteAnimationTelemetry(out, actor);
+        sidecarWriteVatsTelemetry(out);
 
         std::map<UInt32, SidecarInventoryItem> inventory;
         const UInt32 requestedWeapon = gSidecarActorIndex < gSidecarPlan.actors.size()
