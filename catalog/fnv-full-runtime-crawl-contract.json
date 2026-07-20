@@ -126,6 +126,26 @@
       }
     },
     {
+      "id": "vats-targeting-execution",
+      "denominator": "WEAP + BPTD actor body parts + Player actor value 12",
+      "requiredEvidence": [
+        "retail trace records entry/exit, target identity, limb identity, displayed hit chance, AP before/after, queue order, ammo before/after, damage, and kill state",
+        "weapon AP override, base VATS chance, skill actor value, limb damage multiplier, projectile, ammo use, and damage come from winning WEAP records",
+        "target limbs and severability come from the actor's authored BPTD/race data",
+        "Player action points use native Fallout actor value 12 and persist through save/load without borrowing Morrowind fatigue",
+        "queued attacks execute through the normal Fallout weapon path so ammo, condition, sounds, projectiles, impacts, hostility, death, loot, and XP remain shared",
+        "retail and OpenMW before/after ledgers account for every changed byte or explicitly mark an uncovered mapping"
+      ],
+      "currentStatus": {
+        "weaponDnamVatsFields": "implemented and unit-proven",
+        "actionPointsRuntimeState": "implemented with save/load roundtrip and retail Save 330 zero-modifier byte trace",
+        "retailSave330ActorValue12Offsets": [497577, 497962, 498347],
+        "targetLimbUiAndQueue": "uncovered",
+        "sharedWeaponExecution": "uncovered",
+        "acceptedParityCredit": 0
+      }
+    },
+    {
       "id": "doors-world-state",
       "denominator": "directedDoorTeleports",
       "requiredEvidence": [
@@ -194,6 +214,7 @@
     "Make Goodsprings interaction audit pass without weakening fog proof by adding real authored fog/light telemetry.",
     "Fix gecko creature visible rig topology/crash so the 11-target Goodsprings actor audit completes.",
     "Run a flat normal-game inventory/equipment slice that equips weapons, switches ammo, fires, observes HUD/Pip-Boy count deltas, and save-loads the result.",
+    "Capture a retail VATS before/after ledger, then implement target limbs, hit chance, queueing, AP spend, and shared weapon execution without inferred fallbacks.",
     "Implement/prove weapon mod installation and repair/condition services from authored records; no proof-only item injection gets parity credit.",
     "Run Workbench, Reloading Bench, and Campfire normal activation slices; classify all 291 recipes and promote only real inventory mutation plus save/load evidence.",
     "Generate shard manifests for every cell with actors/interactables and every directed door teleport.",
