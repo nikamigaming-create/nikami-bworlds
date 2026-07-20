@@ -1,0 +1,152 @@
+{
+  "schema": "nikami-fnv-full-runtime-crawl-contract/v1",
+  "scopeId": "fnv-ultimate-edition-en-official-v1",
+  "purpose": "Turn full Fallout: New Vegas parity into a data-driven crawl with explicit denominators, runtime evidence classes, and no staged/fake gameplay credit.",
+  "sourceOfTruth": {
+    "denominators": "catalog/fnv-parity-denominators.json",
+    "normalProfile": "D:/code/nikami-worlds/profiles/fallout_new_vegas",
+    "integratedOpenMwSource": "D:/code/nikami-openmw-save330-integrated",
+    "integratedFlatExecutable": "D:/code/nikami-openmw-save330-integrated/MSVC2022_64/RelWithDebInfo/openmw.exe"
+  },
+  "normalRunRule": {
+    "flatFirst": true,
+    "vrLast": true,
+    "mustUseRealGameLoad": true,
+    "mayUseHarnessInput": true,
+    "mustNotStageActorsOrContainers": true,
+    "mustNotUseSyntheticDialogueOrInventoryRows": true,
+    "creditRule": "A feature gets observed credit only when loaded from the normal FNV profile/save/start path and exercised through OpenMW runtime systems. It gets accepted credit only after the per-feature retail contract and regression gates pass."
+  },
+  "denominators": {
+    "winningLiveRecords": 628395,
+    "cells": 44517,
+    "cellsWithActorOrInteractable": 2516,
+    "npcs": 3942,
+    "creatures": 3739,
+    "directedDoorTeleports": 1378,
+    "containers": 10778,
+    "terminals": 357,
+    "craftingStationsCandidate": 304,
+    "radios": 425,
+    "dialogueInfos": 28896,
+    "dialogueResponses": 37403,
+    "quests": 640,
+    "aiPackages": 4885,
+    "weatherRecords": 98
+  },
+  "crawlGates": [
+    {
+      "id": "cell-streaming",
+      "denominator": "cellsWithActorOrInteractable",
+      "requiredEvidence": [
+        "normal flat launch",
+        "cell entered through normal streaming or authored teleport",
+        "screenshot/pixel sanity",
+        "no fatal resource or shader-alpha regression"
+      ]
+    },
+    {
+      "id": "actor-runtime",
+      "denominator": "npcs + creatures",
+      "requiredEvidence": [
+        "actor loaded by CELL/ACHR/ACRE data",
+        "enabled state and enable parent honored",
+        "grounded transform and facing sanity",
+        "skeleton and visible rig topology pass",
+        "idle/wander/combat animation group advances",
+        "equipment/animobject attachment uses authored records"
+      ]
+    },
+    {
+      "id": "dialogue-barter",
+      "denominator": "dialogueInfos + dialogueResponses",
+      "requiredEvidence": [
+        "topic/INFO selected from ESM4 dialogue conditions",
+        "response text, voice, and LIP resolve from authored data where present",
+        "result script transitions such as ShowBarterMenu execute",
+        "merchant inventory/caps rows come from actor/container/item records"
+      ]
+    },
+    {
+      "id": "inventory-containers",
+      "denominator": "containers",
+      "requiredEvidence": [
+        "container opened in game",
+        "rows sourced from ContainerStore/runtime references",
+        "take/store mutation persists through save/load",
+        "icons/text remain legible and non-placeholder when assets exist"
+      ]
+    },
+    {
+      "id": "doors-world-state",
+      "denominator": "directedDoorTeleports",
+      "requiredEvidence": [
+        "door activation through normal raycast/activation",
+        "destination cell preload completes before activation",
+        "actors/interactables reload after return",
+        "no cell transition hitch beyond configured threshold"
+      ]
+    },
+    {
+      "id": "quests-scripts",
+      "denominator": "quests",
+      "requiredEvidence": [
+        "quest objective/stage rows sourced from ESM4QuestRuntime",
+        "dialogue/result/script mutation changes runtime state",
+        "notification and Pip-Boy DATA panes update",
+        "state survives save/load"
+      ]
+    },
+    {
+      "id": "world-lighting-shaders-sound",
+      "denominator": "weatherRecords",
+      "requiredEvidence": [
+        "region/climate/weather selected from authored records",
+        "sky/cloud/fog/light values logged from runtime data",
+        "distant geometry and alpha/material sanity pass",
+        "sound resolves from Fallout data, not Morrowind fallback, except shared UI bootstrap assets explicitly listed"
+      ]
+    }
+  ],
+  "currentEvidence": {
+    "dataDrivenUiContract": {
+      "script": "scripts/Test-FNVDataDrivenUiContract.ps1",
+      "lastRun": "pass"
+    },
+    "goodspringsInteractionAudit": {
+      "lastRunDirectory": "run/fnv-interaction-audit/20260720-090319",
+      "coreCircuit": "pass",
+      "passedRuntimeGates": [
+        "actor",
+        "dialogue",
+        "quest",
+        "doorIn",
+        "interiorActors",
+        "radio",
+        "doorOut",
+        "nativePixel",
+        "doorPreload",
+        "naturalSky"
+      ],
+      "openIssues": [
+        "authored fog/light parameters are not yet emitted as proof",
+        "audit furniture regex was stale and has been updated to current seated lifecycle proof"
+      ]
+    },
+    "goodspringsActorAudit": {
+      "lastRunDirectory": "run/fnv-goodsprings-actor-audit/20260720-090429",
+      "partialTargetsPassed": 9,
+      "openIssues": [
+        "process exited with access violation before summary",
+        "gecko visibility/topology gate emitted visibleDrawables=0 before crash"
+      ]
+    }
+  },
+  "nextSlicesInOrder": [
+    "Make Goodsprings interaction audit pass without weakening fog proof by adding real authored fog/light telemetry.",
+    "Fix gecko creature visible rig topology/crash so the 11-target Goodsprings actor audit completes.",
+    "Generate shard manifests for every cell with actors/interactables and every directed door teleport.",
+    "Run flat background shards by connected region; promote only runs with real cell streaming, actor/dialogue/container evidence, and no synthetic content.",
+    "Only after flat crawl is stable, rerun representative VR slices for Mads pointer/hands/menu placement compatibility."
+  ]
+}

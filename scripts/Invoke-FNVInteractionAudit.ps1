@@ -354,11 +354,16 @@ $doorExitActivation = [Regex]::Match($logText,
 $exteriorReturn = [Regex]::Match($logText,
     'FNV interaction audit: exterior return cell=',
     [Text.RegularExpressions.RegexOptions]::IgnoreCase)
-$easyPeteFurnitureClaims = [Regex]::Matches($logText,
-    'FNV/ESM4 diag: retained active furniture claim package=[^\r\n]* state=3 for EasyPete',
-    [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$easyPeteFurnitureClaims = @(
+    [Regex]::Matches($logText,
+        'FNV/ESM4 diag: retained active furniture claim package=[^\r\n]* state=3 for EasyPete',
+        [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    [Regex]::Matches($logText,
+        'FNV/ESM4 furniture: recovered active seated lifecycle package=[^\r\n]* actor=FormId:0x1104c7f[^\r\n]*',
+        [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+)
 $easyPeteChairIdles = [Regex]::Matches($logText,
-    "FNV/ESM4 diag: CharacterController playing idle for FormId:0x1104c80 group 'chairsit'",
+    "FNV/ESM4 diag: CharacterController playing idle for FormId:0x1104c7f group 'chairsit'",
     [Text.RegularExpressions.RegexOptions]::IgnoreCase)
 $furnitureReloadPass = $false
 $furnitureClaimIndex = $null

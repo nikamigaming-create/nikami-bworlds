@@ -1,0 +1,123 @@
+{
+  "schema": "nikami-fnv-ui-data-driven-contract/v1",
+  "scope": "Fallout: New Vegas flat UI, dialogue, inventory, barter, stats, quests, and VR panel placement boundary",
+  "policy": {
+    "engineGlueMayBeHardcoded": true,
+    "gameContentMustBeRuntimeData": true,
+    "flatUiPrimaryImplementation": "C++/MyGUI",
+    "luaRole": "generic UI mode/window glue and VR panel/input placement only",
+    "prohibitedLiveContent": [
+      "synthetic NPC-specific dialogue rows",
+      "synthetic merchant inventories",
+      "synthetic player inventory rows",
+      "synthetic quest rows",
+      "proof-only named NPC/menu strings in normal UI code"
+    ],
+    "allowedCompatibilityConstants": [
+      "FalloutNV.esm content detection",
+      "FNV canonical currency record Caps001, resolved through the loaded store",
+      "Pip-Boy category captions such as ALL, WEAPONS, APPAREL, AID, MISC / AMMO",
+      "Pip-Boy pane titles such as DATA / QUESTS",
+      "window coordinates and MyGUI layout/resource names"
+    ]
+  },
+  "requiredSources": [
+    {
+      "id": "inventory-items",
+      "owner": "apps/openmw/mwgui/inventorywindow.cpp",
+      "runtimeDataPath": "InventoryItemModel over the player/container InventoryStore",
+      "proofNeedles": [
+        "std::make_unique<InventoryItemModel>(mPtr)",
+        "std::make_unique<SortFilterItemModel>(std::move(tradeModel))",
+        "mItemView->setModel(std::move(sortModel))"
+      ]
+    },
+    {
+      "id": "barter-merchant-items",
+      "owner": "apps/openmw/mwgui/tradewindow.cpp",
+      "runtimeDataPath": "merchant actor inventory plus world-owned merchant containers/items",
+      "proofNeedles": [
+        "itemSources.push_back(actor)",
+        "getContainersOwnedBy(actor, itemSources)",
+        "getItemsOwnedBy(actor, worldItems)",
+        "std::make_unique<ContainerItemModel>(itemSources, worldItems)"
+      ]
+    },
+    {
+      "id": "barter-currency",
+      "owner": "apps/openmw/mwgui/tradeitemmodel.cpp",
+      "runtimeDataPath": "loaded ESM4 MiscItem store record with editor ID Caps001",
+      "proofNeedles": [
+        "for (const ESM4::MiscItem& item : store.get<ESM4::MiscItem>())",
+        "ciEqual(item.mEditorId, \"Caps001\")",
+        "return ESM::RefId(item.mId)"
+      ]
+    },
+    {
+      "id": "stats-special-skills",
+      "owner": "apps/openmw/mwgui/statswindow.cpp",
+      "runtimeDataPath": "FalloutPlayerRuntimeState actor values",
+      "proofNeedles": [
+        "getFalloutPlayerRuntimeState()",
+        "getCurrentActorValue",
+        "refreshFalloutActorValues"
+      ]
+    },
+    {
+      "id": "quests-data-pane",
+      "owner": "apps/openmw/mwgui/spellwindow.cpp",
+      "runtimeDataPath": "ESM4QuestRuntime states and objectives",
+      "proofNeedles": [
+        "ESM4QuestRuntime",
+        "updateFalloutQuestList"
+      ]
+    },
+    {
+      "id": "dialogue-responses",
+      "owner": "apps/openmw/mwdialogue/dialoguemanagerimp.cpp",
+      "runtimeDataPath": "ESM4 dialogue INFO/result records and selected actor",
+      "proofNeedles": [
+        "Esm4ResultCommandType::ShowBarterMenu",
+        "pushGuiMode(MWGui::GM_Barter, mActor)"
+      ]
+    },
+    {
+      "id": "flat-pipboy-pane-routing",
+      "owner": "apps/openmw/mwgui/windowmanagerimp.cpp",
+      "runtimeDataPath": "existing native Map, Inventory, Magic/Data, Stats windows",
+      "proofNeedles": [
+        "Fallout inventory mode opens all native panes",
+        "WindowBase* windows[4]",
+        "mMap, mInventoryWindow, mSpellWindow, mStatsWindow"
+      ]
+    },
+    {
+      "id": "lua-boundary",
+      "owner": "files/data/scripts/omw/ui.lua",
+      "runtimeDataPath": "Lua can override existing engine windows but does not own FNV flat data models",
+      "proofNeedles": [
+        "At the moment it is only possible to override existing windows",
+        "ui._setWindowDisabled(window, true)"
+      ]
+    },
+    {
+      "id": "vr-pipboy-placement",
+      "owner": "files/data/scripts/omw/vr/ui/common.lua",
+      "runtimeDataPath": "VR wrist/panel spaces only",
+      "proofNeedles": [
+        "PipBoyInventory",
+        "LeftWristTop"
+      ]
+    }
+  ],
+  "normalRunProofPolicy": {
+    "requiredFutureEvidence": [
+      "flat save/load launch using FalloutNV.esm and Save330 or current playable save",
+      "captured Pip-Boy panes with non-empty runtime item rows",
+      "captured barter window with merchant-owned items from actor/container ownership",
+      "captured DATA/QUESTS pane with ESM4 quest runtime rows",
+      "captured dialogue topic/result transition into barter or quest mutation where applicable",
+      "log lines identifying runtime FormIDs or owned container sources for every row class"
+    ]
+  }
+}
