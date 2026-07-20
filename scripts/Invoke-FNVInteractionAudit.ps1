@@ -511,7 +511,7 @@ $manifest = [ordered]@{
         weather = "FormId:0x11237d7"
         runtimeSlot = 33
         forcedWeather = $false
-        exteriorReturnPassed = [bool]$gates.doorOut
+        exteriorReturnPassed = $gates.Contains("doorOut") -and [bool]$gates.doorOut
         checks = $naturalSkyChecks
         failures = $naturalSkyFailures
     }
