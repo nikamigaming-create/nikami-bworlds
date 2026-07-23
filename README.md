@@ -157,6 +157,26 @@ Oracle source overlays are pinned in
 `patches/xobse`, and `patches/sfse`. These queues are independent of the
 separate FNV mod stack.
 
+## FNV Quest Corpus Audit
+
+Build the unsupported-command ledger from the user's installed retail master
+instead of guessing from hand-written examples:
+
+```powershell
+$out = Join-Path $env:TEMP "falloutnv-quest-bytecode.json"
+python .\scripts\audit_fnv_quest_bytecode.py `
+  "$env:NIKAMI_FNV_ROOT\Data\FalloutNV.esm" `
+  --json $out
+```
+
+The report inventories every compiled QUST result script, its opcode frames, and
+the owning quest/stage/entry. It does not execute scripts or copy retail content
+into the repository. Run its parser regression tests with:
+
+```powershell
+python -m unittest scripts.test_audit_fnv_quest_bytecode -v
+```
+
 ## Current Feasibility
 
 Yes, the walking-simulator world viewer is feasible for the games OpenMW's ESM4
