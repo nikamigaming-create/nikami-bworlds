@@ -7,6 +7,7 @@ param(
     [switch]$AllowDuplicate,
     [switch]$SkipMenu,
     [switch]$NewGame,
+    [string]$LoadSavegame = "",
     [string]$StartCell = "",
     [string[]]$ExtraArgs = @(),
     [string]$SeedPath = "catalog/world-walker.seed.json",
@@ -30,6 +31,9 @@ if ($Mode -eq "vr" -and $WorldId -eq "fallout_new_vegas") {
     }
     if ($Wait) {
         $fnvVrParameters.Wait = $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace($LoadSavegame)) {
+        $fnvVrParameters.LoadSavegame = $LoadSavegame
     }
     if (-not [string]::IsNullOrWhiteSpace($BinaryRoot)) {
         $fnvVrParameters.BinaryRoot = $BinaryRoot
@@ -89,6 +93,14 @@ if ($SkipMenu) {
 if ($NewGame) {
     $argsList.Add("--new-game")
 }
+if (-not [string]::IsNullOrWhiteSpace($LoadSavegame)) {
+    $savePath = [IO.Path]::GetFullPath($LoadSavegame)
+    if (-not (Test-Path -LiteralPath $savePath -PathType Leaf)) {
+        throw "Requested save does not exist: $savePath"
+    }
+    $argsList.Add("--load-savegame")
+    $argsList.Add($savePath)
+}
 if (-not [string]::IsNullOrWhiteSpace($StartCell)) {
     $argsList.Add("--start")
     $argsList.Add($StartCell)
@@ -108,6 +120,13 @@ Write-Host "Mode:    $Mode"
 Write-Host "Exe:     $binary"
 Write-Host "Resources: $ResourcesRoot"
 Write-Host "Profile: $($world.profileDirectory)"
+$profileConfig = Join-Path $world.profileDirectory "openmw.cfg"
+if (Test-Path -LiteralPath $profileConfig -PathType Leaf) {
+    $contentFiles = @(Get-NikamiOpenMWConfigValues -ConfigPath $profileConfig -Key "content")
+    if ($contentFiles.Count -gt 0) {
+        Write-Host "Content: $($contentFiles -join ' -> ')"
+    }
+}
 Write-Host "Command: $commandLine"
 Write-Host "Runtime: real OpenMW profile launch; proof/viewer environment is cleared before start."
 

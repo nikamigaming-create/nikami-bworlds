@@ -350,7 +350,12 @@
       "preset": "fnv_balanced",
       "sections": {
         "Camera": {
-          "field of view": 75
+          "field of view": 75,
+          "viewing distance": 65536
+        },
+        "Input": {
+          "always run": true,
+          "thumbstick auto run": false
         },
         "Saves": {
           "character": "world-viewer-fnv"
