@@ -50,6 +50,25 @@ Then edit `local/paths.json`, or set the equivalent environment variables:
 
 ## Quick Start
 
+### Install the current Windows runtime
+
+Download both Windows installers from the
+[FNV world-state prerelease](https://github.com/nikamigaming-create/nikami-openmw-lab/releases/tag/openmw-vr-2026-07-23-fnv-world-state):
+
+- `OpenMW-Flat-0.50.0-win64.exe`
+- `OpenMW-VR-0.50.0-win64.exe`
+
+Install both into this repository's same runtime directory:
+
+```text
+local\openmw-pristine-mads-33568a
+```
+
+That directory must contain `openmw.exe`, `openmw_vr.exe`,
+`MyGUIEngine.dll`, and `resources`. The launchers deliberately use this
+repo-local bundle so another OpenMW installation or a Morrowind profile cannot
+silently contaminate an FNV run.
+
 Run the scanner:
 
 ```powershell
@@ -76,6 +95,14 @@ Flat-test a generated profile with the existing OpenMW binary:
 .\scripts\Start-WorldProfileExisting.ps1 -WorldId fallout_new_vegas -Mode flat -DryRun
 ```
 
+### Launch each game
+
+Morrowind uses its isolated generated profile and the Flat executable:
+
+```powershell
+.\scripts\Start-WorldProfileExisting.ps1 -WorldId morrowind -Mode flat
+```
+
 Start a persistent interactive Fallout walkaround with the proven player anchor,
 first-person camera, and natural authored region weather:
 
@@ -84,8 +111,10 @@ first-person camera, and natural authored region weather:
 .\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout3
 ```
 
-Play Fallout: New Vegas from the packaged Flat runtime without rebuilding.
-By default this loads the newest native `.fos` save:
+Fallout: New Vegas Flat loads the newest native `.fos` save by default. It
+reads that save's embedded master table and creates an isolated profile in the
+exact required order; do not hand-edit the generated base profile. It does not
+rebuild the engine:
 
 ```powershell
 .\scripts\Start-FNVFlatExisting.ps1
@@ -109,6 +138,12 @@ launcher:
 .\scripts\Start-FNVParityVRExisting.ps1
 .\scripts\Start-FNVParityVRExisting.ps1 -LoadSavegame "C:\path\to\save.fos"
 ```
+
+Add `-DryRun` to either FNV launcher to print and validate the complete command
+without opening OpenMW. FNV support is active development, not a claim that
+every retail system is complete. Oblivion, Fallout 3, Skyrim-era, and Fallout
+4-era profiles are currently experimental world-walker targets rather than
+retail-complete game launches.
 
 Apply the downstream OpenMW patch layer:
 
