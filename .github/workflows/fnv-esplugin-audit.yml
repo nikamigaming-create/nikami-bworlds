@@ -22,13 +22,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.81
       - name: Check pinned esplugin runner
-        run: cargo check --manifest-path tools/fnv-esplugin-audit/Cargo.toml
+        run: cargo check --locked --manifest-path tools/fnv-esplugin-audit/Cargo.toml
       - name: Build pinned esplugin runner
-        run: cargo build --release --manifest-path tools/fnv-esplugin-audit/Cargo.toml
+        run: cargo build --locked --release --manifest-path tools/fnv-esplugin-audit/Cargo.toml
       - uses: actions/upload-artifact@v4
         with:
           name: fnv-esplugin-audit-windows
-          path: |
-            tools/fnv-esplugin-audit/target/release/fnv-esplugin-audit.exe
-            tools/fnv-esplugin-audit/Cargo.lock
+          path: tools/fnv-esplugin-audit/target/release/fnv-esplugin-audit.exe
           if-no-files-found: error
