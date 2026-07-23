@@ -9,6 +9,7 @@ param(
     [string]$BsaToolExe = "D:\code\nikami-openmw-lab\MSVC2022_64\RelWithDebInfo\bsatool.exe",
     [string]$RuntimeDependencyRoot = "D:\code\nikami-openmw-lab\deps\vcpkg-x64-2022-m1.0\installed\x64-windows",
     [string]$QtBin = "D:\code\nikami-openmw-lab\deps\Qt\6.6.3\msvc2019_64\bin",
+    [string]$EsPluginAuditExe = "",
     [string]$OutputRoot = "",
     [switch]$SkipObScript,
     [switch]$SkipAssets,
@@ -84,21 +85,44 @@ $summary = [ordered]@{
     assets = [ordered]@{ status = "skipped" }
     esplugin = [ordered]@{
         status = "pending"
-        reason = "esplugin is a Rust library, not a CLI; the pinned audit runner is the next toolchain slice."
+        reason = "Pass -EsPluginAuditExe with the hosted artifact or a local pinned build."
         source = "https://github.com/Ortham/esplugin"
         reviewedRevision = "e01c5b01e2c0d647b40453f01353eef29c4db691"
     }
 }
 
+$officialPlugins = @(
+    "FalloutNV.esm", "DeadMoney.esm", "HonestHearts.esm", "OldWorldBlues.esm",
+    "LonesomeRoad.esm", "TribalPack.esm", "MercenaryPack.esm", "ClassicPack.esm",
+    "CaravanPack.esm", "GunRunnersArsenal.esm"
+)
+$officialPluginPaths = @(
+    $officialPlugins | ForEach-Object {
+        Resolve-RequiredPath (Join-Path $gameData $_) $_
+    }
+)
+
+if ($EsPluginAuditExe) {
+    $espluginAudit = Resolve-RequiredPath $EsPluginAuditExe "pinned FNV esplugin audit runner"
+    $espluginOutput = Join-Path $output "esplugin-audit.json"
+    Write-Host "==> Parse official FNV plugins with Ortham/esplugin"
+    & $espluginAudit @officialPluginPaths | Set-Content -LiteralPath $espluginOutput -Encoding utf8
+    if ($LASTEXITCODE -ne 0) {
+        throw "Ortham/esplugin audit failed with exit code $LASTEXITCODE"
+    }
+    $summary.esplugin = [ordered]@{
+        status = "pass"
+        plugins = $officialPluginPaths.Count
+        output = $espluginOutput
+        source = "https://github.com/Ortham/esplugin"
+        revision = "e01c5b01e2c0d647b40453f01353eef29c4db691"
+    }
+}
+
 if (-not $SkipObScript) {
-    $plugins = @(
-        "FalloutNV.esm", "DeadMoney.esm", "HonestHearts.esm", "OldWorldBlues.esm",
-        "LonesomeRoad.esm", "TribalPack.esm", "MercenaryPack.esm", "ClassicPack.esm",
-        "CaravanPack.esm", "GunRunnersArsenal.esm"
-    )
     $corpusRoot = Join-Path $output "obscript"
     $corpusDirs = [Collections.Generic.List[string]]::new()
-    foreach ($plugin in $plugins) {
+    foreach ($plugin in $officialPlugins) {
         $pluginPath = Resolve-RequiredPath (Join-Path $gameData $plugin) $plugin
         $pluginOutput = Join-Path $corpusRoot ([IO.Path]::GetFileNameWithoutExtension($plugin))
         Invoke-Checked "Extract $plugin scripts" {
@@ -128,7 +152,7 @@ if (-not $SkipObScript) {
     }
     $summary.obscript = [ordered]@{
         status = "pass"
-        plugins = $plugins.Count
+        plugins = $officialPlugins.Count
         corpus = $corpusRoot
         analysis = $analysis
         headline = (Get-Content (Join-Path $analysis "summary.txt") -Raw).Trim()
