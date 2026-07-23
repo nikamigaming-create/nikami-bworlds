@@ -13,6 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+. (Join-Path $PSScriptRoot "FNVSaveProfile.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $launcher = Join-Path $PSScriptRoot "Start-WorldProfileExisting.ps1"
@@ -65,8 +66,16 @@ if ($Wait) { $parameters.Wait = $true }
 if ($AllowDuplicate) { $parameters.AllowDuplicate = $true }
 if (-not [string]::IsNullOrWhiteSpace($BinaryRoot)) { $parameters.BinaryRoot = $BinaryRoot }
 if (-not [string]::IsNullOrWhiteSpace($LoadSavegame)) {
+    $sourceProfile = Join-Path $repoRoot "profiles\fallout_new_vegas"
+    $saveProfile = Join-Path $repoRoot "profiles\fallout_new_vegas-native-save"
+    $orderedProfile = New-FNVSaveOrderedProfile `
+        -SavePath $LoadSavegame `
+        -SourceProfileDirectory $sourceProfile `
+        -DestinationProfileDirectory $saveProfile
+    $parameters.ProfileDirectory = $orderedProfile.ProfileDirectory
     $parameters.SkipMenu = $true
     $parameters.LoadSavegame = $LoadSavegame
+    Write-Host "Masters: $($orderedProfile.Masters -join ' -> ')"
 }
 
 Write-Host "FNV Flat launch: normal runtime, no proof injection and no rebuild."

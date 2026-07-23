@@ -11,6 +11,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+. (Join-Path $PSScriptRoot "FNVSaveProfile.ps1")
 
 function Get-NormalizedPath([string]$Path) {
     return [IO.Path]::GetFullPath($Path).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
@@ -94,6 +95,14 @@ foreach ($name in @("openmw.cfg", "settings.cfg", "input_v3.xml", "player_storag
         throw "Missing Mads VR configuration input: $source"
     }
     Copy-Item -LiteralPath $source -Destination (Join-Path $bridgeConfig $name) -Force
+}
+
+if (-not [string]::IsNullOrWhiteSpace($LoadSavegame)) {
+    $orderedProfile = New-FNVSaveOrderedProfile `
+        -SavePath $LoadSavegame `
+        -SourceProfileDirectory $madsConfig `
+        -DestinationProfileDirectory $bridgeConfig
+    Write-Host "Masters: $($orderedProfile.Masters -join ' -> ')"
 }
 
 $bridgeOpenmwConfig = Join-Path $bridgeConfig "openmw.cfg"

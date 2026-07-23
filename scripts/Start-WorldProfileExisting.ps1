@@ -11,7 +11,8 @@ param(
     [string]$StartCell = "",
     [string[]]$ExtraArgs = @(),
     [string]$SeedPath = "catalog/world-walker.seed.json",
-    [string]$BinaryRoot = ""
+    [string]$BinaryRoot = "",
+    [string]$ProfileDirectory = ""
 )
 
 Set-StrictMode -Version Latest
@@ -69,8 +70,21 @@ if ($world.readyForWorldWalker -ne $true) {
 $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot -RequireCurrent
 $ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -RequireCurrent
 
-if (-not $world.profileDirectory -or -not (Test-Path -LiteralPath $world.profileDirectory)) {
-    throw "Missing profile directory for '$WorldId': $($world.profileDirectory)"
+$profileDirectory = if ([string]::IsNullOrWhiteSpace($ProfileDirectory)) {
+    [string]$world.profileDirectory
+}
+else {
+    [IO.Path]::GetFullPath($ProfileDirectory)
+}
+$profilesRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\profiles"))
+$profilesPrefix = $profilesRoot.TrimEnd(
+    [IO.Path]::DirectorySeparatorChar,
+    [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+if (-not $profileDirectory.StartsWith($profilesPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Profile directory must remain under $profilesRoot. Requested: $profileDirectory"
+}
+if (-not (Test-Path -LiteralPath $profileDirectory -PathType Container)) {
+    throw "Missing profile directory for '$WorldId': $profileDirectory"
 }
 
 $binaryName = if ($Mode -eq "flat") { "openmw.exe" } else { "openmw_vr.exe" }
@@ -83,7 +97,7 @@ $argsList = New-Object System.Collections.Generic.List[string]
 $argsList.Add("--replace")
 $argsList.Add("config")
 $argsList.Add("--config")
-$argsList.Add($world.profileDirectory)
+$argsList.Add($profileDirectory)
 $argsList.Add("--resources")
 $argsList.Add($ResourcesRoot)
 
@@ -119,8 +133,8 @@ Write-Host "World:   $($world.displayName) [$WorldId]"
 Write-Host "Mode:    $Mode"
 Write-Host "Exe:     $binary"
 Write-Host "Resources: $ResourcesRoot"
-Write-Host "Profile: $($world.profileDirectory)"
-$profileConfig = Join-Path $world.profileDirectory "openmw.cfg"
+Write-Host "Profile: $profileDirectory"
+$profileConfig = Join-Path $profileDirectory "openmw.cfg"
 if (Test-Path -LiteralPath $profileConfig -PathType Leaf) {
     $contentFiles = @(Get-NikamiOpenMWConfigValues -ConfigPath $profileConfig -Key "content")
     if ($contentFiles.Count -gt 0) {
