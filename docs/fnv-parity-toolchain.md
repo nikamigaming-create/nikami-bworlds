@@ -18,7 +18,7 @@ Generated/proprietary content stays under ignored `run/`.
 | Engine object-script runtime | OpenMW MR 5444 port | OpenMW build plus parser/transpiler/runtime/VFS tests | Initial Enable, Disable, IsActionRef, player AddItem, and OnOpen vocabulary |
 | NIF/KF/EGM structure | NifTools PyFFI at `7f4404d` and `nif.xml` at `970a623` | Parse Victor, humanoid, face, 10mm pistol, and animated-door samples | Structural acceptance does not prove animation timing/render parity |
 | OpenMW asset interpretation | OpenMW `niftest` | Parse the same NIF/KF inputs accepted by NifTools | Add semantic block/bone/controller comparisons |
-| ESM/ESP metadata and overlap | `Ortham/esplugin` reviewed at `e01c5b0` | Pending pinned Rust audit runner | `esplugin` is a library, not a ready CLI |
+| ESM/ESP metadata and overlap | `Ortham/esplugin` at `e01c5b0` | Hosted Windows runner parses masters, counts overrides, and reports overlaps | Pass the downloaded runner with `-EsPluginAuditExe` |
 | Native saves and launch order | BWorlds `.fos` master parser and synthetic contract | Generate an isolated profile in exact save master order | Expand state coverage inside OpenMW |
 | Retail gameplay behavior | Scripted retail oracle and deterministic traces | Compare quests, dialogue, AI, combat, inventory, crime, animation, and VATS | Must be expanded subsystem by subsystem |
 
