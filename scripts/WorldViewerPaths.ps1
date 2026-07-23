@@ -498,6 +498,11 @@ function Clear-NikamiWorldViewerRuntimeEnvironment {
         $name = [string]$key
         if ($name.StartsWith("OPENMW_WORLD_VIEWER_", [StringComparison]::OrdinalIgnoreCase) `
             -or $name.StartsWith("OPENMW_PROOF_", [StringComparison]::OrdinalIgnoreCase) `
+            -or ($name.StartsWith("OPENMW_FNV_", [StringComparison]::OrdinalIgnoreCase) `
+                -and $name.IndexOf("PROOF", [StringComparison]::OrdinalIgnoreCase) -ge 0) `
+            -or $name.Equals("OPENMW_STARTUP_SCRIPT", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENMW_PLAYABLE_SESSION_BACKGROUND", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", [StringComparison]::OrdinalIgnoreCase) `
             -or (Test-NikamiFnvSkyRuntimeEnvironmentName $name)) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }

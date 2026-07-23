@@ -84,6 +84,32 @@ first-person camera, and natural authored region weather:
 .\scripts\Start-FalloutWalkaround.ps1 -WorldId fallout3
 ```
 
+Play Fallout: New Vegas from the packaged Flat runtime without rebuilding.
+By default this loads the newest native `.fos` save:
+
+```powershell
+.\scripts\Start-FNVFlatExisting.ps1
+```
+
+Load one exact retail save, start at the menu, or validate the complete command
+without opening OpenMW:
+
+```powershell
+.\scripts\Start-FNVFlatExisting.ps1 -LoadSavegame "C:\Users\you\Documents\My Games\FalloutNV\Saves\Save 330.fos"
+.\scripts\Start-FNVFlatExisting.ps1 -Menu
+.\scripts\Start-FNVFlatExisting.ps1 -DryRun
+```
+
+The generated Flat profile uses 2048x1280, a 65536 viewing distance, native
+cloud meshes, and always-run. In game, `R` reloads, number keys use hotkeys
+restored from the native save, and `V` enters VATS. For VR, use the calibrated
+launcher:
+
+```powershell
+.\scripts\Start-FNVParityVRExisting.ps1
+.\scripts\Start-FNVParityVRExisting.ps1 -LoadSavegame "C:\path\to\save.fos"
+```
+
 Apply the downstream OpenMW patch layer:
 
 ```powershell
