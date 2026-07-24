@@ -242,6 +242,17 @@
     "fallout_new_vegas": {
       "preset": "esm4_world_viewer_first_frame",
       "sections": {
+        "Camera": {
+          "viewing distance": 65536
+        },
+        "Video": {
+          "resolution x": 2048,
+          "resolution y": 1280
+        },
+        "Input": {
+          "always run": true,
+          "thumbstick auto run": false
+        },
         "Saves": {
           "character": "world-viewer-fnv"
         },

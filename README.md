@@ -70,6 +70,57 @@ Flat-test a generated profile with the existing OpenMW binary:
 .\scripts\Start-WorldProfileExisting.ps1 -WorldId fallout_new_vegas -Mode flat -DryRun
 ```
 
+## Play Fallout: New Vegas
+
+The Flat launcher uses an already packaged OpenMW runtime and its colocated,
+matching `resources` directory, clears proof/debug injection, keeps the official
+FNV master order from the generated profile, and does not rebuild. By default it
+loads the newest native `.fos` save:
+
+```powershell
+.\scripts\Start-FNVFlatExisting.ps1
+```
+
+Load one specific retail save:
+
+```powershell
+.\scripts\Start-FNVFlatExisting.ps1 -LoadSavegame "C:\Users\you\Documents\My Games\FalloutNV\Saves\Save 330.fos"
+```
+
+Start at the menu instead:
+
+```powershell
+.\scripts\Start-FNVFlatExisting.ps1 -Menu
+```
+
+For a deliberately faster local traversal session without changing retail
+movement defaults, pass `-PlayerSpeedMultiplier 3`.
+If a native save owns a 10mm pistol and compatible ammo but has another weapon
+marked worn, pass `-PreferUsable10mm` to equip and load that owned pistol for the
+local session. The save remains authoritative when the switch is omitted.
+For a local tour with every authored exterior location in the current FNV
+worldspace discovered and available for fast travel, pass
+`-UnlockAllMapMarkers`. This is an explicit session override; it does not pretend
+that the retail `.fos` already discovered those locations.
+
+Use `-DryRun` with any of those commands to validate and print the exact
+executable, resources, profile, content list, and save without opening OpenMW.
+The generated FNV Flat profile uses 2048x1280, full 65536 viewing distance,
+visible native cloud meshes, and always-run. The keyboard and mouse controls
+follow the Bethesda/FNV layout: `E` activates, `Space` jumps, `Tab` toggles the
+ITEMS/DATA/STAT interface, `M` toggles the world map, `Esc` leaves the current
+menu, left mouse fires, `Shift` runs, `Ctrl` sneaks, `R` reloads, number keys use
+the hotkeys restored from the native save, and `V` enters or leaves VATS. Right
+mouse is not bound to the interface. The four top interface tabs are clickable
+and switch the selected pane.
+
+For VR, use the calibrated existing-runtime launcher:
+
+```powershell
+.\scripts\Start-FNVParityVRExisting.ps1
+.\scripts\Start-FNVParityVRExisting.ps1 -LoadSavegame "C:\path\to\save.fos"
+```
+
 Apply the downstream OpenMW patch layer:
 
 ```powershell

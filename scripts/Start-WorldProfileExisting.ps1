@@ -7,10 +7,15 @@ param(
     [switch]$AllowDuplicate,
     [switch]$SkipMenu,
     [switch]$NewGame,
+    [string]$LoadSavegame = "",
     [string]$StartCell = "",
     [string[]]$ExtraArgs = @(),
     [string]$SeedPath = "catalog/world-walker.seed.json",
-    [string]$BinaryRoot = ""
+    [string]$BinaryRoot = "",
+    [ValidateRange(0.1, 10.0)]
+    [double]$FnvPlayerSpeedMultiplier = 1.0,
+    [switch]$FnvPreferUsable10mm,
+    [switch]$FnvUnlockAllMapMarkers
 )
 
 Set-StrictMode -Version Latest
@@ -63,7 +68,7 @@ if ($world.readyForWorldWalker -ne $true) {
 }
 
 $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
-$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot
+$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -ParameterValue (Join-Path $BinaryRoot "resources")
 
 if (-not $world.profileDirectory -or -not (Test-Path -LiteralPath $world.profileDirectory)) {
     throw "Missing profile directory for '$WorldId': $($world.profileDirectory)"
@@ -89,6 +94,14 @@ if ($SkipMenu) {
 if ($NewGame) {
     $argsList.Add("--new-game")
 }
+if (-not [string]::IsNullOrWhiteSpace($LoadSavegame)) {
+    $savePath = [IO.Path]::GetFullPath($LoadSavegame)
+    if (-not (Test-Path -LiteralPath $savePath -PathType Leaf)) {
+        throw "Requested save does not exist: $savePath"
+    }
+    $argsList.Add("--load-savegame")
+    $argsList.Add($savePath)
+}
 if (-not [string]::IsNullOrWhiteSpace($StartCell)) {
     $argsList.Add("--start")
     $argsList.Add($StartCell)
@@ -108,8 +121,18 @@ Write-Host "Mode:    $Mode"
 Write-Host "Exe:     $binary"
 Write-Host "Resources: $ResourcesRoot"
 Write-Host "Profile: $($world.profileDirectory)"
+$profileConfig = Join-Path $world.profileDirectory "openmw.cfg"
+if (Test-Path -LiteralPath $profileConfig -PathType Leaf) {
+    $contentFiles = @(Get-NikamiOpenMWConfigValues -ConfigPath $profileConfig -Key "content")
+    if ($contentFiles.Count -gt 0) {
+        Write-Host "Content: $($contentFiles -join ' -> ')"
+    }
+}
 Write-Host "Command: $commandLine"
 Write-Host "Runtime: real OpenMW profile launch; proof/viewer environment is cleared before start."
+if ($WorldId -eq "fallout_new_vegas") {
+    Write-Host "FNV player speed: ${FnvPlayerSpeedMultiplier}x"
+}
 
 if ($DryRun) {
     Write-Host "Dry run only; not starting OpenMW."
@@ -123,12 +146,34 @@ if (-not $AllowDuplicate -and (Get-Process -Name $processName -ErrorAction Silen
 
 Clear-NikamiWorldViewerRuntimeEnvironment
 $previousDebugLevel = $env:OPENMW_DEBUG_LEVEL
+$previousFnvPlayerSpeed = $env:OPENMW_FNV_PLAYER_SPEED_MULTIPLIER
+$previousFnvPreferUsable10mm = $env:OPENMW_FNV_PREFER_USABLE_10MM
+$previousFnvUnlockAllMapMarkers = $env:OPENMW_FNV_UNLOCK_ALL_MAP_MARKERS
 try {
     $env:OPENMW_DEBUG_LEVEL = "INFO"
+    if ($WorldId -eq "fallout_new_vegas") {
+        $env:OPENMW_FNV_PLAYER_SPEED_MULTIPLIER = $FnvPlayerSpeedMultiplier.ToString(
+            [Globalization.CultureInfo]::InvariantCulture)
+        if ($FnvPreferUsable10mm) {
+            $env:OPENMW_FNV_PREFER_USABLE_10MM = "1"
+        }
+        else {
+            $env:OPENMW_FNV_PREFER_USABLE_10MM = $null
+        }
+        if ($FnvUnlockAllMapMarkers) {
+            $env:OPENMW_FNV_UNLOCK_ALL_MAP_MARKERS = "1"
+        }
+        else {
+            $env:OPENMW_FNV_UNLOCK_ALL_MAP_MARKERS = $null
+        }
+    }
     $process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory $workingDirectory -PassThru
 }
 finally {
     $env:OPENMW_DEBUG_LEVEL = $previousDebugLevel
+    $env:OPENMW_FNV_PLAYER_SPEED_MULTIPLIER = $previousFnvPlayerSpeed
+    $env:OPENMW_FNV_PREFER_USABLE_10MM = $previousFnvPreferUsable10mm
+    $env:OPENMW_FNV_UNLOCK_ALL_MAP_MARKERS = $previousFnvUnlockAllMapMarkers
 }
 Write-Host "Started PID $($process.Id)."
 
