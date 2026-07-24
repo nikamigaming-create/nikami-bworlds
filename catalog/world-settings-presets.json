@@ -348,12 +348,16 @@
     },
     "fallout_new_vegas": {
       "preset": "fnv_balanced",
-      "sections": {
-        "Camera": {
-          "field of view": 75,
-          "viewing distance": 65536
-        },
-        "Input": {
+        "sections": {
+          "Camera": {
+            "field of view": 75,
+            "viewing distance": 65536
+          },
+          "Video": {
+            "resolution x": 2048,
+            "resolution y": 1280
+          },
+          "Input": {
           "always run": true,
           "thumbstick auto run": false
         },
