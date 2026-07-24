@@ -13,6 +13,7 @@
     "repository": "D:/code/nikami-openmw-visual-baseline-6a5576",
     "branch": "codex/fnv-clean-recovery",
     "baselineCommit": "6a5576dea5668624c1a720e9d64bf400f750ca97",
+    "profileGenerator": "scripts/New-FNVCleanRecoveryProfile.ps1",
     "activeSliceId": "baseline-certification"
   },
   "policy": {

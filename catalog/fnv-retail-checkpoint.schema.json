@@ -1,0 +1,626 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nikami.local/schemas/fnv-retail-checkpoint.schema.json",
+  "title": "Fallout New Vegas retail save checkpoint manifest",
+  "description": "Portable, fail-closed evidence contract for a retail Fallout New Vegas Save 330 checkpoint and its all-loaded-actor temporal trace.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "complete",
+    "capture",
+    "identity",
+    "artifacts",
+    "snapshot",
+    "temporalEvidence",
+    "mappingLedger",
+    "coverage",
+    "hardFailures"
+  ],
+  "properties": {
+    "schema": { "const": "nikami-fnv-retail-checkpoint/v1" },
+    "complete": {
+      "type": "boolean",
+      "description": "May be true only when all required ledger entries are mapped, temporal coverage is complete, and no hard failure exists."
+    },
+    "capture": { "$ref": "#/$defs/capture" },
+    "identity": { "$ref": "#/$defs/identityModel" },
+    "artifacts": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/artifact" },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": { "kind": { "const": "trace" } },
+            "required": ["kind"]
+          },
+          "minContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": { "kind": { "const": "screenshot" } },
+            "required": ["kind"]
+          },
+          "minContains": 2
+        }
+      ]
+    },
+    "snapshot": { "$ref": "#/$defs/snapshot" },
+    "temporalEvidence": { "$ref": "#/$defs/temporalEvidence" },
+    "mappingLedger": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/mappingEntry" }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "hardFailures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hardFailure" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mappingLedger": {
+            "contains": {
+              "type": "object",
+              "required": ["required", "status"],
+              "properties": {
+                "required": { "const": true },
+                "status": { "enum": ["partial", "uncovered"] }
+              }
+            }
+          }
+        },
+        "required": ["mappingLedger"]
+      },
+      "then": { "properties": { "complete": { "const": false } } }
+    },
+    {
+      "if": {
+        "properties": { "hardFailures": { "minItems": 1 } },
+        "required": ["hardFailures"]
+      },
+      "then": { "properties": { "complete": { "const": false } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "temporalEvidence": {
+            "type": "object",
+            "properties": { "coverageComplete": { "const": false } },
+            "required": ["coverageComplete"]
+          }
+        },
+        "required": ["temporalEvidence"]
+      },
+      "then": { "properties": { "complete": { "const": false } } }
+    },
+    {
+      "if": {
+        "properties": { "complete": { "const": true } },
+        "required": ["complete"]
+      },
+      "then": {
+        "properties": {
+          "hardFailures": { "maxItems": 0 },
+          "temporalEvidence": {
+            "properties": { "coverageComplete": { "const": true } },
+            "required": ["coverageComplete"]
+          },
+          "mappingLedger": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "required": ["required", "status"],
+                "properties": {
+                  "required": { "const": true },
+                  "status": { "enum": ["partial", "uncovered"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]{64}$"
+    },
+    "generationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 127,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpointId",
+        "generationId",
+        "runtime",
+        "oracleBuild",
+        "capturedAtUtc",
+        "postLoadFrame",
+        "save"
+      ],
+      "properties": {
+        "checkpointId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 127,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "generationId": { "$ref": "#/$defs/generationId" },
+        "runtime": { "const": "FalloutNV-1.4.0.525" },
+        "oracleBuild": { "type": "string", "minLength": 1 },
+        "capturedAtUtc": { "type": "string", "format": "date-time" },
+        "postLoadFrame": { "type": "integer", "minimum": 0 },
+        "save": { "$ref": "#/$defs/saveProvenance" }
+      }
+    },
+    "saveProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestedName",
+        "slot",
+        "path",
+        "bytes",
+        "sha256",
+        "lastWriteUtc",
+        "postLoadSucceeded"
+      ],
+      "properties": {
+        "requestedName": { "const": "Save 330" },
+        "slot": { "const": 330 },
+        "path": { "type": "string", "minLength": 1, "pattern": "\\.[fF][oO][sS]$" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "lastWriteUtc": { "type": "string", "format": "date-time" },
+        "postLoadSucceeded": { "const": true }
+      }
+    },
+    "identityModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formKeyModel", "dynamicFormModel", "loadOrder"],
+      "properties": {
+        "formKeyModel": { "const": "plugin+local-form-id/v1" },
+        "dynamicFormModel": { "const": "save-scoped-dynamic/v1" },
+        "loadOrder": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 255,
+          "items": { "$ref": "#/$defs/pluginFile" }
+        }
+      }
+    },
+    "pluginFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "plugin", "bytes", "sha256"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0, "maximum": 254 },
+        "plugin": {
+          "type": "string",
+          "minLength": 5,
+          "pattern": "\\.[eE][sS][mMpP]$"
+        },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "pluginFormKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "originPlugin",
+        "localFormId",
+        "winningPlugin",
+        "runtimeFormId"
+      ],
+      "properties": {
+        "kind": { "const": "plugin" },
+        "originPlugin": { "type": "string", "minLength": 1 },
+        "localFormId": { "type": "string", "pattern": "^0[xX][0-9A-Fa-f]{6}$" },
+        "winningPlugin": { "type": "string", "minLength": 1 },
+        "runtimeFormId": { "type": "string", "pattern": "^0[xX][0-9A-Fa-f]{8}$" }
+      }
+    },
+    "dynamicFormKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "runtimeFormId", "saveDynamicId", "baseForm"],
+      "properties": {
+        "kind": { "const": "dynamic" },
+        "runtimeFormId": { "type": "string", "pattern": "^0[xX][fF]{2}[0-9A-Fa-f]{6}$" },
+        "saveDynamicId": { "type": "string", "pattern": "^0[xX][0-9A-Fa-f]{6}$" },
+        "baseForm": { "$ref": "#/$defs/pluginFormKey" }
+      }
+    },
+    "formKey": {
+      "oneOf": [
+        { "$ref": "#/$defs/pluginFormKey" },
+        { "$ref": "#/$defs/dynamicFormKey" }
+      ]
+    },
+    "float32": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "bitsHex"],
+      "properties": {
+        "value": { "type": ["number", "null"] },
+        "bitsHex": { "type": "string", "pattern": "^0[xX][0-9A-Fa-f]{8}$" }
+      },
+      "description": "bitsHex is authoritative. value is a display rendering and is null for non-finite encodings."
+    },
+    "float64": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "bitsHex"],
+      "properties": {
+        "value": { "type": ["number", "null"] },
+        "bitsHex": { "type": "string", "pattern": "^0[xX][0-9A-Fa-f]{16}$" }
+      },
+      "description": "bitsHex is authoritative. value is a display rendering and is null for non-finite encodings."
+    },
+    "vector3Float32": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "$ref": "#/$defs/float32" },
+        "y": { "$ref": "#/$defs/float32" },
+        "z": { "$ref": "#/$defs/float32" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "path", "bytes", "sha256", "generationId", "mediaType"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 127,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "kind": {
+          "enum": ["snapshot-payload", "trace", "screenshot", "visual-index", "supplemental"]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Portable path relative to the manifest directory; absolute and parent-traversal paths are invalid."
+        },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "generationId": { "$ref": "#/$defs/generationId" },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "retailFrame": { "type": "integer", "minimum": 0 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "screenshot" } },
+            "required": ["kind"]
+          },
+          "then": { "required": ["retailFrame"] }
+        }
+      ]
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["player", "timeWeather"],
+      "properties": {
+        "player": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["reference", "base", "location"],
+          "properties": {
+            "reference": { "$ref": "#/$defs/formKey" },
+            "base": { "$ref": "#/$defs/formKey" },
+            "location": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["cell", "worldSpace", "position", "rotation"],
+              "properties": {
+                "cell": { "oneOf": [{ "$ref": "#/$defs/formKey" }, { "type": "null" }] },
+                "worldSpace": { "oneOf": [{ "$ref": "#/$defs/formKey" }, { "type": "null" }] },
+                "position": { "$ref": "#/$defs/vector3Float32" },
+                "rotation": { "$ref": "#/$defs/vector3Float32" }
+              }
+            }
+          }
+        },
+        "timeWeather": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["gameHour", "timeScale", "currentWeather"],
+          "properties": {
+            "gameHour": { "$ref": "#/$defs/float32" },
+            "timeScale": { "$ref": "#/$defs/float32" },
+            "currentWeather": {
+              "oneOf": [{ "$ref": "#/$defs/formKey" }, { "type": "null" }]
+            }
+          }
+        }
+      }
+    },
+    "actorEnumeration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "includePlayer",
+        "loadedCellLocking",
+        "deduplicateByReference",
+        "missingActorDisposition"
+      ],
+      "properties": {
+        "source": { "const": "loaded-cells-plus-process-lists" },
+        "includePlayer": { "const": true },
+        "loadedCellLocking": { "const": true },
+        "deduplicateByReference": { "const": true },
+        "missingActorDisposition": { "const": "hard-fail" }
+      }
+    },
+    "frameEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retailFrame",
+        "generationId",
+        "frameStateSha256",
+        "screenshotArtifactId"
+      ],
+      "properties": {
+        "retailFrame": { "type": "integer", "minimum": 0 },
+        "generationId": { "$ref": "#/$defs/generationId" },
+        "frameStateSha256": { "$ref": "#/$defs/sha256" },
+        "screenshotArtifactId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "temporalEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "durationSeconds",
+        "sampleCount",
+        "sampleClock",
+        "coverageComplete",
+        "traceArtifactId",
+        "screenshotArtifactIds",
+        "frameHashAlgorithm",
+        "actorEnumeration",
+        "requiredActorChannels",
+        "requiredFrameChannels",
+        "visualHardFailCategories",
+        "frameEvidence"
+      ],
+      "properties": {
+        "schema": { "const": "nikami-fnv-retail-trace/v1" },
+        "durationSeconds": { "type": "number", "minimum": 3 },
+        "sampleCount": { "type": "integer", "minimum": 2 },
+        "sampleClock": { "const": "retail-main-loop" },
+        "coverageComplete": { "type": "boolean" },
+        "traceArtifactId": { "type": "string", "minLength": 1 },
+        "screenshotArtifactIds": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "frameHashAlgorithm": { "const": "sha256" },
+        "actorEnumeration": { "$ref": "#/$defs/actorEnumeration" },
+        "requiredActorChannels": {
+          "$ref": "#/$defs/requiredActorChannels"
+        },
+        "requiredFrameChannels": {
+          "$ref": "#/$defs/requiredFrameChannels"
+        },
+        "visualHardFailCategories": {
+          "$ref": "#/$defs/visualHardFailCategories"
+        },
+        "frameEvidence": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/frameEvidence" }
+        }
+      }
+    },
+    "requiredActorChannels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "plugin-qualified-identity",
+          "cell-world",
+          "transform",
+          "velocity",
+          "path-target",
+          "ai-package-procedure",
+          "animation-group-key-phase-tween",
+          "equipment",
+          "combat",
+          "dialogue",
+          "visual-root-geometry-alpha-shader-material-texture"
+        ]
+      },
+      "allOf": [
+        { "contains": { "const": "plugin-qualified-identity" } },
+        { "contains": { "const": "cell-world" } },
+        { "contains": { "const": "transform" } },
+        { "contains": { "const": "velocity" } },
+        { "contains": { "const": "path-target" } },
+        { "contains": { "const": "ai-package-procedure" } },
+        { "contains": { "const": "animation-group-key-phase-tween" } },
+        { "contains": { "const": "equipment" } },
+        { "contains": { "const": "combat" } },
+        { "contains": { "const": "dialogue" } },
+        { "contains": { "const": "visual-root-geometry-alpha-shader-material-texture" } }
+      ]
+    },
+    "requiredFrameChannels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "camera",
+          "time",
+          "weather",
+          "frame-state-sha256",
+          "screenshot-sha256",
+          "generation-id"
+        ]
+      },
+      "allOf": [
+        { "contains": { "const": "camera" } },
+        { "contains": { "const": "time" } },
+        { "contains": { "const": "weather" } },
+        { "contains": { "const": "frame-state-sha256" } },
+        { "contains": { "const": "screenshot-sha256" } },
+        { "contains": { "const": "generation-id" } }
+      ]
+    },
+    "visualHardFailCategories": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "missing-loaded-actor",
+          "unexpected-loaded-actor",
+          "missing-actor-root",
+          "missing-required-geometry",
+          "unexpected-alpha-visibility",
+          "geometry-signature-mismatch",
+          "shader-signature-mismatch",
+          "material-signature-mismatch",
+          "texture-signature-mismatch"
+        ]
+      },
+      "allOf": [
+        { "contains": { "const": "missing-loaded-actor" } },
+        { "contains": { "const": "unexpected-loaded-actor" } },
+        { "contains": { "const": "missing-actor-root" } },
+        { "contains": { "const": "missing-required-geometry" } },
+        { "contains": { "const": "unexpected-alpha-visibility" } },
+        { "contains": { "const": "geometry-signature-mismatch" } },
+        { "contains": { "const": "shader-signature-mismatch" } },
+        { "contains": { "const": "material-signature-mismatch" } },
+        { "contains": { "const": "texture-signature-mismatch" } }
+      ]
+    },
+    "mappingEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retailPath",
+        "required",
+        "status",
+        "source",
+        "openMw",
+        "compare",
+        "blocker"
+      ],
+      "properties": {
+        "retailPath": {
+          "type": "string",
+          "pattern": "^/(?:[^/~]|~[01])+(?:/(?:[^/~]|~[01])+)*$"
+        },
+        "required": { "type": "boolean" },
+        "status": { "enum": ["mapped", "partial", "uncovered"] },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reader", "confidence"],
+          "properties": {
+            "reader": { "type": ["string", "null"] },
+            "confidence": {
+              "enum": ["proven", "canary", "offline-parser", "unreadable"]
+            }
+          }
+        },
+        "openMw": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "writer"],
+          "properties": {
+            "target": { "type": ["string", "null"] },
+            "writer": { "type": ["string", "null"] }
+          }
+        },
+        "compare": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "enum": [
+                "raw-bits",
+                "exact",
+                "semantic",
+                "ordered-set",
+                "artifact-hash",
+                "visual-signature",
+                "uncovered"
+              ]
+            }
+          }
+        },
+        "blocker": { "type": ["string", "null"] }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredFields",
+        "mappedRequiredFields",
+        "partialRequiredFields",
+        "uncoveredRequiredFields"
+      ],
+      "properties": {
+        "requiredFields": { "type": "integer", "minimum": 1 },
+        "mappedRequiredFields": { "type": "integer", "minimum": 0 },
+        "partialRequiredFields": { "type": "integer", "minimum": 0 },
+        "uncoveredRequiredFields": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "hardFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "path", "message"],
+      "properties": {
+        "category": {
+          "enum": [
+            "missing-loaded-actor",
+            "unexpected-loaded-actor",
+            "missing-actor-root",
+            "missing-required-geometry",
+            "unexpected-alpha-visibility",
+            "geometry-signature-mismatch",
+            "shader-signature-mismatch",
+            "material-signature-mismatch",
+            "texture-signature-mismatch"
+          ]
+        },
+        "path": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "retailFrame": { "type": "integer", "minimum": 0 },
+        "actor": { "$ref": "#/$defs/formKey" }
+      }
+    }
+  }
+}

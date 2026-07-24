@@ -3,6 +3,10 @@ param(
     [string]$OutputRoot = "run/fnv-strip-sniper-cinematic",
     [string]$BinaryRoot = "local/openmw-pristine-mads-33568a",
     [string]$GraphicsConfig = "config/fnv-cinematic-graphics",
+    [string]$ProfileDirectory = "profiles/fallout_new_vegas",
+    [string]$Target = "FormId:0x010efb24",
+    [ValidateRange(1, 100000)]
+    [int]$TargetHealth = 250,
     [ValidateRange(30, 600)]
     [int]$TimeoutSeconds = 120,
     [switch]$KeepFrames
@@ -46,7 +50,7 @@ function Remove-CheckedCaptureDirectory([string]$CaptureDirectory, [string]$Allo
 $binaryRootPath = Resolve-RepoPath $BinaryRoot
 $binary = Join-Path $binaryRootPath "openmw.exe"
 $resources = Join-Path $binaryRootPath "resources"
-$profile = Join-Path $repoRoot "profiles\fallout_new_vegas"
+$profile = Resolve-RepoPath $ProfileDirectory
 $graphicsConfigPath = Resolve-RepoPath $GraphicsConfig
 $nativeScreenshotDirectory = Join-Path $profile "userdata\screenshots"
 $outputRootPath = Resolve-RepoPath $OutputRoot
@@ -120,7 +124,8 @@ $environment = [ordered]@{
     OPENMW_FNV_STRIP_SNIPER_CINEMATIC = "1"
     OPENMW_FNV_STRIP_SNIPER_TRIGGER_FRAME = "240"
     OPENMW_FNV_STRIP_SNIPER_MAX_HOLD_FRAMES = "150"
-    OPENMW_FNV_STRIP_SNIPER_TARGET = "FormId:0x010efb24"
+    OPENMW_FNV_STRIP_SNIPER_TARGET = $Target
+    OPENMW_FNV_STRIP_SNIPER_TARGET_HEALTH = [string]$TargetHealth
     OPENMW_FNV_STRIP_SNIPER_TARGET_X = "800"
     OPENMW_FNV_STRIP_SNIPER_TARGET_Y = "100"
     OPENMW_FNV_STRIP_SNIPER_TARGET_Z = "1030"
@@ -210,11 +215,16 @@ $telemetry = @(Select-String -LiteralPath $activeLogPath -Pattern @(
         "FNV combat shot:",
         "FNV Strip sniper cinematic gate:",
         "FNV Strip sniper cinematic reaction:",
-        "FNV Strip sniper cinematic slow time:"
+        "FNV Strip sniper cinematic slow time:",
+        "FNV combat death:"
     ) | ForEach-Object { $_.Line })
-$shotPass = $telemetry | Where-Object { $_ -match "FNV combat shot:.*ammoBefore=8 ammoAfter=7.*actorHit=1.*healthBefore=250 healthAfter=140.*status=pass" }
-$gatePass = $telemetry | Where-Object { $_ -match "FNV Strip sniper cinematic gate:.*ammoBefore=8 ammoAfter=7.*healthBefore=250 healthAfter=140.*status=pass" }
-$reactionPass = $telemetry | Where-Object { $_ -match "FNV Strip sniper cinematic reaction:.*control=damage-driven-transform.*status=pass" }
+$expectedHealthAfter = [Math]::Max(0, $TargetHealth - 110)
+$healthPattern = "healthBefore=$TargetHealth(?:\.0+)? healthAfter=$expectedHealthAfter(?:\.0+)?"
+$shotPass = $telemetry | Where-Object { $_ -match "FNV combat shot:.*ammoBefore=8 ammoAfter=7.*actorHit=1.*$healthPattern.*status=pass" }
+$gatePass = $telemetry | Where-Object { $_ -match "FNV Strip sniper cinematic gate:.*ammoBefore=8 ammoAfter=7.*$healthPattern.*status=pass" }
+$reactionPass = $telemetry | Where-Object {
+    $_ -match "FNV Strip sniper cinematic reaction:.*control=(?:damage-driven-transform|death-state).*status=pass"
+}
 if (-not $shotPass -or -not $gatePass -or -not $reactionPass) {
     throw "Retail sniper telemetry gate did not pass. Capture data remains in $captureDirectory"
 }
@@ -296,7 +306,7 @@ $manifest = [ordered]@{
         ranger = "FormId:0x011740c4"
         weapon = "FormId:0x0108f21c"
         ammo = "FormId:0x0108ecff"
-        fiend = "FormId:0x010efb24"
+        target = $Target
     }
     capture = [ordered]@{
         nativeFrames = $engineFrames.Count
@@ -311,10 +321,11 @@ $manifest = [ordered]@{
         exact = $true
         ammoBefore = 8
         ammoAfter = 7
-        healthBefore = 250
-        healthAfter = 140
+        healthBefore = $TargetHealth
+        healthAfter = $expectedHealthAfter
         damage = 110
         actorHit = $true
+        targetKilled = $expectedHealthAfter -eq 0
         targetReaction = "72-unit recoil, 20-unit lift, recovery"
         status = "pass"
     }
