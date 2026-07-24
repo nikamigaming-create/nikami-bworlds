@@ -7,7 +7,11 @@ param(
     [int]$RunSeconds = 0,
     [string]$ScreenshotFrames = "",
     [string]$StartCellOverride = "",
+    [string]$LoadSavegame = "",
     [int]$WindowCaptureSeconds = 0,
+    [int]$VideoWidth = 0,
+    [int]$VideoHeight = 0,
+    [double]$FieldOfView = [double]::NaN,
     [int]$TelemetryInterval = 30,
     [int]$RefTelemetryLimit = 2000,
     [int]$ScreenshotReadyFrames = -1,
@@ -43,9 +47,11 @@ param(
     [double]$CameraTargetZ = [double]::NaN,
     [switch]$AllowBadScreenshots,
     [switch]$ShowGui,
+    [switch]$EnableSound,
     [switch]$DryRun,
     [string[]]$SetEnv = @(),
     [switch]$KeepRunning,
+    [switch]$WaitForProcessExit,
     [string]$RunLedgerPath = "proof/world-viewer-run-ledger.jsonl"
 )
 
@@ -160,6 +166,102 @@ function New-ProofRunConfig($World, [string]$WorldRunDir, [string]$UserDataDir) 
         if (Test-Path -LiteralPath $source) {
             Copy-Item -LiteralPath $source -Destination (Join-Path $runConfigDir $name) -Force
         }
+    }
+
+    if (($VideoWidth -gt 0) -or ($VideoHeight -gt 0)) {
+        if (($VideoWidth -le 0) -or ($VideoHeight -le 0)) {
+            throw "-VideoWidth and -VideoHeight must be supplied together and be positive."
+        }
+
+        $settingsPath = Join-Path $runConfigDir "settings.cfg"
+        if (-not (Test-Path -LiteralPath $settingsPath)) {
+            throw "$($World.id): copied proof config is missing settings.cfg"
+        }
+
+        $settingsLines = [System.Collections.Generic.List[string]]::new()
+        foreach ($line in Get-Content -LiteralPath $settingsPath) {
+            $settingsLines.Add($line)
+        }
+        $videoSection = -1
+        for ($i = 0; $i -lt $settingsLines.Count; $i++) {
+            if ($settingsLines[$i] -match '^\s*\[Video\]\s*$') {
+                $videoSection = $i
+                break
+            }
+        }
+        if ($videoSection -lt 0) {
+            $settingsLines.Add("")
+            $settingsLines.Add("[Video]")
+            $videoSection = $settingsLines.Count - 1
+        }
+        foreach ($entry in @(
+            [pscustomobject]@{ Name = "resolution y"; Value = $VideoHeight },
+            [pscustomobject]@{ Name = "resolution x"; Value = $VideoWidth }
+        )) {
+            $settingIndex = -1
+            for ($i = $videoSection + 1; $i -lt $settingsLines.Count; $i++) {
+                if ($settingsLines[$i] -match '^\s*\[') { break }
+                if ($settingsLines[$i] -match ("^\s*" + [regex]::Escape($entry.Name) + "\s*=")) {
+                    $settingIndex = $i
+                    break
+                }
+            }
+            $settingLine = "$($entry.Name) = $($entry.Value)"
+            if ($settingIndex -ge 0) {
+                $settingsLines[$settingIndex] = $settingLine
+            }
+            else {
+                $settingsLines.Insert($videoSection + 1, $settingLine)
+            }
+        }
+        Set-Content -LiteralPath $settingsPath -Value $settingsLines -Encoding ASCII
+    }
+
+    if (-not [double]::IsNaN($FieldOfView)) {
+        if (($FieldOfView -lt 1.0) -or ($FieldOfView -gt 179.0)) {
+            throw "-FieldOfView must be between 1 and 179 degrees."
+        }
+
+        $settingsPath = Join-Path $runConfigDir "settings.cfg"
+        if (-not (Test-Path -LiteralPath $settingsPath)) {
+            throw "$($World.id): copied proof config is missing settings.cfg"
+        }
+
+        $settingsLines = [System.Collections.Generic.List[string]]::new()
+        foreach ($line in Get-Content -LiteralPath $settingsPath) {
+            $settingsLines.Add($line)
+        }
+        $cameraSection = -1
+        for ($i = 0; $i -lt $settingsLines.Count; $i++) {
+            if ($settingsLines[$i] -match '^\s*\[Camera\]\s*$') {
+                $cameraSection = $i
+                break
+            }
+        }
+        if ($cameraSection -lt 0) {
+            $settingsLines.Add("")
+            $settingsLines.Add("[Camera]")
+            $cameraSection = $settingsLines.Count - 1
+        }
+        $fieldOfViewText = $FieldOfView.ToString("R", [System.Globalization.CultureInfo]::InvariantCulture)
+        foreach ($settingName in @("field of view", "first person field of view")) {
+            $settingIndex = -1
+            for ($i = $cameraSection + 1; $i -lt $settingsLines.Count; $i++) {
+                if ($settingsLines[$i] -match '^\s*\[') { break }
+                if ($settingsLines[$i] -match ("^\s*" + [regex]::Escape($settingName) + "\s*=")) {
+                    $settingIndex = $i
+                    break
+                }
+            }
+            $settingLine = "$settingName = $fieldOfViewText"
+            if ($settingIndex -ge 0) {
+                $settingsLines[$settingIndex] = $settingLine
+            }
+            else {
+                $settingsLines.Insert($cameraSection + 1, $settingLine)
+            }
+        }
+        Set-Content -LiteralPath $settingsPath -Value $settingsLines -Encoding ASCII
     }
 
     $cfgPath = Join-Path $runConfigDir "openmw.cfg"
@@ -1902,6 +2004,14 @@ $binary = Join-Path $BinaryRoot "openmw.exe"
 if (-not (Test-Path -LiteralPath $binary)) {
     throw "Missing existing flat OpenMW binary: $binary"
 }
+if (-not [string]::IsNullOrWhiteSpace($LoadSavegame)) {
+    if (-not (Test-Path -LiteralPath $LoadSavegame -PathType Leaf)) {
+        throw "Native save does not exist: $LoadSavegame"
+    }
+    if ([System.IO.Path]::GetExtension($LoadSavegame) -ine ".fos") {
+        throw "-LoadSavegame requires a native FNV .fos save."
+    }
+}
 
 $seed = Get-Content -LiteralPath $SeedPath -Raw | ConvertFrom-Json
 $starts = Get-Content -LiteralPath $StartsPath -Raw | ConvertFrom-Json
@@ -1921,7 +2031,11 @@ if ($selected.Count -eq 0) {
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $proofDir = Join-Path $ProofRoot $stamp
 $cwdPath = (Get-Location).Path
-$absProofDir = Join-Path $cwdPath $proofDir
+$absProofDir = if ([System.IO.Path]::IsPathRooted($proofDir)) {
+    [System.IO.Path]::GetFullPath($proofDir)
+} else {
+    [System.IO.Path]::GetFullPath((Join-Path $cwdPath $proofDir))
+}
 $screensDir = Join-Path $absProofDir "screenshots"
 $logsDir = Join-Path $absProofDir "logs"
 New-Item -ItemType Directory -Force -Path $screensDir, $logsDir | Out-Null
@@ -2212,7 +2326,14 @@ try {
         else {
             [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_DISABLE_ESM4_ACTORS", $null, "Process")
         }
-        if ($world.id -eq "fallout4" -or $world.id -eq "fallout4_vr") {
+        # Keep the historical FO4 BSSubIndexTriShape crash guard available for
+        # targeted diagnostics, but do not enable it for normal portrait runs.
+        # These shapes are the authored body, face, hair, and clothing geometry;
+        # quarantining them unconditionally replaces valid actors with markers.
+        $quarantineFo4ActorSubIndexTriShape =
+            ((Get-PropertyValue $start "quarantineFo4ActorSubIndexTriShape") -eq $true)
+        if (($world.id -eq "fallout4" -or $world.id -eq "fallout4_vr") -and
+            $quarantineFo4ActorSubIndexTriShape) {
             [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_QUARANTINE_FO4_ACTOR_BSSUBINDEXTRISHAPE", "1", "Process")
         }
         else {
@@ -2273,11 +2394,18 @@ try {
             $argsList.Add($resourcesDir)
         }
         $argsList.Add("--skip-menu")
-        if (-not [string]::IsNullOrWhiteSpace($startCell)) {
+        if (-not [string]::IsNullOrWhiteSpace($LoadSavegame)) {
+            $argsList.Add("--load-savegame")
+            $argsList.Add([System.IO.Path]::GetFullPath($LoadSavegame))
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($startCell)) {
             $argsList.Add("--start")
             $argsList.Add($startCell)
         }
         foreach ($arg in $defaultExtraArgs) {
+            if ($EnableSound -and [string]$arg -eq "--no-sound") {
+                continue
+            }
             if (-not [string]::IsNullOrWhiteSpace([string]$arg)) {
                 $argsList.Add([string]$arg)
             }
@@ -2287,7 +2415,7 @@ try {
         $commandLine = "$(Quote-CommandArg $binary) $argumentLine"
         Write-Host ""
         Write-Host "[$($world.id)] $($world.displayName)"
-        Write-Host "Start: $startCell"
+        Write-Host "Start: $(if ([string]::IsNullOrWhiteSpace($LoadSavegame)) { $startCell } else { [System.IO.Path]::GetFullPath($LoadSavegame) })"
         Write-Host "Command: $commandLine"
 
         $status = "not-run"
@@ -2306,7 +2434,12 @@ try {
         $worldViewerTelemetry = $null
         $crashDump = $null
 
-        $anchor = Get-PropertyValue $start "anchor"
+        $anchor = if ([string]::IsNullOrWhiteSpace($LoadSavegame)) {
+            Get-PropertyValue $start "anchor"
+        }
+        else {
+            $null
+        }
         if ($null -ne $anchor) {
             $position = Get-PropertyValue $anchor "position"
             $rotation = Get-PropertyValue $anchor "rotation"
@@ -2377,6 +2510,36 @@ try {
             Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_ORBIT_GROUND_RAY_DISTANCE" (Get-PropertyValue $camera "orbitGroundRayDistance")
             $notes.Add("used explicit local start anchor")
         }
+        else {
+            # Manual probes must honor their command-line framing even when a
+            # world has no catalog start anchor. Previously these overrides
+            # were nested under the anchor branch, so promoted/new worlds
+            # silently fell back to the cell's default player camera.
+            $usedStartOverride = $false
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_POS_X" $StartPosX) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_POS_Y" $StartPosY) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_POS_Z" $StartPosZ) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_ROT_X" $StartRotX) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_ROT_Y" $StartRotY) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_ROT_Z" $StartRotZ) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvIntOverride "OPENMW_WORLD_VIEWER_START_GRID_X" $StartGridX) -or $usedStartOverride
+            $usedStartOverride = (Set-ProcessEnvIntOverride "OPENMW_WORLD_VIEWER_START_GRID_Y" $StartGridY) -or $usedStartOverride
+            if ($usedStartOverride) {
+                $notes.Add("used command-line start override")
+            }
+
+            $usedCameraOverride = $false
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_POS_X" $CameraPosX) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Y" $CameraPosY) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_POS_Z" $CameraPosZ) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_X" $CameraTargetX) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Y" $CameraTargetY) -or $usedCameraOverride
+            $usedCameraOverride = (Set-ProcessEnvFloatOverride "OPENMW_WORLD_VIEWER_START_CAMERA_TARGET_Z" $CameraTargetZ) -or $usedCameraOverride
+            if ($usedCameraOverride) {
+                Set-ProcessEnvValue "OPENMW_WORLD_VIEWER_START_CAMERA_MODE" "static"
+                $notes.Add("used command-line camera override")
+            }
+        }
 
         if ($processEnvOverrides.Count -gt 0) {
             Set-ProcessEnvOverrides -Overrides $processEnvOverrides
@@ -2399,6 +2562,11 @@ try {
                 $sawNativeScreenshot = $false
                 $acceptedNativeScreenshot = $false
                 while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
+                    if ($WaitForProcessExit) {
+                        Start-Sleep -Milliseconds 250
+                        $process.Refresh()
+                        continue
+                    }
                     if (Test-Path -LiteralPath $nativeScreenshotDir) {
                         $shots = @(Get-ChildItem -LiteralPath $nativeScreenshotDir -File -Filter "screenshot*.png" -ErrorAction SilentlyContinue |
                             Where-Object { $_.LastWriteTime -ge $worldStartedAt.AddSeconds(-2) } |

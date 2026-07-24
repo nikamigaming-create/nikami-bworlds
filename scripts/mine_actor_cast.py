@@ -14,6 +14,7 @@ PRIMARY_CONTENT = {
     "fallout3": "Fallout3.esm",
     "fallout_new_vegas": "FalloutNV.esm",
     "skyrim_vr": "Skyrim.esm",
+    "fallout4": "Fallout4.esm",
     "fallout4_vr": "Fallout4.esm",
     "starfield": "Starfield.esm",
 }
@@ -23,6 +24,7 @@ START_TERMS = {
     "fallout3": ["megaton", "vault101", "springvale"],
     "fallout_new_vegas": ["goodsprings", "primm", "novac"],
     "skyrim_vr": ["riverwood", "whiterun", "helgen"],
+    "fallout4": ["sanctuary", "prewar", "concord", "vault111", "codsworth"],
     "fallout4_vr": ["sanctuary", "prewar", "concord", "vault111", "codsworth"],
     "starfield": ["newatlantis", "spaceport", "lodge", "akila", "neon"],
 }

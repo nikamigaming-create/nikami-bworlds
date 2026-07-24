@@ -5,10 +5,12 @@ param(
     [string]$ParityRoot = "D:\code\nikami-worlds-fnv-parity",
     [string]$SavePath = "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\Save 331     Goodsprings  00 17 36.fos",
     [string]$TargetName = "Young Bighorner",
+    [string]$WeaponFormId = "0x0000434f",
     [string]$OutputRoot = "",
     [int]$TimeoutSeconds = 180,
     [int]$CaptureStep = 3,
     [switch]$RequireWitnessResponse,
+    [switch]$RequireKill,
     [switch]$SkipBuild,
     [switch]$SkipUnitTests,
     [switch]$KeepFrames
@@ -109,8 +111,10 @@ $reportPath = Join-Path $OutputRoot "proof-report.json"
 $envNames = @(
     "OPENMW_FNV_VATS_PROOF",
     "OPENMW_FNV_VATS_PROOF_TARGET",
+    "OPENMW_FNV_VATS_PROOF_WEAPON",
     "OPENMW_FNV_VATS_PROOF_CAPTURE_STEP",
     "OPENMW_FNV_VATS_PROOF_REQUIRE_WITNESSES",
+    "OPENMW_FNV_VATS_PROOF_REQUIRE_KILL",
     "OPENMW_PLAYABLE_SESSION_BACKGROUND",
     "OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG",
     "OPENMW_FNV_SAVE_TRACE"
@@ -125,9 +129,12 @@ $exitCode = $null
 try {
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_VATS_PROOF", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_VATS_PROOF_TARGET", $TargetName, "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_FNV_VATS_PROOF_WEAPON", $WeaponFormId, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_VATS_PROOF_CAPTURE_STEP", [string][Math]::Max(1, $CaptureStep), "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_VATS_PROOF_REQUIRE_WITNESSES",
         $(if ($RequireWitnessResponse) { "1" } else { $null }), "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_FNV_VATS_PROOF_REQUIRE_KILL",
+        $(if ($RequireKill) { "1" } else { $null }), "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_PLAYABLE_SESSION_BACKGROUND", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_SAVE_TRACE", "1", "Process")
@@ -177,14 +184,18 @@ $requiredProofPatterns = [ordered]@{
     bodyShader = 'FNV VATS: skinned highlight enabled=1 rigs=[1-9][0-9]*'
     selectedLimb = 'FNV VATS proof: stage=limb-selected bodyPart=(?!Torso)'
     authoredWindUp = 'FNV VATS weapon visual: .*prepared=1'
-    authoredMuzzleFlash = 'FNV combat muzzle flash: .*authoredFlag=1 .*spawned=1'
+    authoredMuzzleFlash = 'FNV combat muzzle flash: .*authoredFlag=1 .*node=ProjectileNode .*spawned=1'
     shooterCamera = 'FNV VATS camera: execution phase=shooter'
     impactCamera = 'FNV VATS camera: execution phase=impact'
-    twoShotsCompleted = 'FNV VATS execution: phase=end interrupted=0 .*shotsFired=2'
-    damageAggroCamera = 'FNV VATS proof: result=pass .*damaged=1 aggro=1 .*cameraRestored=1'
+    exact10mmSelected = 'FNV VATS proof weapon selected: form=0x[0-9a-f]*434f name=10mm Pistol'
+    fourShotsCompleted = 'FNV VATS execution: phase=end interrupted=0 .*shotsFired=4'
+    combatTownAggroCamera = 'FNV VATS proof: result=pass .*damaged=1 .*aggro=1 .*hostileWitnesses=[1-9][0-9]* .*cameraRestored=1'
 }
 if ($RequireWitnessResponse) {
     $requiredProofPatterns.witnessResponse = 'FNV VATS proof: result=pass .*witnessResponse=1'
+}
+if ($RequireKill) {
+    $requiredProofPatterns.killed = 'FNV VATS proof: result=pass .*killed=1'
 }
 $proofGates = [ordered]@{}
 foreach ($gate in $requiredProofPatterns.GetEnumerator()) {
