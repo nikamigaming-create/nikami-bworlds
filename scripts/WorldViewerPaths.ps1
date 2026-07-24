@@ -169,10 +169,12 @@ function Resolve-NikamiOpenMWRuntimeRoot {
     )
 
     $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWRuntimeRoot)
-    $candidateRoot = $defaultRoot
-    if (-not [string]::IsNullOrWhiteSpace($ParameterValue)) {
-        $candidateRoot = Resolve-NikamiRepoRelativePath -Path $ParameterValue
-    }
+    $configuredRoot = Resolve-NikamiPath `
+        -ParameterValue $ParameterValue `
+        -EnvName "NIKAMI_OPENMW_BINARY_ROOT" `
+        -ConfigName "openmwBinaryRoot" `
+        -Fallback (Get-NikamiOpenMWRuntimeRoot)
+    $candidateRoot = Resolve-NikamiRepoRelativePath -Path $configuredRoot
 
     $allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $script:NikamiRepoRoot "local"))
     $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
@@ -218,10 +220,12 @@ function Resolve-NikamiOpenMWResourcesRoot {
     )
 
     $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWResourcesRoot)
-    $candidateRoot = $defaultRoot
-    if (-not [string]::IsNullOrWhiteSpace($ParameterValue)) {
-        $candidateRoot = Resolve-NikamiRepoRelativePath -Path $ParameterValue
-    }
+    $configuredRoot = Resolve-NikamiPath `
+        -ParameterValue $ParameterValue `
+        -EnvName "NIKAMI_OPENMW_RESOURCES" `
+        -ConfigName "openmwResources" `
+        -Fallback (Get-NikamiOpenMWResourcesRoot)
+    $candidateRoot = Resolve-NikamiRepoRelativePath -Path $configuredRoot
 
     $allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $script:NikamiRepoRoot "local"))
     $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar

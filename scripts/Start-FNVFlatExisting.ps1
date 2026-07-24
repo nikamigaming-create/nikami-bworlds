@@ -6,7 +6,11 @@ param(
     [string]$LoadSavegame = "",
     [string]$SaveDirectory = "",
     [string]$BinaryRoot = "",
-    [string]$SeedPath = ""
+    [string]$SeedPath = "",
+    [ValidateRange(0.1, 10.0)]
+    [double]$PlayerSpeedMultiplier = 1.0,
+    [switch]$PreferUsable10mm,
+    [switch]$UnlockAllMapMarkers
 )
 
 Set-StrictMode -Version Latest
@@ -60,10 +64,13 @@ $parameters = @{
     WorldId = "fallout_new_vegas"
     Mode = "flat"
     SeedPath = $SeedPath
+    FnvPlayerSpeedMultiplier = $PlayerSpeedMultiplier
 }
 if ($DryRun) { $parameters.DryRun = $true }
 if ($Wait) { $parameters.Wait = $true }
 if ($AllowDuplicate) { $parameters.AllowDuplicate = $true }
+if ($PreferUsable10mm) { $parameters.FnvPreferUsable10mm = $true }
+if ($UnlockAllMapMarkers) { $parameters.FnvUnlockAllMapMarkers = $true }
 if (-not [string]::IsNullOrWhiteSpace($BinaryRoot)) { $parameters.BinaryRoot = $BinaryRoot }
 if (-not [string]::IsNullOrWhiteSpace($LoadSavegame)) {
     $sourceProfile = Join-Path $repoRoot "profiles\fallout_new_vegas"
@@ -87,4 +94,9 @@ else {
 }
 
 & $launcher @parameters
-exit $LASTEXITCODE
+$launchSucceeded = $?
+$nativeExitCode = Get-Variable -Name LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+if ($null -ne $nativeExitCode) {
+    exit [int]$nativeExitCode
+}
+exit $(if ($launchSucceeded) { 0 } else { 1 })

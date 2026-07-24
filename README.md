@@ -130,9 +130,19 @@ without opening OpenMW:
 ```
 
 The generated Flat profile uses 2048x1280, a 65536 viewing distance, native
-cloud meshes, and always-run. In game, `R` reloads, number keys use hotkeys
-restored from the native save, and `V` enters VATS. For VR, use the calibrated
-launcher:
+cloud meshes, and always-run. Use `-PlayerSpeedMultiplier 3` for an explicitly
+faster local traversal session, `-PreferUsable10mm` to select and load an owned
+compatible 10mm pistol, and `-UnlockAllMapMarkers` for a local fast-travel tour
+of every authored exterior marker. Those switches are session overrides; they
+do not rewrite what the retail save owns or has discovered.
+
+The keyboard and mouse controls follow the Bethesda/FNV layout: `E` activates,
+`Space` jumps, `Tab` toggles the ITEMS/DATA/STAT interface, `M` toggles the
+world map, `Esc` leaves the current menu, left mouse fires, `Shift` runs,
+`Ctrl` sneaks, `R` reloads, number keys use hotkeys restored from the native
+save, and `V` enters or leaves VATS. Right mouse is not bound to the interface.
+The four top interface tabs are clickable and switch the selected pane. For VR,
+use the calibrated launcher:
 
 ```powershell
 .\scripts\Start-FNVParityVRExisting.ps1

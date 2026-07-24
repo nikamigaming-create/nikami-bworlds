@@ -12,7 +12,11 @@ param(
     [string[]]$ExtraArgs = @(),
     [string]$SeedPath = "catalog/world-walker.seed.json",
     [string]$BinaryRoot = "",
-    [string]$ProfileDirectory = ""
+    [string]$ProfileDirectory = "",
+    [ValidateRange(0.1, 10.0)]
+    [double]$FnvPlayerSpeedMultiplier = 1.0,
+    [switch]$FnvPreferUsable10mm,
+    [switch]$FnvUnlockAllMapMarkers
 )
 
 Set-StrictMode -Version Latest
@@ -67,8 +71,8 @@ if ($world.readyForWorldWalker -ne $true) {
     throw "World '$WorldId' is not ready for the world walker. installStatus=$($world.installStatus) profileStatus=$($world.profileStatus)"
 }
 
-$BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot -RequireCurrent
-$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -RequireCurrent
+$BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
+$ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -ParameterValue (Join-Path $BinaryRoot "resources")
 
 $profileDirectory = if ([string]::IsNullOrWhiteSpace($ProfileDirectory)) {
     [string]$world.profileDirectory
@@ -143,6 +147,9 @@ if (Test-Path -LiteralPath $profileConfig -PathType Leaf) {
 }
 Write-Host "Command: $commandLine"
 Write-Host "Runtime: real OpenMW profile launch; proof/viewer environment is cleared before start."
+if ($WorldId -eq "fallout_new_vegas") {
+    Write-Host "FNV player speed: ${FnvPlayerSpeedMultiplier}x"
+}
 
 if ($DryRun) {
     Write-Host "Dry run only; not starting OpenMW."
@@ -156,12 +163,24 @@ if (-not $AllowDuplicate -and (Get-Process -Name $processName -ErrorAction Silen
 
 Clear-NikamiWorldViewerRuntimeEnvironment
 $previousDebugLevel = $env:OPENMW_DEBUG_LEVEL
+$previousFnvPlayerSpeed = $env:OPENMW_FNV_PLAYER_SPEED_MULTIPLIER
+$previousFnvPreferUsable10mm = $env:OPENMW_FNV_PREFER_USABLE_10MM
+$previousFnvUnlockAllMapMarkers = $env:OPENMW_FNV_UNLOCK_ALL_MAP_MARKERS
 try {
     $env:OPENMW_DEBUG_LEVEL = "INFO"
+    if ($WorldId -eq "fallout_new_vegas") {
+        $env:OPENMW_FNV_PLAYER_SPEED_MULTIPLIER = $FnvPlayerSpeedMultiplier.ToString(
+            [Globalization.CultureInfo]::InvariantCulture)
+        $env:OPENMW_FNV_PREFER_USABLE_10MM = if ($FnvPreferUsable10mm) { "1" } else { $null }
+        $env:OPENMW_FNV_UNLOCK_ALL_MAP_MARKERS = if ($FnvUnlockAllMapMarkers) { "1" } else { $null }
+    }
     $process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory $workingDirectory -PassThru
 }
 finally {
     $env:OPENMW_DEBUG_LEVEL = $previousDebugLevel
+    $env:OPENMW_FNV_PLAYER_SPEED_MULTIPLIER = $previousFnvPlayerSpeed
+    $env:OPENMW_FNV_PREFER_USABLE_10MM = $previousFnvPreferUsable10mm
+    $env:OPENMW_FNV_UNLOCK_ALL_MAP_MARKERS = $previousFnvUnlockAllMapMarkers
 }
 Write-Host "Started PID $($process.Id)."
 
