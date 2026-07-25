@@ -10,6 +10,7 @@ param(
     [ValidateRange(0, 100000)]
     [int]$AutoCaptureFrames = 0,
     [string]$FnvRoot = "",
+    [string]$OpenMWBinaryRoot = "",
     [string[]]$RunArgs = @()
 )
 
@@ -24,8 +25,16 @@ $FnvRoot = Resolve-NikamiPath `
     -Required `
     -Description "calibrated FNV/OpenMW VR root"
 
+$OpenMWBinaryRoot = Resolve-NikamiPath `
+    -ParameterValue $OpenMWBinaryRoot `
+    -EnvName "NIKAMI_OPENMW_BINARY_ROOT" `
+    -ConfigName "openmwBinaryRoot" `
+    -Required `
+    -Description "packaged OpenMW runtime root"
+$OpenMWBinaryRoot = [IO.Path]::GetFullPath($OpenMWBinaryRoot)
+
 $launcher = Join-Path $FnvRoot "run_vr.bat"
-$exe = Join-Path $FnvRoot "openmw-source\MSVC2022_64\Release\openmw_vr.exe"
+$exe = Join-Path $OpenMWBinaryRoot "openmw_vr.exe"
 $baselineStartupScript = Join-Path (Split-Path -Parent $PSScriptRoot) "config\starts\fnv-level-one-goodsprings.txt"
 
 if (-not (Test-Path -LiteralPath $launcher)) {
@@ -57,6 +66,7 @@ foreach ($arg in $RunArgs) {
 }
 
 Push-Location $FnvRoot
+$previousBinaryRoot = $env:NIKAMI_OPENMW_BINARY_ROOT
 $previousRetailSurface = $env:OPENMW_FNVXR_RETAIL_SURFACE
 $previousDebugLevel = $env:OPENMW_DEBUG_LEVEL
 $previousActorTelemetry = $env:OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY
@@ -65,6 +75,7 @@ $previousBackgroundLaunch = $env:OPENMW_BACKGROUND_LAUNCH
 $previousStartupScript = $env:OPENMW_STARTUP_SCRIPT
 $previousPlayableStartHour = $env:OPENMW_PLAYABLE_START_HOUR
 try {
+    $env:NIKAMI_OPENMW_BINARY_ROOT = $OpenMWBinaryRoot
     $env:OPENMW_FNVXR_RETAIL_SURFACE = if ($EnableRetailSidecar) { "1" } else { "0" }
     $env:OPENMW_DEBUG_LEVEL = if ($Diagnostics) { "VERBOSE" } else { "INFO" }
     $env:OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY = if ($Diagnostics) { "1" } else { "0" }
@@ -82,6 +93,7 @@ try {
     }
 }
 finally {
+    $env:NIKAMI_OPENMW_BINARY_ROOT = $previousBinaryRoot
     $env:OPENMW_FNVXR_RETAIL_SURFACE = $previousRetailSurface
     $env:OPENMW_DEBUG_LEVEL = $previousDebugLevel
     $env:OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY = $previousActorTelemetry
