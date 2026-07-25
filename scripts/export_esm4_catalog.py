@@ -128,12 +128,32 @@ class ESM4Catalog:
                 fields["actorFlags"] = u32(raw, 0)
                 # TES4-family actor flags use bit 0 for female on the games we mine here.
                 fields["femaleFlag"] = (fields["actorFlags"] & 1) != 0
+                if rtype == "NPC_" and len(raw) == 24:
+                    fields["templateFlags"] = u16(raw, 22)
+            elif rtype in ("NPC_", "CREA") and name == "TPLT" and len(raw) >= 4:
+                fields["baseTemplate"] = form_from_raw(raw, self.mod_index)
+            elif rtype in ("NPC_", "CREA") and name == "CNTO" and len(raw) >= 8:
+                fields.setdefault("inventory", []).append(
+                    {
+                        "item": form_hex(form(u32(raw, 0), self.mod_index)),
+                        "count": u32(raw, 4),
+                    }
+                )
             elif rtype == "NPC_" and name == "RNAM" and len(raw) >= 4:
                 fields["race"] = form_from_raw(raw, self.mod_index)
             elif rtype in ("NPC_", "CREA") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
                 fields.setdefault("models", []).append(zstr(raw))
             elif rtype in ("LVLN", "LVLC") and name == "LVLO" and len(raw) >= 8:
                 fields.setdefault("leveledEntries", []).append(form(u32(raw, 4), self.mod_index))
+            elif rtype == "LVLI" and name == "LVLO" and len(raw) >= 8:
+                fields.setdefault("leveledEntries", []).append(form(u32(raw, 4), self.mod_index))
+                fields.setdefault("leveledEntryDetails", []).append(
+                    {
+                        "level": struct.unpack_from("<h", raw, 0)[0],
+                        "item": form_hex(form(u32(raw, 4), self.mod_index)),
+                        "count": struct.unpack_from("<h", raw, 8)[0] if len(raw) >= 10 else 1,
+                    }
+                )
             elif rtype == "WRLD" and name == "WCTR" and len(raw) >= 4:
                 fields["centerCell"] = [struct.unpack_from("<h", raw, 0)[0], struct.unpack_from("<h", raw, 2)[0]]
         return fields
@@ -204,6 +224,13 @@ class ESM4Catalog:
                     record["actorFlags"] = fields["actorFlags"]
                 if "femaleFlag" in fields:
                     record["femaleFlag"] = fields["femaleFlag"]
+                if "templateFlags" in fields:
+                    record["templateFlags"] = fields["templateFlags"]
+                if "baseTemplate" in fields:
+                    record["baseTemplate"] = form_hex(fields["baseTemplate"])
+                    record["openmwBaseTemplate"] = openmw_form_id(fields["baseTemplate"])
+                if "inventory" in fields:
+                    record["inventory"] = fields["inventory"]
                 if "race" in fields:
                     record["race"] = form_hex(fields.get("race"))
                     record["openmwRace"] = openmw_form_id(fields.get("race"))
@@ -214,6 +241,8 @@ class ESM4Catalog:
                     record["openmwLeveledEntries"] = [
                         openmw_form_id(entry) for entry in fields["leveledEntries"][:80] if entry
                     ]
+                if "leveledEntryDetails" in fields:
+                    record["leveledEntryDetails"] = fields["leveledEntryDetails"][:80]
                 matches = self.record_matches_terms(record)
                 if matches:
                     record["matches"] = matches
