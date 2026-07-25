@@ -1,0 +1,93 @@
+{
+  "schema": "nikami-fnv-jam-background-capture-recipes/v1",
+  "status": "canonical",
+  "policy": {
+    "windowsAppControlAllowed": false,
+    "foregroundActivationAllowed": false,
+    "injectedWindowsInputAllowed": false,
+    "concurrentRetailAndOpenMwCaptureAllowed": false,
+    "outputOverwriteAllowed": false,
+    "requiredProofProperties": [
+      "capture method is named",
+      "foreground is not activated",
+      "Windows input is not injected",
+      "source frames and telemetry are retained",
+      "output hashes are recorded",
+      "user configuration is restored"
+    ],
+    "forbiddenMechanisms": [
+      "Computer Use",
+      "AppActivate",
+      "SetForegroundWindow",
+      "BringWindowToTop",
+      "SetFocus",
+      "SendInput",
+      "mouse or keyboard clicking automation",
+      "Invoke-FNVRetailJamInput.ps1"
+    ]
+  },
+  "entryPoint": {
+    "path": "scripts/Invoke-FNVJamBackgroundCapture.ps1",
+    "preflight": "scripts/Test-FNVJamBackgroundCapture.ps1",
+    "runbook": "docs/fnv-jam-background-capture.md"
+  },
+  "recipes": [
+    {
+      "id": "retail-d3d9-backbuffer-v1",
+      "target": "Retail",
+      "runner": "scripts/Invoke-FNVJamFullRetailRehearsal.ps1",
+      "captureMethod": "xNVSE oracle reads the live FalloutNV Direct3D 9 backbuffer and writes engine-frame-labelled BMP files; ffmpeg encodes only those native frames",
+      "driverMethod": "xNVSE scheduled console commands plus native HoldKey and ReleaseKey command dispatch",
+      "backgroundInputMethod": "the oracle changes only the DirectInput keyboard device to DISCL_BACKGROUND | DISCL_NONEXCLUSIVE",
+      "mousePolicy": "the DirectInput mouse device is identified, reported as selected=false and reconfigured=false, and never unacquired or reconfigured",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "screens/frame-*.bmp",
+      "telemetryPattern": "retail-core.jsonl",
+      "manifestPattern": "retail-core.jsonl.manifest.json",
+      "videoPattern": "Retail-FNV-JAM-4.6-background-native.mp4",
+      "requiredTelemetry": [
+        "background-input-polling accepted=true",
+        "exactly one device selected=true and reconfigured=true",
+        "every selected=false device has reconfigured=false",
+        "scheduled-console-command rejected count=0",
+        "scheduled-backbuffer-capture count equals requested screenshot count",
+        "maximum absolute player pitch <= 0.25 radians"
+      ],
+      "smokeCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -SmokeTest -OutputRoot .\\run\\jam-background-smoke-<unique>",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -OutputRoot .\\run\\jam-background-retail-<unique>"
+    },
+    {
+      "id": "openmw-self-drive-window-title-v1",
+      "target": "OpenMW",
+      "runner": "scripts/Invoke-FNVJamSprintProof.ps1",
+      "captureMethod": "ffmpeg gdigrab captures the OpenMW window by exact title while the native JAM proof driver owns every gameplay transition",
+      "driverMethod": "OPENMW_FNV_JAM_FULL_PROOF native engine/Lua proof driver",
+      "backgroundInputMethod": "SelfDrive; no host keyboard or mouse input is sent",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "occlusionPolicy": "the OpenMW window must remain shown and unminimized; no focus operation is allowed or needed, and no other window may cover the capture rectangle",
+      "telemetryPattern": "stdout.log",
+      "manifestPattern": "proof-report.json",
+      "videoPattern": "OpenMW-JAM-4.6-full-execution-proof.mp4",
+      "requiredTelemetry": [
+        "capture.selfDriven=true",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false",
+        "44 phase starts and 44 phase completions",
+        "zero compatibility failures",
+        "zero proof failures",
+        "zero semantic failures"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -OutputRoot .\\run\\jam-background-openmw-<unique> -SkipBuild"
+    }
+  ],
+  "knownGoodEvidence": {
+    "retailSmoke": "run/jam-background-smoke-20260725-ar",
+    "retailFull": "run/jam-background-retail-release-20260725-as",
+    "openMwFull": "run/jam-background-openmw-release-20260725-au",
+    "sideBySide": "run/jam-side-by-side-release-20260725-ay"
+  }
+}

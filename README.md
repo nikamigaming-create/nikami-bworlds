@@ -187,6 +187,22 @@ into the repository. Run its parser regression tests with:
 python -m unittest scripts.test_audit_fnv_quest_bytecode -v
 ```
 
+## FNV/JAM unattended proof capture
+
+Do not invent a focus or input-automation loop. Retail FNV and OpenMW have
+canonical no-app-control recording paths:
+
+```powershell
+.\scripts\Test-FNVJamBackgroundCapture.ps1 -Target All -RuntimeReady -RequireIdle
+.\scripts\Invoke-FNVJamBackgroundCapture.ps1 -Target Both -SkipBuild `
+  -OutputRoot .\run\jam-background-both-<unique>
+```
+
+See [fnv-jam-background-capture.md](docs/fnv-jam-background-capture.md) for the
+exact capture mechanisms, invariants, recovery procedure, and failure
+signatures. The machine-readable recipes live in
+`catalog/fnv-jam-background-capture-recipes.json`.
+
 ## Current Feasibility
 
 Yes, the walking-simulator world viewer is feasible for the games OpenMW's ESM4
