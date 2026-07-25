@@ -8,6 +8,10 @@
 #include "sidecar_protocol.h"
 
 #include <Windows.h>
+#ifndef DIRECTINPUT_VERSION
+#define DIRECTINPUT_VERSION 0x0800
+#endif
+#include <dinput.h>
 #include <d3d9.h>
 
 #include <algorithm>
@@ -140,6 +144,9 @@ namespace
     std::size_t gObserverWaypointIndex = 0;
     bool gAllHighActors = true;
     bool gCaptureAnimation = true;
+    bool gCaptureSession = false;
+    UInt32 gSessionTargetForm = 0;
+    bool gJamSprintMovementDrive = false;
     bool gFurnitureOnly = false;
     bool gExitAfterFurnitureRelease = false;
     unsigned int gExitAfterFurnitureSettledSamples = 0;
@@ -1249,11 +1256,16 @@ namespace
 
     std::string envString(const char* name)
     {
-        char value[4096] = {};
-        const DWORD length = GetEnvironmentVariableA(name, value, static_cast<DWORD>(std::size(value)));
-        if (length == 0 || length >= std::size(value))
+        constexpr DWORD maxEnvironmentValueLength = 1024 * 1024;
+        const DWORD requiredLength = GetEnvironmentVariableA(name, nullptr, 0);
+        if (requiredLength == 0 || requiredLength > maxEnvironmentValueLength)
             return {};
-        return std::string(value, length);
+        std::vector<char> value(requiredLength);
+        const DWORD length
+            = GetEnvironmentVariableA(name, value.data(), requiredLength);
+        if (length == 0 || length >= requiredLength)
+            return {};
+        return std::string(value.data(), length);
     }
 
     std::vector<UInt32> envUIntList(const char* name)
@@ -5542,6 +5554,46 @@ namespace
         return result;
     }
 
+    struct SidecarRuntimeAmmo
+    {
+        bool available = false;
+        UInt32 weaponForm = 0;
+        UInt32 ammoForm = 0;
+        UInt32 count = 0;
+    };
+
+    SidecarRuntimeAmmo sidecarReadRuntimeAmmo(Actor* actor)
+    {
+        SidecarRuntimeAmmo result;
+        if (actor == nullptr)
+            return result;
+
+        BaseProcess* process = nullptr;
+        UInt8 processLevel = 0xff;
+        if (!safeRead(&actor->baseProcess, process) || process == nullptr
+            || !safeRead(&process->processLevel, processLevel) || processLevel > 1)
+            return result;
+
+        MiddleHighProcess* middleHigh = static_cast<MiddleHighProcess*>(process);
+        BaseProcess::AmmoInfo* ammoInfoAddress = nullptr;
+        if (!safeRead(&middleHigh->ammoInfo, ammoInfoAddress) || ammoInfoAddress == nullptr)
+            return result;
+
+        BaseProcess::AmmoInfo ammoInfo = {};
+        if (!safeRead(ammoInfoAddress, ammoInfo) || ammoInfo.ammo == nullptr
+            || ammoInfo.weapon == nullptr)
+            return result;
+
+        if (!safeRead(&ammoInfo.ammo->refID, result.ammoForm)
+            || !safeRead(&ammoInfo.weapon->refID, result.weaponForm)
+            || result.ammoForm == 0 || result.weaponForm == 0)
+            return result;
+
+        result.count = ammoInfo.count;
+        result.available = true;
+        return result;
+    }
+
     struct SidecarVatsSnapshot
     {
         bool available = false;
@@ -5553,15 +5605,17 @@ namespace
         UInt32 equippedWeapon = 0;
         UInt32 linkedAmmo = 0;
         SInt32 linkedAmmoCount = 0;
+        UInt32 activeAmmo = 0;
+        UInt32 activeAmmoCount = 0;
         std::string firstTargetRecordHex;
     };
 
-    bool sidecarReadActorValueUnsafe(PlayerCharacter* player, UInt32 actorValue, float& result)
+    bool sidecarReadActorValueUnsafe(Actor* actor, UInt32 actorValue, float& result)
     {
         bool accepted = false;
         __try
         {
-            result = player->avOwner.Fn_03(actorValue);
+            result = actor->avOwner.Fn_03(actorValue);
             accepted = std::isfinite(result);
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
@@ -5625,6 +5679,12 @@ namespace
         }
 
         result.equippedWeapon = sidecarEquippedWeaponForm(player);
+        const SidecarRuntimeAmmo runtimeAmmo = sidecarReadRuntimeAmmo(player);
+        if (runtimeAmmo.available)
+        {
+            result.activeAmmo = runtimeAmmo.ammoForm;
+            result.activeAmmoCount = runtimeAmmo.count;
+        }
         if (result.equippedWeapon != 0)
         {
             TESForm* form = lookupForm(result.equippedWeapon);
@@ -5661,6 +5721,8 @@ namespace
                 << ",\"equippedWeapon\":" << vats.equippedWeapon
                 << ",\"linkedAmmo\":" << vats.linkedAmmo
                 << ",\"linkedAmmoCount\":" << vats.linkedAmmoCount
+                << ",\"activeAmmo\":" << vats.activeAmmo
+                << ",\"activeAmmoCount\":" << vats.activeAmmoCount
                 << ",\"firstTargetRecordBytes\":256"
                 << ",\"firstTargetRecordHex\":" << jsonString(vats.firstTargetRecordHex.c_str());
         }
@@ -5671,6 +5733,657 @@ namespace
     {
         out << ",\"vats\":";
         writeVatsSnapshotJson(out, sidecarReadVatsSnapshot());
+    }
+
+    void sidecarWriteFinite(std::ostringstream& out, float value);
+    void sidecarWriteAnimationTelemetry(std::ostringstream& out, Actor* actor);
+    void* sidecarGetSceneCameraUnsafe();
+
+    Actor* sidecarLookupActor(UInt32 formId)
+    {
+        if (formId == 0)
+            return nullptr;
+        TESForm* form = lookupForm(formId);
+        Actor* result = nullptr;
+        __try
+        {
+            if (form != nullptr && form->GetIsReference())
+            {
+                TESObjectREFR* reference = static_cast<TESObjectREFR*>(form);
+                if (reference->IsActor_Runtime())
+                    result = static_cast<Actor*>(reference);
+            }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            result = nullptr;
+        }
+        return result;
+    }
+
+    UInt32 sidecarSafeFormId(const TESForm* form)
+    {
+        UInt32 result = 0;
+        if (form != nullptr)
+            safeRead(&form->refID, result);
+        return result;
+    }
+
+    void sidecarWriteHitData(std::ostringstream& out, const ActorHitData* address)
+    {
+        if (address == nullptr)
+        {
+            out << "null";
+            return;
+        }
+
+        ActorHitData hit = {};
+        if (!safeRead(address, hit))
+        {
+            out << "{\"readable\":false,\"address\":"
+                << reinterpret_cast<std::uintptr_t>(address) << '}';
+            return;
+        }
+
+        UInt32 sourceRef = 0;
+        UInt32 sourceBase = 0;
+        UInt32 targetRef = 0;
+        UInt32 targetBase = 0;
+        sidecarReadActorIdentity(hit.source, sourceRef, sourceBase);
+        sidecarReadActorIdentity(hit.target, targetRef, targetBase);
+        out << "{\"readable\":true,\"address\":"
+            << reinterpret_cast<std::uintptr_t>(address)
+            << ",\"sourceRef\":" << sourceRef
+            << ",\"sourceBase\":" << sourceBase
+            << ",\"targetRef\":" << targetRef
+            << ",\"targetBase\":" << targetBase
+            << ",\"projectileOrExplosionAddress\":"
+            << reinterpret_cast<std::uintptr_t>(hit.projectile)
+            << ",\"weaponForm\":" << sidecarSafeFormId(hit.weapon)
+            << ",\"hitLocation\":" << hit.hitLocation
+            << ",\"healthDamage\":";
+        sidecarWriteFinite(out, hit.healthDmg);
+        out << ",\"weaponBaseDamage\":";
+        sidecarWriteFinite(out, hit.wpnBaseDmg);
+        out << ",\"fatigueDamage\":";
+        sidecarWriteFinite(out, hit.fatigueDmg);
+        out << ",\"limbDamage\":";
+        sidecarWriteFinite(out, hit.limbDmg);
+        out << ",\"blockDamageThresholdModifier\":";
+        sidecarWriteFinite(out, hit.blockDTMod);
+        out << ",\"armorDamage\":";
+        sidecarWriteFinite(out, hit.armorDmg);
+        out << ",\"healthPercent\":";
+        sidecarWriteFinite(out, hit.healthPerc);
+        out << ",\"impactPosition\":[";
+        sidecarWriteFinite(out, hit.impactPos.x);
+        out << ',';
+        sidecarWriteFinite(out, hit.impactPos.y);
+        out << ',';
+        sidecarWriteFinite(out, hit.impactPos.z);
+        out << "],\"impactAngle\":[";
+        sidecarWriteFinite(out, hit.impactAngle.x);
+        out << ',';
+        sidecarWriteFinite(out, hit.impactAngle.y);
+        out << ',';
+        sidecarWriteFinite(out, hit.impactAngle.z);
+        out << "],\"flags\":" << hit.flags
+            << ",\"critical\":"
+            << ((hit.flags & ActorHitData::kHitData_IsCritical) != 0 ? "true" : "false")
+            << ",\"fatal\":"
+            << ((hit.flags & ActorHitData::kHitData_IsFatal) != 0 ? "true" : "false")
+            << ",\"damageMultiplier\":";
+        sidecarWriteFinite(out, hit.dmgMult);
+        out << '}';
+    }
+
+    void sidecarWriteCombatWeapon(std::ostringstream& out, Actor* actor, UInt32 equippedWeapon)
+    {
+        if (equippedWeapon == 0)
+        {
+            out << "null";
+            return;
+        }
+
+        TESForm* form = lookupForm(equippedWeapon);
+        UInt8 type = 0;
+        if (form == nullptr || !safeRead(&form->typeID, type) || type != kFormType_TESObjectWEAP)
+        {
+            out << "{\"form\":" << equippedWeapon << ",\"readable\":false}";
+            return;
+        }
+
+        TESObjectWEAP* weapon = static_cast<TESObjectWEAP*>(form);
+        UInt8 animationType = 0xff;
+        UInt8 handGrip = 0xff;
+        UInt8 reloadAnimation = 0xff;
+        UInt8 attackAnimation = 0xff;
+        UInt8 projectileCount = 0;
+        UInt8 ammoUse = 0;
+        float minimumSpread = 0.f;
+        float spread = 0.f;
+        float minimumRange = 0.f;
+        float maximumRange = 0.f;
+        float fireRate = 0.f;
+        float animationShotsPerSecond = 0.f;
+        TESForm* linkedAmmo = nullptr;
+        BGSProjectile* projectile = nullptr;
+        safeRead(&weapon->eWeaponType, animationType);
+        safeRead(&weapon->handGrip, handGrip);
+        safeRead(&weapon->reloadAnim, reloadAnimation);
+        safeRead(&weapon->attackAnim, attackAnimation);
+        safeRead(&weapon->numProjectiles, projectileCount);
+        safeRead(&weapon->ammoUse, ammoUse);
+        safeRead(&weapon->minSpread, minimumSpread);
+        safeRead(&weapon->spread, spread);
+        safeRead(&weapon->minRange, minimumRange);
+        safeRead(&weapon->maxRange, maximumRange);
+        safeRead(&weapon->fireRate, fireRate);
+        safeRead(&weapon->animShotsPerSec, animationShotsPerSecond);
+        safeRead(&weapon->ammo.ammo, linkedAmmo);
+        safeRead(&weapon->projectile, projectile);
+
+        const UInt32 linkedAmmoForm = sidecarSafeFormId(linkedAmmo);
+        SInt32 linkedAmmoCount = 0;
+        std::map<UInt32, SidecarInventoryItem> inventory;
+        if (linkedAmmoForm != 0 && sidecarReadInventory(actor, inventory))
+        {
+            const auto found = inventory.find(linkedAmmoForm);
+            if (found != inventory.end())
+                linkedAmmoCount = found->second.count;
+        }
+
+        UInt16 projectileFlags = 0;
+        UInt16 projectileType = 0xffff;
+        float projectileGravity = 0.f;
+        float projectileSpeed = 0.f;
+        float projectileRange = 0.f;
+        float tracerChance = 0.f;
+        float flashDuration = 0.f;
+        float fadeDuration = 0.f;
+        float impactForce = 0.f;
+        if (projectile != nullptr)
+        {
+            safeRead(&projectile->projFlags, projectileFlags);
+            safeRead(&projectile->type, projectileType);
+            safeRead(&projectile->gravity, projectileGravity);
+            safeRead(&projectile->speed, projectileSpeed);
+            safeRead(&projectile->range, projectileRange);
+            safeRead(&projectile->tracerChance, tracerChance);
+            safeRead(&projectile->flashDuration, flashDuration);
+            safeRead(&projectile->fadeDuration, fadeDuration);
+            safeRead(&projectile->impactForce, impactForce);
+        }
+
+        out << "{\"form\":" << equippedWeapon
+            << ",\"readable\":true"
+            << ",\"animationType\":" << static_cast<UInt32>(animationType)
+            << ",\"handGripRaw\":" << static_cast<UInt32>(handGrip)
+            << ",\"reloadAnimation\":" << static_cast<UInt32>(reloadAnimation)
+            << ",\"attackAnimationRaw\":" << static_cast<UInt32>(attackAnimation)
+            << ",\"projectileCount\":" << static_cast<UInt32>(projectileCount)
+            << ",\"ammoUse\":" << static_cast<UInt32>(ammoUse)
+            << ",\"minimumSpread\":";
+        sidecarWriteFinite(out, minimumSpread);
+        out << ",\"spread\":";
+        sidecarWriteFinite(out, spread);
+        out << ",\"minimumRange\":";
+        sidecarWriteFinite(out, minimumRange);
+        out << ",\"maximumRange\":";
+        sidecarWriteFinite(out, maximumRange);
+        out << ",\"fireRate\":";
+        sidecarWriteFinite(out, fireRate);
+        out << ",\"animationShotsPerSecond\":";
+        sidecarWriteFinite(out, animationShotsPerSecond);
+        out << ",\"linkedAmmoForm\":" << linkedAmmoForm
+            << ",\"linkedAmmoCount\":" << linkedAmmoCount
+            << ",\"runtimeAmmo\":";
+        const SidecarRuntimeAmmo runtimeAmmo = sidecarReadRuntimeAmmo(actor);
+        if (!runtimeAmmo.available)
+            out << "null";
+        else
+        {
+            out << "{\"weaponForm\":" << runtimeAmmo.weaponForm
+                << ",\"ammoForm\":" << runtimeAmmo.ammoForm
+                << ",\"count\":" << runtimeAmmo.count << '}';
+        }
+        out
+            << ",\"projectile\":";
+        if (projectile == nullptr)
+            out << "null";
+        else
+        {
+            out << "{\"form\":" << sidecarSafeFormId(projectile)
+                << ",\"flags\":" << projectileFlags
+                << ",\"hitscan\":"
+                << ((projectileFlags & BGSProjectile::kFlags_Hitscan) != 0 ? "true" : "false")
+                << ",\"muzzleFlash\":"
+                << ((projectileFlags & BGSProjectile::kFlags_MuzzleFlash) != 0 ? "true" : "false")
+                << ",\"type\":" << projectileType
+                << ",\"gravity\":";
+            sidecarWriteFinite(out, projectileGravity);
+            out << ",\"speed\":";
+            sidecarWriteFinite(out, projectileSpeed);
+            out << ",\"range\":";
+            sidecarWriteFinite(out, projectileRange);
+            out << ",\"tracerChance\":";
+            sidecarWriteFinite(out, tracerChance);
+            out << ",\"flashDuration\":";
+            sidecarWriteFinite(out, flashDuration);
+            out << ",\"fadeDuration\":";
+            sidecarWriteFinite(out, fadeDuration);
+            out << ",\"impactForce\":";
+            sidecarWriteFinite(out, impactForce);
+            out << '}';
+        }
+        out << '}';
+    }
+
+    void sidecarWriteCombatInventory(std::ostringstream& out, Actor* actor)
+    {
+        std::map<UInt32, SidecarInventoryItem> inventory;
+        if (!sidecarReadInventory(actor, inventory))
+        {
+            out << "{\"available\":false,\"items\":[]}";
+            return;
+        }
+
+        out << "{\"available\":true,\"items\":[";
+        bool first = true;
+        for (const auto& pair : inventory)
+        {
+            UInt8 type = 0;
+            if (pair.second.form == nullptr || pair.second.count <= 0
+                || !safeRead(&pair.second.form->typeID, type)
+                || (type != kFormType_TESAmmo && type != kFormType_TESObjectWEAP))
+                continue;
+            if (!first)
+                out << ',';
+            first = false;
+            out << "{\"form\":" << pair.first
+                << ",\"type\":" << static_cast<UInt32>(type)
+                << ",\"kind\":" << jsonString(
+                       type == kFormType_TESAmmo ? "ammunition" : "weapon")
+                << ",\"count\":" << pair.second.count
+                << ",\"worn\":" << (pair.second.worn ? "true" : "false") << '}';
+        }
+        out << "]}";
+    }
+
+    void sidecarWriteCombatActor(std::ostringstream& out, Actor* actor)
+    {
+        if (actor == nullptr)
+        {
+            out << "{\"available\":false}";
+            return;
+        }
+
+        UInt32 reference = 0;
+        UInt32 base = 0;
+        const bool identity = sidecarReadActorIdentity(actor, reference, base);
+        float position[3] = {};
+        float rotation[3] = {};
+        const bool transform = safeRead(&actor->posX, position[0])
+            && safeRead(&actor->posY, position[1])
+            && safeRead(&actor->posZ, position[2])
+            && safeRead(&actor->rotX, rotation[0])
+            && safeRead(&actor->rotY, rotation[1])
+            && safeRead(&actor->rotZ, rotation[2]);
+        float health = 0.f;
+        const bool healthAvailable = sidecarReadActorValueUnsafe(actor, eActorVal_Health, health);
+        float speedMultiplier = 0.f;
+        const bool speedMultiplierAvailable
+            = sidecarReadActorValueUnsafe(actor, eActorVal_SpeedMultiplier, speedMultiplier);
+        UInt32 lifeState = 0xffffffff;
+        UInt8 inCombat = 0;
+        safeRead(&actor->lifeState, lifeState);
+        safeRead(&actor->unk104, inCombat);
+
+        BaseProcess* process = nullptr;
+        UInt8 processLevel = 0xff;
+        safeRead(&actor->baseProcess, process);
+        if (process != nullptr)
+            safeRead(&process->processLevel, processLevel);
+        MiddleHighProcess* middle = process != nullptr && processLevel <= 1
+            ? static_cast<MiddleHighProcess*>(process) : nullptr;
+        HighProcess* high = processLevel == 0 ? static_cast<HighProcess*>(process) : nullptr;
+        bool weaponOut = false;
+        bool aiming = false;
+        ActorHitData* lastHit = nullptr;
+        ActorHitData* lastTargetHit = nullptr;
+        NiNode* projectileNode = nullptr;
+        if (middle != nullptr)
+        {
+            safeRead(&middle->isWeaponOut, weaponOut);
+            safeRead(&middle->isAiming, aiming);
+            safeRead(&middle->lastHitData, lastHit);
+            safeRead(&middle->lastTargetHitData, lastTargetHit);
+            safeRead(&middle->projectileNode, projectileNode);
+        }
+        SInt16 currentAction = -1;
+        UInt8 forceFireWeapon = 0;
+        Actor* combatTarget = nullptr;
+        if (high != nullptr)
+        {
+            safeRead(&high->currentAction, currentAction);
+            safeRead(&high->forceFireWeapon, forceFireWeapon);
+            safeRead(&high->combatTarget, combatTarget);
+        }
+        UInt32 combatTargetRef = 0;
+        UInt32 combatTargetBase = 0;
+        sidecarReadActorIdentity(combatTarget, combatTargetRef, combatTargetBase);
+        const UInt32 equippedWeapon = sidecarEquippedWeaponForm(actor);
+
+        out << std::setprecision(9)
+            << "{\"available\":true"
+            << ",\"identityReadable\":" << (identity ? "true" : "false")
+            << ",\"refForm\":" << reference
+            << ",\"baseForm\":" << base
+            << ",\"transformReadable\":" << (transform ? "true" : "false")
+            << ",\"position\":";
+        if (transform)
+            out << '[' << position[0] << ',' << position[1] << ',' << position[2] << ']';
+        else
+            out << "null";
+        out << ",\"rotation\":";
+        if (transform)
+            out << '[' << rotation[0] << ',' << rotation[1] << ',' << rotation[2] << ']';
+        else
+            out << "null";
+        out << ",\"health\":";
+        if (healthAvailable)
+            sidecarWriteFinite(out, health);
+        else
+            out << "null";
+        out << ",\"speedMultiplier\":";
+        if (speedMultiplierAvailable)
+            sidecarWriteFinite(out, speedMultiplier);
+        else
+            out << "null";
+        out << ",\"lifeState\":" << lifeState
+            << ",\"inCombat\":" << (inCombat != 0 ? "true" : "false")
+            << ",\"processLevel\":" << static_cast<UInt32>(processLevel)
+            << ",\"weaponOut\":" << (weaponOut ? "true" : "false")
+            << ",\"aiming\":" << (aiming ? "true" : "false")
+            << ",\"projectileNode\":";
+        NiTransform projectileNodeWorld = {};
+        const char* projectileNodeNameAddress = nullptr;
+        const bool projectileNodeReadable = projectileNode != nullptr
+            && safeRead(reinterpret_cast<const UInt8*>(projectileNode) + 0x08,
+                projectileNodeNameAddress)
+            && safeRead(reinterpret_cast<const UInt8*>(projectileNode)
+                    + sNiAVObjectWorldTransformOffset,
+                projectileNodeWorld);
+        if (!projectileNodeReadable)
+            out << "null";
+        else
+        {
+            const std::string projectileNodeName
+                = safeRuntimeString(projectileNodeNameAddress);
+            out << "{\"address\":"
+                << reinterpret_cast<std::uintptr_t>(projectileNode)
+                << ",\"name\":" << jsonString(projectileNodeName.c_str())
+                << ",\"position\":[";
+            sidecarWriteFinite(out, projectileNodeWorld.translate.x);
+            out << ',';
+            sidecarWriteFinite(out, projectileNodeWorld.translate.y);
+            out << ',';
+            sidecarWriteFinite(out, projectileNodeWorld.translate.z);
+            out << "],\"rotation\":[";
+            for (UInt32 index = 0; index < 9; ++index)
+            {
+                if (index != 0)
+                    out << ',';
+                sidecarWriteFinite(out, projectileNodeWorld.rotate.data[index]);
+            }
+            out << "],\"scale\":";
+            sidecarWriteFinite(out, projectileNodeWorld.scale);
+            out << '}';
+        }
+        out
+            << ",\"currentAction\":" << currentAction
+            << ",\"forceFireWeapon\":" << static_cast<UInt32>(forceFireWeapon)
+            << ",\"combatTargetRef\":" << combatTargetRef
+            << ",\"combatTargetBase\":" << combatTargetBase
+            << ",\"weapon\":";
+        sidecarWriteCombatWeapon(out, actor, equippedWeapon);
+        out << ",\"inventory\":";
+        sidecarWriteCombatInventory(out, actor);
+        out << ",\"lastHit\":";
+        sidecarWriteHitData(out, lastHit);
+        out << ",\"lastTargetHit\":";
+        sidecarWriteHitData(out, lastTargetHit);
+        sidecarWriteAnimationTelemetry(out, actor);
+        out << '}';
+    }
+
+    void sidecarWriteCombatRelationship(
+        std::ostringstream& out, Actor* player, Actor* target)
+    {
+        float playerPosition[3] = {};
+        float targetPosition[3] = {};
+        float playerYaw = 0.f;
+        float targetYaw = 0.f;
+        const bool readable = player != nullptr && target != nullptr
+            && safeRead(&player->posX, playerPosition[0])
+            && safeRead(&player->posY, playerPosition[1])
+            && safeRead(&player->posZ, playerPosition[2])
+            && safeRead(&player->rotZ, playerYaw)
+            && safeRead(&target->posX, targetPosition[0])
+            && safeRead(&target->posY, targetPosition[1])
+            && safeRead(&target->posZ, targetPosition[2])
+            && safeRead(&target->rotZ, targetYaw);
+        if (!readable)
+        {
+            out << "{\"available\":false}";
+            return;
+        }
+
+        const float dx = targetPosition[0] - playerPosition[0];
+        const float dy = targetPosition[1] - playerPosition[1];
+        const float dz = targetPosition[2] - playerPosition[2];
+        const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        const float planarDistance = std::sqrt(dx * dx + dy * dy);
+        float playerFacingCosine = 0.f;
+        float targetFacingCosine = 0.f;
+        if (planarDistance > 0.0001f)
+        {
+            const float nx = dx / planarDistance;
+            const float ny = dy / planarDistance;
+            playerFacingCosine = std::sin(playerYaw) * nx + std::cos(playerYaw) * ny;
+            targetFacingCosine = std::sin(targetYaw) * -nx + std::cos(targetYaw) * -ny;
+        }
+        out << "{\"available\":true,\"distance\":";
+        sidecarWriteFinite(out, distance);
+        out << ",\"planarDistance\":";
+        sidecarWriteFinite(out, planarDistance);
+        out << ",\"playerFacingTargetCosine\":";
+        sidecarWriteFinite(out, playerFacingCosine);
+        out << ",\"targetFacingPlayerCosine\":";
+        sidecarWriteFinite(out, targetFacingCosine);
+        out << '}';
+    }
+
+    void sidecarWriteCombatCamera(
+        std::ostringstream& out, Actor* target)
+    {
+        void* sceneCamera = sidecarGetSceneCameraUnsafe();
+        NiTransform world = {};
+        if (sceneCamera == nullptr
+            || !safeRead(
+                reinterpret_cast<const UInt8*>(sceneCamera)
+                    + sNiAVObjectWorldTransformOffset,
+                world))
+        {
+            out << "{\"available\":false}";
+            return;
+        }
+
+        // NiCamera's view direction is its local +X basis in retail FNV.
+        const float forwardX = world.rotate.data[0];
+        const float forwardY = world.rotate.data[3];
+        const float forwardZ = world.rotate.data[6];
+        float targetPosition[3] = {};
+        const bool targetReadable = target != nullptr
+            && safeRead(&target->posX, targetPosition[0])
+            && safeRead(&target->posY, targetPosition[1])
+            && safeRead(&target->posZ, targetPosition[2]);
+
+        auto facingCosine = [&](float targetZ)
+        {
+            if (!targetReadable)
+                return 0.f;
+            const float dx = targetPosition[0] - world.translate.x;
+            const float dy = targetPosition[1] - world.translate.y;
+            const float dz = targetZ - world.translate.z;
+            const float length = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (length < 0.0001f)
+                return 0.f;
+            return (forwardX * dx + forwardY * dy + forwardZ * dz) / length;
+        };
+
+        out << "{\"available\":true,\"position\":[";
+        sidecarWriteFinite(out, world.translate.x);
+        out << ',';
+        sidecarWriteFinite(out, world.translate.y);
+        out << ',';
+        sidecarWriteFinite(out, world.translate.z);
+        out << "],\"forward\":[";
+        sidecarWriteFinite(out, forwardX);
+        out << ',';
+        sidecarWriteFinite(out, forwardY);
+        out << ',';
+        sidecarWriteFinite(out, forwardZ);
+        out << "],\"rotation\":[";
+        for (UInt32 index = 0; index < 9; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            sidecarWriteFinite(out, world.rotate.data[index]);
+        }
+        out << "],\"targetReadable\":" << (targetReadable ? "true" : "false")
+            << ",\"targetRootFacingCosine\":";
+        sidecarWriteFinite(out, facingCosine(targetPosition[2]));
+        out << ",\"targetChestFacingCosine\":";
+        sidecarWriteFinite(out, facingCosine(targetPosition[2] + 64.f));
+        out << '}';
+    }
+
+    void sidecarWriteCombatRayResult(
+        std::ostringstream& out, const OracleRayCastResult& ray)
+    {
+        const char* hitNameAddress = nullptr;
+        std::string hitName;
+        if (ray.hitObject != nullptr
+            && safeRead(reinterpret_cast<const UInt8*>(ray.hitObject) + 0x08,
+                hitNameAddress))
+            hitName = safeRuntimeString(hitNameAddress);
+        out << "{\"filterAvailable\":"
+            << (ray.filterAvailable ? "true" : "false")
+            << ",\"tesAvailable\":" << (ray.tesAvailable ? "true" : "false")
+            << ",\"invoked\":" << (ray.invoked ? "true" : "false")
+            << ",\"faulted\":" << (ray.faulted ? "true" : "false")
+            << ",\"fractionValid\":" << (ray.fractionValid ? "true" : "false")
+            << ",\"hit\":" << (ray.hit ? "true" : "false")
+            << ",\"hitFraction\":";
+        sidecarWriteFinite(out, ray.hitFraction);
+        out << ",\"collisionFilter\":" << ray.collisionFilter
+            << ",\"hitObjectAddress\":"
+            << reinterpret_cast<std::uintptr_t>(ray.hitObject)
+            << ",\"hitObjectName\":" << jsonString(hitName.c_str()) << '}';
+    }
+
+    void sidecarWriteCombatMuzzleRays(
+        std::ostringstream& out, PlayerCharacter* player, Actor* target)
+    {
+        BaseProcess* process = nullptr;
+        UInt8 processLevel = 0xff;
+        NiNode* projectileNode = nullptr;
+        NiTransform nodeWorld = {};
+        float targetPosition[3] = {};
+        const bool available = player != nullptr && target != nullptr
+            && safeRead(&player->baseProcess, process) && process != nullptr
+            && safeRead(&process->processLevel, processLevel) && processLevel <= 1
+            && safeRead(
+                &static_cast<MiddleHighProcess*>(process)->projectileNode,
+                projectileNode)
+            && projectileNode != nullptr
+            && safeRead(reinterpret_cast<const UInt8*>(projectileNode)
+                    + sNiAVObjectWorldTransformOffset,
+                nodeWorld)
+            && safeRead(&target->posX, targetPosition[0])
+            && safeRead(&target->posY, targetPosition[1])
+            && safeRead(&target->posZ, targetPosition[2]);
+        if (!available)
+        {
+            out << "{\"available\":false}";
+            return;
+        }
+
+        constexpr float axisDistance = 1024.f;
+        const float positiveEnd[3] = {
+            nodeWorld.translate.x + nodeWorld.rotate.data[0] * axisDistance,
+            nodeWorld.translate.y + nodeWorld.rotate.data[3] * axisDistance,
+            nodeWorld.translate.z + nodeWorld.rotate.data[6] * axisDistance,
+        };
+        const float negativeEnd[3] = {
+            nodeWorld.translate.x - nodeWorld.rotate.data[0] * axisDistance,
+            nodeWorld.translate.y - nodeWorld.rotate.data[3] * axisDistance,
+            nodeWorld.translate.z - nodeWorld.rotate.data[6] * axisDistance,
+        };
+        const OracleRayCastResult toRoot = castProofCorridor(player,
+            nodeWorld.translate.x, nodeWorld.translate.y, nodeWorld.translate.z,
+            targetPosition[0], targetPosition[1], targetPosition[2] + 24.f);
+        const OracleRayCastResult toChest = castProofCorridor(player,
+            nodeWorld.translate.x, nodeWorld.translate.y, nodeWorld.translate.z,
+            targetPosition[0], targetPosition[1], targetPosition[2] + 64.f);
+        const OracleRayCastResult positiveAxis = castProofCorridor(player,
+            nodeWorld.translate.x, nodeWorld.translate.y, nodeWorld.translate.z,
+            positiveEnd[0], positiveEnd[1], positiveEnd[2]);
+        const OracleRayCastResult negativeAxis = castProofCorridor(player,
+            nodeWorld.translate.x, nodeWorld.translate.y, nodeWorld.translate.z,
+            negativeEnd[0], negativeEnd[1], negativeEnd[2]);
+
+        out << "{\"available\":true,\"origin\":[";
+        sidecarWriteFinite(out, nodeWorld.translate.x);
+        out << ',';
+        sidecarWriteFinite(out, nodeWorld.translate.y);
+        out << ',';
+        sidecarWriteFinite(out, nodeWorld.translate.z);
+        out << "],\"toTargetRoot\":";
+        sidecarWriteCombatRayResult(out, toRoot);
+        out << ",\"toTargetChest\":";
+        sidecarWriteCombatRayResult(out, toChest);
+        out << ",\"positiveNodeX\":";
+        sidecarWriteCombatRayResult(out, positiveAxis);
+        out << ",\"negativeNodeX\":";
+        sidecarWriteCombatRayResult(out, negativeAxis);
+        out << '}';
+    }
+
+    void sidecarWriteCombatSessionTelemetry()
+    {
+        PlayerCharacter* player = nullptr;
+        safeRead(reinterpret_cast<PlayerCharacter**>(0x011DEA3C), player);
+        Actor* target = sidecarLookupActor(gSessionTargetForm);
+        std::ostringstream out;
+        out << "{\"schema\":" << sSchemaJson
+            << ",\"event\":\"combat-session-snapshot\""
+            << ",\"frame\":" << gFrame
+            << ",\"configuredTargetForm\":" << gSessionTargetForm
+            << ",\"player\":";
+        sidecarWriteCombatActor(out, player);
+        out << ",\"target\":";
+        sidecarWriteCombatActor(out, target);
+        out << ",\"relationship\":";
+        sidecarWriteCombatRelationship(out, player, target);
+        out << ",\"camera\":";
+        sidecarWriteCombatCamera(out, target);
+        out << ",\"muzzleRays\":";
+        sidecarWriteCombatMuzzleRays(out, player, target);
+        sidecarWriteVatsTelemetry(out);
+        out << "}\n";
+        gOutput << out.str();
     }
 
     bool scheduledSpawnActor(UInt32 spawnBaseForm)
@@ -5741,8 +6454,352 @@ namespace
             && runReferenceFloatCommand(target, "SetAngle Z", targetYawDegrees);
     }
 
+    bool scheduledCaptureBackBuffer()
+    {
+        std::string outputPath;
+        long captureResult = E_FAIL;
+        const bool captured = sidecarCaptureBackBuffer(outputPath, captureResult);
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"scheduled-backbuffer-capture\""
+                << ",\"frame\":" << gFrame
+                << ",\"path\":" << jsonString(outputPath.c_str())
+                << ",\"result\":" << captureResult
+                << ",\"accepted\":" << (captured ? "true" : "false") << "}\n";
+        gOutput.flush();
+        return captured;
+    }
+
+    struct CurrentProcessWindowSearch
+    {
+        DWORD processId = 0;
+        HWND window = nullptr;
+    };
+
+    BOOL CALLBACK findCurrentProcessWindow(HWND window, LPARAM parameter)
+    {
+        auto* search = reinterpret_cast<CurrentProcessWindowSearch*>(parameter);
+        DWORD processId = 0;
+        GetWindowThreadProcessId(window, &processId);
+        if (processId != search->processId || GetWindow(window, GW_OWNER) != nullptr
+            || !IsWindowVisible(window))
+            return TRUE;
+        search->window = window;
+        return FALSE;
+    }
+
+    struct BackgroundInputDeviceResult
+    {
+        std::uintptr_t pointer = 0;
+        DWORD deviceType = 0;
+        HRESULT capabilitiesResult = E_FAIL;
+        HRESULT unacquireResult = E_FAIL;
+        HRESULT cooperativeLevelResult = E_FAIL;
+        HRESULT acquireResult = E_FAIL;
+        bool invoked = false;
+        bool selected = false;
+        bool reconfigured = false;
+    };
+
+    BackgroundInputDeviceResult enableBackgroundInputDevice(void* candidate, HWND window)
+    {
+        BackgroundInputDeviceResult result;
+        result.pointer = reinterpret_cast<std::uintptr_t>(candidate);
+        if (candidate == nullptr || window == nullptr)
+            return result;
+
+        __try
+        {
+            auto* device = reinterpret_cast<IDirectInputDevice8A*>(candidate);
+            DIDEVCAPS capabilities = {};
+            capabilities.dwSize = sizeof(capabilities);
+            result.capabilitiesResult = device->GetCapabilities(&capabilities);
+            if (SUCCEEDED(result.capabilitiesResult))
+                result.deviceType = capabilities.dwDevType;
+            result.selected = SUCCEEDED(result.capabilitiesResult)
+                && GET_DIDEVICE_TYPE(result.deviceType) == DI8DEVTYPE_KEYBOARD;
+            if (!result.selected)
+            {
+                result.invoked = true;
+                return result;
+            }
+            result.unacquireResult = device->Unacquire();
+            result.cooperativeLevelResult = device->SetCooperativeLevel(
+                window, DISCL_BACKGROUND | DISCL_NONEXCLUSIVE);
+            result.acquireResult = device->Acquire();
+            result.invoked = true;
+            result.reconfigured = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            result.invoked = false;
+        }
+        return result;
+    }
+
+    bool scheduledEnableBackgroundInputPolling()
+    {
+        void* inputGlobals = nullptr;
+        safeRead(reinterpret_cast<void**>(0x011F35CC), inputGlobals);
+        void* firstDevice = nullptr;
+        void* secondDevice = nullptr;
+        if (inputGlobals != nullptr)
+        {
+            safeRead(reinterpret_cast<void**>(
+                reinterpret_cast<std::uintptr_t>(inputGlobals) + 0x2C), firstDevice);
+            safeRead(reinterpret_cast<void**>(
+                reinterpret_cast<std::uintptr_t>(inputGlobals) + 0x30), secondDevice);
+        }
+
+        CurrentProcessWindowSearch search;
+        search.processId = GetCurrentProcessId();
+        EnumWindows(findCurrentProcessWindow, reinterpret_cast<LPARAM>(&search));
+        if (search.window == nullptr)
+            search.window = GetActiveWindow();
+
+        const auto first = enableBackgroundInputDevice(firstDevice, search.window);
+        const auto second = enableBackgroundInputDevice(secondDevice, search.window);
+        const auto succeeded = [](const BackgroundInputDeviceResult& device)
+        {
+            return device.invoked && device.selected && SUCCEEDED(device.cooperativeLevelResult)
+                && SUCCEEDED(device.acquireResult);
+        };
+        const bool accepted = succeeded(first) || succeeded(second);
+
+        const auto writeDevice = [](std::ostream& output,
+                                     const BackgroundInputDeviceResult& device)
+        {
+            output << "{\"pointer\":" << device.pointer
+                   << ",\"deviceType\":" << device.deviceType
+                   << ",\"capabilitiesResult\":" << device.capabilitiesResult
+                   << ",\"unacquireResult\":" << device.unacquireResult
+                   << ",\"cooperativeLevelResult\":" << device.cooperativeLevelResult
+                   << ",\"acquireResult\":" << device.acquireResult
+                   << ",\"invoked\":" << (device.invoked ? "true" : "false")
+                   << ",\"selected\":" << (device.selected ? "true" : "false")
+                   << ",\"reconfigured\":" << (device.reconfigured ? "true" : "false") << '}';
+        };
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"background-input-polling\""
+                << ",\"frame\":" << gFrame
+                << ",\"window\":" << reinterpret_cast<std::uintptr_t>(search.window)
+                << ",\"inputGlobals\":" << reinterpret_cast<std::uintptr_t>(inputGlobals)
+                << ",\"devices\":[";
+        writeDevice(gOutput, first);
+        gOutput << ',';
+        writeDevice(gOutput, second);
+        gOutput << "],\"accepted\":" << (accepted ? "true" : "false") << "}\n";
+        gOutput.flush();
+        return accepted;
+    }
+
+    bool setJamSprintMovementState(bool enabled, bool emitTelemetry)
+    {
+        PlayerCharacter* player = nullptr;
+        safeRead(reinterpret_cast<PlayerCharacter**>(0x011DEA3C), player);
+        ActorMover* mover = nullptr;
+        if (player == nullptr || !safeRead(&player->actorMover, mover) || mover == nullptr)
+            return false;
+
+        constexpr UInt32 forwardRunningKeyboard = 0x00000241;
+        const UInt32 requestedFlags = enabled ? forwardRunningKeyboard : 0;
+        UInt32 beforeFlags = 0;
+        UInt32 afterFlags = 0;
+        bool invoked = false;
+        __try
+        {
+            beforeFlags = mover->Unk_08();
+            reinterpret_cast<void(__thiscall*)(ActorMover*, UInt32)>(0x009EA3E0)(
+                mover, requestedFlags);
+            afterFlags = mover->Unk_08();
+            invoked = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            invoked = false;
+        }
+
+        if (emitTelemetry)
+        {
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"jam-sprint-movement-drive\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"enabled\":" << (enabled ? "true" : "false")
+                    << ",\"entryPoint\":10396640"
+                    << ",\"requestedFlags\":" << requestedFlags
+                    << ",\"beforeFlags\":" << beforeFlags
+                    << ",\"afterFlags\":" << afterFlags
+                    << ",\"invoked\":" << (invoked ? "true" : "false") << "}\n";
+            gOutput.flush();
+        }
+        return invoked && (!enabled || (afterFlags & forwardRunningKeyboard) == forwardRunningKeyboard);
+    }
+
+    void driveJamSprintMovement()
+    {
+        if (!gJamSprintMovementDrive)
+            return;
+        setJamSprintMovementState(true, false);
+        if (gConsole != nullptr)
+        {
+            gConsole->RunScriptLine2("player.SetActorVelocity Y -250", nullptr, true);
+            gConsole->RunScriptLine2("Call JVSOnKeyDownEventHandler 42", nullptr, true);
+        }
+    }
+
+    bool scheduledFireWeaponExact(Actor* actor, UInt32 animationGroup)
+    {
+        constexpr std::uintptr_t playerFireCallAddress = 0x00949CF1;
+        UInt8 opcode = 0;
+        std::int32_t displacement = 0;
+        std::uintptr_t callTarget = 0;
+        bool callable = safeRead(
+                            reinterpret_cast<const UInt8*>(playerFireCallAddress), opcode)
+            && opcode == 0xE8
+            && safeRead(
+                reinterpret_cast<const std::int32_t*>(playerFireCallAddress + 1), displacement);
+        if (callable)
+        {
+            callTarget = playerFireCallAddress + 5 + displacement;
+            MEMORY_BASIC_INFORMATION memory = {};
+            const SIZE_T queried
+                = VirtualQuery(reinterpret_cast<const void*>(callTarget), &memory, sizeof(memory));
+            const DWORD protection = queried == sizeof(memory) ? memory.Protect & 0xff : 0;
+            callable = queried == sizeof(memory) && memory.State == MEM_COMMIT
+                && (protection == PAGE_EXECUTE || protection == PAGE_EXECUTE_READ
+                    || protection == PAGE_EXECUTE_READWRITE
+                    || protection == PAGE_EXECUTE_WRITECOPY)
+                && (memory.Protect & (PAGE_GUARD | PAGE_NOACCESS)) == 0;
+        }
+
+        bool invoked = false;
+        bool engineAccepted = false;
+        if (callable && actor != nullptr && animationGroup < 256)
+        {
+            __try
+            {
+                engineAccepted
+                    = reinterpret_cast<bool(__thiscall*)(Actor*, UInt32)>(callTarget)(
+                        actor, animationGroup);
+                invoked = true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                invoked = false;
+                engineAccepted = false;
+            }
+        }
+
+        UInt32 actorReference = 0;
+        UInt32 actorBase = 0;
+        sidecarReadActorIdentity(actor, actorReference, actorBase);
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"scheduled-fire-weapon-exact\""
+                << ",\"frame\":" << gFrame
+                << ",\"actorRef\":" << actorReference
+                << ",\"actorBase\":" << actorBase
+                << ",\"animationGroup\":" << animationGroup
+                << ",\"callAddress\":" << playerFireCallAddress
+                << ",\"callTarget\":" << callTarget
+                << ",\"callable\":" << (callable ? "true" : "false")
+                << ",\"invoked\":" << (invoked ? "true" : "false")
+                << ",\"engineAccepted\":" << (engineAccepted ? "true" : "false")
+                << "}\n";
+        gOutput.flush();
+        return invoked;
+    }
+
+    bool scheduledFireWeaponMechanicsExact(Actor* actor, UInt32 weaponForm)
+    {
+        TESForm* form = lookupForm(weaponForm);
+        UInt8 type = 0;
+        if (actor == nullptr || form == nullptr
+            || !safeRead(&form->typeID, type) || type != kFormType_TESObjectWEAP)
+            return false;
+
+        TESObjectWEAP* weapon = static_cast<TESObjectWEAP*>(form);
+        BGSProjectile* projectile = nullptr;
+        BaseProcess* process = nullptr;
+        UInt8 processLevel = 0xff;
+        if (!safeRead(&weapon->projectile, projectile) || projectile == nullptr
+            || !safeRead(&actor->baseProcess, process) || process == nullptr
+            || !safeRead(&process->processLevel, processLevel) || processLevel != 0)
+            return false;
+
+        // This is the retail firing entry point used by JIP LN NVSE's
+        // FireWeaponEx. Temporarily clearing the runtime weapon/ammo records
+        // keeps this mechanics probe from consuming a second round when it is
+        // paired with the ordinary animation/input path.
+        MiddleHighProcess* middleHigh = static_cast<MiddleHighProcess*>(process);
+        MiddleHighProcess::WeaponInfo* savedWeaponInfo = nullptr;
+        BaseProcess::AmmoInfo* savedAmmoInfo = nullptr;
+        if (!safeRead(&middleHigh->weaponInfo, savedWeaponInfo)
+            || !safeRead(&middleHigh->ammoInfo, savedAmmoInfo))
+            return false;
+
+        bool invoked = false;
+        __try
+        {
+            middleHigh->weaponInfo = nullptr;
+            middleHigh->ammoInfo = nullptr;
+            reinterpret_cast<void(__thiscall*)(
+                TESObjectWEAP*, Actor*, BaseProcess*)>(0x00523150)(
+                weapon, actor, process);
+            invoked = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            invoked = false;
+        }
+
+        bool restored = false;
+        __try
+        {
+            middleHigh->weaponInfo = savedWeaponInfo;
+            middleHigh->ammoInfo = savedAmmoInfo;
+            restored = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            restored = false;
+        }
+
+        UInt32 actorReference = 0;
+        UInt32 actorBase = 0;
+        sidecarReadActorIdentity(actor, actorReference, actorBase);
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"scheduled-fire-weapon-mechanics-exact\""
+                << ",\"frame\":" << gFrame
+                << ",\"actorRef\":" << actorReference
+                << ",\"actorBase\":" << actorBase
+                << ",\"weaponForm\":" << weaponForm
+                << ",\"projectileForm\":" << sidecarSafeFormId(projectile)
+                << ",\"entryPoint\":5386576"
+                << ",\"invoked\":" << (invoked ? "true" : "false")
+                << ",\"runtimeStateRestored\":" << (restored ? "true" : "false")
+                << "}\n";
+        gOutput.flush();
+        return invoked && restored;
+    }
+
     bool runScheduledConsoleCommand(const ScheduledConsoleCommand& scheduled, TESObjectREFR* target)
     {
+        if (scheduled.targetForm == 0 && scheduled.command == "CaptureBackBuffer")
+            return scheduledCaptureBackBuffer();
+        if (scheduled.targetForm == 0 && scheduled.command == "EnableBackgroundInputPolling")
+            return scheduledEnableBackgroundInputPolling();
+        if (scheduled.targetForm == 0 && scheduled.command == "BeginJamSprintMovement")
+        {
+            gJamSprintMovementDrive = true;
+            return setJamSprintMovementState(true, true);
+        }
+        if (scheduled.targetForm == 0 && scheduled.command == "EndJamSprintMovement")
+        {
+            gJamSprintMovementDrive = false;
+            const bool movementCleared = setJamSprintMovementState(false, true);
+            const bool velocityCleared = gConsole != nullptr
+                && gConsole->RunScriptLine2("player.SetActorVelocity Y 0", nullptr, true);
+            return movementCleared && velocityCleared;
+        }
         UInt32 spawnBaseForm = 0;
         if (scheduled.targetForm == 0
             && sscanf_s(scheduled.command.c_str(), "SpawnActor %x", &spawnBaseForm) == 1
@@ -5784,6 +6841,40 @@ namespace
         }
         if (target != nullptr && target->IsActor_Runtime() && scheduled.command == "SetWeaponOut 1")
             return setWeaponOutUnsafe(static_cast<Actor*>(target));
+        UInt32 animationGroup = 0;
+        if (target != nullptr && target->IsActor_Runtime()
+            && sscanf_s(
+                   scheduled.command.c_str(), "FireWeaponExact %u", &animationGroup)
+                == 1)
+            return scheduledFireWeaponExact(static_cast<Actor*>(target), animationGroup);
+        UInt32 mechanicsWeaponForm = 0;
+        if (target != nullptr && target->IsActor_Runtime()
+            && sscanf_s(scheduled.command.c_str(),
+                   "FireWeaponMechanicsExact %x", &mechanicsWeaponForm)
+                == 1
+            && mechanicsWeaponForm != 0)
+            return scheduledFireWeaponMechanicsExact(
+                static_cast<Actor*>(target), mechanicsWeaponForm);
+        if (target != nullptr && target->IsActor_Runtime() && scheduled.command == "ForceFireWeapon")
+        {
+            Actor* actor = static_cast<Actor*>(target);
+            BaseProcess* process = nullptr;
+            UInt32 processLevel = 0xff;
+            if (!safeRead(&actor->baseProcess, process) || process == nullptr
+                || !safeRead(&process->processLevel, processLevel) || processLevel != 0)
+                return false;
+            bool applied = false;
+            __try
+            {
+                static_cast<HighProcess*>(process)->forceFireWeapon = 1;
+                applied = true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                applied = false;
+            }
+            return applied;
+        }
         UInt32 equipForm = 0;
         if (target != nullptr && target->IsActor_Runtime()
             && sscanf_s(scheduled.command.c_str(), "EquipExact %x", &equipForm) == 1
@@ -9062,6 +10153,9 @@ namespace
         captureTargetAppearance();
         captureAppearanceBatch();
         driveScheduledConsoleCommands();
+        driveJamSprintMovement();
+        if (gCaptureSession && gFrame % gSampleEvery == 0)
+            sidecarWriteCombatSessionTelemetry();
         if (!gScheduledCommands.empty() && gFrame % gSampleEvery == 0)
         {
             gOutput << "{\"schema\":" << sSchemaJson
@@ -9081,12 +10175,12 @@ namespace
             && gFrame >= gScreenshotFrames[gScreenshotFrameIndex])
         {
             const UInt32 requestedFrame = gScreenshotFrames[gScreenshotFrameIndex++];
-            const bool accepted = gConsole != nullptr
-                && gConsole->RunScriptLine2("TapKey 183", nullptr, true);
+            const bool accepted = scheduledCaptureBackBuffer();
             gOutput << "{\"schema\":" << sSchemaJson
                     << ",\"event\":\"screenshot-request\""
                     << ",\"frame\":" << gFrame
                     << ",\"requestedFrame\":" << requestedFrame
+                    << ",\"mode\":\"d3d9-backbuffer\""
                     << ",\"accepted\":" << (accepted ? "true" : "false") << "}\n";
             gOutput.flush();
         }
@@ -9267,6 +10361,8 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
         = (std::max)(1.f, envFloat("NIKAMI_ORACLE_OBSERVER_APPROACH_STEP_DISTANCE", 64.f));
     gAllHighActors = envUInt("NIKAMI_ORACLE_ALL_HIGH_ACTORS", 1) != 0;
     gCaptureAnimation = envUInt("NIKAMI_ORACLE_CAPTURE_ANIMATION", 1) != 0;
+    gCaptureSession = envUInt("NIKAMI_ORACLE_CAPTURE_SESSION", 0) != 0;
+    gSessionTargetForm = envUInt("NIKAMI_ORACLE_SESSION_TARGET_FORM", 0);
     gFurnitureOnly = envUInt("NIKAMI_ORACLE_FURNITURE_ONLY", 0) != 0;
     gExitAfterFurnitureRelease = envUInt("NIKAMI_ORACLE_EXIT_AFTER_FURNITURE_RELEASE", 0) != 0;
     gExitAfterFurnitureSettledSamples

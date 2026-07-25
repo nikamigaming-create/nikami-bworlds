@@ -2,6 +2,7 @@ param(
     [string]$GameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
     [string]$RuntimeRoot = "local\xnvse-retail-oracle",
     [string]$PluginDll = "local\xnvse-retail-oracle\plugins\nvse_retail_oracle.dll",
+    [string[]]$AdditionalPluginDll = @(),
     [string]$OutputPath = "run\retail-oracle\fnv-goodsprings-behavior.jsonl",
     [string]$SaveName = "Save 222     Goodsprings  00 01 36",
     [string]$SaveFixture = "",
@@ -717,6 +718,25 @@ $sourcePlugin = Resolve-AbsolutePath $PluginDll
 if (-not $sourcePlugin.Equals($manifestPlugin, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "PluginDll must be the manifest-verified RuntimeRoot plugin: $manifestPlugin"
 }
+$additionalPluginPaths = @($AdditionalPluginDll | ForEach-Object { Resolve-AbsolutePath $_ })
+$additionalPluginNames = @($additionalPluginPaths | ForEach-Object {
+    [System.IO.Path]::GetFileName($_).ToLowerInvariant()
+})
+if (@($additionalPluginNames | Select-Object -Unique).Count -ne $additionalPluginNames.Count) {
+    throw "AdditionalPluginDll contains duplicate destination names."
+}
+foreach ($additionalPlugin in $additionalPluginPaths) {
+    if (-not (Test-Path -LiteralPath $additionalPlugin -PathType Leaf) -or
+        [System.IO.Path]::GetExtension($additionalPlugin) -ine '.dll') {
+        throw "AdditionalPluginDll must name an existing DLL: $additionalPlugin"
+    }
+    if ($additionalPlugin.Equals($sourcePlugin, [System.StringComparison]::OrdinalIgnoreCase) -or
+        [System.IO.Path]::GetFileName($additionalPlugin).Equals(
+            [System.IO.Path]::GetFileName($sourcePlugin),
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "AdditionalPluginDll conflicts with the retail oracle plugin: $additionalPlugin"
+    }
+}
 
 $gameExe = Join-Path $gameRootPath 'FalloutNV.exe'
 $runToken = "$PID-$([Guid]::NewGuid().ToString('N'))"
@@ -872,6 +892,7 @@ if ($DryRun) {
         steamLoader = $steamLoader
         coreDll = $coreDll
         pluginSource = $sourcePlugin
+        additionalPluginDlls = @($additionalPluginPaths)
         ephemeralRunRoot = $ephemeralRunRoot
         isolatedPluginDirectory = $isolatedPluginDirectory
         retailPluginDirectoryUsed = $false
@@ -949,6 +970,9 @@ $runtimeEvidence = @(
     Get-FNVFileEvidence $PSCommandPath 'retail-oracle-runner'
     Get-FNVFileEvidence $evidenceHelperPath 'retail-oracle-evidence-helper'
 )
+$runtimeEvidence += @($additionalPluginPaths | ForEach-Object {
+    Get-FNVFileEvidence $_ 'isolated-additional-nvse-plugin'
+})
 $saveFixtureEvidence = @()
 if ($null -ne $resolvedSaveFixture) {
     foreach ($extension in @('.fos', '.nvse')) {
@@ -980,10 +1004,21 @@ try {
     }
     New-Item -ItemType Directory -Path $isolatedPluginDirectory -Force | Out-Null
     Copy-Item -LiteralPath $sourcePlugin -Destination $installedPlugin
+    $expectedInstalledPlugins = @($installedPlugin)
+    foreach ($additionalPlugin in $additionalPluginPaths) {
+        $additionalDestination = Join-Path $isolatedPluginDirectory (
+            [System.IO.Path]::GetFileName($additionalPlugin))
+        Copy-Item -LiteralPath $additionalPlugin -Destination $additionalDestination
+        $expectedInstalledPlugins += $additionalDestination
+    }
     $pluginEntries = @(Get-ChildItem -LiteralPath $isolatedPluginDirectory -Force)
-    if ($pluginEntries.Count -ne 1 -or $pluginEntries[0].PSIsContainer -or
-        -not $pluginEntries[0].FullName.Equals($installedPlugin, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Ephemeral xNVSE plugin directory must contain only nvse_retail_oracle.dll: $isolatedPluginDirectory"
+    $actualPluginPaths = @($pluginEntries | Where-Object { -not $_.PSIsContainer } |
+        ForEach-Object { $_.FullName.ToLowerInvariant() } | Sort-Object)
+    $expectedPluginPaths = @($expectedInstalledPlugins |
+        ForEach-Object { [System.IO.Path]::GetFullPath($_).ToLowerInvariant() } | Sort-Object)
+    if ($pluginEntries.Count -ne $expectedInstalledPlugins.Count -or
+        (Compare-Object -ReferenceObject $expectedPluginPaths -DifferenceObject $actualPluginPaths)) {
+        throw "Ephemeral xNVSE plugin directory differs from its exact isolated plugin set: $isolatedPluginDirectory"
     }
 
     if ($isolateRootHookDlls -and $plannedRootHookMoves.Count -gt 0) {
