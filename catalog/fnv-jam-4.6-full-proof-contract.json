@@ -1,0 +1,466 @@
+{
+  "schemaVersion": 1,
+  "contractId": "fnv-jam-4.6-full-parity-v1",
+  "asOf": "2026-07-24",
+  "purpose": "Hard acceptance gate for claiming that untouched JAM 4.6 runs through the native OpenMW xNVSE compatibility stack with retail-parity behavior.",
+  "claimAllowedOnlyWhenPassed": "Untouched JAM 4.6 executes all nine shipped gameplay modules through xNVSE-compatible command and event dispatch backed by real OpenMW systems.",
+  "fixture": {
+    "nexusFile": "JAM 4.6",
+    "archiveSha256": "D1101470496E7A8231CFF1355DC62E09B63C5BCEFE3974AB1E4AAC272098DF6B",
+    "plugin": "JustAssortedMods.esp",
+    "pluginSha256": "CFDC2B1807A57C8861335858DF96A2D08E546F93DFD8C390E8F5905F2694D8DE",
+    "expectedSctxCount": 52,
+    "allowedNativeDllCount": 0,
+    "pluginMustRemainUnmodified": true
+  },
+  "staticFootprint": {
+    "path": "fnv-jam-4.6-command-footprint.json",
+    "schemaVersion": 1,
+    "providerCounts": {
+      "xnvse-core": {
+        "activeUniqueSymbols": 109,
+        "activeOccurrences": 2988
+      },
+      "jip-ln": {
+        "activeUniqueSymbols": 120,
+        "activeOccurrences": 1716
+      },
+      "johnnyguitar": {
+        "activeUniqueSymbols": 13,
+        "activeOccurrences": 38
+      },
+      "knvse": {
+        "activeUniqueSymbols": 0,
+        "activeOccurrences": 0
+      }
+    },
+    "languageSemantics": {
+      "functionBlocks": 33,
+      "evalExpressions": 265,
+      "arrayVarDeclarations": 38,
+      "stringVarDeclarations": 11,
+      "indexedArrayExpressions": 123
+    },
+    "assets": {
+      "esp": 1,
+      "xml": 9,
+      "txt": 9,
+      "dds": 25,
+      "nif": 7,
+      "kf": 60,
+      "wav": 30
+    }
+  },
+  "runtimeGates": {
+    "parsedSctxCount": 52,
+    "compileErrorCount": 0,
+    "unknownCommandCount": 0,
+    "fallbackStubDispatchCount": 0,
+    "failedEventRegistrationCount": 0,
+    "failedSerializationRoundTripCount": 0,
+    "activeUniqueSymbolAudit": {
+      "xnvse-core": 109,
+      "jip-ln": 120,
+      "johnnyguitar": 13,
+      "knvse": 0
+    },
+    "coverageRule": "Every active provider command reached by the scenarios must have a successful dispatch and native-effect telemetry record. Every active command in the static JAM footprint must be implemented or explicitly proven unreachable under the recorded JAM configuration; returning zero from an unknown-command fallback is always a failure."
+  },
+  "capturePolicy": {
+    "continuousRawCaptureRequired": true,
+    "syntheticGameplayFramesAllowed": 0,
+    "unlabelledSplicesAllowed": 0,
+    "minimumScenarioSeconds": 3,
+    "requiredStillPhases": [
+      "before",
+      "action",
+      "after"
+    ],
+    "requiredStillSide": "side-by-side",
+    "requiredOverlayFields": [
+      "scenarioId",
+      "sourceScript",
+      "provider",
+      "commandOrEvent",
+      "enginePath",
+      "state"
+    ],
+    "overlayRule": "The overlay must be rendered from the same timestamped telemetry records consumed by the proof validator. Static or hand-authored plugin-loaded labels do not count.",
+    "comparisonRule": "Retail FNV and OpenMW must run the same save, configuration, input sequence, camera heading, route, target IDs, and scenario order. Each side remains visible throughout its scenario interval."
+  },
+  "requiredArtifacts": [
+    "retail-raw-video",
+    "openmw-raw-video",
+    "side-by-side-video",
+    "side-by-side-contact-sheet",
+    "telemetry-jsonl",
+    "static-footprint-json",
+    "command-coverage-json"
+  ],
+  "layers": [
+    {
+      "id": "xnvse-core",
+      "label": "xNVSE core",
+      "requiredAttestation": "Expression evaluation, arrays, strings, UDF invocation, event registration/dispatch, command dispatch, and save/reload serialization each produce a successful telemetry-backed state change."
+    },
+    {
+      "id": "jip-ln",
+      "label": "JIP LN",
+      "requiredAttestation": "Every JIP LN command used by a recorded JAM branch dispatches to a named native OpenMW engine path and produces its expected effect."
+    },
+    {
+      "id": "johnnyguitar",
+      "label": "JohnnyGuitar",
+      "requiredAttestation": "Every JohnnyGuitar callback or command used by a recorded JAM branch is raised by the corresponding native OpenMW event source and reaches the registered UDF."
+    },
+    {
+      "id": "knvse",
+      "label": "kNVSE",
+      "requiredAttestation": "Because JAM 4.6 has zero active direct kNVSE calls, a separately labelled provider probe must install, play, observe, and restore a real animation override through the native OpenMW animation controller. It must not be represented as a JAM command."
+    }
+  ],
+  "measurementRequirements": {
+    "JDC.dynamic-crosshair": [
+      "idleReticleExtentPixels",
+      "walkingReticleExtentPixels",
+      "activeReticleExtentPixels",
+      "recoveredReticleExtentPixels",
+      "adsMode",
+      "interactablePromptVisible",
+      "hostileSystemColor"
+    ],
+    "JHM.hit-marker": [
+      "normalHitHealthDelta",
+      "headshotOrCriticalHealthDelta",
+      "killHealthDelta",
+      "markerDisplaySeconds"
+    ],
+    "JHI.hit-indicator": [
+      "frontAngularErrorDegrees",
+      "rightAngularErrorDegrees",
+      "rearAngularErrorDegrees",
+      "leftAngularErrorDegrees",
+      "totalPlayerHealthDelta"
+    ],
+    "JLM.loot-menu": [
+      "containerItemCountBefore",
+      "containerItemCountAfter",
+      "playerItemCountBefore",
+      "playerItemCountAfter",
+      "duplicateTransferCount"
+    ],
+    "JVO.visual-objectives": [
+      "objectiveFormId",
+      "initialScreenX",
+      "initialScreenY",
+      "movedScreenX",
+      "movedScreenY",
+      "initialDistance",
+      "movedDistance"
+    ],
+    "JWH.weapon-wheel": [
+      "initialWeaponFormId",
+      "selectedSlice",
+      "selectedWeaponFormId",
+      "equippedWeaponFormId",
+      "cancelledWeaponFormId"
+    ],
+    "JBT.bullet-time": [
+      "normalTimeScale",
+      "activeTimeScale",
+      "resourceBefore",
+      "resourceAfter",
+      "restoredTimeScale"
+    ],
+    "JHB.hold-breath": [
+      "baselineSwayRms",
+      "activeSwayRms",
+      "resourceBefore",
+      "resourceAfter",
+      "restoredSwayRms"
+    ],
+    "JVS.sprint": [
+      "baselineSpeed",
+      "sprintSpeed",
+      "speedRatio",
+      "actionPointsBefore",
+      "actionPointsAfter",
+      "cloudDisplacementPerRealSecond",
+      "cloudDisplacementPerSimulationSecond"
+    ],
+    "JAM.configuration-persistence": [
+      "changedSettingCount",
+      "restoredSettingCount",
+      "restoredEventRegistrationCount",
+      "duplicateEventCount"
+    ],
+    "PROVIDER.knvse-animation": [
+      "overrideAnimationPath",
+      "overridePlayCount",
+      "restorePlayCount",
+      "leakedOverrideCount"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "JDC.dynamic-crosshair",
+      "title": "Just Dynamic Crosshair",
+      "priority": "flagship",
+      "sourcePrefix": "JDC",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln"
+      ],
+      "trigger": "Equip the matched firearm, hold the camera on the fixture target, stand still, walk, run, fire, recover, aim down sights, sweep across an interactable, and sweep across a hostile actor.",
+      "visibleStates": [
+        "weapon-ready-idle",
+        "walking-spread-expanded",
+        "running-or-firing-spread-expanded",
+        "stopped-spread-recovered",
+        "aim-down-sights-mode",
+        "interactable-prompt-coexistence",
+        "hostile-system-color"
+      ],
+      "assertions": [
+        "JAM's JDC XML and DDS assets render instead of a proof-drawn reticle.",
+        "The measured reticle extent increases with the computed spread and contracts after movement or firing stops.",
+        "The original vanilla reticle visibility, prompt, alpha, and system color transitions match retail.",
+        "Telemetry ties each visible change to JDC script execution, UI tile writes, weapon/ammo queries, and the native spread state."
+      ]
+    },
+    {
+      "id": "JHM.hit-marker",
+      "title": "Just Hit Marker",
+      "sourcePrefix": "JHM",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln",
+        "johnnyguitar"
+      ],
+      "trigger": "Land a normal body hit, a headshot or critical hit, and a killing hit on deterministic actors.",
+      "visibleStates": [
+        "normal-hit-marker",
+        "headshot-or-critical-marker",
+        "kill-marker",
+        "marker-faded"
+      ],
+      "assertions": [
+        "The marker is caused by a real projectile or weapon hit and coincides with target health loss.",
+        "Hit classification, marker mode, color, scale, and fade match retail.",
+        "The hit event reaches JAM's registered handler and the resulting UI writes are recorded."
+      ]
+    },
+    {
+      "id": "JHI.hit-indicator",
+      "title": "Just Hit Indicator",
+      "sourcePrefix": "JHI",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln",
+        "johnnyguitar"
+      ],
+      "trigger": "Receive deterministic hits from actors positioned in front, right, rear, and left quadrants.",
+      "visibleStates": [
+        "front-indicator",
+        "right-indicator",
+        "rear-indicator",
+        "left-indicator",
+        "indicator-faded"
+      ],
+      "assertions": [
+        "Each hit removes player health and produces the matching screen-space direction.",
+        "Indicator rotation, alpha, duration, and fade match retail.",
+        "Telemetry records attacker position, player heading, computed angle, event dispatch, and UI write."
+      ]
+    },
+    {
+      "id": "JLM.loot-menu",
+      "title": "Just Loot Menu",
+      "sourcePrefix": "JLM",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln",
+        "johnnyguitar"
+      ],
+      "trigger": "Aim at the deterministic container, scroll its list, take one item, take a stack, equip or use an eligible item, and move the crosshair away.",
+      "visibleStates": [
+        "crosshair-container-detected",
+        "loot-menu-visible",
+        "selection-scrolled",
+        "single-item-transferred",
+        "stack-transferred",
+        "menu-closed"
+      ],
+      "assertions": [
+        "The menu uses JAM's JLM XML and reflects the container's authoritative contents, counts, condition, and ownership.",
+        "Taking items mutates both the real container and player inventory exactly once.",
+        "Crosshair, inventory, key, scroll, and close-container event paths are recorded without opening a substitute proof menu."
+      ]
+    },
+    {
+      "id": "JVO.visual-objectives",
+      "title": "Just Visual Objectives",
+      "sourcePrefix": "JVO",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln",
+        "johnnyguitar"
+      ],
+      "trigger": "Activate the deterministic quest objective, rotate and translate the camera, walk toward it, then complete or deactivate it.",
+      "visibleStates": [
+        "objective-marker-visible",
+        "marker-screen-position-updated",
+        "distance-updated",
+        "offscreen-or-behind-camera-handled",
+        "completed-objective-hidden"
+      ],
+      "assertions": [
+        "The marker is bound to the real active objective target and uses JAM's JVO assets.",
+        "World-to-screen coordinates and displayed distance update while the camera and player move.",
+        "Objective query, coordinate callback, projection, and UI writes are recorded."
+      ]
+    },
+    {
+      "id": "JWH.weapon-wheel",
+      "title": "Just Weapon Wheel",
+      "sourcePrefix": "JWH",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln",
+        "johnnyguitar"
+      ],
+      "trigger": "Hold the configured wheel key, sweep across multiple populated slices, select a different weapon, release, reopen, and cancel.",
+      "visibleStates": [
+        "wheel-open",
+        "slice-one-highlighted",
+        "different-slice-highlighted",
+        "selected-weapon-equipped",
+        "wheel-closed",
+        "cancel-preserved-weapon"
+      ],
+      "assertions": [
+        "The wheel uses JAM's JWH XML and DDS assets and is populated from the real inventory.",
+        "Mouse or stick angle selects the same slice as retail and the chosen weapon is actually equipped.",
+        "Key, menu, tab, inventory, UDF, and equip paths are recorded."
+      ]
+    },
+    {
+      "id": "JBT.bullet-time",
+      "title": "Just Bullet Time",
+      "sourcePrefix": "JBT",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln",
+        "johnnyguitar"
+      ],
+      "trigger": "Activate bullet time, walk, aim, fire and hit a target while active, hold until the configured resource decreases, then deactivate.",
+      "visibleStates": [
+        "bullet-time-activated",
+        "world-slow-player-responsive",
+        "projectile-or-hit-slowed",
+        "resource-drained",
+        "normal-time-restored"
+      ],
+      "assertions": [
+        "Simulation time changes through the native time system while input, animation, audio, projectiles, and UI obey the retail policy.",
+        "The configured resource drains from the authoritative actor value and normal time is restored exactly once.",
+        "Key, main-loop, hit, fire-weapon, coordinate, UDF, time, and actor-value paths are recorded."
+      ]
+    },
+    {
+      "id": "JHB.hold-breath",
+      "title": "Just Hold Breath",
+      "sourcePrefix": "JHB",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln",
+        "johnnyguitar"
+      ],
+      "trigger": "Aim through a supported weapon sight, measure idle sway, hold the configured key, keep aiming until the resource decreases, then release.",
+      "visibleStates": [
+        "aiming-with-baseline-sway",
+        "hold-breath-active",
+        "sway-reduced",
+        "resource-drained",
+        "hold-breath-released",
+        "baseline-sway-restored"
+      ],
+      "assertions": [
+        "The observed weapon or camera sway falls while hold breath is active and returns after release.",
+        "Activation is rejected outside the valid aiming state and the configured resource changes only while active.",
+        "Key, aiming-state, spread or sway, actor-value, and UI paths are recorded."
+      ]
+    },
+    {
+      "id": "JVS.sprint",
+      "title": "Just Vanilla Sprint",
+      "sourcePrefix": "JVS",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln"
+      ],
+      "trigger": "From the save-relative heading minus 15 degrees, record a collision-free baseline run, sprint, turn while sprinting, jump if enabled, release, and recover.",
+      "visibleStates": [
+        "baseline-run",
+        "sprint-transition",
+        "sprint-at-speed",
+        "sprint-turn",
+        "sprint-release",
+        "action-points-recovering",
+        "jam-animation-visible",
+        "jam-sound-audible"
+      ],
+      "assertions": [
+        "Baseline and sprint speeds match the retail oracle within five percent and sprint ratio remains between 1.65 and 1.85.",
+        "Action Points drain during sprint and recover after release.",
+        "JAM's actual KF animation and WAV sound assets are observed by the native animation and audio systems.",
+        "Cloud displacement per real second and per simulation second matches retail within five percent, proving locomotion does not corrupt world time."
+      ]
+    },
+    {
+      "id": "JAM.configuration-persistence",
+      "title": "JAM configuration and save/reload persistence",
+      "sourcePrefix": "JAM/J*MCM",
+      "requiredLayers": [
+        "xnvse-core",
+        "jip-ln"
+      ],
+      "trigger": "Change one visible setting for every JAM module, save, quit to desktop, relaunch, load, verify all values and event registrations, then restore the fixture configuration.",
+      "visibleStates": [
+        "settings-changed",
+        "save-completed",
+        "process-restarted",
+        "save-loaded",
+        "settings-restored-from-storage",
+        "event-handlers-restored"
+      ],
+      "assertions": [
+        "Arrays, strings, globals, UDF references, registered events, INI values, and compatibility-owned serialized state round-trip according to retail semantics.",
+        "Every module remains functional after reload, demonstrated by one short post-load action per module.",
+        "No stale callback, duplicate event, double item transfer, double resource drain, or duplicate UI node appears."
+      ]
+    },
+    {
+      "id": "PROVIDER.knvse-animation",
+      "title": "kNVSE provider attestation",
+      "sourcePrefix": "compatibility probe (not JAM)",
+      "requiredLayers": [
+        "xnvse-core",
+        "knvse"
+      ],
+      "trigger": "Run the labelled compatibility probe against a real JAM sprint KF asset: install override, play it, observe animation-controller state, remove override, and replay the original animation.",
+      "visibleStates": [
+        "probe-labelled-not-jam",
+        "override-installed",
+        "override-animation-visible",
+        "override-removed",
+        "original-animation-restored"
+      ],
+      "assertions": [
+        "The overlay explicitly states that JAM 4.6 has zero active direct kNVSE calls.",
+        "A real kNVSE-compatible call reaches the native animation controller and visibly changes the played animation.",
+        "The override is removed cleanly and does not leak into subsequent JAM scenarios."
+      ]
+    }
+  ]
+}
