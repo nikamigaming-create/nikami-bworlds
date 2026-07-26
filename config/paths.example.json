@@ -5,6 +5,14 @@
   "openmwBinaryRoot": "X:/path/to/external/openmw-source/MSVC2022_64/Release",
   "openmwResources": "X:/path/to/external/openmw-source/MSVC2022_64/Release/resources",
   "fnvRoot": "X:/path/to/fnv-modlist-or-launcher-root",
+  "fallout3Data": "X:/path/to/Fallout 3 goty/Data",
+  "falloutNewVegasData": "X:/path/to/Fallout New Vegas/Data",
+  "ttwRoot": "X:/path/to/MO2/mods/Tale of Two Wastelands",
+  "jamRoot": "X:/path/to/Just-Assorted-Mods",
+  "bennyHumblesRoot": "X:/path/to/(Benny Humbles You) and Steals Your Stuff",
+  "ttwBiReputationChecksRoot": "X:/path/to/TTW-BiReputationChecks",
+  "delayDlcReduxTtwRoot": "X:/path/to/Delay-DLC-Redux-TTW",
+  "capitalWastelandAdjustmentsRoot": "X:/path/to/TTW-Capital-Wasteland-Adjustments",
   "steamAppsRoots": [
     "X:/SteamLibrary/steamapps"
   ]
