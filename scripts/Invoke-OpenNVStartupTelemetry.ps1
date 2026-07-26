@@ -116,7 +116,19 @@ $plan = [ordered]@{
 [IO.File]::WriteAllText((Join-Path $reportRoot "plan.json"), (($plan | ConvertTo-Json -Depth 6) + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
 
 $previousEnvironment = Clear-AuthenticStartOverrides
-$previousEnvironment["OPENMW_DEBUG_LEVEL"] = [Environment]::GetEnvironmentVariable("OPENMW_DEBUG_LEVEL", "Process")
+$ownedEnvironmentNames = @(
+    "OPENMW_DEBUG_LEVEL",
+    "OPENMW_COMPAT_TELEMETRY_PATH",
+    "OPENMW_COMPAT_TELEMETRY_SCENARIO",
+    "OPENMW_COMPAT_TELEMETRY_REQUIRED_QUESTS",
+    "OPENMW_COMPAT_TELEMETRY_FRAME",
+    "OPENMW_COMPAT_TELEMETRY_EXIT_AFTER_WRITE"
+)
+foreach ($name in $ownedEnvironmentNames) {
+    if (-not $previousEnvironment.ContainsKey($name)) {
+        $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+    }
+}
 try {
     [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_LEVEL", "INFO", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_COMPAT_TELEMETRY_PATH", $reportPath, "Process")
