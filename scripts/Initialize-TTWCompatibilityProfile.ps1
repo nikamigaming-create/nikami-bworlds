@@ -617,12 +617,12 @@ if ($DryRun) {
 }
 else {
     New-ProfileTextFile -Path $openmwConfigPath -Text $openmwConfigText -Description "TTW OpenMW configuration" -AllowReplace:$Force | Out-Null
-    $settingsTemplate = Join-Path $repoRoot "profiles/fallout_new_vegas/settings.cfg"
+    $settingsTemplate = Join-Path $repoRoot "templates/open-nv/settings.cfg"
     if (-not (Test-Path -LiteralPath $settingsTemplate -PathType Leaf)) {
         throw "Missing FNV settings template: $settingsTemplate"
     }
     Ensure-ProfileTemplateFile -Source $settingsTemplate -Destination $settingsPath -Description "TTW settings.cfg" | Out-Null
-    $inputTemplate = Join-Path $repoRoot "profiles/fallout_new_vegas/input_v3.xml"
+    $inputTemplate = Join-Path $repoRoot "templates/open-nv/input_v3.xml"
     if (Test-Path -LiteralPath $inputTemplate -PathType Leaf) {
         Ensure-ProfileTemplateFile -Source $inputTemplate -Destination $inputPath -Description "TTW input_v3.xml" | Out-Null
     }

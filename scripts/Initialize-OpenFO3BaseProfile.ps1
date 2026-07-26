@@ -250,8 +250,13 @@ if ($DryRun) {
 else {
     New-Item -ItemType Directory -Path $ProfileDirectory, $userdataDirectory, $userdataDataDirectory -Force | Out-Null
     Write-ProfileTextFile -Path $openmwConfigPath -Text $openmwConfigText -Description "OpenFO3 OpenMW configuration" -AllowReplace:$Force | Out-Null
-    Ensure-ProfileTemplateFile -Source (Join-Path $repoRoot "profiles/fallout3/settings.cfg") -Destination $settingsPath
-    Ensure-ProfileTemplateFile -Source (Join-Path $repoRoot "profiles/fallout3/input_v3.xml") -Destination $inputPath
+    Ensure-ProfileTemplateFile -Source (Join-Path $repoRoot "templates/open-nv/settings.cfg") -Destination $settingsPath
+    # Let OpenMW create its default controls when the release ships no custom
+    # input map, rather than requiring a generated developer profile.
+    $inputTemplate = Join-Path $repoRoot "templates/open-nv/input_v3.xml"
+    if (Test-Path -LiteralPath $inputTemplate -PathType Leaf) {
+        Ensure-ProfileTemplateFile -Source $inputTemplate -Destination $inputPath
+    }
     [IO.File]::WriteAllText($manifestPath, $manifestText, [Text.UTF8Encoding]::new($false))
     Write-Host "Prepared isolated OpenFO3 vanilla profile: $ProfileDirectory"
 }

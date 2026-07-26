@@ -285,8 +285,14 @@ if ($DryRun) {
 else {
     New-Item -ItemType Directory -Path $ProfileDirectory, $userdataDirectory, $userdataDataDirectory -Force | Out-Null
     Write-ProfileTextFile -Path $openmwConfigPath -Text $openmwConfigText -Description "OpenNV OpenMW configuration" -AllowReplace:$Force | Out-Null
-    Ensure-ProfileTemplateFile -Source (Join-Path $repoRoot "profiles/fallout_new_vegas/settings.cfg") -Destination $settingsPath
-    Ensure-ProfileTemplateFile -Source (Join-Path $repoRoot "profiles/fallout_new_vegas/input_v3.xml") -Destination $inputPath
+    Ensure-ProfileTemplateFile -Source (Join-Path $repoRoot "templates/open-nv/settings.cfg") -Destination $settingsPath
+    # When no profile-local input map exists, OpenMW creates its own defaults.
+    # That makes a packaged release usable without inheriting a developer's
+    # generated controls file.
+    $inputTemplate = Join-Path $repoRoot "templates/open-nv/input_v3.xml"
+    if (Test-Path -LiteralPath $inputTemplate -PathType Leaf) {
+        Ensure-ProfileTemplateFile -Source $inputTemplate -Destination $inputPath
+    }
     [IO.File]::WriteAllText($manifestPath, $manifestText, [Text.UTF8Encoding]::new($false))
     Write-Host "Prepared isolated OpenNV $(if ($IncludeJam) { 'JAM' } else { 'vanilla' }) profile: $ProfileDirectory"
 }
