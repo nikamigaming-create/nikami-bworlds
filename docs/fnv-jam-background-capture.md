@@ -71,8 +71,10 @@ Both engines, sequentially:
 ## Path A: retail FNV
 
 The retail oracle is loaded through an isolated xNVSE overlay. Its schedule
-executes real xNVSE/JIP/JohnnyGuitar commands in-process. `HoldKey` and
-`ReleaseKey` drive the retail input layer; the host never sends a key.
+executes real xNVSE/JIP/JohnnyGuitar commands in-process. The named
+`StartNewCharacter` action observes the live StartMenu and uses xNVSE buffered
+menu events (`MenuHoldKey`/`MenuReleaseKey`, then a verified `MenuTapKey` for
+the final confirmation); the host never sends a key.
 
 At frame 845, `EnableBackgroundInputPolling`:
 
@@ -150,6 +152,76 @@ OpenMW acceptance requires:
 If the title recorder fails, check exact window title, ffmpeg availability,
 window minimization, and capture logs. Do not fall back to clicking or
 foreground activation.
+
+## Authored opening comparison route
+
+## TestMap01 renderer diagnostic
+
+This is a deliberately separate, non-gameplay visual diagnostic for the FNV
+developer cell `TestMap01`. It proves that the selected OpenMW runtime can
+render that cell without the pervasive magenta, brown-void, black, or missing
+legacy-water fallback seen during recovery. It does **not** prove the authored
+New Vegas opening; the explicit start-cell override is recorded as such.
+
+Run its dedicated preflight and capture only through the canonical entry point:
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario TestMap -RuntimeReady -RequireIdle
+
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario TestMap `
+  -OutputRoot .\run\opennv-testmap-clean-<unique>
+```
+
+The output retains an engine-native `TestMap01-native.png`, an exact-title raw
+transport MP4, and a mobile-friendly MP4 made from that retained native frame.
+The report rejects a pervasive-magenta native frame and missing legacy-water
+fallbacks. No focus action, click, keyboard injection, or in-game console is
+used.
+
+## Authored opening comparison route
+
+The opening route is a separate, declared OpenMW TTW capture scenario. It is
+for comparing the actual authored `PlayBink` opening and its immediate Vault
+101 nursery handoff, not for claiming that a source Bink file alone is game
+playback.
+
+Run its dedicated preflight first:
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario Opening -RuntimeReady -RequireIdle
+```
+
+Then record it through the same entry point:
+
+```powershell
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario Opening `
+  -OutputRoot .\run\opennv-ttw-opening-<unique>
+```
+
+The engine receives the authored `PlayBink` source command normally. A
+generic, environment-configured capture gate pauses only the named video until
+the exact-title recorder is live, then resumes it and stops it at the explicit
+capture duration. The gate is neither a content replacement nor simulated
+player input; it records marker files and log events so the timing is
+auditable.
+
+The raw MP4 retains the lead-in, exact-title transport video, and a DirectShow
+Stereo Mix audio track. The engine also retains a profile-local sequence of
+native framebuffer screenshots; the runner hashes and copies those frames,
+then makes the presentation copy from that sequence plus the retained audio.
+This matters on GPU backends where Windows title capture returns a black client
+surface even though the engine is rendering normally. A black exact-title video
+is never accepted as visual proof.
+
+The report rejects a run unless the native frames are contiguous and visibly
+changing, the presentation retains one audible audio stream, the movie gate and
+completion are proven, and character-generation overlay suppression is active
+after the handoff. Keep other desktop audio quiet during this run because Stereo
+Mix records audible system output.
 
 ## Provenance and recovery
 

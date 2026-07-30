@@ -9,7 +9,10 @@ param(
     [string[]]$RequiredQuest = @(),
     [ValidateRange(1, 3600)]
     [int]$Frame = 120,
-    [ValidateRange(1, 60)]
+    # The authored FNV opening includes a real Bink movie before the first
+    # gameplay frame.  Keep the short default, but permit a bounded longer
+    # unattended validation instead of misclassifying the movie as a hang.
+    [ValidateRange(1, 600)]
     [int]$TimeoutSeconds = 60
 )
 
@@ -118,6 +121,11 @@ $plan = [ordered]@{
 $previousEnvironment = Clear-AuthenticStartOverrides
 $ownedEnvironmentNames = @(
     "OPENMW_DEBUG_LEVEL",
+    # This helper deliberately runs an isolated engine process without foreground
+    # UI control. A modal SDL fatal dialog would otherwise hide the actual error
+    # and make the test wait until its timeout. The exception is still written
+    # to the profile-local OpenMW log by Debug::wrapApplication.
+    "OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG",
     "OPENMW_COMPAT_TELEMETRY_PATH",
     "OPENMW_COMPAT_TELEMETRY_SCENARIO",
     "OPENMW_COMPAT_TELEMETRY_REQUIRED_QUESTS",
@@ -131,6 +139,7 @@ foreach ($name in $ownedEnvironmentNames) {
 }
 try {
     [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_LEVEL", "INFO", "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_COMPAT_TELEMETRY_PATH", $reportPath, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_COMPAT_TELEMETRY_SCENARIO", $scenarioName, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_COMPAT_TELEMETRY_REQUIRED_QUESTS", ($RequiredQuest -join ','), "Process")
@@ -167,6 +176,7 @@ if ([string]$telemetry.schema -cne "opennv-compat-telemetry/v1") {
     gaps = @($telemetry.gaps)
     player = $telemetry.player
     chargenState = $telemetry.chargenState
+    newGame = $telemetry.newGame
     quests = @($telemetry.quests)
     launch = $telemetry.launch
 } | ConvertTo-Json -Depth 8

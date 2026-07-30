@@ -12,6 +12,8 @@ param(
     [switch]$AllowDuplicate,
     [switch]$SkipMenu,
     [switch]$NewGame,
+    [ValidateSet("ERROR", "WARNING", "INFO", "VERBOSE", "DEBUG")]
+    [string]$OpenMWLogLevel = "WARNING",
     [string]$LoadSavegame = "",
     [string]$StartCell = "",
     [string[]]$ExtraArgs = @(),
@@ -134,7 +136,7 @@ if (-not $AllowDuplicate -and (Get-Process -Name $processName -ErrorAction Silen
 Clear-NikamiWorldViewerRuntimeEnvironment
 $previousDebugLevel = [Environment]::GetEnvironmentVariable("OPENMW_DEBUG_LEVEL", "Process")
 try {
-    [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_LEVEL", "INFO", "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_LEVEL", $OpenMWLogLevel, "Process")
     $process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory (Split-Path -Parent $binary) -PassThru
 }
 finally {

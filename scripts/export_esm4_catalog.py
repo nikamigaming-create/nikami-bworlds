@@ -297,6 +297,7 @@ class ESM4Catalog:
                     "rot": fields.get("rot"),
                     "editorId": fields.get("editorId", ""),
                 }
+                placement["matches"] = self.record_matches_terms(placement)
                 self.placements.append(placement)
 
             offset = data_end
@@ -306,6 +307,8 @@ class ESM4Catalog:
         for record in self.records.values():
             if record.get("matches"):
                 term_records.append(record)
+
+        term_placements = [placement for placement in self.placements if placement.get("matches")]
 
         base_matches = {int(record["id"], 16): record for record in term_records}
         for placement in self.placements:
@@ -398,6 +401,7 @@ class ESM4Catalog:
             },
             "worlds": worlds,
             "termRecords": term_records[:1000],
+            "termPlacements": term_placements[:1000],
             "topCells": top_cells,
             "topActorCells": top_actor_cells,
         }

@@ -3,6 +3,31 @@
 OpenNV keeps official game files, the TTW output, and mod source directories
 immutable. It creates only generated profiles under `profiles/`.
 
+## Launcher
+
+Run the clickable campaign chooser:
+
+```powershell
+.\scripts\Start-OpenNVLauncher.ps1
+```
+
+It offers the five supported launch choices: New Vegas, New Vegas + JAM,
+standalone Fallout 3, TTW, and TTW + JAM. Before launch it reads the same
+preflight model as the headless launcher, shows which optional modules are
+ready or deliberately gated, and never accepts a `Downloads` or experimental
+lab data layer as a normal game profile.
+
+The launcher refreshes an older **launcher-generated** `openmw.cfg` only after
+preserving the previous file under that profile's `launcher-config-backups/`
+directory. A manually customized profile remains protected and requires an
+explicit `-ForceProfileConfig` decision from the headless launcher.
+
+Run the read-only regression gate at any time:
+
+```powershell
+.\scripts\Test-OpenNVLauncher.ps1
+```
+
 Choose the campaign **before creating a character**:
 
 | Campaign | What it is | JAM option |

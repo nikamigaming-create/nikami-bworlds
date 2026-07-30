@@ -84,6 +84,137 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -OutputRoot .\\run\\jam-background-openmw-<unique> -SkipBuild"
     }
   ],
+  "openingRecipes": [
+    {
+      "id": "retail-ttw-fresh-opening-native-v1",
+      "target": "Retail",
+      "campaign": "TTW",
+      "runner": "scripts/Invoke-RetailTTWOpeningCapture.ps1",
+      "captureMethod": "xNVSE reads the live TTW FalloutNV Direct3D 9 backbuffer and writes engine-frame-labelled BMP source frames; ffmpeg encodes only those retained native frames",
+      "driverMethod": "the in-process xNVSE StartNewCharacter action waits for the live retail StartMenu, resolves and verifies the authored New ListBox row through retail's buffered menu-input queue, observes the confirmation ListBox until its selected tile is Yes, issues one verified xNVSE MenuTapKey Enter event, and waits for the native NVSE NewGame message",
+      "backgroundInputMethod": "the oracle may reconfigure only the DirectInput keyboard to DISCL_BACKGROUND | DISCL_NONEXCLUSIVE; all StartNewCharacter UI actions use xNVSE's in-process buffered menu-input queue and no host keyboard or mouse input is sent",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "screens/frame-*.bmp",
+      "telemetryPattern": "retail-opening.jsonl",
+      "manifestPattern": "retail-opening.jsonl.manifest.json; retail-opening-report.json",
+      "videoPattern": "Retail-TTW-opening-20s-plus-nursery-native.mp4",
+      "requiredTelemetry": [
+        "two accepted bootstrap-console-command events",
+        "exactly one native new-game-observed event",
+        "background keyboard polling accepted with one reconfigured keyboard and zero non-keyboards",
+        "every scheduled-backbuffer-capture is accepted",
+        "native source frame count equals requested frame count",
+        "session telemetry is retained after the NewGame gate"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario Opening -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario Opening -OutputRoot .\\run\\retail-ttw-opening-<unique>"
+    },
+    {
+      "id": "opennv-ttw-authored-opening-with-audio-v1",
+      "target": "OpenMW",
+      "campaign": "TTW",
+      "runner": "scripts/Invoke-OpenNVOpeningCapture.ps1",
+      "captureMethod": "OpenMW's native ScreenCaptureHandler retains framebuffer screenshots for the presentation video while ffmpeg gdigrab retains the exact OpenMW title and DirectShow Stereo Mix audio as a separately hashed transport artifact",
+      "driverMethod": "the authored TTW PlayBink command reaches a generic engine video gate; the gate releases only after the exact-title/audio recorder is live and limits playback by an explicit capture duration",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent; the capture gate uses profile-local marker files only",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "native-source-frames/screenshot*.png; OpenNV-TTW-authored-opening-raw-with-audio.mp4",
+      "telemetryPattern": "openmw.stdout.log; profile-local openmw.log",
+      "manifestPattern": "opening-capture-report.json",
+      "videoPattern": "OpenNV-TTW-authored-opening-20s-plus-nursery-with-audio.mp4",
+      "requiredTelemetry": [
+        "authored PlayBink video gate ready and opened",
+        "authored video reaches the explicit capture duration",
+        "PlayBink completes before the nursery capture window",
+        "character-generation overlay suppression is active after the handoff",
+        "contiguous OpenMW-native framebuffer source frames are retained and form a changing visible presentation video",
+        "one audible AAC stream is retained in the presentation video"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario Opening -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario Opening -OutputRoot .\\run\\opennv-ttw-opening-<unique>"
+    },
+                            {
+                              "id": "opennv-newvegas-authored-opening-with-audio-v1",
+      "target": "OpenMW",
+      "campaign": "NewVegas",
+      "runner": "scripts/Invoke-OpenNVOpeningCapture.ps1",
+      "captureMethod": "OpenMW's native ScreenCaptureHandler retains framebuffer screenshots for the presentation video while ffmpeg gdigrab retains the exact OpenMW title and DirectShow Stereo Mix audio as a separately hashed transport artifact",
+      "driverMethod": "the installed FalloutNV.esm VCG00 PlayBink source command reaches a generic engine video gate; after the explicit capture duration the authored VCG01 script continues at Doc Mitchell’s house",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent; the capture gate and default dialogue/name choices are engine-owned and auditable",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "native-source-frames/screenshot*.png; OpenNV-NewVegas-authored-opening-raw-with-audio.mp4",
+      "telemetryPattern": "openmw.stdout.log; profile-local openmw.log",
+      "manifestPattern": "opening-capture-report.json",
+      "videoPattern": "OpenNV-NewVegas-authored-opening-20s-plus-doc-mitchell-with-audio.mp4",
+      "requiredTelemetry": [
+        "authored FNVIntro PlayBink video gate ready and opened",
+        "VCG00 stage zero runs from the installed master and places the courier at VCG01PlayerStartMarkerREF",
+        "VCG01 begins its authored Doc Mitchell handoff",
+        "default name and character-choice path are accepted only through engine UI callbacks",
+        "contiguous OpenMW-native framebuffer source frames are retained and form a changing visible presentation video",
+        "one audible AAC stream is retained in the presentation video"
+      ],
+                              "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario Opening -OpeningCampaign NewVegas -RuntimeReady -RequireIdle",
+                              "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario Opening -OpeningCampaign NewVegas -OutputRoot .\\run\\opennv-newvegas-opening-<unique>"
+                           },
+                           {
+                              "id": "opennv-newvegas-authored-opening-vigor-with-audio-v1",
+                              "target": "OpenMW",
+                              "campaign": "NewVegas",
+                              "runner": "scripts/Invoke-OpenNVOpeningCapture.ps1",
+                              "authoredRoute": "catalog/opennv-authored-newvegas-doc-route.json",
+                               "captureMethod": "OpenMW's native ScreenCaptureHandler retains framebuffer screenshots for the presentation video while ffmpeg gdigrab retains the exact OpenMW title and DirectShow Stereo Mix audio as a separately hashed transport artifact",
+                              "driverMethod": "the installed FalloutNV.esm VCG00/VCG01 sources execute normally; a manifest-declared engine route enters the authored Vigor Tester trigger and activates the placed Vit-o-matic reference",
+                              "backgroundInputMethod": "no host keyboard or mouse input is sent; movement and activation use the engine's generic route boundary and all source frames/telemetry are retained",
+                              "foregroundRequired": false,
+                              "windowsAppControlUsed": false,
+                               "sourceFramePattern": "native-source-frames/screenshot*.png; OpenNV-NewVegas-authored-opening-raw-with-audio.mp4",
+                              "telemetryPattern": "openmw.stdout.log; profile-local openmw.log; authored-route-report.json",
+                              "manifestPattern": "opening-capture-report.json; authored-route-report.json",
+                              "videoPattern": "OpenNV-NewVegas-authored-opening-20s-plus-doc-mitchell-vigor-with-audio.mp4",
+                              "requiredTelemetry": [
+                                 "authored FNVIntro PlayBink video gate ready and opened",
+                                 "VCG01 stage 55 enables walking and its placed Vigor Tester trigger advances to stage 60",
+                                 "VCG01VigorTesterREF receives its authored OnActivate event",
+                                  "ShowLoveTesterMenuParams applies a valid native 40-point default SPECIAL selection",
+                                  "VCG01 advances through stage 65 to Doc Mitchell's post-Vit-o-matic reaction",
+                                  "contiguous OpenMW-native framebuffer source frames are retained and form a changing visible presentation video",
+                                  "one audible AAC stream is retained in the presentation video"
+                              ],
+                              "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario Opening -OpeningCampaign NewVegas -RuntimeReady -RequireIdle",
+                              "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario Opening -OpeningCampaign NewVegas -OpeningAuthoredRoutePath .\\catalog\\opennv-authored-newvegas-doc-route.json -OutputRoot .\\run\\opennv-newvegas-opening-vigor-<unique>"
+                           }
+  ],
+  "diagnosticRecipes": [
+    {
+      "id": "opennv-testmap01-clean-native-v1",
+      "target": "OpenMW",
+      "diagnosticOnly": true,
+      "runner": "scripts/Invoke-OpenNVTestMapDiagnostic.ps1",
+      "captureMethod": "OpenMW ScreenCaptureHandler retains one native framebuffer PNG while ffmpeg retains an exact-title OpenMW transport MP4; a five-second mobile MP4 is encoded only from the retained native PNG",
+      "driverMethod": "explicit --skip-menu --start TestMap01 bypass with the installed TestMap01 worldspace form ID and a generic exterior-grid placement; it is never an authored-start or gameplay proof",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent; the native screenshot is queued by the engine's existing screenshot-frame hook",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "TestMap01-native.png; OpenMW-TestMap01-exact-title-raw.mp4",
+      "telemetryPattern": "openmw.stdout.log; profile-local openmw.log",
+      "manifestPattern": "testmap-diagnostic-report.json",
+      "videoPattern": "OpenMW-TestMap01-native-frame-mobile.mp4",
+      "requiredTelemetry": [
+        "explicit TestMap01 worldspace and exterior-grid placement are observed",
+        "native framebuffer frame passes pervasive-magenta, black, brown-void, and flat-color checks",
+        "legacy Morrowind water and _land_default missing-image fallbacks are absent",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario TestMap -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario TestMap -OutputRoot .\\run\\opennv-testmap-clean-<unique>"
+    }
+  ],
   "knownGoodEvidence": {
     "retailSmoke": "run/jam-background-smoke-20260725-ar",
     "retailFull": "run/jam-background-retail-release-20260725-as",

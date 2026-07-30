@@ -10,13 +10,17 @@ param(
     [string]$BinaryRoot = "",
     [switch]$DryRun,
     [switch]$AllowPartialInstall,
-    [switch]$Force
+    [switch]$Force,
+    # Used only by Start-OpenNV.ps1 to migrate a launcher-owned generated
+    # openmw.cfg after first preserving it under the profile.
+    [switch]$UpgradeGeneratedProfile
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+. (Join-Path $PSScriptRoot "OpenNVProfileConfig.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $ttwContent = @(
@@ -256,6 +260,74 @@ function Get-TtwInstallAssessment {
     }
 }
 
+function Resolve-PreferredTtwRoot {
+    param(
+        [string]$ParameterValue,
+        [Parameter(Mandatory=$true)][bool]$ExplicitRoot,
+        [Parameter(Mandatory=$true)][string]$ProfilesRoot
+    )
+
+    $configuredRoot = Resolve-NikamiPath `
+        -ParameterValue $ParameterValue `
+        -EnvName "NIKAMI_TTW_ROOT" `
+        -ConfigName "ttwRoot"
+
+    if ($ExplicitRoot) {
+        if ([string]::IsNullOrWhiteSpace($configuredRoot)) {
+            throw "Missing TTW mod directory. Pass -TtwRoot with the complete official installer output."
+        }
+        return [pscustomobject]@{
+            root = Resolve-ExistingDirectory -Path $configuredRoot -Description "TTW mod directory"
+            source = "explicit"
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($configuredRoot) -and
+        (Test-Path -LiteralPath $configuredRoot -PathType Container)) {
+        $configuredFull = Resolve-ExistingDirectory -Path $configuredRoot -Description "configured TTW mod directory"
+        if ((Get-TtwInstallAssessment -Root $configuredFull).complete) {
+            return [pscustomobject]@{ root = $configuredFull; source = "configured" }
+        }
+    }
+
+    # A launcher must not regress from a previously verified full TTW install to
+    # a smaller source archive just because an old local path remains configured.
+    # The profile manifests are generated data, so this uses recorded installation
+    # evidence rather than a machine-specific path or a content-specific override.
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($manifestPath in @(Get-ChildItem -LiteralPath $ProfilesRoot -Recurse -File -Filter "ttw-compatibility-profile.json" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending)) {
+        try {
+            $manifest = Get-Content -LiteralPath $manifestPath.FullName -Raw | ConvertFrom-Json
+            $candidate = [string]$manifest.sources.ttwRoot
+            if (-not [bool]$manifest.installAssessment.complete -or [string]::IsNullOrWhiteSpace($candidate)) {
+                continue
+            }
+            $candidate = [IO.Path]::GetFullPath($candidate)
+            if (-not $seen.Add($candidate) -or -not (Test-Path -LiteralPath $candidate -PathType Container)) {
+                continue
+            }
+            $candidate = Resolve-ExistingDirectory -Path $candidate -Description "verified TTW mod directory"
+            if ((Get-TtwInstallAssessment -Root $candidate).complete) {
+                Write-Warning "Configured TTW root is incomplete; using the verified full TTW install recorded in $($manifestPath.FullName): $candidate"
+                return [pscustomobject]@{ root = $candidate; source = "verified-profile" }
+            }
+        }
+        catch {
+            Write-Warning "Ignoring unreadable TTW profile manifest $($manifestPath.FullName): $($_.Exception.Message)"
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($configuredRoot)) {
+        return [pscustomobject]@{
+            root = Resolve-ExistingDirectory -Path $configuredRoot -Description "TTW mod directory"
+            source = "configured-partial"
+        }
+    }
+
+    throw "Could not locate a TTW mod directory. Pass -TtwRoot with the complete official installer output."
+}
+
 function Assert-ArchiveFile {
     param(
         [Parameter(Mandatory=$true)][string]$Directory,
@@ -276,34 +348,93 @@ function Test-NameInList {
     return @($Names | Where-Object { $_ -ieq $Name }).Count -gt 0
 }
 
+function New-TtwDataLayer {
+    param(
+        [Parameter(Mandatory=$true)][string]$Id,
+        [Parameter(Mandatory=$true)][string]$Role,
+        [Parameter(Mandatory=$true)][string]$Description,
+        [Parameter(Mandatory=$true)][string]$SourcePath,
+        [Parameter(Mandatory=$true)][int]$Priority
+    )
+
+    return [pscustomobject][ordered]@{
+        id = $Id
+        role = $Role
+        description = $Description
+        sourcePath = [IO.Path]::GetFullPath($SourcePath)
+        priority = $Priority
+    }
+}
+
+function Resolve-TtwLayeredFile {
+    param(
+        [Parameter(Mandatory=$true)][object[]]$Layers,
+        [Parameter(Mandatory=$true)][string]$Id,
+        [Parameter(Mandatory=$true)][string]$RelativePath,
+        [AllowEmptyString()][string]$RequiredLayerId = "",
+        [AllowEmptyCollection()][object[]]$PlannedAliasRecords = @()
+    )
+
+    # OpenMW's VFS takes the last data= entry which contains a file.  Walk the
+    # declared layers in the same order so the manifest records the actual
+    # provider rather than merely assuming that the generated TTW directory
+    # happens to be complete.
+    $winner = $null
+    foreach ($layer in $Layers) {
+        $candidate = Join-Path ([string]$layer.sourcePath) $RelativePath
+        $resolvedCandidate = $candidate
+        $plannedAlias = @()
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf) -and
+            [string]$layer.id -eq "fallout3-archive-aliases") {
+            $plannedAlias = @($PlannedAliasRecords | Where-Object {
+                [string]$_.aliasName -ieq $RelativePath
+            } | Select-Object -First 1)
+            if ($plannedAlias.Count -eq 1) {
+                $resolvedCandidate = [string]$plannedAlias[0].sourcePath
+            }
+        }
+        if (Test-Path -LiteralPath $resolvedCandidate -PathType Leaf) {
+            $item = Get-Item -LiteralPath $resolvedCandidate
+            $winner = [pscustomobject][ordered]@{
+                id = $Id
+                relativePath = $RelativePath
+                expectedProviderLayerId = $RequiredLayerId
+                providerLayerId = [string]$layer.id
+                providerPath = $item.FullName
+                plannedAlias = ($plannedAlias.Count -eq 1)
+                bytes = [long]$item.Length
+            }
+        }
+    }
+
+    if ($null -eq $winner) {
+        throw "The TTW data-layer union cannot resolve required asset '$RelativePath'."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RequiredLayerId) -and
+        $winner.providerLayerId -ne $RequiredLayerId) {
+        throw "The TTW data-layer union resolved '$RelativePath' from '$($winner.providerLayerId)', expected '$RequiredLayerId'."
+    }
+    return $winner
+}
+
 function New-ProfileTextFile {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
         [Parameter(Mandatory=$true)][string]$Text,
         [Parameter(Mandatory=$true)][string]$Description,
         [switch]$AllowReplace,
+        [switch]$AllowGeneratedUpgrade,
         [switch]$PreviewOnly
     )
 
-    if (Test-Path -LiteralPath $Path -PathType Leaf) {
-        $current = [IO.File]::ReadAllText($Path)
-        $normalCurrent = $current -replace "`r`n", "`n"
-        $normalExpected = $Text -replace "`r`n", "`n"
-        if ($normalCurrent -ceq $normalExpected) {
-            return "unchanged"
-        }
-        if (-not $AllowReplace) {
-            throw "Existing $Description differs from the generated compatibility profile. Refusing to overwrite $Path; pass -Force only if this profile is disposable."
-        }
-    }
-
-    if ($PreviewOnly) {
-        Write-Host "Would write ${Description}: $Path"
-        return "preview"
-    }
-
-    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
-    return "written"
+    return Write-OpenNVLauncherConfig `
+        -Path $Path `
+        -Text $Text `
+        -Description $Description `
+        -Generator "Initialize-TTWCompatibilityProfile.ps1" `
+        -AllowReplace:$AllowReplace `
+        -AllowGeneratedUpgrade:$AllowGeneratedUpgrade `
+        -PreviewOnly:$PreviewOnly
 }
 
 function Ensure-ProfileTemplateFile {
@@ -322,6 +453,68 @@ function Ensure-ProfileTemplateFile {
         return "preview"
     }
     [IO.File]::WriteAllText($Destination, [IO.File]::ReadAllText($Source), [Text.UTF8Encoding]::new($false))
+    return "written"
+}
+
+function Ensure-ProfileCompatibilityCommandMapping {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Command,
+        [Parameter(Mandatory=$true)][string]$Capability,
+        [switch]$PreviewOnly
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Cannot add a profile compatibility command mapping because settings.cfg is missing: $Path"
+    }
+
+    $text = [IO.File]::ReadAllText($Path)
+    $lines = [Collections.Generic.List[string]]::new([string[]]($text -split "`r?`n"))
+    $sectionStart = -1
+    $sectionEnd = $lines.Count
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match '^\s*\[OpenNV Compatibility\]\s*$') {
+            $sectionStart = $index
+            for ($next = $index + 1; $next -lt $lines.Count; $next++) {
+                if ($lines[$next] -match '^\s*\[.+\]\s*$') {
+                    $sectionEnd = $next
+                    break
+                }
+            }
+            break
+        }
+    }
+
+    $mapping = "$Command`:$Capability"
+    if ($sectionStart -lt 0) {
+        $lines.Add("")
+        $lines.Add("[OpenNV Compatibility]")
+        $lines.Add("script command mappings = $mapping")
+    }
+    else {
+        $mappingIndex = -1
+        for ($index = $sectionStart + 1; $index -lt $sectionEnd; $index++) {
+            if ($lines[$index] -match '^\s*script command mappings\s*=\s*(.*)$') {
+                $mappingIndex = $index
+                $existing = [string]$Matches[1]
+                $entries = @($existing -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+                if ($entries -contains $mapping) {
+                    return "unchanged"
+                }
+                $lines[$index] = "script command mappings = $(($entries + $mapping) -join ', ')"
+                break
+            }
+        }
+        if ($mappingIndex -lt 0) {
+            $lines.Insert($sectionStart + 1, "script command mappings = $mapping")
+        }
+    }
+
+    if ($PreviewOnly) {
+        Write-Host "Would add OpenNV compatibility mapping $mapping to $Path"
+        return "preview"
+    }
+    [IO.File]::WriteAllText($Path, (($lines -join [Environment]::NewLine).TrimEnd() + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
     return "written"
 }
 
@@ -397,8 +590,13 @@ function Ensure-ArchiveAlias {
     }
 }
 
-$TtwRoot = Resolve-NikamiPath -ParameterValue $TtwRoot -EnvName "NIKAMI_TTW_ROOT" -ConfigName "ttwRoot" -Required -Description "TTW mod directory"
-$TtwRoot = Resolve-ExistingDirectory -Path $TtwRoot -Description "TTW mod directory"
+$ttwRootExplicit = $PSBoundParameters.ContainsKey("TtwRoot") -or
+    -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("NIKAMI_TTW_ROOT", "Process"))
+$ttwRootResolution = Resolve-PreferredTtwRoot `
+    -ParameterValue $TtwRoot `
+    -ExplicitRoot $ttwRootExplicit `
+    -ProfilesRoot (Join-Path $repoRoot "profiles")
+$TtwRoot = [string]$ttwRootResolution.root
 
 $Fallout3Data = Resolve-TtwGameData `
     -ParameterValue $Fallout3Data `
@@ -467,9 +665,7 @@ elseif (-not $assessment.complete) {
 }
 
 if ([string]::IsNullOrWhiteSpace($BinaryRoot)) {
-    # TTW needs the parser compatibility build. Keep the global runtime default
-    # unchanged for other worlds.
-    $BinaryRoot = Join-Path $repoRoot "local/openmw-ttw-compat"
+    $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot
 }
 $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
 $ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -ParameterValue (Join-Path $BinaryRoot "resources")
@@ -515,6 +711,68 @@ foreach ($entry in $fo3SourceArchives.GetEnumerator()) {
         -PreviewOnly:$DryRun))
 }
 
+# The exact same union model used by the retail TTW shadow is declared here as
+# OpenMW data= layers. The order is low-to-high precedence: generated TTW is
+# last, so it owns converted masters, meshes, textures, Bink video, and its
+# own archives while the licensed base games still supply anything TTW does not
+# ship (for example Fallout - Voices1.bsa).
+$dataLayers = [Collections.Generic.List[object]]::new()
+$dataLayers.Add((New-TtwDataLayer `
+    -Id "fallout3-base" `
+    -Role "licensed-base" `
+    -Description "Licensed Fallout 3 base Data" `
+    -SourcePath $Fallout3Data `
+    -Priority 100))
+$dataLayers.Add((New-TtwDataLayer `
+    -Id "fallout-new-vegas-base" `
+    -Role "licensed-base" `
+    -Description "Licensed Fallout: New Vegas base Data" `
+    -SourcePath $FalloutNewVegasData `
+    -Priority 200))
+if ($aliasRecords.Count -gt 0) {
+    $dataLayers.Add((New-TtwDataLayer `
+        -Id "fallout3-archive-aliases" `
+        -Role "profile-owned-aliases" `
+        -Description "Profile-local Fallout 3 archive-name compatibility links" `
+        -SourcePath $aliasDirectory `
+        -Priority 300))
+}
+$dataLayers.Add((New-TtwDataLayer `
+    -Id "ttw-generated-overlay" `
+    -Role "generated-conversion-overlay" `
+    -Description "Official TTW generated output; overrides matching base assets" `
+    -SourcePath $TtwRoot `
+    -Priority 400))
+if ($IncludeJam) {
+    $dataLayers.Add((New-TtwDataLayer `
+        -Id "jam-optional-overlay" `
+        -Role "optional-mod-overlay" `
+        -Description "Optional JAM layer; it may be added to the shared TTW campaign" `
+        -SourcePath $JamRoot `
+        -Priority 500))
+}
+
+$resolvedLayeredAssets = [Collections.Generic.List[object]]::new()
+$requiredLayeredAssets = @(
+    [pscustomobject]@{ id = "falloutnv-master"; relativePath = "FalloutNV.esm"; requiredLayerId = "ttw-generated-overlay" },
+    [pscustomobject]@{ id = "fallout3-master"; relativePath = "Fallout3.esm"; requiredLayerId = "ttw-generated-overlay" },
+    [pscustomobject]@{ id = "ttw-master"; relativePath = "TaleOfTwoWastelands.esm"; requiredLayerId = "ttw-generated-overlay" },
+    [pscustomobject]@{ id = "yupttw-master"; relativePath = "YUPTTW.esm"; requiredLayerId = "ttw-generated-overlay" },
+    [pscustomobject]@{ id = "authored-opening-bink"; relativePath = "Video\Fallout INTRO Vsk.bik"; requiredLayerId = "ttw-generated-overlay" },
+    [pscustomobject]@{ id = "ttw-main-archive"; relativePath = "TaleOfTwoWastelands - Main.bsa"; requiredLayerId = "ttw-generated-overlay" },
+    [pscustomobject]@{ id = "ttw-textures-archive"; relativePath = "TaleOfTwoWastelands - Textures.bsa"; requiredLayerId = "ttw-generated-overlay" },
+    [pscustomobject]@{ id = "fallout-new-vegas-voices"; relativePath = "Fallout - Voices1.bsa"; requiredLayerId = "" },
+    [pscustomobject]@{ id = "fallout3-misc"; relativePath = "Fallout3 - Misc.bsa"; requiredLayerId = "" }
+)
+foreach ($asset in $requiredLayeredAssets) {
+    $resolvedLayeredAssets.Add((Resolve-TtwLayeredFile `
+        -Layers $dataLayers.ToArray() `
+        -Id ([string]$asset.id) `
+        -RelativePath ([string]$asset.relativePath) `
+        -RequiredLayerId ([string]$asset.requiredLayerId) `
+        -PlannedAliasRecords $aliasRecords.ToArray()))
+}
+
 $archiveNames = [Collections.Generic.List[string]]::new()
 foreach ($archive in @($fo3ArchiveAliases.Keys) + $fo3DlcArchives + $fnvArchives) {
     if (-not (Test-NameInList -Names $archiveNames.ToArray() -Name $archive)) {
@@ -544,14 +802,8 @@ $lines.Add("")
 $lines.Add("user-data=$(ConvertTo-OpenMWPath $userdataDirectory)")
 $lines.Add("data-local=$(ConvertTo-OpenMWPath $userdataDataDirectory)")
 $lines.Add("resources=$(ConvertTo-OpenMWPath $ResourcesRoot)")
-$lines.Add("data=$(ConvertTo-OpenMWPath $Fallout3Data)")
-$lines.Add("data=$(ConvertTo-OpenMWPath $FalloutNewVegasData)")
-if ($aliasRecords.Count -gt 0) {
-    $lines.Add("data=$(ConvertTo-OpenMWPath $aliasDirectory)")
-}
-$lines.Add("data=$(ConvertTo-OpenMWPath $TtwRoot)")
-if ($IncludeJam) {
-    $lines.Add("data=$(ConvertTo-OpenMWPath $JamRoot)")
+foreach ($dataLayer in $dataLayers) {
+    $lines.Add("data=$(ConvertTo-OpenMWPath ([string]$dataLayer.sourcePath))")
 }
 $lines.Add("")
 foreach ($archive in $archiveNames) {
@@ -585,6 +837,35 @@ $manifest = [ordered]@{
         openmwRuntime = ConvertTo-OpenMWPath $BinaryRoot
         resources = ConvertTo-OpenMWPath $ResourcesRoot
     }
+    dataLayerPolicy = [ordered]@{
+        order = "low-to-high precedence"
+        resolver = "OpenMW VFS uses the last data= entry containing a file"
+        sourceTreesModified = $false
+    }
+    dataLayers = @(
+        foreach ($dataLayer in $dataLayers) {
+            [ordered]@{
+                id = [string]$dataLayer.id
+                role = [string]$dataLayer.role
+                description = [string]$dataLayer.description
+                path = ConvertTo-OpenMWPath ([string]$dataLayer.sourcePath)
+                priority = [int]$dataLayer.priority
+            }
+        }
+    )
+    resolvedLayeredAssets = @(
+        foreach ($asset in $resolvedLayeredAssets) {
+            [ordered]@{
+                id = [string]$asset.id
+                relativePath = [string]$asset.relativePath
+                expectedProviderLayerId = [string]$asset.expectedProviderLayerId
+                providerLayerId = [string]$asset.providerLayerId
+                providerPath = ConvertTo-OpenMWPath ([string]$asset.providerPath)
+                plannedAlias = [bool]$asset.plannedAlias
+                bytes = [long]$asset.bytes
+            }
+        }
+    )
     persistence = [ordered]@{
         campaign = "tale-of-two-wastelands"
         sharedUserdata = ConvertTo-OpenMWPath $userdataDirectory
@@ -597,9 +878,21 @@ $manifest = [ordered]@{
     features = [ordered]@{
         jam = [bool]$IncludeJam
     }
+    compatibility = [ordered]@{
+        scriptCommandMappings = @(
+            [ordered]@{
+                command = "TTW_ShowGeneProjector"
+                capability = "character-appearance"
+                declaration = "profile-local OpenNV Compatibility settings"
+                source = "TaleOfTwoWastelands.esm authored CG00 stage source"
+            }
+        )
+    }
     safety = @(
         "No source game or TTW file contents or directory entries are modified.",
+        "The profile mounts native Fallout and TTW presentation assets; it does not override them with generated placeholder UI textures.",
         "FO3 base-archive collisions are resolved with profile-local links only.",
+        "The generated TTW output is mounted as the highest-priority compatibility layer; base-only assets remain available beneath it.",
         "TTW and TTW+JAM intentionally share campaign saves while their generated local data stays isolated."
     )
 }
@@ -616,12 +909,18 @@ if ($DryRun) {
     Write-Host "Archives: $($archiveNames -join ' -> ')"
 }
 else {
-    New-ProfileTextFile -Path $openmwConfigPath -Text $openmwConfigText -Description "TTW OpenMW configuration" -AllowReplace:$Force | Out-Null
+    New-ProfileTextFile `
+        -Path $openmwConfigPath `
+        -Text $openmwConfigText `
+        -Description "TTW OpenMW configuration" `
+        -AllowReplace:$Force `
+        -AllowGeneratedUpgrade:$UpgradeGeneratedProfile | Out-Null
     $settingsTemplate = Join-Path $repoRoot "templates/open-nv/settings.cfg"
     if (-not (Test-Path -LiteralPath $settingsTemplate -PathType Leaf)) {
         throw "Missing FNV settings template: $settingsTemplate"
     }
     Ensure-ProfileTemplateFile -Source $settingsTemplate -Destination $settingsPath -Description "TTW settings.cfg" | Out-Null
+    Ensure-ProfileCompatibilityCommandMapping -Path $settingsPath -Command "TTW_ShowGeneProjector" -Capability "character-appearance" | Out-Null
     $inputTemplate = Join-Path $repoRoot "templates/open-nv/input_v3.xml"
     if (Test-Path -LiteralPath $inputTemplate -PathType Leaf) {
         Ensure-ProfileTemplateFile -Source $inputTemplate -Destination $inputPath -Description "TTW input_v3.xml" | Out-Null
@@ -644,6 +943,12 @@ return [pscustomobject]@{
     content = @($activeContent)
     jamEnabled = [bool]$IncludeJam
     archives = @($archiveNames.ToArray())
+    dataLayers = @($dataLayers.ToArray())
+    resolvedLayeredAssets = @($resolvedLayeredAssets.ToArray())
     runtimeRoot = $BinaryRoot
     resourcesRoot = $ResourcesRoot
+    profileConfigState = Get-OpenNVLauncherConfigState `
+        -Path $openmwConfigPath `
+        -Text $openmwConfigText `
+        -Generator "Initialize-TTWCompatibilityProfile.ps1"
 }

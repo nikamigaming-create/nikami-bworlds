@@ -1,5 +1,8 @@
 Set-StrictMode -Version Latest
 
+. (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+. (Join-Path $PSScriptRoot "OpenNVModDepot.ps1")
+
 function Get-OpenNVModCatalog {
     param([string]$CatalogPath = "")
 
@@ -75,6 +78,12 @@ function Resolve-OpenNVModSelection {
         [string[]]$Layer = @()
     )
 
+    # This resolver is also called by the launcher control-center in its own
+    # script scope.  Resolve the repository locally instead of depending on a
+    # caller-owned $repoRoot variable, otherwise the control-center crashes
+    # under StrictMode before it can report which launch profiles are ready.
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+
     $campaignId = switch ($Campaign) {
         "NewVegas" { "newvegas" }
         "Fallout3" { "fallout3" }
@@ -99,7 +108,7 @@ function Resolve-OpenNVModSelection {
         }
     }
 
-    $localConfig = Get-NikamiLocalConfig
+    $localConfig = $null
     $validated = [Collections.Generic.List[object]]::new()
     $blocked = [Collections.Generic.List[object]]::new()
     foreach ($moduleId in $requestedIds) {
@@ -107,28 +116,51 @@ function Resolve-OpenNVModSelection {
         if (@($record.campaigns) -notcontains $campaignId) {
             throw "Module '$($record.id)' does not apply to $Campaign."
         }
-        $status = [string]$record.openNvSupport
-        if ($status -cne "validated") {
-            $blocked.Add([pscustomobject]@{
-                id = [string]$record.id
-                title = [string]$record.title
-                status = $status
-                detail = [string]$record.notes
-            })
-            continue
+        $requiredCapabilities = if ($record.PSObject.Properties.Name -contains "requiredCapabilities") {
+            @($record.requiredCapabilities | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         }
-        $sourceKey = [string]$record.sourceConfigKey
-        $sourcePath = if ([string]::IsNullOrWhiteSpace($sourceKey)) { "" } else { [string](Get-NikamiConfigValue -Config $localConfig -Name $sourceKey) }
-        if ([string]::IsNullOrWhiteSpace($sourcePath) -or -not (Test-Path -LiteralPath $sourcePath -PathType Container)) {
-            $blocked.Add([pscustomobject]@{
-                id = [string]$record.id
-                title = [string]$record.title
-                status = "source-not-registered"
-                detail = "Set local/paths.json:$sourceKey to the untouched mod directory."
-            })
-            continue
+        else {
+            @()
         }
-        $missingFiles = @($record.requiredFiles | Where-Object {
+        $capabilityStates = @(Get-OpenNVRequiredCapabilityState -RequiredCapability $requiredCapabilities)
+
+        $sourcePath = ""
+        $sourceKind = ""
+        $depotId = if ($record.PSObject.Properties.Name -contains "depotId") { [string]$record.depotId } else { "" }
+        if (-not [string]::IsNullOrWhiteSpace($depotId)) {
+            $depotState = Get-OpenNVModDepotState -Id $depotId -RepoRoot $repoRoot
+            if (-not $depotState.ready) {
+                $blocked.Add([pscustomobject]@{
+                    id = [string]$record.id
+                    title = [string]$record.title
+                    status = [string]$depotState.status
+                    detail = "The hash-locked depot input is not ready: $($depotState.installPath)"
+                })
+                continue
+            }
+            $sourcePath = [string]$depotState.installPath
+            $sourceKind = "hash-locked-depot"
+        }
+        else {
+            if ($null -eq $localConfig) {
+                $localConfig = Get-NikamiLocalConfig
+            }
+            $sourceKey = [string]$record.sourceConfigKey
+            $sourcePath = if ([string]::IsNullOrWhiteSpace($sourceKey)) { "" } else { [string](Get-NikamiConfigValue -Config $localConfig -Name $sourceKey) }
+            $sourceKind = "local-config"
+            if ([string]::IsNullOrWhiteSpace($sourcePath) -or -not (Test-Path -LiteralPath $sourcePath -PathType Container)) {
+                $blocked.Add([pscustomobject]@{
+                    id = [string]$record.id
+                    title = [string]$record.title
+                    status = "source-not-registered"
+                    detail = "Set local/paths.json:$sourceKey to the untouched mod directory."
+                })
+                continue
+            }
+        }
+
+        $requiredFiles = if ($record.PSObject.Properties.Name -contains "requiredFiles") { @($record.requiredFiles) } else { @() }
+        $missingFiles = @($requiredFiles | Where-Object {
             -not (Test-Path -LiteralPath (Join-Path $sourcePath ([string]$_)) -PathType Leaf)
         })
         if ($missingFiles.Count -gt 0) {
@@ -140,12 +172,37 @@ function Resolve-OpenNVModSelection {
             })
             continue
         }
+
+        $unvalidatedCapabilities = @($capabilityStates | Where-Object { -not $_.validated })
+        if ($unvalidatedCapabilities.Count -gt 0) {
+            $blocked.Add([pscustomobject]@{
+                id = [string]$record.id
+                title = [string]$record.title
+                status = "native-capability-pending"
+                detail = "Required native compatibility capabilities are not validated: $((@($unvalidatedCapabilities | ForEach-Object { "$($_.id) [$($_.status)]" }) -join ', '))."
+            })
+            continue
+        }
+
+        $status = [string]$record.openNvSupport
+        if ($status -cne "validated") {
+            $blocked.Add([pscustomobject]@{
+                id = [string]$record.id
+                title = [string]$record.title
+                status = $status
+                detail = [string]$record.notes
+            })
+            continue
+        }
         $validated.Add([pscustomobject]@{
             id = [string]$record.id
             title = [string]$record.title
             sourcePath = (Resolve-Path -LiteralPath $sourcePath).Path
+            sourceKind = $sourceKind
+            depotId = $depotId
             integration = [string]$record.integration
-            content = @($record.content | ForEach-Object { [string]$_ })
+            content = if ($record.PSObject.Properties.Name -contains "content") { @($record.content | ForEach-Object { [string]$_ }) } else { @() }
+            capabilities = @($capabilityStates)
         })
     }
 

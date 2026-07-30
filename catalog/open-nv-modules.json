@@ -14,6 +14,12 @@
       "modules": ["jam"]
     },
     {
+      "id": "presentation",
+      "title": "Native presentation",
+      "campaigns": ["newvegas", "ttw"],
+      "modules": ["enhanced-camera"]
+    },
+    {
       "id": "ttw-common",
       "title": "Common TTW recommendations",
       "campaigns": ["ttw"],
@@ -31,15 +37,37 @@
       "id": "jam",
       "title": "Just Assorted Mods",
       "campaigns": ["newvegas", "ttw"],
-      "sourceConfigKey": "jamRoot",
+      "depotId": "jam",
       "requiredFiles": ["JustAssortedMods.esp"],
       "requiredMasters": ["FalloutNV.esm", "DeadMoney.esm", "HonestHearts.esm", "LonesomeRoad.esm"],
       "content": ["JustAssortedMods.esp"],
       "integration": "profile-jam-toggle",
       "openNvSupport": "validated",
       "nativeSupport": "supported",
+      "requiredCapabilities": ["jam.core"],
       "homepage": "https://www.nexusmods.com/newvegas/mods/66666",
-      "notes": "Mounted only from its untouched source directory."
+      "notes": "Mounted only from its registered hash-locked depot tree."
+    },
+    {
+      "id": "enhanced-camera",
+      "title": "New Vegas - Enhanced Camera",
+      "campaigns": ["newvegas", "ttw"],
+      "depotId": "enhanced-camera",
+      "requiredFiles": [
+        "NVSE/Plugins/NVSE_EnhancedCamera.dll",
+        "NVSE/Plugins/NVSE_EnhancedCamera.ini",
+        "NVSE_EnhancedCamera_readme.txt"
+      ],
+      "integration": "native-compatibility-camera",
+      "openNvSupport": "requires-native-camera-adapter",
+      "nativeSupport": "in-progress",
+      "requiredCapabilities": [
+        "camera.native-player-body",
+        "camera.head-occlusion",
+        "camera.first-person-weapon-presentation"
+      ],
+      "homepage": "https://www.nexusmods.com/newvegas/mods/55334?tab=files",
+      "notes": "The immutable archive is a reference input. OpenMW never loads the xNVSE DLL; the selected module becomes launchable only after the equivalent native camera capabilities pass their proof contracts."
     },
     {
       "id": "benny-humbles",

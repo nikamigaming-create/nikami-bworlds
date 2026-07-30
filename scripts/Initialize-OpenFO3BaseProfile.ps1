@@ -6,13 +6,17 @@ param(
     [ValidateSet("Auto", "RequireAll")]
     [string]$DlcPolicy = "Auto",
     [switch]$DryRun,
-    [switch]$Force
+    [switch]$Force,
+    # Used only by Start-OpenNV.ps1 to migrate a launcher-owned generated
+    # openmw.cfg after first preserving it under the profile.
+    [switch]$UpgradeGeneratedProfile
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+. (Join-Path $PSScriptRoot "OpenNVProfileConfig.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $baseContent = @("Fallout3.esm")
@@ -75,27 +79,18 @@ function Write-ProfileTextFile {
         [Parameter(Mandatory=$true)][string]$Text,
         [Parameter(Mandatory=$true)][string]$Description,
         [switch]$AllowReplace,
+        [switch]$AllowGeneratedUpgrade,
         [switch]$PreviewOnly
     )
 
-    if (Test-Path -LiteralPath $Path -PathType Leaf) {
-        $current = [IO.File]::ReadAllText($Path) -replace "`r`n", "`n"
-        $expected = $Text -replace "`r`n", "`n"
-        if ($current -ceq $expected) {
-            return "unchanged"
-        }
-        if (-not $AllowReplace) {
-            throw "Existing $Description differs from the generated OpenNV profile. Refusing to overwrite $Path; pass -Force only if this profile is disposable."
-        }
-    }
-
-    if ($PreviewOnly) {
-        Write-Host "Would write ${Description}: $Path"
-        return "preview"
-    }
-
-    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
-    return "written"
+    return Write-OpenNVLauncherConfig `
+        -Path $Path `
+        -Text $Text `
+        -Description $Description `
+        -Generator "Initialize-OpenFO3BaseProfile.ps1" `
+        -AllowReplace:$AllowReplace `
+        -AllowGeneratedUpgrade:$AllowGeneratedUpgrade `
+        -PreviewOnly:$PreviewOnly
 }
 
 function Ensure-ProfileTemplateFile {
@@ -176,7 +171,7 @@ if (-not (Test-PathWithin -Path $CampaignUserdataDirectory -Parent $profilesRoot
 }
 
 if ([string]::IsNullOrWhiteSpace($BinaryRoot)) {
-    $BinaryRoot = Join-Path $repoRoot "local/openmw-ttw-compat"
+    $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot
 }
 $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
 $ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -ParameterValue (Join-Path $BinaryRoot "resources")
@@ -235,6 +230,7 @@ $manifest = [ordered]@{
     safety = @(
         "No Fallout 3 source file contents or directory entries are modified.",
         "Only complete DLC sets present in the licensed game directory are mounted.",
+        "The profile mounts native Fallout presentation assets; it does not override them with generated placeholder UI textures.",
         "Saves stay inside the Fallout 3 campaign store and generated local data stays in this profile."
     )
 }
@@ -249,7 +245,12 @@ if ($DryRun) {
 }
 else {
     New-Item -ItemType Directory -Path $ProfileDirectory, $userdataDirectory, $userdataDataDirectory -Force | Out-Null
-    Write-ProfileTextFile -Path $openmwConfigPath -Text $openmwConfigText -Description "OpenFO3 OpenMW configuration" -AllowReplace:$Force | Out-Null
+    Write-ProfileTextFile `
+        -Path $openmwConfigPath `
+        -Text $openmwConfigText `
+        -Description "OpenFO3 OpenMW configuration" `
+        -AllowReplace:$Force `
+        -AllowGeneratedUpgrade:$UpgradeGeneratedProfile | Out-Null
     Ensure-ProfileTemplateFile -Source (Join-Path $repoRoot "templates/open-nv/settings.cfg") -Destination $settingsPath
     # Let OpenMW create its default controls when the release ships no custom
     # input map, rather than requiring a generated developer profile.
@@ -274,4 +275,8 @@ return [pscustomobject]@{
     launchMode = "fallout3-vanilla"
     runtimeRoot = $BinaryRoot
     resourcesRoot = $ResourcesRoot
+    profileConfigState = Get-OpenNVLauncherConfigState `
+        -Path $openmwConfigPath `
+        -Text $openmwConfigText `
+        -Generator "Initialize-OpenFO3BaseProfile.ps1"
 }

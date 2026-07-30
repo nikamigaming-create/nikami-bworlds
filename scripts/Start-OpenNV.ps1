@@ -16,6 +16,10 @@ param(
     [switch]$UseManagedMods,
     [string]$ProfileDirectory = "",
     [string]$BinaryRoot = "",
+    # The normal player launcher resolves the configured stable runtime from
+    # local/paths.json. A non-default, non-lab runtime is an explicit
+    # engineering decision.
+    [switch]$AllowExperimentalRuntime,
     [ValidateSet("Auto", "RequireAll")]
     [string]$DlcPolicy = "Auto",
     [switch]$ShowChoices,
@@ -24,6 +28,11 @@ param(
     [switch]$AllowDuplicate,
     [switch]$SkipMenu,
     [switch]$NewGame,
+    # Normal play has no automatic cutoff. Pass -1 only for the campaign's
+    # versioned diagnostic policy, or a positive value for an explicit limit.
+    [double]$OpeningVideoSeconds = 0,
+    [ValidateSet("ERROR", "WARNING", "INFO", "VERBOSE", "DEBUG")]
+    [string]$OpenMWLogLevel = "WARNING",
     [string]$LoadSavegame = "",
     [string]$StartCell = "",
     [string[]]$ExtraArgs = @(),
@@ -45,10 +54,45 @@ function Quote-CommandArg {
     return $Arg
 }
 
+function Get-OpenNVCinematicPolicy {
+    param(
+        [Parameter(Mandatory=$true)][string]$RepositoryRoot,
+        [Parameter(Mandatory=$true)][string]$Campaign
+    )
+
+    $catalogPath = Join-Path $RepositoryRoot "catalog/opennv-cinematic-policy.json"
+    if (-not (Test-Path -LiteralPath $catalogPath -PathType Leaf)) {
+        return $null
+    }
+
+    $catalog = Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json
+    foreach ($policy in @($catalog.policies)) {
+        if ($null -eq $policy -or [string]::IsNullOrWhiteSpace([string]$policy.asset)) {
+            continue
+        }
+        if (@($policy.campaigns) -notcontains $Campaign) {
+            continue
+        }
+        $seconds = [double]$policy.maxSeconds
+        if ($seconds -le 0) {
+            continue
+        }
+        return [pscustomobject]@{
+            id = [string]$policy.id
+            asset = [string]$policy.asset
+            maxSeconds = $seconds
+            description = [string]$policy.description
+        }
+    }
+
+    return $null
+}
+
 if ($ShowChoices) {
     @"
 OpenNV campaign chooser
 
+  Clickable launcher:     .\scripts\Start-OpenNVLauncher.ps1
   Fallout 3 vanilla:  -Campaign Fallout3
   New Vegas vanilla:  -Campaign NewVegas
   New Vegas + JAM:    -Campaign NewVegas -EnableJam
@@ -65,10 +109,26 @@ Standalone games auto-detect owned DLC; TTW requires the full official DLC set.
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+if ($OpeningVideoSeconds -lt -1) {
+    throw "-OpeningVideoSeconds must be -1 (use campaign policy), 0 (no automatic cutoff), or a positive number."
+}
+$playerRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
 if ([string]::IsNullOrWhiteSpace($BinaryRoot)) {
-    $BinaryRoot = Join-Path $repoRoot "local/openmw-ttw-compat"
+    $BinaryRoot = $playerRuntimeRoot
 }
 $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
+$binaryRootFull = [IO.Path]::GetFullPath($BinaryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+$playerRuntimeFull = [IO.Path]::GetFullPath($playerRuntimeRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+$labRuntimeRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot "local/labs")).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+if ($binaryRootFull.StartsWith($labRuntimeRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "A local/labs runtime is quarantined and can never be used by the player launcher: $BinaryRoot"
+}
+if ($binaryRootFull -match '(?i)(^|[\\/])downloads([\\/]|$)') {
+    throw "A Downloads runtime is not a stable launcher dependency: $BinaryRoot"
+}
+if (-not $AllowExperimentalRuntime -and -not $binaryRootFull.Equals($playerRuntimeFull, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "The player launcher is pinned to $playerRuntimeRoot. Promote a tested runtime there, or pass -AllowExperimentalRuntime with an explicit non-lab BinaryRoot for engineering work."
+}
 $ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -ParameterValue (Join-Path $BinaryRoot "resources")
 
 $styleMap = @{
@@ -137,6 +197,11 @@ if ($UseManagedMods) {
         if (-not $requestedModules.Contains($moduleId)) { $requestedModules.Add($moduleId) }
     }
 }
+if ($withJam -and -not $requestedModules.Contains("jam")) {
+    # Every JAM launch is resolved through the immutable depot, even when the
+    # user selected it through a legacy style shortcut rather than -Mod jam.
+    $requestedModules.Add("jam")
+}
 $modSelection = $null
 if ($requestedModules.Count -gt 0 -or $ModLayer.Count -gt 0) {
     . (Join-Path $PSScriptRoot "OpenNVModManager.ps1")
@@ -151,12 +216,25 @@ if ($requestedModules.Count -gt 0 -or $ModLayer.Count -gt 0) {
         throw "The requested OpenNV mod layer is not compatible yet: $details"
     }
     if ($modSelection.includeJam) { $withJam = $true }
+    $selectedJam = @($modSelection.validatedModules | Where-Object { $_.id -eq "jam" })
+    if ($selectedJam.Count -gt 0) {
+        $registeredJamRoot = [string]$selectedJam[0].sourcePath
+        if (-not [string]::IsNullOrWhiteSpace($JamRoot)) {
+            $requestedJamRoot = [IO.Path]::GetFullPath($JamRoot)
+            if (-not $requestedJamRoot.TrimEnd('\\', '/') -ieq $registeredJamRoot.TrimEnd('\\', '/')) {
+                throw "-JamRoot must be the registered hash-locked JAM depot path: $registeredJamRoot"
+            }
+        }
+        $JamRoot = $registeredJamRoot
+    }
 }
 $styleDisplay = switch ($selection.Campaign) {
     "NewVegas" { if ($withJam) { "New Vegas + JAM" } else { "New Vegas vanilla" } }
     "Fallout3" { "Fallout 3 vanilla" }
     default { if ($withJam) { "Tale of Two Wastelands + JAM" } else { "Tale of Two Wastelands" } }
 }
+$cinematicPolicy = Get-OpenNVCinematicPolicy -RepositoryRoot $repoRoot -Campaign $selection.Campaign
+$openingVideoPolicySeconds = if ($OpeningVideoSeconds -ge 0) { $OpeningVideoSeconds } elseif ($null -ne $cinematicPolicy) { $cinematicPolicy.maxSeconds } else { 0 }
 if ($AllowPartialInstall -and -not $withTtw) {
     throw "-AllowPartialInstall only applies to a TTW style."
 }
@@ -204,6 +282,11 @@ else {
 if (-not (Test-Path -LiteralPath $initializer -PathType Leaf)) {
     throw "Missing OpenNV initializer: $initializer"
 }
+# The launcher owns generated openmw.cfg files under profiles/.  It may refresh
+# an older generated file after preserving it, but it will still refuse a
+# manually customized configuration unless the caller explicitly passes
+# -ForceProfileConfig.
+if (-not $DryRun) { $initializerArguments.UpgradeGeneratedProfile = $true }
 $profile = & $initializer @initializerArguments
 if (-not $profile.launchable -and -not $DryRun) {
     throw "The selected $styleDisplay profile is not launchable: $($profile.installReasons -join '; ')"
@@ -263,7 +346,14 @@ if ($null -ne $modSelection) {
 }
 Write-Host "Runtime:      $BinaryRoot"
 Write-Host "Profile:      $($profile.profileDirectory)"
+if ($profile.PSObject.Properties.Name -contains "profileConfigState" -and
+    [string]$profile.profileConfigState -ne "current") {
+    Write-Host "Profile config: $($profile.profileConfigState). The launcher will refresh only its own generated openmw.cfg and retain a backup."
+}
 Write-Host "Content:      $($profile.content -join ' -> ')"
+if ($null -ne $cinematicPolicy -and $openingVideoPolicySeconds -gt 0) {
+    Write-Host "Opening video: $($cinematicPolicy.asset), capped at $openingVideoPolicySeconds seconds ($($cinematicPolicy.id))."
+}
 if ($profile.PSObject.Properties.Name -contains "unavailableDlc" -and @($profile.unavailableDlc).Count -gt 0) {
     Write-Host "DLC:          ownership-aware; not mounted: $($profile.unavailableDlc -join ', ')"
 }
@@ -285,12 +375,20 @@ if (-not $AllowDuplicate -and (Get-Process -Name $processName -ErrorAction Silen
 
 Clear-NikamiWorldViewerRuntimeEnvironment
 $previousDebugLevel = [Environment]::GetEnvironmentVariable("OPENMW_DEBUG_LEVEL", "Process")
+$previousPresentationVideoMatch = [Environment]::GetEnvironmentVariable("OPENNV_PRESENTATION_VIDEO_MATCH", "Process")
+$previousPresentationVideoSeconds = [Environment]::GetEnvironmentVariable("OPENNV_PRESENTATION_VIDEO_MAX_SECONDS", "Process")
 try {
-    [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_LEVEL", "INFO", "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_LEVEL", $OpenMWLogLevel, "Process")
+    if ($null -ne $cinematicPolicy -and $openingVideoPolicySeconds -gt 0) {
+        [Environment]::SetEnvironmentVariable("OPENNV_PRESENTATION_VIDEO_MATCH", $cinematicPolicy.asset, "Process")
+        [Environment]::SetEnvironmentVariable("OPENNV_PRESENTATION_VIDEO_MAX_SECONDS", [string]$openingVideoPolicySeconds, "Process")
+    }
     $process = Start-Process -FilePath $binary -ArgumentList $argumentLine -WorkingDirectory (Split-Path -Parent $binary) -PassThru
 }
 finally {
     [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_LEVEL", $previousDebugLevel, "Process")
+    [Environment]::SetEnvironmentVariable("OPENNV_PRESENTATION_VIDEO_MATCH", $previousPresentationVideoMatch, "Process")
+    [Environment]::SetEnvironmentVariable("OPENNV_PRESENTATION_VIDEO_MAX_SECONDS", $previousPresentationVideoSeconds, "Process")
 }
 
 Write-Host "Started PID $($process.Id)."

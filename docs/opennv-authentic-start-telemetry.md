@@ -16,8 +16,9 @@ It starts the normal `--skip-menu --new-game` path without `--start`, waits for
 the opt-in engine telemetry record, then closes only that isolated test
 process.
 
-The record checks whether the engine reached level one in an authored cell and
-whether chargen is active. Once exact opening-quest editor IDs are verified
+The record checks whether the engine reached level one in an authored cell,
+whether chargen is active, whether the engine fell back to a generic placement,
+and which new-game cinematic asset it requested. Once exact opening-quest editor IDs are verified
 from the installed masters, pass them explicitly to make them part of the
 same evidence record:
 

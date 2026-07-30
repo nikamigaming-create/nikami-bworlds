@@ -1,0 +1,81 @@
+{
+  "schema": "nikami-open-nv-mod-depot-lock/v1",
+  "description": "Immutable third-party mod inputs retained outside Downloads. Archives and extracted trees remain local for licensing reasons; this committed lock records their exact provenance and integrity contract.",
+  "depotPolicy": {
+    "archiveRoot": "local/mod-depot/archives",
+    "installRoot": "local/mods",
+    "sourceMutation": "never",
+    "archiveReplacement": "refuse-on-hash-mismatch",
+    "installReplacement": "refuse-on-existing-tree",
+    "runtimeRule": "OpenMW consumes only registered extracted trees and native compatibility capabilities; it never loads an xNVSE DLL."
+  },
+  "modules": [
+    {
+      "id": "jam",
+      "title": "JAM - Just Assorted Mods",
+      "source": {
+        "homepage": "https://www.nexusmods.com/newvegas/mods/66666?tab=files",
+        "nexusModId": 66666,
+        "nexusFileId": 1000133586,
+        "version": "4.6",
+        "fileName": "Just Assorted Mods-66666-4-6-1717763151.7z"
+      },
+      "archive": {
+        "relativePath": "local/mod-depot/archives/jam/Just Assorted Mods-66666-4-6-1717763151.7z",
+        "bytes": 4344000,
+        "sha256": "D1101470496E7A8231CFF1355DC62E09B63C5BCEFE3974AB1E4AAC272098DF6B"
+      },
+      "install": {
+        "relativePath": "local/mods/jam-4.6-original",
+        "files": [
+          {
+            "relativePath": "JustAssortedMods.esp",
+            "bytes": 1028238,
+            "sha256": "CFDC2B1807A57C8861335858DF96A2D08E546F93DFD8C390E8F5905F2694D8DE"
+          }
+        ]
+      }
+    },
+    {
+      "id": "enhanced-camera",
+      "title": "New Vegas - Enhanced Camera",
+      "source": {
+        "homepage": "https://www.nexusmods.com/newvegas/mods/55334?tab=files",
+        "nexusModId": 55334,
+        "nexusFileId": 1000050990,
+        "version": "1.4c",
+        "fileName": "Enhanced Camera 1.4c-55334-1-4c-1544995335.zip"
+      },
+      "archive": {
+        "relativePath": "local/mod-depot/archives/enhanced-camera/Enhanced Camera 1.4c-55334-1-4c-1544995335.zip",
+        "bytes": 65026,
+        "sha256": "DAA92900742B16F82B4668C1887D913B2D36212052D5286B7030D132F8BC65B9"
+      },
+      "install": {
+        "relativePath": "local/mods/enhanced-camera-1.4c",
+        "files": [
+          {
+            "relativePath": "Meshes/AnimObjects/KhanTrick.NIF",
+            "bytes": 186,
+            "sha256": "19A273A9C01CD3D7E5D6793DDF15B4ED928E77667D92DCD064521834556C2F50"
+          },
+          {
+            "relativePath": "NVSE/Plugins/NVSE_EnhancedCamera.dll",
+            "bytes": 122368,
+            "sha256": "619CB12C0E3D76CE1024A65F47A5D49E9C55F9C9CFF5EB8BC0465A2343229D40"
+          },
+          {
+            "relativePath": "NVSE/Plugins/NVSE_EnhancedCamera.ini",
+            "bytes": 1949,
+            "sha256": "26706AEFAABEE95606E177395D702664FAFB2BF8D2BC937B10F19BEC1FAE6519"
+          },
+          {
+            "relativePath": "NVSE_EnhancedCamera_readme.txt",
+            "bytes": 2926,
+            "sha256": "4F14A5D92B10E9AFB970A0619F29703E9F52745DE7210CF7E552CBEFCAA7EC2B"
+          }
+        ]
+      }
+    }
+  ]
+}

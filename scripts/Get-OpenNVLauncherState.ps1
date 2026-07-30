@@ -62,15 +62,27 @@ function Invoke-OpenNVVariantPreflight {
         # control-center API returns only its structured result, so that a
         # caller using -AsJson never has to parse console narration.
         $profile = & $initializer @arguments 3>$null 6>$null
+        $profileConfigState = [string](Get-OpenNVPropertyValue -Object $profile -Name "profileConfigState" -Default "unknown")
+        $profileReady = [bool](Get-OpenNVPropertyValue -Object $profile -Name "launchable" -Default $false) -and
+            $profileConfigState -ne "custom-configuration"
+        $message = switch ($profileConfigState) {
+            "managed-upgrade-required" { "Ready; launcher-owned profile configuration will be refreshed with a backup before start."; break }
+            "missing" { "Ready; launcher will create its generated profile configuration before start."; break }
+            "custom-configuration" { "Profile openmw.cfg was customized outside the launcher. Preserve or replace it explicitly with -ForceProfileConfig before launch."; break }
+            default { "Ready"; break }
+        }
         return [pscustomobject]@{
-            ready = [bool](Get-OpenNVPropertyValue -Object $profile -Name "launchable" -Default $false)
+            ready = $profileReady
             launchMode = [string](Get-OpenNVPropertyValue -Object $profile -Name "launchMode" -Default "unknown")
             installComplete = Get-OpenNVPropertyValue -Object $profile -Name "installComplete" -Default $null
             installReasons = @(Get-OpenNVPropertyValue -Object $profile -Name "installReasons" -Default @())
             availableDlc = @(Get-OpenNVPropertyValue -Object $profile -Name "availableDlc" -Default @())
             unavailableDlc = @(Get-OpenNVPropertyValue -Object $profile -Name "unavailableDlc" -Default @())
             profileDirectory = [string](Get-OpenNVPropertyValue -Object $profile -Name "profileDirectory" -Default "")
-            message = "Ready"
+            runtimeRoot = [string](Get-OpenNVPropertyValue -Object $profile -Name "runtimeRoot" -Default "")
+            resourcesRoot = [string](Get-OpenNVPropertyValue -Object $profile -Name "resourcesRoot" -Default "")
+            profileConfigState = $profileConfigState
+            message = $message
         }
     }
     catch {
@@ -82,6 +94,9 @@ function Invoke-OpenNVVariantPreflight {
             availableDlc = @()
             unavailableDlc = @()
             profileDirectory = ""
+            runtimeRoot = ""
+            resourcesRoot = ""
+            profileConfigState = "unavailable"
             message = $_.Exception.Message
         }
     }

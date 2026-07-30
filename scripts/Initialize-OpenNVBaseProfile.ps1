@@ -9,13 +9,17 @@ param(
     [ValidateSet("Auto", "RequireAll")]
     [string]$DlcPolicy = "Auto",
     [switch]$DryRun,
-    [switch]$Force
+    [switch]$Force,
+    # Used only by Start-OpenNV.ps1 to migrate a launcher-owned generated
+    # openmw.cfg after first preserving it under the profile.
+    [switch]$UpgradeGeneratedProfile
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+. (Join-Path $PSScriptRoot "OpenNVProfileConfig.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $baseContent = @("FalloutNV.esm")
@@ -84,27 +88,18 @@ function Write-ProfileTextFile {
         [Parameter(Mandatory=$true)][string]$Text,
         [Parameter(Mandatory=$true)][string]$Description,
         [switch]$AllowReplace,
+        [switch]$AllowGeneratedUpgrade,
         [switch]$PreviewOnly
     )
 
-    if (Test-Path -LiteralPath $Path -PathType Leaf) {
-        $current = [IO.File]::ReadAllText($Path) -replace "`r`n", "`n"
-        $expected = $Text -replace "`r`n", "`n"
-        if ($current -ceq $expected) {
-            return "unchanged"
-        }
-        if (-not $AllowReplace) {
-            throw "Existing $Description differs from the generated OpenNV profile. Refusing to overwrite $Path; pass -Force only if this profile is disposable."
-        }
-    }
-
-    if ($PreviewOnly) {
-        Write-Host "Would write ${Description}: $Path"
-        return "preview"
-    }
-
-    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
-    return "written"
+    return Write-OpenNVLauncherConfig `
+        -Path $Path `
+        -Text $Text `
+        -Description $Description `
+        -Generator "Initialize-OpenNVBaseProfile.ps1" `
+        -AllowReplace:$AllowReplace `
+        -AllowGeneratedUpgrade:$AllowGeneratedUpgrade `
+        -PreviewOnly:$PreviewOnly
 }
 
 function Ensure-ProfileTemplateFile {
@@ -122,6 +117,71 @@ function Ensure-ProfileTemplateFile {
         return
     }
     [IO.File]::WriteAllText($Destination, [IO.File]::ReadAllText($Source), [Text.UTF8Encoding]::new($false))
+}
+
+function Ensure-ProfileCompatibilityCommandMapping {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Command,
+        [Parameter(Mandatory=$true)][string]$Capability,
+        [switch]$PreviewOnly
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Cannot add a profile compatibility command mapping because settings.cfg is missing: $Path"
+    }
+
+    $text = [IO.File]::ReadAllText($Path)
+    $lines = [Collections.Generic.List[string]]::new([string[]]($text -split "`r?`n"))
+    $sectionStart = -1
+    $sectionEnd = $lines.Count
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match '^\s*\[OpenNV Compatibility\]\s*$') {
+            $sectionStart = $index
+            for ($next = $index + 1; $next -lt $lines.Count; $next++) {
+                if ($lines[$next] -match '^\s*\[.+\]\s*$') {
+                    $sectionEnd = $next
+                    break
+                }
+            }
+            break
+        }
+    }
+
+    $mapping = "$Command`:$Capability"
+    if ($sectionStart -lt 0) {
+        $lines.Add("")
+        $lines.Add("[OpenNV Compatibility]")
+        $lines.Add("script command mappings = $mapping")
+    }
+    else {
+        $mappingIndex = -1
+        for ($index = $sectionStart + 1; $index -lt $sectionEnd; $index++) {
+            if ($lines[$index] -match '^\s*script command mappings\s*=\s*(.*)$') {
+                $mappingIndex = $index
+                $existing = [string]$Matches[1]
+                $entries = @($existing -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+                if ($entries -contains $mapping) {
+                    return "unchanged"
+                }
+                $lines[$index] = "script command mappings = $(($entries + $mapping) -join ', ')"
+                break
+            }
+        }
+        if ($mappingIndex -lt 0) {
+            $lines.Insert($sectionStart + 1, "script command mappings = $mapping")
+        }
+    }
+
+    if ($PreviewOnly) {
+        Write-Host "Would add OpenNV compatibility mapping $mapping to $Path"
+        return "preview"
+    }
+    [IO.File]::WriteAllText(
+        $Path,
+        (($lines -join [Environment]::NewLine).TrimEnd() + [Environment]::NewLine),
+        [Text.UTF8Encoding]::new($false))
+    return "written"
 }
 
 $FalloutNewVegasData = Resolve-NikamiPath `
@@ -205,7 +265,7 @@ if (-not (Test-PathWithin -Path $CampaignUserdataDirectory -Parent $profilesRoot
 }
 
 if ([string]::IsNullOrWhiteSpace($BinaryRoot)) {
-    $BinaryRoot = Join-Path $repoRoot "local/openmw-ttw-compat"
+    $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot
 }
 $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
 $ResourcesRoot = Resolve-NikamiOpenMWResourcesRoot -ParameterValue (Join-Path $BinaryRoot "resources")
@@ -268,7 +328,8 @@ $manifest = [ordered]@{
     archives = @($activeArchives.ToArray())
     safety = @(
         "No Fallout: New Vegas source file contents or directory entries are modified.",
-        "JAM is mounted from its untouched source directory only when selected.",
+        "JAM is mounted from its registered hash-locked depot tree only when selected.",
+        "The profile mounts native Fallout presentation assets; it does not override them with generated placeholder UI textures.",
         "Vanilla and JAM profiles intentionally share this campaign's saves while their generated local data stays isolated."
     )
 }
@@ -284,8 +345,17 @@ if ($DryRun) {
 }
 else {
     New-Item -ItemType Directory -Path $ProfileDirectory, $userdataDirectory, $userdataDataDirectory -Force | Out-Null
-    Write-ProfileTextFile -Path $openmwConfigPath -Text $openmwConfigText -Description "OpenNV OpenMW configuration" -AllowReplace:$Force | Out-Null
+    Write-ProfileTextFile `
+        -Path $openmwConfigPath `
+        -Text $openmwConfigText `
+        -Description "OpenNV OpenMW configuration" `
+        -AllowReplace:$Force `
+        -AllowGeneratedUpgrade:$UpgradeGeneratedProfile | Out-Null
     Ensure-ProfileTemplateFile -Source (Join-Path $repoRoot "templates/open-nv/settings.cfg") -Destination $settingsPath
+    Ensure-ProfileCompatibilityCommandMapping `
+        -Path $settingsPath `
+        -Command "ShowLoveTesterMenuParams" `
+        -Capability "character-special" | Out-Null
     # When no profile-local input map exists, OpenMW creates its own defaults.
     # That makes a packaged release usable without inheriting a developer's
     # generated controls file.
@@ -310,4 +380,8 @@ return [pscustomobject]@{
     launchMode = if ($IncludeJam) { "jam" } else { "vanilla" }
     runtimeRoot = $BinaryRoot
     resourcesRoot = $ResourcesRoot
+    profileConfigState = Get-OpenNVLauncherConfigState `
+        -Path $openmwConfigPath `
+        -Text $openmwConfigText `
+        -Generator "Initialize-OpenNVBaseProfile.ps1"
 }

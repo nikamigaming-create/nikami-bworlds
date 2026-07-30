@@ -29,6 +29,8 @@ if ($Action -eq "List") {
             Campaigns = (@($_.campaigns) -join ", ")
             OpenNV = $_.openNvSupport
             Native = $_.nativeSupport
+            Input = if ($_.PSObject.Properties.Name -contains "depotId") { "hash-locked-depot:$($_.depotId)" } else { "local-config:$($_.sourceConfigKey)" }
+            Capabilities = if ($_.PSObject.Properties.Name -contains "requiredCapabilities") { @($_.requiredCapabilities) -join ", " } else { "" }
         }
     })
     if ($AsJson) {

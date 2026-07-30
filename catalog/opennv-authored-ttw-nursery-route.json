@@ -1,0 +1,96 @@
+{
+  "schema": "opennv-authored-route/v1",
+  "id": "ttw-vault101-nursery-authored-interactions",
+  "description": "Exercises the real CG01 toddler handoffs through authored trigger volumes and object scripts. Form IDs are resolved from the installed TTW Fallout3.esm layer; the engine only understands generic route operations.",
+  "steps": [
+    {
+      "id": "toddler-controls-enabled",
+      "operation": "wait-quest-stage",
+      "quest": "CG01",
+      "stage": 10,
+      "stage_done": true,
+      "timeout_seconds": 180
+    },
+    {
+      "id": "dad-trigger-entered",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x702ea54",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "dad-left-playpen",
+      "operation": "wait-quest-stage",
+      "quest": "CG01",
+      "stage": 20,
+      "stage_done": true,
+      "timeout_seconds": 75
+    },
+    {
+      "id": "playpen-gate-reached",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x7047803",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "playpen-gate-activated",
+      "operation": "activate-reference",
+      "reference": "FormId:0x7047803",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "playpen-left",
+      "operation": "wait-quest-stage",
+      "quest": "CG01",
+      "stage": 30,
+      "stage_done": true,
+      "timeout_seconds": 30
+    },
+    {
+      "id": "crib-exit-trigger-reset",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x702ea53",
+      "offset": [0.0, 500.0, 0.0],
+      "timeout_seconds": 15
+    },
+    {
+      "id": "crib-exit-trigger-exited",
+      "operation": "wait-seconds",
+      "duration_seconds": 0.25,
+      "timeout_seconds": 15
+    },
+    {
+      "id": "crib-exit-trigger-entered",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x702ea53",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "special-book-objective-opened",
+      "operation": "wait-quest-stage",
+      "quest": "CG01",
+      "stage": 40,
+      "stage_done": true,
+      "timeout_seconds": 30
+    },
+    {
+      "id": "special-book-reached",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x702ecc0",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "special-book-activated",
+      "operation": "activate-reference",
+      "reference": "FormId:0x702ecc0",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "special-book-quest-stage",
+      "operation": "wait-quest-stage",
+      "quest": "CG01",
+      "stage": 50,
+      "stage_done": true,
+      "timeout_seconds": 30
+    }
+  ]
+}

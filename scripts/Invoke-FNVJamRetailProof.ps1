@@ -4,7 +4,7 @@ param(
     [string]$ParityRoot = "D:\code\nikami-worlds-fnv-parity",
     [string]$RetailGameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
     [string]$SavePath = "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\Save 331     Goodsprings  00 17 36.fos",
-    [string]$JamArchive = "C:\Users\nbrys\Downloads\Just Assorted Mods-66666-4-6-1717763151.7z",
+    [string]$JamArchive = "D:\code\nikami-worlds\local\mod-depot\archives\jam\Just Assorted Mods-66666-4-6-1717763151.7z",
     [string]$JipArchive = "C:\Users\nbrys\Downloads\JIP LN NVSE Plugin-58277-57-30-1716662080.7z",
     [string]$UioArchive = "C:\Users\nbrys\Downloads\UIO - User Interface Organizer-57174-2-30-1629600625.7z",
     [string]$JohnnyArchive = "C:\Users\nbrys\Downloads\JohnnyGuitar NVSE 66927 5.28 2026-05-30T08-10Z XdsyTJhw.zip",

@@ -135,7 +135,9 @@ function Resolve-NikamiRepoRelativePath {
 }
 
 function Get-NikamiOpenMWRuntimeRoot {
-    return (Join-Path $script:NikamiRepoRoot "local\openmw-fo4guard")
+    # This is only the fallback when local/paths.json is absent. The checked
+    # player baseline is the VATS live runtime, not an experimental build.
+    return (Join-Path $script:NikamiRepoRoot "local\openmw-vats-live")
 }
 
 function Get-NikamiOpenMWResourcesRoot {
@@ -175,7 +177,13 @@ function Resolve-NikamiOpenMWRuntimeRoot {
     # dialog (which is both opaque to the harness and easy to mistake for an
     # engine crash).
     $requiredRuntimeFiles = @(
-        "MyGUIEngine.dll"
+        "MyGUIEngine.dll",
+        # OSG loads image/font readers dynamically. A deployment that carries
+        # only openmw.exe and the OSG core DLLs exits before the game window
+        # exists, so reject it before it can be selected as a player runtime.
+        "osgPlugins-3.6.5\\osgdb_dds.dll",
+        "osgPlugins-3.6.5\\osgdb_png.dll",
+        "osgPlugins-3.6.5\\osgdb_freetype.dll"
     )
     foreach ($requiredRuntimeFile in $requiredRuntimeFiles) {
         $requiredRuntimePath = Join-Path $candidateRoot $requiredRuntimeFile
@@ -472,8 +480,13 @@ function Clear-NikamiWorldViewerRuntimeEnvironment {
             -or ($name.StartsWith("OPENMW_FNV_", [StringComparison]::OrdinalIgnoreCase) `
                 -and $name.IndexOf("PROOF", [StringComparison]::OrdinalIgnoreCase) -ge 0) `
             -or $name.Equals("OPENMW_STARTUP_SCRIPT", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENMW_AUTHORED_DEFAULT_CHOICE_DELAY_SECONDS", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENMW_AUTHORED_START_TELEMETRY", [StringComparison]::OrdinalIgnoreCase) `
             -or $name.Equals("OPENMW_PLAYABLE_SESSION_BACKGROUND", [StringComparison]::OrdinalIgnoreCase) `
             -or $name.Equals("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENNV_PRESENTATION_VIDEO_MATCH", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENNV_PRESENTATION_VIDEO_MAX_SECONDS", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.StartsWith("OPENMW_COMPAT_ROUTE_", [StringComparison]::OrdinalIgnoreCase) `
             -or (Test-NikamiFnvSkyRuntimeEnvironmentName $name)) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }
