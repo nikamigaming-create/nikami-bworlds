@@ -1,0 +1,122 @@
+{
+  "schema": "nikami-open-nv-modules/v1",
+  "lastReviewedUtc": "2026-07-26T00:00:00Z",
+  "policy": {
+    "sourceMutation": "never",
+    "downloads": "manual-or-user-authorized",
+    "openNvRule": "A module is selectable only after its required runtime APIs and a launch validation are recorded."
+  },
+  "layers": [
+    {
+      "id": "quality-of-life",
+      "title": "Quality of life",
+      "campaigns": ["newvegas", "ttw"],
+      "modules": ["jam"]
+    },
+    {
+      "id": "presentation",
+      "title": "Native presentation",
+      "campaigns": ["newvegas", "ttw"],
+      "modules": ["enhanced-camera"]
+    },
+    {
+      "id": "ttw-common",
+      "title": "Common TTW recommendations",
+      "campaigns": ["ttw"],
+      "modules": [
+        "jam",
+        "benny-humbles",
+        "ttw-bi-reputation-checks",
+        "delay-dlc-redux-ttw",
+        "capital-wasteland-adjustments"
+      ]
+    }
+  ],
+  "modules": [
+    {
+      "id": "jam",
+      "title": "Just Assorted Mods",
+      "campaigns": ["newvegas", "ttw"],
+      "depotId": "jam",
+      "requiredFiles": ["JustAssortedMods.esp"],
+      "requiredMasters": ["FalloutNV.esm", "DeadMoney.esm", "HonestHearts.esm", "LonesomeRoad.esm"],
+      "content": ["JustAssortedMods.esp"],
+      "integration": "profile-jam-toggle",
+      "openNvSupport": "validated",
+      "nativeSupport": "supported",
+      "requiredCapabilities": ["jam.core"],
+      "homepage": "https://www.nexusmods.com/newvegas/mods/66666",
+      "notes": "Mounted only from its registered hash-locked depot tree."
+    },
+    {
+      "id": "enhanced-camera",
+      "title": "New Vegas - Enhanced Camera",
+      "campaigns": ["newvegas", "ttw"],
+      "depotId": "enhanced-camera",
+      "requiredFiles": [
+        "NVSE/Plugins/NVSE_EnhancedCamera.dll",
+        "NVSE/Plugins/NVSE_EnhancedCamera.ini",
+        "NVSE_EnhancedCamera_readme.txt"
+      ],
+      "integration": "native-compatibility-camera",
+      "openNvSupport": "requires-native-camera-adapter",
+      "nativeSupport": "in-progress",
+      "requiredCapabilities": [
+        "camera.native-player-body",
+        "camera.head-occlusion",
+        "camera.first-person-weapon-presentation"
+      ],
+      "homepage": "https://www.nexusmods.com/newvegas/mods/55334?tab=files",
+      "notes": "The immutable archive is a reference input. OpenMW never loads the xNVSE DLL; the selected module becomes launchable only after the equivalent native camera capabilities pass their proof contracts."
+    },
+    {
+      "id": "benny-humbles",
+      "title": "(Benny Humbles You) and Steals Your Stuff",
+      "campaigns": ["ttw"],
+      "sourceConfigKey": "bennyHumblesRoot",
+      "integration": "runtime-adapter-required",
+      "openNvSupport": "requires-xnvse-bridge",
+      "nativeSupport": "supported",
+      "nativeRequirements": ["xNVSE", "JIP LN NVSE", "JohnnyGuitar NVSE", "ShowOff xNVSE"],
+      "download": { "mainFile": "BHYSYS", "version": "13.03", "installTiming": "new-character-or-before-first-dc-to-mojave-transition" },
+      "homepage": "https://www.nexusmods.com/newvegas/mods/71112",
+      "notes": "Minimum requested TTW transition module. It becomes selectable after the OpenNV bridge implements and validates its required runtime APIs."
+    },
+    {
+      "id": "ttw-bi-reputation-checks",
+      "title": "TTW BiReputationChecks",
+      "campaigns": ["ttw"],
+      "sourceConfigKey": "ttwBiReputationChecksRoot",
+      "integration": "runtime-validation-required",
+      "openNvSupport": "requires-xnvse-bridge",
+      "nativeSupport": "supported",
+      "nativeRequirements": ["lStewieAl's Tweaks and Engine Fixes"],
+      "homepage": "https://www.nexusmods.com/newvegas/mods/96508",
+      "notes": "Current Wasteland Survival Guide gameplay recommendation; it requires the xNVSE bridge before OpenNV validation."
+    },
+    {
+      "id": "delay-dlc-redux-ttw",
+      "title": "Delay DLC Redux TTW",
+      "campaigns": ["ttw"],
+      "sourceConfigKey": "delayDlcReduxTtwRoot",
+      "integration": "runtime-validation-required",
+      "openNvSupport": "requires-xnvse-bridge",
+      "nativeSupport": "supported",
+      "nativeRequirements": ["JIP LN NVSE", "JohnnyGuitar NVSE"],
+      "homepage": "https://www.nexusmods.com/newvegas/mods/75851",
+      "notes": "DLC quest-delay module. It requires the xNVSE bridge and does not remove official DLC requirements from TTW."
+    },
+    {
+      "id": "capital-wasteland-adjustments",
+      "title": "TTW - Capital Wasteland Adjustments",
+      "campaigns": ["ttw"],
+      "sourceConfigKey": "capitalWastelandAdjustmentsRoot",
+      "integration": "runtime-validation-required",
+      "openNvSupport": "requires-xnvse-bridge",
+      "nativeSupport": "supported",
+      "nativeRequirements": ["xNVSE", "JIP LN NVSE"],
+      "homepage": "https://www.nexusmods.com/newvegas/mods/94548",
+      "notes": "Current Wasteland Survival Guide gameplay recommendation; it requires the xNVSE bridge before OpenNV validation."
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "schema": "opennv-authored-route/v1",
+  "id": "newvegas-doc-mitchell-vigor-authored-interactions",
+  "description": "Exercises the retail VCG01 handoff through Doc Mitchell's real trigger volume and Vit-o-matic Vigor Tester. The manifest names installed FalloutNV.esm references; the engine performs only generic movement and ordinary reference activation.",
+  "steps": [
+    {
+      "id": "courier-can-walk-to-vigor-tester",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 55,
+      "stage_done": true,
+      "timeout_seconds": 180
+    },
+    {
+      "id": "vigor-tester-trigger-entered",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x1104c16",
+      "offset": [0, 0, -99],
+      "timeout_seconds": 15
+    },
+    {
+      "id": "vigor-tester-ready-for-activation",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 60,
+      "stage_done": true,
+      "timeout_seconds": 30
+    },
+    {
+      "id": "vigor-tester-objective-displayed",
+      "operation": "wait-quest-objective",
+      "quest": "VCG01",
+      "objective": 30,
+      "displayed": true,
+      "timeout_seconds": 30
+    },
+    {
+      "id": "vigor-tester-reached",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x1104c13",
+      "offset": [0, 72, 1],
+      "timeout_seconds": 15
+    },
+    {
+      "id": "vigor-tester-activated",
+      "operation": "activate-reference",
+      "reference": "FormId:0x1104c13",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "default-special-selection-applied",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 65,
+      "stage_done": true,
+      "timeout_seconds": 30
+    },
+    {
+      "id": "doc-reaction-began-after-vigor-selection",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 70,
+      "stage_done": true,
+      "timeout_seconds": 60
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schema": "nikami-open-nv-capability-registry/v1",
+  "description": "Native OpenMW behavior contracts used to decide whether an imported mod may be selected by the launcher. A capability is validated only after its dedicated behavior proof passes.",
+  "capabilities": [
+    {
+      "id": "jam.core",
+      "title": "JAM 4.6 core behavior",
+      "status": "validated",
+      "implementation": "OpenMW native JAM compatibility driver",
+      "verification": "FNV/JAM background-capture contract"
+    },
+    {
+      "id": "camera.native-player-body",
+      "title": "Native Fallout first-person player body",
+      "status": "in-progress",
+      "implementation": "OpenMW ESM4 player visual proxy and camera rig",
+      "verification": "First-person body/camera semantic proof"
+    },
+    {
+      "id": "camera.head-occlusion",
+      "title": "First-person head occlusion control",
+      "status": "planned",
+      "implementation": "OpenMW ESM4 player visual masking",
+      "verification": "First-person camera visibility proof"
+    },
+    {
+      "id": "camera.first-person-weapon-presentation",
+      "title": "First-person weapon presentation",
+      "status": "in-progress",
+      "implementation": "OpenMW Fallout animation and camera compatibility layer",
+      "verification": "First-person weapon animation proof"
+    }
+  ]
+}
