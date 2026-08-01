@@ -1,0 +1,43 @@
+{
+  "schema": "nikami-fnv-seamless-exterior-policy/v1",
+  "reviewStatus": "phase-0-discovery",
+  "scope": {
+    "edition": "Fallout: New Vegas Ultimate Edition",
+    "language": "English",
+    "frozenLoadOrder": [
+      "FalloutNV.esm",
+      "DeadMoney.esm",
+      "HonestHearts.esm",
+      "OldWorldBlues.esm",
+      "LonesomeRoad.esm",
+      "GunRunnersArsenal.esm",
+      "CaravanPack.esm",
+      "ClassicPack.esm",
+      "MercenaryPack.esm",
+      "TribalPack.esm"
+    ],
+    "edgeIdentity": "xtel:<source-reference-load-order-form-id>",
+    "sourceRecordSemantics": "last-loaded live record per master-resolved FormID"
+  },
+  "defaults": {
+    "classification": "unreviewed",
+    "activation": "retain-authored-transition",
+    "walkThrough": false,
+    "shippingEligible": false
+  },
+  "generatedFrom": {
+    "graphSchema": "nikami-fnv-exterior-transition-graph/v1",
+    "graphSha256": "51301fb6e23263bf00fdf32f1e3857773d178fb9f539d6bba9bef415521de6e7"
+  },
+  "graphDefaults": [
+    {
+      "graphSchema": "nikami-fnv-exterior-transition-graph/v1",
+      "graphSha256": "51301fb6e23263bf00fdf32f1e3857773d178fb9f539d6bba9bef415521de6e7",
+      "classification": "unreviewed",
+      "reviewState": "unreviewed",
+      "walkThrough": false,
+      "notes": "Generated from the frozen official transition graph; visual and gameplay review is required before any edge can change behavior."
+    }
+  ],
+  "edges": []
+}
