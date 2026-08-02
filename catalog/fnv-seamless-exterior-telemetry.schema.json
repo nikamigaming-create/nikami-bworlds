@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nikami.worlds/schema/fnv-seamless-exterior-telemetry/v1",
+  "title": "Fallout: New Vegas seamless exterior telemetry event",
+  "description": "Structured, opt-in OpenMW telemetry for measuring the current exterior-transition path before it is changed. An event reports an observed boundary; it does not imply a seamless result.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "event"
+  ],
+  "properties": {
+    "schema": {
+      "const": "nikami-fnv-seamless-exterior-telemetry/v1"
+    },
+    "event": {
+      "enum": [
+        "door-preload",
+        "fade-request",
+        "frame-sample",
+        "grid-change-begin",
+        "grid-change-end",
+        "grid-load-plan",
+        "loading-scope-enter",
+        "loading-scope-exit",
+        "loading-screen-draw",
+        "scene-transition-begin",
+        "scene-transition-end",
+        "teleport-action-begin",
+        "teleport-action-end"
+      ]
+    }
+  },
+  "$defs": {
+    "milliseconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "cellIdentifier": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "frame-sample"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "frame",
+          "frameTimeMs",
+          "memoryStatus"
+        ],
+        "properties": {
+          "frame": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "frameTimeMs": {
+            "$ref": "#/$defs/milliseconds"
+          },
+          "memoryStatus": {
+            "enum": [
+              "not-collected"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "loading-screen-draw"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "frame",
+          "drawIndex",
+          "elapsedMs",
+          "wallpaper"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "scene-transition-begin"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "route",
+          "destinationCell",
+          "changeEvent",
+          "usesFade",
+          "handoffState"
+        ],
+        "properties": {
+          "route": {
+            "enum": [
+              "interior",
+              "exterior"
+            ]
+          },
+          "handoffState": {
+            "enum": [
+              "not-applicable",
+              "not-implemented"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

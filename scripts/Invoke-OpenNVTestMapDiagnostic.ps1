@@ -16,8 +16,15 @@ param(
     [string]$TestMapWorldspace = "FormId:0x010d703c",
     [int]$TestMapGridX = 0,
     [int]$TestMapGridY = 0,
-    [ValidateRange(30, 180)]
-    [int]$TimeoutSeconds = 90
+    # The canonical outer capture entry point defaults to 240 seconds. Keep
+    # this diagnostic compatible with that declared default while retaining a
+    # bounded wait for a stalled launch.
+    [ValidateRange(30, 600)]
+    [int]$TimeoutSeconds = 90,
+    # Opt-in native-driver telemetry for renderer investigation. The normal
+    # TestMap proof path remains unchanged and does not enable a debug GL
+    # context.
+    [switch]$OpenGlDebug
 )
 
 $ErrorActionPreference = "Stop"
@@ -257,9 +264,17 @@ $settingsPath = Join-Path ([string]$profile.profileDirectory) "settings.cfg"
 Set-CaptureProfileSetting -Path $settingsPath -Section "General" -Key "screenshot format" -Value "png"
 Set-CaptureProfileSetting -Path $settingsPath -Section "General" -Key "notify on saved screenshot" -Value "false"
 Set-CaptureProfileSetting -Path $settingsPath -Section "General" -Key "minimize on focus loss" -Value "false"
+# This build's Bullet library is deliberately single-threaded. Requesting no
+# asynchronous physics workers avoids a capability warning without changing
+# the TestMap simulation path.
+Set-CaptureProfileSetting -Path $settingsPath -Section "Physics" -Key "async num threads" -Value "0"
 
 $previousEnvironment = Save-And-ClearOpenMwEnvironment
+$previousTextureStorage = [Environment]::GetEnvironmentVariable("OSG_GL_TEXTURE_STORAGE", "Process")
 $game = $null
+$gameStdoutTask = $null
+$gameStderrTask = $null
+$gameStreamsSaved = $false
 $recorder = $null
 $recorderStdoutTask = $null
 $recorderStderrTask = $null
@@ -270,11 +285,18 @@ $gameTermination = "not-started"
 $nativeSourceFrame = $null
 $startedAt = [DateTime]::UtcNow
 try {
+    # TestMap's native Fallout map and UI textures receive later image updates.
+    # OSG's immutable-storage path rejects those updates on the NVIDIA driver;
+    # use OSG's supported mutable-storage mode for this isolated Fallout run.
+    [Environment]::SetEnvironmentVariable("OSG_GL_TEXTURE_STORAGE", "OFF", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_LEVEL", "INFO", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_START_WORLDSPACE", $TestMapWorldspace, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_START_GRID_X", [string]$TestMapGridX, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_START_GRID_Y", [string]$TestMapGridY, "Process")
+    if ($OpenGlDebug) {
+        [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_OPENGL", "1", "Process")
+    }
     # This is deliberately the existing engine-native screenshot hook. No
     # keyboard binding, console command, desktop click, or window focus call
     # reaches the game; the explicit --start bypasses authored New Game logic
@@ -288,9 +310,24 @@ try {
         "--skip-menu", "--start", "TestMap01"
     )
     $argumentLine = ($arguments | ForEach-Object { Quote-OpenNVArgument $_ }) -join " "
-    $game = Start-Process -FilePath $binary -ArgumentList $argumentLine `
-        -WorkingDirectory (Split-Path -Parent $binary) -WindowStyle Normal `
-        -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
+    # Keep the engine streams owned by this process object and write them only
+    # after OpenMW has exited. Start-Process keeps the redirected file handles
+    # open long enough to race report hashing on Windows.
+    $gameStartInfo = [Diagnostics.ProcessStartInfo]::new()
+    $gameStartInfo.FileName = $binary
+    $gameStartInfo.Arguments = $argumentLine
+    $gameStartInfo.WorkingDirectory = Split-Path -Parent $binary
+    $gameStartInfo.UseShellExecute = $false
+    $gameStartInfo.CreateNoWindow = $false
+    $gameStartInfo.RedirectStandardOutput = $true
+    $gameStartInfo.RedirectStandardError = $true
+    $game = [Diagnostics.Process]::new()
+    $game.StartInfo = $gameStartInfo
+    if (-not $game.Start()) {
+        throw "Unable to start OpenMW for the TestMap diagnostic."
+    }
+    $gameStdoutTask = $game.StandardOutput.ReadToEndAsync()
+    $gameStderrTask = $game.StandardError.ReadToEndAsync()
 
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ($game.MainWindowHandle -eq 0 -and [DateTime]::UtcNow -lt $deadline) {
@@ -386,14 +423,35 @@ finally {
     if ($null -ne $game) {
         $game.Refresh()
         if (-not $game.HasExited) {
-            Stop-Process -Id $game.Id -Force
-            $gameTermination = "owned-process-terminated-after-capture"
+            Stop-Process -Id $game.Id -Force -ErrorAction SilentlyContinue
+            [void]$game.WaitForExit(15000)
+            $game.Refresh()
+            if ($game.HasExited) {
+                $gameTermination = "owned-process-terminated-after-capture"
+            }
+            else {
+                $gameTermination = "owned-process-exit-timeout"
+                if ([string]::IsNullOrWhiteSpace($captureError)) {
+                    $captureError = "Timed out waiting for the owned OpenMW process to release its capture streams."
+                }
+            }
         }
         else {
             $gameTermination = "engine-exited"
         }
+        if ($game.HasExited -and -not $gameStreamsSaved -and $null -ne $gameStdoutTask -and $null -ne $gameStderrTask) {
+            Save-AsyncProcessStreams `
+                -StandardOutputTask $gameStdoutTask `
+                -StandardErrorTask $gameStderrTask `
+                -StandardOutputPath $stdoutPath `
+                -StandardErrorPath $stderrPath
+            $gameStreamsSaved = $true
+        }
+        $game.Dispose()
+        $game = $null
     }
     Restore-Environment -Values $previousEnvironment
+    [Environment]::SetEnvironmentVariable("OSG_GL_TEXTURE_STORAGE", $previousTextureStorage, "Process")
 }
 
 $nativeFrameHealth = if (Test-Path -LiteralPath $nativeFramePath -PathType Leaf) {
@@ -427,11 +485,40 @@ $logText = @(
         Get-Content -Raw -LiteralPath (Join-Path $profile.profileDirectory "openmw.log")
     })
 ) -join [Environment]::NewLine
-$missingTexturePatterns = @(
-    'Failed to open image: textures/water/',
-    'Failed to open image: textures/_land_default\.dds'
+$logLines = @($logText -split "[\r\n]+" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+# The renderer reports resource paths as `Resource 'textures/...' not found`,
+# rather than directly after `Failed to open image:`. Keep the full matching
+# log lines so a failed diagnostic names the actual missing assets.
+$missingTextureFailures = @($logLines | Where-Object {
+    $_ -match "Failed to open image:"
+})
+$missingModelFailures = @($logLines | Where-Object {
+    $_ -match "(?:Failed to load|failed to insert).+Resource 'meshes/.+' not found"
+})
+$missingGlobalScriptFailures = @($logLines | Where-Object {
+    $_ -match 'Failed to add global script'
+})
+$unsupportedObScriptFailures = @($logLines | Where-Object {
+    $_ -match 'FNV/ESM4 ObScript unsupported command:'
+})
+$unhandledControllerDiagnostics = @($logLines | Where-Object {
+    $_ -match 'Unhandled controller '
+})
+$runtimeErrorDiagnostics = @($logLines | Where-Object {
+    $_ -match '\sE\]'
+})
+$runtimeWarningDiagnostics = @($logLines | Where-Object {
+    $_ -match '\[[^\]]*\sW\]'
+})
+$runtimeCleanlinessFailures = @(
+    $missingTextureFailures
+    $missingModelFailures
+    $missingGlobalScriptFailures
+    $unsupportedObScriptFailures
+    $unhandledControllerDiagnostics
+    $runtimeErrorDiagnostics
+    $runtimeWarningDiagnostics
 )
-$missingTextureFailures = @($missingTexturePatterns | Where-Object { $logText -match $_ })
 $testMapRequested = $logText -match [regex]::Escape("TestMap01")
 $testMapExteriorPlacementObserved = $logText -match [regex]::Escape("World viewer: explicit exterior start location=")
 $testMapStartFailureObserved = $logText -match [regex]::Escape("Failed to start new game:")
@@ -441,7 +528,7 @@ $mobileVideoArtifact = Get-Artifact $mobileVideoPath
 $passed = [string]::IsNullOrWhiteSpace($captureError) -and $testMapRequested -and
     $testMapExteriorPlacementObserved -and -not $testMapStartFailureObserved -and
     $null -ne $rawVideoArtifact -and $null -ne $nativeFrameArtifact -and $null -ne $mobileVideoArtifact -and
-    [bool]$nativeFrameHealth.passed -and $missingTextureFailures.Count -eq 0
+    [bool]$nativeFrameHealth.passed -and $runtimeCleanlinessFailures.Count -eq 0
 
 $report = [ordered]@{
     schema = "opennv-testmap01-clean-diagnostic/v1"
@@ -485,6 +572,16 @@ $report = [ordered]@{
         nativeFrameHealth = $nativeFrameHealth
         missingLegacyTextureFailures = @($missingTextureFailures)
         missingLegacyTextureFailuresAbsent = $missingTextureFailures.Count -eq 0
+        runtimeCleanliness = [ordered]@{
+            passed = $runtimeCleanlinessFailures.Count -eq 0
+            missingTextureFailures = @($missingTextureFailures)
+            missingModelFailures = @($missingModelFailures)
+            missingGlobalScriptFailures = @($missingGlobalScriptFailures)
+            unsupportedObScriptFailures = @($unsupportedObScriptFailures)
+            unhandledControllerDiagnostics = @($unhandledControllerDiagnostics)
+            errorDiagnostics = @($runtimeErrorDiagnostics)
+            warningDiagnostics = @($runtimeWarningDiagnostics)
+        }
     }
     artifacts = @(
         (Get-Artifact $stdoutPath),

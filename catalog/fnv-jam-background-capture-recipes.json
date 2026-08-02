@@ -215,6 +215,61 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario TestMap -OutputRoot .\\run\\opennv-testmap-clean-<unique>"
     }
   ],
+  "showcaseRecipes": [
+    {
+      "id": "retail-pipboy-first-person-state-v1",
+      "target": "Retail",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-FNVRetailPipBoyStateCapture.ps1",
+      "captureMethod": "xNVSE records the complete live first-person scene graph, animation sequences, Pip-Boy menu state, inventory, and native Direct3D 9 backbuffer frames every engine frame through raise, hold, and lower",
+      "driverMethod": "in-process xNVSE schedule forces first person and holds/releases retail's Tab binding across multiple engine frames without Windows input",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent; all state changes originate inside FalloutNV through the xNVSE oracle",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "native-d3d9-frames/frame-*.bmp",
+      "telemetryPattern": "retail-pipboy-state.jsonl",
+      "manifestPattern": "retail-pipboy-state-report.json; retail-pipboy-state.jsonl.manifest.json",
+      "requiredTelemetry": [
+        "zero rejected scheduled commands",
+        "first-person root and complete named-node transforms retained",
+        "active animation sequences and controlled blocks retained",
+        "retail Pip-Boy physical, page, active tile, and menu state retained",
+        "both rendered-open and rendered-closed states observed",
+        "requested native Direct3D 9 backbuffer frame count retained",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario PipBoy -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario PipBoy -OutputRoot .\\run\\retail-pipboy-state-<unique>"
+    },
+    {
+      "id": "opennv-pipboy-live-panel-native-v1",
+      "target": "OpenMW",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-OpenNVPipBoyShowcaseCapture.ps1",
+      "captureMethod": "OpenMW ScreenCaptureHandler retains one GUI-inclusive native framebuffer PNG for each real Pip-Boy panel (STATS, ITEMS, DATA, MAP); ffmpeg retains an exact-title OpenMW transport MP4; the collage only arranges the retained native PNGs.",
+      "driverMethod": "normal --new-game initialization followed by final TestMap01 developer placement; the engine opens the dedicated Tab Pip-Boy mode and selects its live panels internally.",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent; the engine-owned panel schedule uses no Windows app control or foreground activation.",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "PipBoy-STATS-native.png; PipBoy-ITEMS-native.png; PipBoy-DATA-native.png; PipBoy-MAP-native.png",
+      "telemetryPattern": "openmw.stdout.log; profile-local openmw.log",
+      "manifestPattern": "pipboy-showcase-report.json",
+      "videoPattern": "OpenMW-PipBoy-live-exact-title-raw.mp4",
+      "requiredTelemetry": [
+        "normal New Game completes with bypass=0 and final TestMap01 placement is observed",
+        "all four live Pip-Boy panel-open and native-frame events are retained",
+        "the showcase loadout resolves named FalloutNV.esm records with fallbackItems=0",
+        "fallback FNV_PROOF inventory records are absent",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoy -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoy -OutputRoot .\\run\\opennv-pipboy-live-<unique>"
+    }
+  ],
   "knownGoodEvidence": {
     "retailSmoke": "run/jam-background-smoke-20260725-ar",
     "retailFull": "run/jam-background-retail-release-20260725-as",

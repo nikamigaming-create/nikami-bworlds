@@ -1,0 +1,685 @@
+From b179cad3a3c0adb27ab9f64bcf783ce80e63f79e Mon Sep 17 00:00:00 2001
+From: Nikami Creative <295006744+nikamigaming-create@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 07:03:07 -0700
+Subject: [PATCH] Add FNV seamless exterior telemetry
+
+---
+ apps/components_tests/CMakeLists.txt          |   2 +
+ .../debug/testfnvseamlesstelemetry.cpp        |  21 +++
+ apps/openmw/engine.cpp                        |  19 ++
+ apps/openmw/mwgui/loadingscreen.cpp           |  34 +++-
+ apps/openmw/mwgui/loadingscreen.hpp           |   1 +
+ apps/openmw/mwgui/windowmanagerimp.cpp        |  20 +++
+ apps/openmw/mwworld/actionteleport.cpp        |  25 ++-
+ apps/openmw/mwworld/scene.cpp                 | 121 ++++++++++++-
+ components/debug/fnvseamlesstelemetry.hpp     | 170 ++++++++++++++++++
+ 9 files changed, 406 insertions(+), 7 deletions(-)
+ create mode 100644 apps/components_tests/debug/testfnvseamlesstelemetry.cpp
+ create mode 100644 components/debug/fnvseamlesstelemetry.hpp
+
+diff --git a/apps/components_tests/CMakeLists.txt b/apps/components_tests/CMakeLists.txt
+index 21a3a6a5ae..08c0c32005 100644
+--- a/apps/components_tests/CMakeLists.txt
++++ b/apps/components_tests/CMakeLists.txt
+@@ -66,6 +66,8 @@ file(GLOB UNITTEST_SRC_FILES
+     files/conversiontests.cpp
+     files/hash.cpp
+ 
++    debug/testfnvseamlesstelemetry.cpp
++
+     toutf8/toutf8.cpp
+ 
+     esm4/includes.cpp
+diff --git a/apps/components_tests/debug/testfnvseamlesstelemetry.cpp b/apps/components_tests/debug/testfnvseamlesstelemetry.cpp
+new file mode 100644
+index 0000000000..07311958f1
+--- /dev/null
++++ b/apps/components_tests/debug/testfnvseamlesstelemetry.cpp
+@@ -0,0 +1,21 @@
++#include <components/debug/fnvseamlesstelemetry.hpp>
++
++#include <gtest/gtest.h>
++
++#include <string>
++
++namespace
++{
++    TEST(FnvSeamlessTelemetry, EscapesJsonControlCharacters)
++    {
++        const std::string value = std::string("quote\" slash\\ newline\n tab\t") + static_cast<char>(1);
++
++        EXPECT_EQ(Debug::FNVSeamlessTelemetry::jsonEscape(value), "quote\\\" slash\\\\ newline\\n tab\\t\\u0001");
++    }
++
++    TEST(FnvSeamlessTelemetry, IncludesTheVersionedSchemaInEachEventPrefix)
++    {
++        EXPECT_EQ(Debug::FNVSeamlessTelemetry::eventPrefix("grid-change-begin"),
++            "{\"schema\":\"nikami-fnv-seamless-exterior-telemetry/v1\",\"event\":\"grid-change-begin\"");
++    }
++}
+diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
+index 413044d27e..0749742540 100644
+--- a/apps/openmw/engine.cpp
++++ b/apps/openmw/engine.cpp
+@@ -38,6 +38,7 @@
+ #include <SDL.h>
+ 
+ #include <components/debug/debuglog.hpp>
++#include <components/debug/fnvseamlesstelemetry.hpp>
+ #include <components/debug/gldebug.hpp>
+ 
+ #include <components/misc/rng.hpp>
+@@ -2585,6 +2586,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+ 
+         return values;
+     };
++    static unsigned int seamlessTelemetryLastFrame = 0;
++    static bool seamlessTelemetryHasFrameSample = false;
++    if (Debug::FNVSeamlessTelemetry::enabled())
++    {
++        const unsigned int sampleInterval = Debug::FNVSeamlessTelemetry::frameSampleInterval();
++        const bool sampleDue = !seamlessTelemetryHasFrameSample || sampleInterval == 0
++            || frameNumber >= seamlessTelemetryLastFrame + sampleInterval;
++        if (sampleDue)
++        {
++            Debug::FNVSeamlessTelemetry::Event("frame-sample")
++                .integer("frame", frameNumber)
++                .number("frameTimeMs", static_cast<double>(frametime) * 1000.0)
++                .string("memoryStatus", "not-collected")
++                .emit();
++            seamlessTelemetryLastFrame = frameNumber;
++            seamlessTelemetryHasFrameSample = true;
++        }
++    }
+     static const std::vector<int> proofScreenshotFrames = getProofFrames("OPENMW_PROOF_SCREENSHOT_FRAME");
+     static const std::vector<float> proofActorViewOrbitDegrees
+         = getProofFloats("OPENMW_PROOF_ACTOR_VIEW_ORBIT_DEGREES");
+diff --git a/apps/openmw/mwgui/loadingscreen.cpp b/apps/openmw/mwgui/loadingscreen.cpp
+index ec80785ba8..d591ad5116 100644
+--- a/apps/openmw/mwgui/loadingscreen.cpp
++++ b/apps/openmw/mwgui/loadingscreen.cpp
+@@ -12,6 +12,7 @@
+ #include <MyGUI_UString.h>
+ 
+ #include <components/debug/debuglog.hpp>
++#include <components/debug/fnvseamlesstelemetry.hpp>
+ #include <components/misc/pathhelpers.hpp>
+ #include <components/misc/rng.hpp>
+ #include <components/myguiplatform/myguitexture.hpp>
+@@ -158,9 +159,16 @@ namespace MWGui
+     void LoadingScreen::loadingOn()
+     {
+         // Early-out if already on
+-        if (mNestedLoadingCount++ > 0 && mMainWidget->getVisible())
++        const int loadingDepth = ++mNestedLoadingCount;
++        Debug::FNVSeamlessTelemetry::Event("loading-scope-enter")
++            .integer("depth", loadingDepth)
++            .boolean("alreadyVisible", mMainWidget->getVisible())
++            .emit();
++        if (loadingDepth > 1 && mMainWidget->getVisible())
+             return;
+ 
++        if (loadingDepth == 1)
++            mSeamlessTelemetryDrawCount = 0;
+         mLoadingOnTime = mTimer.time_m();
+ 
+         // Assign dummy bounding sphere callback to avoid the bounding sphere of the entire scene being recomputed after
+@@ -187,8 +195,22 @@ namespace MWGui
+ 
+     void LoadingScreen::loadingOff()
+     {
+-        if (--mNestedLoadingCount > 0)
++        const int loadingDepth = --mNestedLoadingCount;
++        if (loadingDepth > 0)
++        {
++            Debug::FNVSeamlessTelemetry::Event("loading-scope-exit")
++                .integer("depth", loadingDepth)
++                .boolean("outermost", false)
++                .emit();
+             return;
++        }
++
++        Debug::FNVSeamlessTelemetry::Event("loading-scope-exit")
++            .integer("depth", loadingDepth)
++            .boolean("outermost", true)
++            .integer("visibleDrawCount", mSeamlessTelemetryDrawCount)
++            .number("elapsedMs", mTimer.time_m() - mLoadingOnTime)
++            .emit();
+ 
+         if (mLastRenderTime < mLoadingOnTime)
+         {
+@@ -350,6 +372,14 @@ namespace MWGui
+         osg::Stats* const stats = mViewer->getViewerStats();
+         const unsigned frameNumber = mViewer->getFrameStamp()->getFrameNumber();
+ 
++        ++mSeamlessTelemetryDrawCount;
++        Debug::FNVSeamlessTelemetry::Event("loading-screen-draw")
++            .integer("frame", frameNumber)
++            .integer("drawIndex", mSeamlessTelemetryDrawCount)
++            .number("elapsedMs", mTimer.time_m() - mLoadingOnTime)
++            .boolean("wallpaper", mShowWallpaper)
++            .emit();
++
+         stats->setAttribute(frameNumber, "Loading", 1);
+ 
+         mResourceSystem->reportStats(frameNumber, stats);
+diff --git a/apps/openmw/mwgui/loadingscreen.hpp b/apps/openmw/mwgui/loadingscreen.hpp
+index 9b85d121ff..6f518de865 100644
+--- a/apps/openmw/mwgui/loadingscreen.hpp
++++ b/apps/openmw/mwgui/loadingscreen.hpp
+@@ -69,6 +69,7 @@ namespace MWGui
+         int mNestedLoadingCount;
+ 
+         size_t mProgress;
++        size_t mSeamlessTelemetryDrawCount = 0;
+ 
+         bool mShowWallpaper;
+         float mOldIcoMin = 0.f;
+diff --git a/apps/openmw/mwgui/windowmanagerimp.cpp b/apps/openmw/mwgui/windowmanagerimp.cpp
+index d39ab90573..a0f8edff85 100644
+--- a/apps/openmw/mwgui/windowmanagerimp.cpp
++++ b/apps/openmw/mwgui/windowmanagerimp.cpp
+@@ -27,6 +27,7 @@
+ #include <SDL_keyboard.h>
+ 
+ #include <components/debug/debuglog.hpp>
++#include <components/debug/fnvseamlesstelemetry.hpp>
+ 
+ #include <components/esm3/esmreader.hpp>
+ #include <components/esm3/esmwriter.hpp>
+@@ -2610,6 +2611,12 @@ namespace MWGui
+ 
+     void WindowManager::fadeScreenIn(const float time, bool clearQueue, float delay)
+     {
++        Debug::FNVSeamlessTelemetry::Event("fade-request")
++            .string("operation", "fadeScreenIn")
++            .number("durationSeconds", time)
++            .boolean("clearQueue", clearQueue)
++            .number("delaySeconds", delay)
++            .emit();
+         if (clearQueue)
+             mScreenFader->clearQueue();
+         mScreenFader->fadeOut(time, delay);
+@@ -2617,6 +2624,12 @@ namespace MWGui
+ 
+     void WindowManager::fadeScreenOut(const float time, bool clearQueue, float delay)
+     {
++        Debug::FNVSeamlessTelemetry::Event("fade-request")
++            .string("operation", "fadeScreenOut")
++            .number("durationSeconds", time)
++            .boolean("clearQueue", clearQueue)
++            .number("delaySeconds", delay)
++            .emit();
+         if (clearQueue)
+             mScreenFader->clearQueue();
+         mScreenFader->fadeIn(time, delay);
+@@ -2624,6 +2637,13 @@ namespace MWGui
+ 
+     void WindowManager::fadeScreenTo(const int percent, const float time, bool clearQueue, float delay)
+     {
++        Debug::FNVSeamlessTelemetry::Event("fade-request")
++            .string("operation", "fadeScreenTo")
++            .integer("percent", percent)
++            .number("durationSeconds", time)
++            .boolean("clearQueue", clearQueue)
++            .number("delaySeconds", delay)
++            .emit();
+         if (clearQueue)
+             mScreenFader->clearQueue();
+         mScreenFader->fadeTo(percent, time, delay);
+diff --git a/apps/openmw/mwworld/actionteleport.cpp b/apps/openmw/mwworld/actionteleport.cpp
+index 535656055a..648be80db2 100644
+--- a/apps/openmw/mwworld/actionteleport.cpp
++++ b/apps/openmw/mwworld/actionteleport.cpp
+@@ -3,6 +3,7 @@
+ #include <cstdlib>
+ 
+ #include <components/debug/debuglog.hpp>
++#include <components/debug/fnvseamlesstelemetry.hpp>
+ 
+ #include <components/esm3/loadcell.hpp>
+ #include <components/esm3/loadmgef.hpp>
+@@ -33,10 +34,19 @@ namespace MWWorld
+ 
+     void ActionTeleport::executeImp(const Ptr& actor)
+     {
++        const bool actorIsPlayer = actor == MWBase::Environment::get().getWorld()->getPlayerPtr();
++        if (Debug::FNVSeamlessTelemetry::enabled())
++        {
++            Debug::FNVSeamlessTelemetry::Event("teleport-action-begin")
++                .string("actor", actor.toString())
++                .boolean("actorIsPlayer", actorIsPlayer)
++                .string("destinationCell", mCellId.toDebugString())
++                .boolean("teleportFollowers", mTeleportFollowers)
++                .emit();
++        }
+         if (std::getenv("OPENMW_FNV_INTERACTION_AUDIT") != nullptr)
+             Log(Debug::Info) << "FNV interaction audit: ActionTeleport begin actor=" << actor.toString()
+-                             << " actorIsPlayer="
+-                             << (actor == MWBase::Environment::get().getWorld()->getPlayerPtr() ? 1 : 0)
++                             << " actorIsPlayer=" << actorIsPlayer
+                              << " destination=" << mCellId.toDebugString()
+                              << " followers=" << (mTeleportFollowers ? 1 : 0);
+         if (mTeleportFollowers)
+@@ -52,6 +62,17 @@ namespace MWWorld
+         }
+ 
+         teleport(actor);
++        if (Debug::FNVSeamlessTelemetry::enabled())
++        {
++            const Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
++            Debug::FNVSeamlessTelemetry::Event("teleport-action-end")
++                .boolean("actorIsPlayer", actorIsPlayer)
++                .string("destinationCell", mCellId.toDebugString())
++                .string("playerCell", player.getCell() != nullptr && player.getCell()->getCell() != nullptr
++                        ? player.getCell()->getCell()->getId().toDebugString()
++                        : std::string())
++                .emit();
++        }
+         if (std::getenv("OPENMW_FNV_INTERACTION_AUDIT") != nullptr)
+         {
+             const Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
+diff --git a/apps/openmw/mwworld/scene.cpp b/apps/openmw/mwworld/scene.cpp
+index 6b85aee1b2..c4e8979b45 100644
+--- a/apps/openmw/mwworld/scene.cpp
++++ b/apps/openmw/mwworld/scene.cpp
+@@ -12,6 +12,7 @@
+ #include <BulletCollision/CollisionDispatch/btCollisionObject.h>
+ 
+ #include <components/debug/debuglog.hpp>
++#include <components/debug/fnvseamlesstelemetry.hpp>
+ #include <components/detournavigator/agentbounds.hpp>
+ #include <components/detournavigator/debug.hpp>
+ #include <components/detournavigator/heightfieldshape.hpp>
+@@ -1214,12 +1215,23 @@ namespace MWWorld
+ 
+     void Scene::changeCellGrid(const osg::Vec3f& pos, ESM::ExteriorCellLocation playerCellIndex, bool changeEvent)
+     {
++        const auto gridChangeStart = std::chrono::steady_clock::now();
++        const std::size_t activeCellsBefore = mActiveCells.size();
+         const int halfGridSize
+             = isEsm4Ext(playerCellIndex.mWorldspace) ? getViewerEsm4CellGridRadius() : Constants::CellGridRadius;
+         auto navigatorUpdateGuard = mNavigator.makeUpdateGuard();
+         const int playerCellX = playerCellIndex.mX;
+         const int playerCellY = playerCellIndex.mY;
+ 
++        Debug::FNVSeamlessTelemetry::Event("grid-change-begin")
++            .string("worldspace", playerCellIndex.mWorldspace.toDebugString())
++            .integer("gridX", playerCellX)
++            .integer("gridY", playerCellY)
++            .integer("halfGridSize", halfGridSize)
++            .boolean("changeEvent", changeEvent)
++            .integer("activeCellsBefore", activeCellsBefore)
++            .emit();
++
+         for (auto iter = mActiveCells.begin(); iter != mActiveCells.end();)
+         {
+             auto* cell = *iter++;
+@@ -1252,7 +1264,9 @@ namespace MWWorld
+         mPreloader->setTerrain(mRendering.getTerrain());
+         if (mRendering.pagingUnlockCache())
+             mPreloader->abortTerrainPreloadExcept(nullptr);
+-        if (!mPreloader->isTerrainLoaded(PositionCellGrid{ pos, newGrid }, mRendering.getReferenceTime()))
++        const bool terrainAlreadyLoaded
++            = mPreloader->isTerrainLoaded(PositionCellGrid{ pos, newGrid }, mRendering.getReferenceTime());
++        if (!terrainAlreadyLoaded)
+             preloadTerrain(pos, playerCellIndex.mWorldspace, true);
+         mPagedRefs.clear();
+         mRendering.getPagedRefnums(newGrid, mPagedRefs);
+@@ -1269,6 +1283,19 @@ namespace MWWorld
+             cellsPositionsToLoad.emplace_back(x, y);
+         });
+ 
++        Debug::FNVSeamlessTelemetry::Event("grid-load-plan")
++            .string("worldspace", playerCellIndex.mWorldspace.toDebugString())
++            .integer("gridX", playerCellX)
++            .integer("gridY", playerCellY)
++            .integer("cellsToLoad", cellsPositionsToLoad.size())
++            .integer("referencesToLoad", refsToLoad)
++            .boolean("terrainAlreadyLoaded", terrainAlreadyLoaded)
++            .boolean("preloadEnabled", mPreloadEnabled)
++            .boolean("preloadExteriorGrid", mPreloadExteriorGrid)
++            .boolean("preloadDoors", mPreloadDoors)
++            .boolean("preloadFastTravel", mPreloadFastTravel)
++            .emit();
++
+         Loading::Listener* loadingListener = MWBase::Environment::get().getWindowManager()->getLoadingScreen();
+         Loading::ScopedLoad load(loadingListener);
+         loadingListener->setLabel("#{OMWEngine:LoadingExterior}");
+@@ -1297,6 +1324,17 @@ namespace MWWorld
+             mCellChanged = true;
+ 
+         mCellLoaded = true;
++
++        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
++                                   std::chrono::steady_clock::now() - gridChangeStart)
++                                   .count();
++        Debug::FNVSeamlessTelemetry::Event("grid-change-end")
++            .string("worldspace", playerCellIndex.mWorldspace.toDebugString())
++            .integer("gridX", playerCellX)
++            .integer("gridY", playerCellY)
++            .integer("activeCellsAfter", mActiveCells.size())
++            .integer("elapsedMs", elapsedMs)
++            .emit();
+     }
+ 
+     void Scene::addPostponedPhysicsObjects()
+@@ -1531,7 +1569,38 @@ namespace MWWorld
+         std::string_view cellName, const ESM::Position& position, bool adjustPlayerPos, bool changeEvent)
+     {
+         CellStore& cell = mWorld.getWorldModel().getInterior(cellName);
++        const auto transitionStart = std::chrono::steady_clock::now();
++        const std::string sourceCell = mCurrentCell != nullptr && mCurrentCell->getCell() != nullptr
++            ? mCurrentCell->getCell()->getId().toDebugString()
++            : std::string();
++        const std::string sourceWorldspace = mCurrentCell != nullptr && mCurrentCell->getCell() != nullptr
++            ? mCurrentCell->getCell()->getWorldSpace().toDebugString()
++            : std::string();
+         bool useFading = (mCurrentCell != nullptr);
++
++        const auto emitTransitionEnd = [&] {
++            const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
++                                       std::chrono::steady_clock::now() - transitionStart)
++                                       .count();
++            Debug::FNVSeamlessTelemetry::Event("scene-transition-end")
++                .string("route", "interior")
++                .string("destinationCell", cell.getCell()->getId().toDebugString())
++                .boolean("changeEvent", changeEvent)
++                .integer("elapsedMs", elapsedMs)
++                .emit();
++        };
++
++        Debug::FNVSeamlessTelemetry::Event("scene-transition-begin")
++            .string("route", "interior")
++            .string("sourceCell", sourceCell)
++            .string("sourceWorldspace", sourceWorldspace)
++            .string("destinationCell", cell.getCell()->getId().toDebugString())
++            .string("destinationWorldspace", cell.getCell()->getWorldSpace().toDebugString())
++            .boolean("changeEvent", changeEvent)
++            .boolean("usesFade", useFading)
++            .string("handoffState", "not-applicable")
++            .emit();
++
+         if (useFading)
+             MWBase::Environment::get().getWindowManager()->fadeScreenOut(0.5);
+ 
+@@ -1547,6 +1616,7 @@ namespace MWWorld
+             if (adjustPlayerPos)
+                 mWorld.getPlayerPtr().getClass().adjustPosition(mWorld.getPlayerPtr(), true);
+             MWBase::Environment::get().getWindowManager()->fadeScreenIn(0.5);
++            emitTransitionEnd();
+             return;
+         }
+ 
+@@ -1592,16 +1662,41 @@ namespace MWWorld
+         MWBase::Environment::get().getWindowManager()->changeCell(mCurrentCell);
+ 
+         MWBase::Environment::get().getWorld()->getPostProcessor()->setExteriorFlag(cell.getCell()->isQuasiExterior());
++        emitTransitionEnd();
+     }
+ 
+     void Scene::changeToExteriorCell(
+         const ESM::RefId& extCellId, const ESM::Position& position, bool adjustPlayerPos, bool changeEvent)
+     {
++        const auto transitionStart = std::chrono::steady_clock::now();
++        const std::string sourceCell = mCurrentCell != nullptr && mCurrentCell->getCell() != nullptr
++            ? mCurrentCell->getCell()->getId().toDebugString()
++            : std::string();
++        const std::string sourceWorldspace = mCurrentCell != nullptr && mCurrentCell->getCell() != nullptr
++            ? mCurrentCell->getCell()->getWorldSpace().toDebugString()
++            : std::string();
++        const bool sourceExterior = mCurrentCell != nullptr && mCurrentCell->isExterior();
+ 
+         if (changeEvent)
+             MWBase::Environment::get().getWindowManager()->fadeScreenOut(0.5);
+         CellStore& current = mWorld.getWorldModel().getCell(extCellId);
+ 
++        const bool sameWorldspace = sourceExterior && mCurrentCell->getCell()->getWorldSpace()
++            == current.getCell()->getWorldSpace();
++        const std::string handoffState = sourceExterior && !sameWorldspace ? "not-implemented" : "not-applicable";
++        Debug::FNVSeamlessTelemetry::Event("scene-transition-begin")
++            .string("route", "exterior")
++            .string("sourceCell", sourceCell)
++            .string("sourceWorldspace", sourceWorldspace)
++            .string("destinationCell", current.getCell()->getId().toDebugString())
++            .string("destinationWorldspace", current.getCell()->getWorldSpace().toDebugString())
++            .boolean("sourceExterior", sourceExterior)
++            .boolean("sameWorldspace", sameWorldspace)
++            .boolean("changeEvent", changeEvent)
++            .boolean("usesFade", changeEvent)
++            .string("handoffState", handoffState)
++            .emit();
++
+         const osg::Vec2i cellIndex(current.getCell()->getGridX(), current.getCell()->getGridY());
+ 
+         changeCellGrid(position.asVec3(),
+@@ -1613,6 +1708,17 @@ namespace MWWorld
+             MWBase::Environment::get().getWindowManager()->fadeScreenIn(0.5);
+ 
+         MWBase::Environment::get().getWorld()->getPostProcessor()->setExteriorFlag(true);
++
++        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
++                                   std::chrono::steady_clock::now() - transitionStart)
++                                   .count();
++        Debug::FNVSeamlessTelemetry::Event("scene-transition-end")
++            .string("route", "exterior")
++            .string("destinationCell", current.getCell()->getId().toDebugString())
++            .boolean("sameWorldspace", sameWorldspace)
++            .string("handoffState", handoffState)
++            .integer("elapsedMs", elapsedMs)
++            .emit();
+     }
+ 
+     CellStore* Scene::getCurrentCell()
+@@ -1843,13 +1949,22 @@ namespace MWWorld
+                     preloadCellWithSurroundings(destination);
+                     const CellPreloader::PreloadState stateAfter = mPreloader->getPreloadState(destination);
+                     const ESM::RefNum doorId = door.getCellRef().getRefNum();
++                    const float distance = std::sqrt(sqrDistToPlayer);
++
++                    Debug::FNVSeamlessTelemetry::Event("door-preload")
++                        .string("format", candidate.mFormat)
++                        .string("destinationCell", door.getCellRef().getDestCell().toDebugString())
++                        .number("distance", distance)
++                        .string("stateBefore", preloadStateName(stateBefore))
++                        .string("stateAfter", preloadStateName(stateAfter))
++                        .emit();
+ 
+                     if (telemetryEnabled && mTeleportDoorPreloadRequestsLogged.insert(doorId).second)
+                     {
+                         Log(Debug::Info) << "Teleport door preload telemetry: phase=requested format="
+                                          << candidate.mFormat << " door=" << ESM::RefId(doorId).toDebugString()
+                                          << " destCell=" << door.getCellRef().getDestCell().toDebugString()
+-                                         << " distance=" << std::sqrt(sqrDistToPlayer)
++                                         << " distance=" << distance
+                                          << " stateBefore=" << preloadStateName(stateBefore)
+                                          << " stateAfter=" << preloadStateName(stateAfter);
+                     }
+@@ -1859,7 +1974,7 @@ namespace MWWorld
+                         Log(Debug::Info) << "Teleport door preload telemetry: phase=complete format="
+                                          << candidate.mFormat << " door=" << ESM::RefId(doorId).toDebugString()
+                                          << " destCell=" << door.getCellRef().getDestCell().toDebugString()
+-                                         << " distance=" << std::sqrt(sqrDistToPlayer);
++                                         << " distance=" << distance;
+                     }
+                 }
+                 catch (const std::exception& e)
+diff --git a/components/debug/fnvseamlesstelemetry.hpp b/components/debug/fnvseamlesstelemetry.hpp
+new file mode 100644
+index 0000000000..39ddb5a3d3
+--- /dev/null
++++ b/components/debug/fnvseamlesstelemetry.hpp
+@@ -0,0 +1,170 @@
++#ifndef COMPONENTS_DEBUG_FNVSEAMLESSTELEMETRY_H
++#define COMPONENTS_DEBUG_FNVSEAMLESSTELEMETRY_H
++
++#include "debuglog.hpp"
++
++#include <cstdlib>
++#include <string>
++#include <string_view>
++#include <type_traits>
++
++namespace Debug::FNVSeamlessTelemetry
++{
++    inline constexpr std::string_view sSchema = "nikami-fnv-seamless-exterior-telemetry/v1";
++
++    inline bool enabled()
++    {
++        const char* const value = std::getenv("OPENMW_FNV_SEAMLESS_TELEMETRY");
++        if (value == nullptr)
++            return false;
++
++        const std::string_view text(value);
++        return !text.empty() && text != "0" && text != "false" && text != "off" && text != "no";
++    }
++
++    inline unsigned int frameSampleInterval()
++    {
++        constexpr unsigned int defaultInterval = 60;
++        const char* const value = std::getenv("OPENMW_FNV_SEAMLESS_TELEMETRY_FRAME_INTERVAL");
++        if (value == nullptr || *value == '\0')
++            return defaultInterval;
++
++        char* end = nullptr;
++        const unsigned long parsed = std::strtoul(value, &end, 10);
++        if (end == value || *end != '\0' || parsed > 3600)
++            return defaultInterval;
++        return static_cast<unsigned int>(parsed);
++    }
++
++    inline std::string jsonEscape(std::string_view value)
++    {
++        static constexpr char hex[] = "0123456789abcdef";
++
++        std::string result;
++        result.reserve(value.size());
++        for (const char character : value)
++        {
++            const unsigned char byte = static_cast<unsigned char>(character);
++            switch (byte)
++            {
++                case '"':
++                    result += "\\\"";
++                    break;
++                case '\\':
++                    result += "\\\\";
++                    break;
++                case '\b':
++                    result += "\\b";
++                    break;
++                case '\f':
++                    result += "\\f";
++                    break;
++                case '\n':
++                    result += "\\n";
++                    break;
++                case '\r':
++                    result += "\\r";
++                    break;
++                case '\t':
++                    result += "\\t";
++                    break;
++                default:
++                    if (byte < 0x20)
++                    {
++                        result += "\\u00";
++                        result += hex[(byte >> 4) & 0x0f];
++                        result += hex[byte & 0x0f];
++                    }
++                    else
++                        result += character;
++                    break;
++            }
++        }
++        return result;
++    }
++
++    inline std::string eventPrefix(std::string_view event)
++    {
++        std::string result;
++        result.reserve(sSchema.size() + event.size() + 32);
++        result += "{\"schema\":\"";
++        result.append(sSchema.data(), sSchema.size());
++        result += "\",\"event\":\"";
++        result += jsonEscape(event);
++        result += "\"";
++        return result;
++    }
++
++    class Event
++    {
++    public:
++        explicit Event(std::string_view event)
++            : mEnabled(enabled())
++        {
++            if (mEnabled)
++                mPayload = eventPrefix(event);
++        }
++
++        Event& string(std::string_view name, std::string_view value)
++        {
++            if (mEnabled)
++            {
++                appendFieldName(name);
++                mPayload += "\"";
++                mPayload += jsonEscape(value);
++                mPayload += "\"";
++            }
++            return *this;
++        }
++
++        Event& boolean(std::string_view name, bool value)
++        {
++            if (mEnabled)
++            {
++                appendFieldName(name);
++                mPayload += value ? "true" : "false";
++            }
++            return *this;
++        }
++
++        template <class T, class = std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>>>
++        Event& integer(std::string_view name, T value)
++        {
++            if (mEnabled)
++            {
++                appendFieldName(name);
++                mPayload += std::to_string(value);
++            }
++            return *this;
++        }
++
++        Event& number(std::string_view name, double value)
++        {
++            if (mEnabled)
++            {
++                appendFieldName(name);
++                mPayload += std::to_string(value);
++            }
++            return *this;
++        }
++
++        void emit() const
++        {
++            if (mEnabled)
++                Log(Debug::Info) << "FNV seamless telemetry: " << mPayload << "}";
++        }
++
++    private:
++        void appendFieldName(std::string_view name)
++        {
++            mPayload += ",\"";
++            mPayload += jsonEscape(name);
++            mPayload += "\":";
++        }
++
++        bool mEnabled;
++        std::string mPayload;
++    };
++}
++
++#endif
+-- 
+2.53.0.windows.1
+

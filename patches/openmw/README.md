@@ -242,6 +242,13 @@ cinematic/tint/fade stage. Easy Pete and Lucas Simms native background
 portraits are the bounded visual evidence; full linear-HDR and retail timing
 parity remain broader acceptance gates.
 
+Patch 0025 adds opt-in, JSON-shaped telemetry for the seamless-exterior
+baseline. With `OPENMW_FNV_SEAMLESS_TELEMETRY=1`, it records grid-change plans
+and timing, loading-scope entry/exit, actual loading-screen draws, fade
+requests, teleport actions, door-preload state, frame samples, and the current
+unimplemented exterior-worldspace handoff state. It makes no transition-path
+behavior change and therefore does not claim that a route is seamless.
+
 On a cold restart, read `../../docs/fallout-retail-parity-reboot.md` before
 editing an external checkout. Every new compatibility assumption must also be
 classified in `../../docs/fallout-compatibility-evidence-ledger.md`; rows

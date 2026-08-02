@@ -299,6 +299,9 @@ Deliverables:
 - `catalog/fnv-seamless-exterior-policy.json`
 - `scripts/export_fnv_exterior_transition_graph.py`
 - `scripts/Test-FNVSeamlessExteriorContract.ps1`
+- `catalog/fnv-seamless-exterior-telemetry.schema.json`
+- `scripts/Measure-FNVSeamlessTelemetry.ps1`
+- `scripts/Test-FNVSeamlessTelemetryContract.ps1`
 - structured engine telemetry for loading scopes, actual loading-screen draws,
   fades, grid changes, preload state, handoff state, frame time, and memory
 

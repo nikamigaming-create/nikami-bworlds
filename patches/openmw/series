@@ -23,3 +23,4 @@
 0022-Make-flat-OpenXR-headers-reproducible.patch
 0023-Stop-implicit-Fallout-preview-equipment.patch
 0024-Execute-Fallout-HDR-blend-and-bloom.patch
+0025-Add-FNV-seamless-exterior-telemetry.patch

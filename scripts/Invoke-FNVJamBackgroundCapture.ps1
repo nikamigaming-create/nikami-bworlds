@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "Opening", "TestMap")]
+    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -28,8 +28,15 @@ param(
     [int]$OpeningSceneSeconds = 8,
     [ValidateRange(6, 60)]
     [int]$TestMapCaptureSeconds = 16,
+    [ValidateRange(60, 90)]
+    [int]$PipBoyCaptureSeconds = 80,
+    # Optional isolated retail fixture for the Pip-Boy interaction oracle.
+    # The source save is copied by Invoke-FNVRetailOracle and never modified.
+    [string]$RetailPipBoySavePath = "",
     [ValidateRange(60, 3600)]
     [int]$TestMapNativeScreenshotFrame = 480,
+    # Opt-in native-driver telemetry for an OpenMW TestMap renderer issue.
+    [switch]$TestMapOpenGlDebug,
     [ValidateRange(0, 60)]
     [double]$OpeningDefaultChoiceDelaySeconds = 1,
     [ValidateRange(50, 1000)]
@@ -59,8 +66,16 @@ $openMwRunner = Join-Path $PSScriptRoot "Invoke-FNVJamSprintProof.ps1"
 $retailOpeningRunner = Join-Path $PSScriptRoot "Invoke-RetailTTWOpeningCapture.ps1"
 $openingRunner = Join-Path $PSScriptRoot "Invoke-OpenNVOpeningCapture.ps1"
 $testMapRunner = Join-Path $PSScriptRoot "Invoke-OpenNVTestMapDiagnostic.ps1"
+$pipBoyRunner = Join-Path $PSScriptRoot "Invoke-OpenNVPipBoyShowcaseCapture.ps1"
+$retailPipBoyRunner = Join-Path $PSScriptRoot "Invoke-FNVRetailPipBoyStateCapture.ps1"
 if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
-    $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
+    $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
+    if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
+        $OpeningRuntimeRoot = $pipBoyRuntimeRoot
+    }
+    else {
+        $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
+    }
 }
 $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 
@@ -80,6 +95,9 @@ if ($Scenario -eq "Opening" -and $OpeningCampaign -eq "NewVegas" -and $Target -n
 }
 if ($Scenario -eq "TestMap" -and $Target -ne "OpenMW") {
     throw "TestMap01 is an OpenMW-only renderer diagnostic. Use -Target OpenMW."
+}
+if ($Scenario -eq "PipBoy" -and $Target -eq "Both") {
+    throw "Pip-Boy state captures are intentionally single-engine. Run Retail first, then OpenMW."
 }
     if (($OpeningDiagnostic -or $OpeningInputDiagnostic -or $OpeningTitleGateDiagnostic -or $OpeningTitleStateDiagnostic -or $OpeningTitleInputDiagnostic -or $OpeningWorldLoadDiagnostic) -and ($Scenario -ne "Opening" -or $Target -ne "Retail")) {
     throw "Opening diagnostics are short retail TTW fresh-game diagnostics. Use -Target Retail -Scenario Opening."
@@ -114,6 +132,7 @@ $openMwResult = $null
 $retailOpeningResult = $null
 $openingResult = $null
 $testMapResult = $null
+$pipBoyResult = $null
 
 if ($Scenario -eq "Opening") {
     if ($Target -in @("Retail", "Both")) {
@@ -187,6 +206,7 @@ if ($Scenario -eq "TestMap") {
         -OutputRoot $testMapOutput `
         -CaptureSeconds $TestMapCaptureSeconds `
         -NativeScreenshotFrame $TestMapNativeScreenshotFrame `
+        -OpenGlDebug:$TestMapOpenGlDebug `
         -TimeoutSeconds $TimeoutSeconds
     $testMapResult =
         Get-Content -Raw -LiteralPath (Join-Path $testMapOutput "testmap-diagnostic-report.json") |
@@ -200,6 +220,57 @@ if ($Scenario -eq "TestMap") {
         throw "Canonical OpenMW TestMap01 renderer diagnostic did not pass its native-frame or no-control policy gates."
     }
     $openMwResult = $testMapResult
+}
+
+if ($Scenario -eq "PipBoy") {
+    if ($Target -eq "Retail") {
+        $pipBoyOutput = Join-Path $OutputRoot "retail"
+        $retailPipBoyArgs = @{
+            WorldsRoot = $WorldsRoot
+            OutputRoot = $pipBoyOutput
+            TimeoutSeconds = $TimeoutSeconds
+        }
+        if (-not [string]::IsNullOrWhiteSpace($RetailPipBoySavePath)) {
+            $retailPipBoyArgs.SavePath = [IO.Path]::GetFullPath($RetailPipBoySavePath)
+        }
+        & $retailPipBoyRunner @retailPipBoyArgs
+        $pipBoyResult =
+            Get-Content -Raw -LiteralPath (Join-Path $pipBoyOutput "retail-pipboy-state-report.json") |
+            ConvertFrom-Json
+        if ($pipBoyResult.status -ne "pass" -or
+            [bool]$pipBoyResult.capture.windowsAppControlUsed -or
+            [bool]$pipBoyResult.capture.foregroundActivationUsed -or
+            [bool]$pipBoyResult.capture.foregroundInputInjected) {
+            throw "Canonical retail Pip-Boy state capture did not pass its state or no-control policy gates."
+        }
+        $retailResult = $pipBoyResult
+    }
+    else {
+        # This is a normal-New-Game UI render, not the explicit TestMap01
+        # renderer diagnostic. The engine opens the real Tab mode and queues
+        # native UI frames itself; no desktop input is sent.
+        $pipBoyOutput = Join-Path $OutputRoot "openmw"
+        & $pipBoyRunner `
+            -WorldsRoot $WorldsRoot `
+            -BinaryRoot $OpeningRuntimeRoot `
+            -OutputRoot $pipBoyOutput `
+            -CaptureSeconds $PipBoyCaptureSeconds `
+            -TimeoutSeconds $TimeoutSeconds
+        $pipBoyResult =
+            Get-Content -Raw -LiteralPath (Join-Path $pipBoyOutput "pipboy-showcase-report.json") |
+            ConvertFrom-Json
+        if ($pipBoyResult.status -ne "pass" -or
+            [bool]$pipBoyResult.capture.windowsAppControlUsed -or
+            [bool]$pipBoyResult.capture.foregroundActivationUsed -or
+            [bool]$pipBoyResult.capture.foregroundInputInjected -or
+            -not [bool]$pipBoyResult.assertions.normalNewGameObserved -or
+            -not [bool]$pipBoyResult.assertions.authoredFalloutDataLoadoutObserved -or
+            -not [bool]$pipBoyResult.assertions.fallbackInventoryRecordsAbsent -or
+            [int]$pipBoyResult.assertions.nativePanelCount -ne [int]$pipBoyResult.assertions.expectedNativeStateCount) {
+            throw "Canonical OpenMW live Pip-Boy showcase did not pass its complete-state, authored-data, or no-control policy gates."
+        }
+        $openMwResult = $pipBoyResult
+    }
 }
 
 if ($Scenario -eq "Jam" -and $Target -in @("Retail", "Both")) {
@@ -246,7 +317,9 @@ if ($Scenario -eq "Jam" -and $Target -in @("OpenMW", "Both")) {
 
 $artifacts = [Collections.Generic.List[object]]::new()
 $artifactPaths = [Collections.Generic.List[string]]::new()
-if ($null -ne $retailResult -and $null -ne $retailResult.video) {
+if ($null -ne $retailResult -and
+    $retailResult.PSObject.Properties.Name -contains 'video' -and
+    $null -ne $retailResult.video) {
     $artifactPaths.Add([string]$retailResult.video.path)
 }
 if ($Scenario -eq "Jam" -and $null -ne $openMwResult -and $null -ne $openMwResult.video) {
@@ -265,6 +338,13 @@ if ($Scenario -eq "Opening") {
 }
 if ($Scenario -eq "TestMap" -and $null -ne $testMapResult) {
     foreach ($artifact in @($testMapResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
+if ($Scenario -eq "PipBoy" -and $null -ne $pipBoyResult) {
+    foreach ($artifact in @($pipBoyResult.artifacts)) {
         if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
             $artifactPaths.Add([string]$artifact.path)
         }
@@ -305,6 +385,7 @@ $summary = [ordered]@{
     retailOpening = $retailOpeningResult
     opening = $openingResult
     testMapDiagnostic = $testMapResult
+    pipBoyShowcase = $pipBoyResult
     artifacts = @($artifacts)
 }
 $summaryPath = Join-Path $OutputRoot "background-capture-summary.json"

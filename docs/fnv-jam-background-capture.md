@@ -180,6 +180,33 @@ The report rejects a pervasive-magenta native frame and missing legacy-water
 fallbacks. No focus action, click, keyboard injection, or in-game console is
 used.
 
+## Live Pip-Boy panel showcase
+
+This is the real playable-UI companion to the renderer diagnostic. It starts a
+normal New Game, applies the final TestMap01 developer placement only after
+that initialization, equips an authored FalloutNV.esm-only test loadout, then
+captures the dedicated `Tab` Pip-Boy's live `STATS`, `ITEMS`, `DATA`, and
+`MAP` panels through OpenMW's native `ScreenCaptureHandler`.
+
+Run it only through the canonical entry point:
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario PipBoy -RuntimeReady -RequireIdle
+
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario PipBoy `
+  -OutputRoot .\run\opennv-pipboy-live-<unique>
+```
+
+It retains all four unmodified native PNGs, an exact-title transport MP4,
+telemetry, hashes, and a labelled collage derived only by arranging those
+native PNGs. The report rejects the run if normal New Game did not complete,
+the final TestMap01 placement did not occur, any panel is missing, a
+`FNV_PROOF_*` inventory fallback is observed, or the named FalloutNV.esm
+loadout cannot be resolved. No Windows input, focus operation, click, or
+console command reaches the game.
+
 ## Authored opening comparison route
 
 The opening route is a separate, declared OpenMW TTW capture scenario. It is
