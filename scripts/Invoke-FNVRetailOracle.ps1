@@ -52,6 +52,7 @@ param(
     [Alias("ValidateOnly", "NoLaunch")]
     [switch]$DryRun,
     [switch]$CaptureSession,
+    [switch]$PipBoyProbe,
     [string]$SessionTargetForm = "0",
     [switch]$CaptureAnimation,
     [int[]]$ScreenshotFrame = @(),
@@ -819,6 +820,7 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_ALL_HIGH_ACTORS = if ($CaptureAnimation) { "1" } else { "0" }
     NIKAMI_ORACLE_CAPTURE_ANIMATION = if ($CaptureAnimation) { "1" } else { "0" }
     NIKAMI_ORACLE_CAPTURE_SESSION = if ($CaptureSession) { "1" } else { "0" }
+    NIKAMI_ORACLE_PIPBOY_PROBE = if ($PipBoyProbe) { "1" } else { "0" }
     NIKAMI_ORACLE_SESSION_TARGET_FORM = $SessionTargetForm
     NIKAMI_ORACLE_FURNITURE_ONLY = if ($FurnitureOnly) { "1" } else { "0" }
     NIKAMI_ORACLE_FURNITURE_SETTLED_COMMANDS = (@($FurnitureSettledCommand) -join "|")
@@ -1453,6 +1455,29 @@ $eventValidation | Add-Member -NotePropertyName validationEventCount -NoteProper
 $eventValidation | Add-Member -NotePropertyName validationPayloadOmissions -NotePropertyValue @('actor-geometry')
 
 $snapshots = @($events | Where-Object { $_.event -eq "behavior-snapshot" })
+$pipBoyProbeSnapshots = @($events | Where-Object { $_.event -eq 'retail-pipboy-snapshot' })
+if ($PipBoyProbe) {
+    if ($pipBoyProbeSnapshots.Count -eq 0) {
+        throw 'Retail Pip-Boy probe requested but no retail-pipboy-snapshot event was retained.'
+    }
+    foreach ($snapshot in $pipBoyProbeSnapshots) {
+        foreach ($requiredProperty in @('label', 'frame', 'interface', 'player')) {
+            if ($snapshot.PSObject.Properties.Name -notcontains $requiredProperty) {
+                throw "Retail Pip-Boy probe event is missing '$requiredProperty'."
+            }
+        }
+        if ($null -eq $snapshot.interface -or $null -eq $snapshot.player -or
+            $snapshot.interface.PSObject.Properties.Name -notcontains 'available' -or
+            $snapshot.player.PSObject.Properties.Name -notcontains 'available') {
+            throw 'Retail Pip-Boy probe event omitted its interface or player state.'
+        }
+        if ([bool]$snapshot.player.available -and
+            $snapshot.player.PSObject.Properties.Name -notcontains 'inventory') {
+            throw 'Retail Pip-Boy probe player state omitted live inventory.'
+        }
+    }
+    $eventValidation | Add-Member -NotePropertyName pipBoyProbeSnapshots -NotePropertyValue $pipBoyProbeSnapshots.Count
+}
 $appearanceEvents = @($events | Where-Object { $_.event -in @("npc-appearance", "target-appearance") })
 $expectedScreenshotNames = if ($planMode) {
     @($sidecarCaptureLabels | ForEach-Object { "frame-$_.bmp" })
@@ -1756,6 +1781,7 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     gameSettings = @($GameSetting)
     gameSettingTelemetry = @($gameSettingEvents)
     commands = @($Command)
+    scheduledCommands = @($ScheduledCommand)
     actorCommands = @($ActorCommand)
     furnitureSettledCommands = @($FurnitureSettledCommand)
     exitAfterFurnitureRelease = [bool]$ExitAfterFurnitureRelease
@@ -1805,6 +1831,8 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     setStageIndex = $SetStageIndex
     captureAnimation = [bool]$CaptureAnimation
     captureSession = [bool]$CaptureSession
+    pipBoyProbe = [bool]$PipBoyProbe
+    pipBoyProbeSnapshots = @($pipBoyProbeSnapshots)
     sessionTargetForm = $SessionTargetForm
     furnitureOnly = [bool]$FurnitureOnly
     sampleEvery = $SampleEvery

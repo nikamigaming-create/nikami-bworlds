@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "Opening", "TestMap")]
+    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -29,7 +29,13 @@ Set-StrictMode -Version Latest
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
-    $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
+    $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
+    if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
+        $OpeningRuntimeRoot = $pipBoyRuntimeRoot
+    }
+    else {
+        $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
+    }
 }
 $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 
@@ -78,6 +84,8 @@ $retailTtwLayerInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWRe
 $retailTtwLayerManifestPath = Join-Path $WorldsRoot "local\ttw-retail-compat\compatibility-layer.json"
 $openingRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVOpeningCapture.ps1"
 $testMapRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTestMapDiagnostic.ps1"
+$pipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVPipBoyShowcaseCapture.ps1"
+$retailPipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailPipBoyStateCapture.ps1"
 $ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
 $newVegasInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-OpenNVBaseProfile.ps1"
 $oracleSourcePath =
@@ -117,6 +125,18 @@ elseif ($Scenario -eq "Opening") {
         $canonicalFiles.Add($path)
     }
 }
+elseif ($Scenario -eq "PipBoy") {
+    if ($Target -in @("All", "Retail")) {
+        foreach ($path in @($retailPipBoyRunnerPath, $oracleSourcePath)) {
+            $canonicalFiles.Add($path)
+        }
+    }
+    if ($Target -in @("All", "OpenMW")) {
+        foreach ($path in @($pipBoyRunnerPath, $newVegasInitializerPath)) {
+            $canonicalFiles.Add($path)
+        }
+    }
+}
 else {
     $canonicalFiles.Add($testMapRunnerPath)
 }
@@ -151,10 +171,18 @@ if ($null -ne $catalog) {
         Add-Check "TestMap diagnostic is restricted to OpenMW" `
             ($Target -eq "OpenMW") "target=$Target"
     }
+    if ($Scenario -eq "PipBoy") {
+        Add-Check "Pip-Boy capture selects one engine" `
+            ($Target -in @("Retail", "OpenMW")) "target=$Target"
+    }
     $selectedRecipes = @($(if ($Scenario -eq "Jam") { $catalog.recipes } elseif ($Scenario -eq "Opening") {
         @($catalog.openingRecipes | Where-Object {
             ($Target -eq "All" -or $_.target -eq $Target) -and
             ((-not $_.PSObject.Properties.Match("campaign")) -or [string]$_.campaign -eq $OpeningCampaign)
+        })
+    } elseif ($Scenario -eq "PipBoy") {
+        @($catalog.showcaseRecipes | Where-Object {
+            $_.target -eq $Target
         })
     } else {
         @($catalog.diagnosticRecipes | Where-Object {
@@ -166,6 +194,9 @@ if ($null -ne $catalog) {
     }
     elseif ($Scenario -eq "TestMap") {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
+    }
+    elseif ($Scenario -eq "PipBoy") {
+        if ($Target -in @("Retail", "OpenMW")) { 1 } else { 0 }
     }
     elseif ($OpeningCampaign -eq "NewVegas") {
         # Standalone New Vegas has both the ordinary authored opening proof and
@@ -249,6 +280,10 @@ elseif ($Scenario -eq "Opening") {
         foreach ($script in @($openingRunnerPath, $ttwInitializerPath)) { $scriptsToParse.Add($script) }
     }
 }
+elseif ($Scenario -eq "PipBoy") {
+    if ($Target -eq "Retail") { $scriptsToParse.Add($retailPipBoyRunnerPath) }
+    else { $scriptsToParse.Add($pipBoyRunnerPath) }
+}
 else {
     $scriptsToParse.Add($testMapRunnerPath)
 }
@@ -281,6 +316,16 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
             (($Target -notin @("All", "OpenMW")) -or $openMwRoutePresent)
         Add-Check "Opening invocation routes to the declared opening runner" `
             $expectedRoutePresent `
+            $entryPointPath
+    }
+    elseif ($Scenario -eq "PipBoy") {
+        $expectedPipBoyRoute = if ($Target -eq "Retail") {
+            $entryText -match 'Invoke-FNVRetailPipBoyStateCapture'
+        } else {
+            $entryText -match 'Invoke-OpenNVPipBoyShowcaseCapture'
+        }
+        Add-Check "Pip-Boy invocation routes to the declared showcase runner" `
+            $expectedPipBoyRoute `
             $entryPointPath
     }
     else {
@@ -452,6 +497,37 @@ if ($Scenario -eq "Opening" -and $Target -in @("All", "OpenMW") -and
                 $ttwInitializerText -match 'TaleOfTwoWastelands - Textures\.bsa') `
             $ttwInitializerPath
     }
+}
+
+if ($Scenario -eq "PipBoy" -and $Target -eq "OpenMW" -and
+    (Test-Path -LiteralPath $pipBoyRunnerPath -PathType Leaf)) {
+    $pipBoyText = Get-Content -Raw -LiteralPath $pipBoyRunnerPath
+    foreach ($forbidden in @(
+        "AppActivate", "SetForegroundWindow", "BringWindowToTop",
+        "SetFocus", "SendInput", "Invoke-FNVRetailJamInput"
+    )) {
+        Add-Check "Pip-Boy showcase runner excludes $forbidden" `
+            ($pipBoyText -notmatch [regex]::Escape($forbidden)) `
+            $pipBoyRunnerPath
+    }
+    Add-Check "Pip-Boy showcase uses normal New Game plus final TestMap placement" `
+        ($pipBoyText -match '"--skip-menu", "--new-game"' -and
+            $pipBoyText -match 'OPENMW_FNV_GAMEPLAY_START_WORLDSPACE') `
+        $pipBoyRunnerPath
+    Add-Check "Pip-Boy showcase retains four native UI frames and an exact-title transport" `
+        ($pipBoyText -match 'ScreenCaptureHandler' -and
+            $pipBoyText -match 'title=OpenMW' -and
+            $pipBoyText -match 'PipBoy-live-panel-collage\.png') `
+        $pipBoyRunnerPath
+    Add-Check "Pip-Boy showcase asserts authored Fallout inventory data without fallbacks" `
+        ($pipBoyText -match 'authoredFalloutDataLoadoutObserved' -and
+            $pipBoyText -match 'fallbackInventoryRecordsAbsent') `
+        $pipBoyRunnerPath
+    Add-Check "Pip-Boy showcase records no-control policy fields" `
+        ($pipBoyText -match 'windowsAppControlUsed\s*=\s*\$false' -and
+            $pipBoyText -match 'foregroundActivationUsed\s*=\s*\$false' -and
+            $pipBoyText -match 'foregroundInputInjected\s*=\s*\$false') `
+        $pipBoyRunnerPath
 }
 
 if ($Scenario -eq "TestMap" -and $Target -eq "OpenMW" -and
@@ -716,6 +792,30 @@ if ($RuntimeReady) {
         Add-Check "DirectShow opening audio device is available" `
             ($deviceText -match [regex]::Escape('"' + $OpeningAudioDevice + '" (audio)')) `
             $OpeningAudioDevice
+        }
+    }
+    elseif ($Scenario -eq "PipBoy") {
+        if ($Target -eq "Retail") {
+            [void](Test-File "Retail FalloutNV binary exists" `
+                (Join-Path (Split-Path -Parent $OpeningNewVegasData) "FalloutNV.exe"))
+            [void](Test-File "Retail Pip-Boy oracle DLL exists" $oracleDllPath)
+            [void](Test-File "Retail Pip-Boy save fixture exists" $SavePath)
+        }
+        else {
+            # The live Pip-Boy panel run uses the same isolated standalone FNV
+            # runtime as TestMap01, but reaches it after normal New Game.
+            [void](Test-File "Deployed OpenNV Pip-Boy binary exists" `
+                (Join-Path $OpeningRuntimeRoot "openmw.exe"))
+            [void](Test-Directory "Deployed OpenNV Pip-Boy resources exist" `
+                (Join-Path $OpeningRuntimeRoot "resources"))
+            foreach ($plugin in @("osgdb_dds.dll", "osgdb_png.dll", "osgdb_freetype.dll")) {
+                [void](Test-File "Deployed OpenNV Pip-Boy OSG plugin exists: $plugin" `
+                    (Join-Path $OpeningRuntimeRoot (Join-Path "osgPlugins-3.6.5" $plugin)))
+            }
+            [void](Test-File "Standalone New Vegas Pip-Boy profile initializer exists" $newVegasInitializerPath)
+            [void](Test-Directory "Standalone New Vegas Pip-Boy Data root exists" $OpeningNewVegasData)
+            [void](Test-File "Standalone New Vegas Pip-Boy master exists" `
+                (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
         }
     }
     else {

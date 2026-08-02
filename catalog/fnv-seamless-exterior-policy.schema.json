@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nikami.worlds/schema/fnv-seamless-exterior-policy/v1",
+  "title": "Fallout: New Vegas seamless exterior transition policy",
+  "description": "Reviewed, fail-closed classification for every directed XTEL transition in the frozen official FNV load order.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "scope",
+    "defaults",
+    "graphDefaults",
+    "edges"
+  ],
+  "properties": {
+    "schema": {
+      "const": "nikami-fnv-seamless-exterior-policy/v1"
+    },
+    "reviewStatus": {
+      "enum": [
+        "phase-0-discovery",
+        "review-in-progress",
+        "approved"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edition",
+        "language",
+        "frozenLoadOrder",
+        "edgeIdentity",
+        "sourceRecordSemantics"
+      ],
+      "properties": {
+        "edition": {
+          "const": "Fallout: New Vegas Ultimate Edition"
+        },
+        "language": {
+          "const": "English"
+        },
+        "frozenLoadOrder": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "edgeIdentity": {
+          "const": "xtel:<source-reference-load-order-form-id>"
+        },
+        "sourceRecordSemantics": {
+          "const": "last-loaded live record per master-resolved FormID"
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "activation",
+        "walkThrough",
+        "shippingEligible"
+      ],
+      "properties": {
+        "classification": {
+          "const": "unreviewed"
+        },
+        "activation": {
+          "const": "retain-authored-transition"
+        },
+        "walkThrough": {
+          "const": false
+        },
+        "shippingEligible": {
+          "const": false
+        }
+      }
+    },
+    "generatedFrom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "graphSchema",
+        "graphSha256"
+      ],
+      "properties": {
+        "graphSchema": {
+          "const": "nikami-fnv-exterior-transition-graph/v1"
+        },
+        "graphSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "graphDefaults": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/graphDefaultPolicy"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edgePolicy"
+      }
+    }
+  },
+  "$defs": {
+    "formId": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{8}$"
+    },
+    "graphDefaultPolicy": {
+      "type": "object",
+      "description": "An exact graph snapshot's non-promotable fallback policy. Reviewed behavior always requires an explicit edge row.",
+      "additionalProperties": false,
+      "required": [
+        "graphSchema",
+        "graphSha256",
+        "classification",
+        "reviewState",
+        "walkThrough",
+        "notes"
+      ],
+      "properties": {
+        "graphSchema": {
+          "const": "nikami-fnv-exterior-transition-graph/v1"
+        },
+        "graphSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "classification": {
+          "const": "unreviewed"
+        },
+        "reviewState": {
+          "const": "unreviewed"
+        },
+        "walkThrough": {
+          "const": false
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "edgePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edgeId",
+        "sourceRef",
+        "classification",
+        "reviewState",
+        "walkThrough",
+        "notes"
+      ],
+      "properties": {
+        "edgeId": {
+          "type": "string",
+          "pattern": "^xtel:0x[0-9a-f]{8}$"
+        },
+        "sourceRef": {
+          "$ref": "#/$defs/formId"
+        },
+        "classification": {
+          "enum": [
+            "same-worldspace-boundary",
+            "outdoor-portal",
+            "real-interior-door",
+            "scripted-or-unsafe",
+            "unreviewed"
+          ]
+        },
+        "reviewState": {
+          "enum": [
+            "unreviewed",
+            "reviewed",
+            "approved"
+          ]
+        },
+        "walkThrough": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "classification": {
+                "const": "unreviewed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reviewState": {
+                "const": "unreviewed"
+              },
+              "walkThrough": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "walkThrough": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "classification": {
+                "const": "outdoor-portal"
+              },
+              "reviewState": {
+                "const": "approved"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

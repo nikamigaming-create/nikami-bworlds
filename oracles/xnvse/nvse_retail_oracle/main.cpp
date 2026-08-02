@@ -3,6 +3,7 @@
 #include "nvse/GameExtraData.h"
 #include "nvse/GameObjects.h"
 #include "nvse/GameSettings.h"
+#include "nvse/GameUI.h"
 #include "nvse/NiObjects.h"
 
 #include "sidecar_protocol.h"
@@ -145,6 +146,8 @@ namespace
     bool gAllHighActors = true;
     bool gCaptureAnimation = true;
     bool gCaptureSession = false;
+    bool gPipBoyProbe = false;
+    bool gHoldRetailPipBoyRenderedState = false;
     UInt32 gSessionTargetForm = 0;
     bool gJamSprintMovementDrive = false;
     bool gFurnitureOnly = false;
@@ -6010,6 +6013,956 @@ namespace
         out << "]}";
     }
 
+    // This is deliberately a state recorder rather than a guessed reverse-engineered
+    // FOPipboyManager layout.  xNVSE publishes InterfaceManager/Menu/Tile layouts,
+    // which lets the oracle retain the actual UI focus path and visible menu stack
+    // across native retail actions.  The live player inventory/equipment snapshot is
+    // emitted beside it so an observed selection can be tied to real Fallout data.
+    struct RetailMenuProbe
+    {
+        UInt32 type;
+        const char* name;
+    };
+
+    constexpr std::array<RetailMenuProbe, 15> sRetailPipBoyProbeMenus = {{
+        { kMenuType_HUDMain, "hud-main" },
+        { kMenuType_Inventory, "inventory" },
+        { kMenuType_Stats, "stats" },
+        { kMenuType_Map, "map" },
+        { kMenuType_Container, "container" },
+        { kMenuType_Message, "message" },
+        { kMenuType_Dialog, "dialog" },
+        { kMenuType_LockPick, "lockpick" },
+        { kMenuType_Barter, "barter" },
+        { kMenuType_Repair, "repair" },
+        { kMenuType_LevelUp, "level-up" },
+        { kMenuType_VATS, "vats" },
+        { kMenuType_Computers, "computers" },
+        { kMenuType_CompanionWheel, "companion-wheel" },
+        { kMenuType_Trait, "trait" },
+    }};
+
+    // Tile::name and Tile::parent are public xNVSE fields at 0x20/0x28.  Read
+    // them through ReadProcessMemory so the recorder cannot fault on a stale UI
+    // pointer while a menu is rebuilding.
+    struct OracleTilePathView
+    {
+        UInt8 padding00[0x20];
+        const char* nameData;
+        UInt16 nameLength;
+        UInt16 nameCapacity;
+        Tile* parent;
+    };
+    static_assert(offsetof(OracleTilePathView, nameData) == 0x20);
+    static_assert(offsetof(OracleTilePathView, parent) == 0x28);
+
+    // Keep a private, read-only representation of the parts of Tile used by the
+    // recorder.  Calling Tile helpers would require linking implementation code
+    // from xNVSE; this layout lets an oracle run stay observational even while a
+    // menu is rebuilding or a pointer goes stale.
+    struct OracleTileChildNodeView
+    {
+        OracleTileChildNodeView* next;
+        OracleTileChildNodeView* previous;
+        Tile* child;
+    };
+
+    struct OracleTileListNodeView
+    {
+        OracleTileChildNodeView* data;
+        OracleTileListNodeView* next;
+    };
+
+    struct OracleTileTreeView
+    {
+        void* vtable;
+        OracleTileChildNodeView* firstChild;
+        OracleTileListNodeView* nextChild;
+        UInt32 unknown0C;
+        void* valuesVtable;
+        Tile::Value** valuesData;
+        UInt32 valuesSize;
+        UInt32 valuesCapacity;
+        const char* nameData;
+        UInt16 nameLength;
+        UInt16 nameCapacity;
+        Tile* parent;
+    };
+    static_assert(offsetof(OracleTileTreeView, firstChild) == 0x04);
+    static_assert(offsetof(OracleTileTreeView, nextChild) == 0x08);
+    static_assert(offsetof(OracleTileTreeView, valuesData) == 0x14);
+    static_assert(offsetof(OracleTileTreeView, valuesSize) == 0x18);
+    static_assert(offsetof(OracleTileTreeView, nameData) == 0x20);
+    static_assert(offsetof(OracleTileTreeView, parent) == 0x28);
+    static_assert(sizeof(OracleTileTreeView) == 0x2c);
+
+    struct OracleTileMenuArrayView
+    {
+        void** vtable;
+        TileMenu** data;
+        UInt16 capacity;
+        UInt16 firstFreeEntry;
+        UInt16 numberOfObjects;
+        UInt16 growSize;
+    };
+    static_assert(sizeof(OracleTileMenuArrayView) == 0x10);
+
+    // Layout is a deliberately narrow read-only view of the retail Pip-Boy
+    // renderer.  It comes from the documented retail 1.4.0.525 FORenderedMenu
+    // and FOPipboyManager fields; recording its scroll and tab positions gives
+    // the VR implementation a physical-control contract rather than a flat UI
+    // approximation.
+    struct OraclePipBoyManagerView
+    {
+        UInt8 padding00[0xB8];
+        UInt8 renderedOpen;
+        UInt8 paddingB9[0x100 - 0xB9];
+        void* scrollKnobs[3];
+        float unknown10C[3];
+        float knobScrollPositions[3];
+        float knobScrollRates[3];
+        float tabKnobMinimumPosition;
+        UInt8 padding134[0x140 - 0x134];
+        float tabKnobMaximumPosition;
+    };
+    static_assert(offsetof(OraclePipBoyManagerView, renderedOpen) == 0xB8);
+    static_assert(offsetof(OraclePipBoyManagerView, scrollKnobs) == 0x100);
+    static_assert(offsetof(OraclePipBoyManagerView, knobScrollPositions) == 0x118);
+    static_assert(offsetof(OraclePipBoyManagerView, knobScrollRates) == 0x124);
+    static_assert(offsetof(OraclePipBoyManagerView, tabKnobMinimumPosition) == 0x130);
+    static_assert(offsetof(OraclePipBoyManagerView, tabKnobMaximumPosition) == 0x140);
+
+    Tile* retailMenuRoot(UInt32 menuType, bool& readable)
+    {
+        readable = false;
+        if (menuType < kMenuType_Min || menuType > kMenuType_Max)
+        {
+            readable = true;
+            return nullptr;
+        }
+
+        // xNVSE's public GameUI.cpp identifies this as the retail
+        // 1.4.0.525 NiTArray<TileMenu*>.  Read the raw array and entry rather
+        // than binding to InterfaceManager::GetMenuByType.
+        OracleTileMenuArrayView array = {};
+        if (!safeRead(reinterpret_cast<const void*>(0x011F3508), array))
+            return nullptr;
+        readable = true;
+        const UInt32 index = menuType - kMenuType_Min;
+        if (array.data == nullptr || index >= array.firstFreeEntry || index >= array.capacity)
+            return nullptr;
+        TileMenu* menu = nullptr;
+        if (!safeRead(array.data + index, menu))
+            return nullptr;
+        return reinterpret_cast<Tile*>(menu);
+    }
+
+    bool retailTileValue(Tile* tile, UInt32 traitId, Tile::Value& value)
+    {
+        if (tile == nullptr || traitId == 0)
+            return false;
+        OracleTileTreeView view = {};
+        if (!safeRead(tile, view) || view.valuesData == nullptr || view.valuesSize > 1024)
+            return false;
+        for (UInt32 index = 0; index < view.valuesSize; ++index)
+        {
+            Tile::Value* candidate = nullptr;
+            if (!safeRead(view.valuesData + index, candidate) || candidate == nullptr)
+                continue;
+            Tile::Value candidateValue = {};
+            if (!safeRead(candidate, candidateValue))
+                continue;
+            if (candidateValue.id == traitId)
+            {
+                value = candidateValue;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool retailTraitNameToId(const char* name, UInt32& traitId)
+    {
+        traitId = 0;
+        if (name == nullptr || *name == '\0')
+            return false;
+        // The exact retail executable is already the oracle's compatibility
+        // target.  Preserve a fault boundary nevertheless: custom traits such
+        // as _CurrentTab and _Magnification must never take down telemetry.
+        __try
+        {
+            using TraitNameToId = UInt32 (__cdecl*)(const char*);
+            traitId = reinterpret_cast<TraitNameToId>(0x00A01860)(name);
+            return traitId != 0;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            traitId = 0;
+            return false;
+        }
+    }
+
+    std::string retailQualifiedTileName(Tile* tile, bool& readable)
+    {
+        readable = false;
+        std::array<std::string, 16> parts;
+        std::size_t count = 0;
+        for (Tile* current = tile; current != nullptr && count < parts.size();)
+        {
+            OracleTilePathView view = {};
+            if (!safeRead(current, view))
+                return {};
+            readable = true;
+            parts[count++] = safeRuntimeString(view.nameData, 128);
+            current = view.parent;
+        }
+        std::string qualified;
+        for (std::size_t index = count; index > 0; --index)
+        {
+            const std::string& part = parts[index - 1];
+            if (part.empty())
+                continue;
+            if (!qualified.empty())
+                qualified += '\\';
+            qualified += part;
+            if (qualified.size() >= 1024)
+            {
+                qualified.resize(1024);
+                break;
+            }
+        }
+        return qualified;
+    }
+
+    bool retailMenuVisible(UInt32 menuType, bool& readable)
+    {
+        if (menuType < kMenuType_Min || menuType > kMenuType_Max)
+        {
+            readable = true;
+            return false;
+        }
+        // xNVSE's public GameUI.cpp declares the retail 1.4.0.525 visibility
+        // byte array at 0x011F308F.  Keep this a guarded read so the oracle
+        // does not link against xNVSE's implementation object.
+        UInt8 visible = 0;
+        readable = safeRead(reinterpret_cast<const UInt8*>(0x011F308F) + menuType, visible);
+        return readable && visible != 0;
+    }
+
+    Tile* retailFindChild(Tile* parent, const char* childName)
+    {
+        if (parent == nullptr || childName == nullptr || *childName == '\0')
+            return nullptr;
+        OracleTileTreeView view = {};
+        if (!safeRead(parent, view))
+            return nullptr;
+        OracleTileListNodeView listNode = { view.firstChild, view.nextChild };
+        constexpr UInt32 maximumChildren = 1024;
+        for (UInt32 index = 0; index < maximumChildren; ++index)
+        {
+            if (listNode.data != nullptr)
+            {
+                OracleTileChildNodeView childNode = {};
+                if (!safeRead(listNode.data, childNode))
+                    return nullptr;
+                if (childNode.child != nullptr)
+                {
+                    OracleTileTreeView childView = {};
+                    if (safeRead(childNode.child, childView))
+                    {
+                        const std::string name = safeRuntimeString(childView.nameData, 128);
+                        if (name == childName)
+                            return childNode.child;
+                    }
+                }
+            }
+            if (listNode.next == nullptr || !safeRead(listNode.next, listNode))
+                break;
+        }
+        return nullptr;
+    }
+
+    void writeRetailPipBoyTrait(std::ostringstream& out, Tile* tile, UInt32 traitId)
+    {
+        Tile::Value value = {};
+        if (!retailTileValue(tile, traitId, value))
+        {
+            out << "null";
+            return;
+        }
+        out << "{\"number\":";
+        sidecarWriteFinite(out, value.num);
+        out << ",\"string\":";
+        const std::string stringValue = safeRuntimeString(value.str, 128);
+        if (stringValue.empty())
+            out << "null";
+        else
+            out << jsonString(stringValue.c_str());
+        out << '}';
+    }
+
+    void writeRetailPipBoyPageState(std::ostringstream& out)
+    {
+        bool statsReadable = false;
+        bool inventoryReadable = false;
+        bool mapReadable = false;
+        Tile* statsRoot = retailMenuRoot(kMenuType_Stats, statsReadable);
+        Tile* inventoryRoot = retailMenuRoot(kMenuType_Inventory, inventoryReadable);
+        Tile* mapRoot = retailMenuRoot(kMenuType_Map, mapReadable);
+        Tile* inventoryGlow = retailFindChild(inventoryRoot, "GLOW_BRANCH");
+        Tile* inventoryTabLine = retailFindChild(inventoryGlow, "IM_Tabline");
+        Tile* mapGlow = retailFindChild(mapRoot, "GLOW_BRANCH");
+        Tile* mapTabLine = retailFindChild(mapGlow, "MM_Tabline");
+        UInt32 currentTabTrait = 0;
+        const bool currentTabTraitReadable = retailTraitNameToId("_CurrentTab", currentTabTrait);
+
+        out << "{\"statsRootReadable\":" << (statsReadable ? "true" : "false")
+            << ",\"inventoryRootReadable\":" << (inventoryReadable ? "true" : "false")
+            << ",\"mapRootReadable\":" << (mapReadable ? "true" : "false")
+            << ",\"currentTabTrait\":";
+        if (currentTabTraitReadable)
+            out << currentTabTrait;
+        else
+            out << "null";
+        out << ",\"statsPage\":";
+        writeRetailPipBoyTrait(out, statsRoot, Tile::kTileValue_user0);
+        out << ",\"inventoryTab\":";
+        writeRetailPipBoyTrait(out, inventoryTabLine, currentTabTrait);
+        out << ",\"mapTab\":";
+        writeRetailPipBoyTrait(out, mapTabLine, currentTabTrait);
+        out << '}';
+    }
+
+    void writeRetailPipBoyPhysicalState(std::ostringstream& out, FOPipboyManager* manager)
+    {
+        OraclePipBoyManagerView view = {};
+        if (manager == nullptr || !safeRead(manager, view))
+        {
+            out << "{\"available\":false}";
+            return;
+        }
+        out << "{\"available\":true"
+            << ",\"renderedOpen\":" << (view.renderedOpen != 0 ? "true" : "false")
+            << ",\"scrollKnobPointers\":["
+            << reinterpret_cast<std::uintptr_t>(view.scrollKnobs[0]) << ','
+            << reinterpret_cast<std::uintptr_t>(view.scrollKnobs[1]) << ','
+            << reinterpret_cast<std::uintptr_t>(view.scrollKnobs[2]) << ']'
+            << ",\"scrollPositions\":[";
+        for (UInt32 index = 0; index < 3; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            sidecarWriteFinite(out, view.knobScrollPositions[index]);
+        }
+        out << "]"
+            << ",\"scrollRates\":[";
+        for (UInt32 index = 0; index < 3; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            sidecarWriteFinite(out, view.knobScrollRates[index]);
+        }
+        out << "]"
+            << ",\"tabKnobMinimum\":";
+        sidecarWriteFinite(out, view.tabKnobMinimumPosition);
+        out << ",\"tabKnobMaximum\":";
+        sidecarWriteFinite(out, view.tabKnobMaximumPosition);
+        out << '}';
+    }
+
+    void writeRetailTileValueList(std::ostringstream& out, Tile* tile)
+    {
+        OracleTileTreeView view = {};
+        if (!safeRead(tile, view) || view.valuesData == nullptr || view.valuesSize > 1024)
+        {
+            out << "[]";
+            return;
+        }
+
+        out << '[';
+        bool first = true;
+        constexpr UInt32 maximumValues = 128;
+        const UInt32 limit = (std::min)(view.valuesSize, maximumValues);
+        for (UInt32 index = 0; index < limit; ++index)
+        {
+            Tile::Value* value = nullptr;
+            if (!safeRead(view.valuesData + index, value) || value == nullptr)
+                continue;
+            Tile::Value rawValue = {};
+            if (!safeRead(value, rawValue))
+                continue;
+            if (!first)
+                out << ',';
+            first = false;
+            out << "{\"id\":" << rawValue.id << ",\"number\":";
+            sidecarWriteFinite(out, rawValue.num);
+            out << ",\"string\":";
+            const std::string stringValue = safeRuntimeString(rawValue.str, 128);
+            if (stringValue.empty())
+                out << "null";
+            else
+                out << jsonString(stringValue.c_str());
+            out << '}';
+        }
+        out << ']';
+    }
+
+    void writeRetailPipBoyTileTreeForMenu(std::ostringstream& out, UInt32 menuType,
+                                          const char* menuName)
+    {
+        bool rootReadable = false;
+        Tile* root = retailMenuRoot(menuType, rootReadable);
+        bool visibleReadable = false;
+        const bool visible = retailMenuVisible(menuType, visibleReadable);
+        out << "{\"type\":" << menuType
+            << ",\"name\":" << jsonString(menuName)
+            << ",\"rootReadable\":" << (rootReadable ? "true" : "false")
+            << ",\"visible\":" << (visible ? "true" : "false")
+            << ",\"visibleReadable\":" << (visibleReadable ? "true" : "false")
+            << ",\"nodes\":";
+        if (root == nullptr)
+        {
+            out << "[],\"truncated\":false}";
+            return;
+        }
+
+        struct PendingTile
+        {
+            Tile* tile = nullptr;
+            UInt32 depth = 0;
+            std::string path;
+        };
+        constexpr UInt32 maximumNodes = 512;
+        constexpr UInt32 maximumDepth = 8;
+        std::vector<PendingTile> pending;
+        pending.reserve(maximumNodes);
+        bool rootPathReadable = false;
+        std::string rootPath = retailQualifiedTileName(root, rootPathReadable);
+        if (rootPath.empty())
+            rootPath = menuName;
+        pending.push_back({ root, 0, rootPath });
+        std::set<std::uintptr_t> visited;
+        bool truncated = false;
+        out << '[';
+        bool firstNode = true;
+        UInt32 emitted = 0;
+        for (std::size_t cursor = 0; cursor < pending.size(); ++cursor)
+        {
+            const PendingTile current = pending[cursor];
+            const std::uintptr_t currentAddress = reinterpret_cast<std::uintptr_t>(current.tile);
+            if (current.tile == nullptr || !visited.insert(currentAddress).second)
+                continue;
+            OracleTileTreeView view = {};
+            if (!safeRead(current.tile, view))
+                continue;
+            if (emitted >= maximumNodes)
+            {
+                truncated = true;
+                break;
+            }
+            if (!firstNode)
+                out << ',';
+            firstNode = false;
+            ++emitted;
+            out << "{\"path\":" << jsonString(current.path.c_str())
+                << ",\"depth\":" << current.depth
+                << ",\"pointer\":" << currentAddress
+                << ",\"declaredChildCount\":" << view.unknown0C
+                << ",\"valueCount\":" << view.valuesSize
+                << ",\"values\":";
+            writeRetailTileValueList(out, current.tile);
+            out << '}';
+
+            if (current.depth >= maximumDepth)
+                continue;
+            OracleTileListNodeView listNode = { view.firstChild, view.nextChild };
+            // tList keeps an inline head and may retain empty link nodes while
+            // menu tiles are rebuilt.  Continue through a null data node when
+            // it still has a next link; Tile::GetChild does the same.
+            for (UInt32 childIndex = 0; childIndex < maximumNodes; ++childIndex)
+            {
+                if (listNode.data != nullptr)
+                {
+                    OracleTileChildNodeView childNode = {};
+                    if (!safeRead(listNode.data, childNode))
+                    {
+                        truncated = true;
+                        break;
+                    }
+                    if (childNode.child != nullptr)
+                    {
+                        OracleTileTreeView childView = {};
+                        if (safeRead(childNode.child, childView))
+                        {
+                            const std::string childName = safeRuntimeString(childView.nameData, 128);
+                            std::string childPath = current.path;
+                            if (!childName.empty())
+                            {
+                                if (!childPath.empty())
+                                    childPath += '\\';
+                                childPath += childName;
+                            }
+                            if (childPath.size() > 512)
+                                childPath.resize(512);
+                            if (pending.size() >= maximumNodes)
+                                truncated = true;
+                            else
+                                pending.push_back({ childNode.child, current.depth + 1, childPath });
+                        }
+                    }
+                }
+                if (listNode.next == nullptr)
+                    break;
+                if (!safeRead(listNode.next, listNode))
+                {
+                    truncated = true;
+                    break;
+                }
+            }
+        }
+        out << "],\"truncated\":" << (truncated ? "true" : "false") << '}';
+    }
+
+    void writeRetailPipBoyTileTreeSnapshot(const char* label)
+    {
+        std::ostringstream out;
+        out << std::setprecision(9)
+            << "{\"schema\":" << sSchemaJson
+            << ",\"event\":\"retail-pipboy-tile-tree\""
+            << ",\"label\":" << jsonString(label)
+            << ",\"frame\":" << gFrame
+            << ",\"menus\":[";
+        writeRetailPipBoyTileTreeForMenu(out, kMenuType_Stats, "stats");
+        out << ',';
+        writeRetailPipBoyTileTreeForMenu(out, kMenuType_Inventory, "inventory");
+        out << ',';
+        writeRetailPipBoyTileTreeForMenu(out, kMenuType_Map, "map");
+        out << "]}\n";
+        gOutput << out.str();
+        gOutput.flush();
+    }
+
+    void sidecarWritePipBoyInventory(std::ostringstream& out, Actor* actor)
+    {
+        std::map<UInt32, SidecarInventoryItem> inventory;
+        if (!sidecarReadInventory(actor, inventory))
+        {
+            out << "{\"available\":false,\"distinctRecords\":0,\"truncated\":false,\"items\":[]}";
+            return;
+        }
+
+        constexpr UInt32 maximumItems = 1024;
+        UInt32 positiveRecords = 0;
+        UInt32 emitted = 0;
+        for (const auto& pair : inventory)
+        {
+            if (pair.second.form != nullptr && pair.second.count > 0)
+                ++positiveRecords;
+        }
+
+        out << "{\"available\":true,\"distinctRecords\":" << positiveRecords
+            << ",\"truncated\":" << (positiveRecords > maximumItems ? "true" : "false")
+            << ",\"items\":[";
+        bool first = true;
+        for (const auto& pair : inventory)
+        {
+            if (pair.second.form == nullptr || pair.second.count <= 0)
+                continue;
+            if (emitted >= maximumItems)
+                break;
+            UInt8 type = 0xff;
+            const bool typeReadable = safeRead(&pair.second.form->typeID, type);
+            if (!first)
+                out << ',';
+            first = false;
+            out << "{\"form\":" << pair.first
+                << ",\"type\":";
+            if (typeReadable)
+                out << static_cast<UInt32>(type);
+            else
+                out << "null";
+            out << ",\"count\":" << pair.second.count
+                << ",\"worn\":" << (pair.second.worn ? "true" : "false") << '}';
+            ++emitted;
+        }
+        out << "]}";
+    }
+
+    void writeRetailAnimationSequenceSummary(
+        std::ostringstream& out, const BSAnimGroupSequence* sequence)
+    {
+        if (sequence == nullptr)
+        {
+            out << "null";
+            return;
+        }
+        out << "{\"file\":" << jsonString(sequence->filePath)
+            << ",\"state\":" << sequence->state
+            << ",\"cycle\":" << sequence->cycleType
+            << ",\"weight\":" << sequence->weight
+            << ",\"frequency\":" << sequence->freq
+            << ",\"begin\":" << sequence->begin
+            << ",\"end\":" << sequence->end
+            << ",\"last\":" << sequence->last
+            << ",\"lastScaled\":" << sequence->lastScaled
+            << ",\"group\":"
+            << (sequence->animGroup != nullptr
+                    ? static_cast<unsigned int>(sequence->animGroup->animGroup)
+                    : 0xffff)
+            << ",\"controlledBlockCount\":" << sequence->arraySize << '}';
+    }
+
+    void writeRetailFirstPersonState(
+        std::ostringstream& out, PlayerCharacter* player, bool detailedAnimations)
+    {
+        if (player == nullptr)
+        {
+            out << "{\"available\":false}";
+            return;
+        }
+
+        NiNode* playerRoot = nullptr;
+        NiAVObject* camera1st = nullptr;
+        NiAVObject* cameraBiped = nullptr;
+        AnimData* animationData = nullptr;
+        bool firstPersonRuntimeFlag = false;
+        bool thirdPerson = false;
+        bool shouldOpenPipboy = false;
+        float worldFov = 0.f;
+        float firstPersonFov = 0.f;
+        float cameraPosition1st[3] = {};
+        float cameraPosition[3] = {};
+
+        const bool rootReadable = safeRead(&player->playerNode, playerRoot);
+        const bool cameraReadable
+            = safeRead(reinterpret_cast<NiAVObject**>(0x011E07D0), camera1st);
+        const bool cameraBipedReadable
+            = safeRead(reinterpret_cast<NiAVObject**>(0x011E07D8), cameraBiped);
+        const bool firstPersonFlagReadable
+            = safeRead(reinterpret_cast<const UInt8*>(player) + 0x64A, firstPersonRuntimeFlag);
+        const bool thirdPersonReadable
+            = safeRead(reinterpret_cast<const UInt8*>(player) + 0x64A, thirdPerson);
+        const bool shouldOpenReadable
+            = safeRead(reinterpret_cast<const UInt8*>(player) + 0xD54, shouldOpenPipboy);
+        const bool worldFovReadable
+            = safeRead(reinterpret_cast<const UInt8*>(player) + 0x670, worldFov);
+        const bool firstPersonFovReadable
+            = safeRead(reinterpret_cast<const UInt8*>(player) + 0x674, firstPersonFov);
+        const bool cameraPosition1stReadable
+            = safeRead(reinterpret_cast<const UInt8*>(player) + 0xDD4, cameraPosition1st);
+        const bool cameraPositionReadable
+            = safeRead(reinterpret_cast<const UInt8*>(player) + 0xDE0, cameraPosition);
+        const bool animationDataReadable
+            = safeRead(reinterpret_cast<AnimData**>(reinterpret_cast<UInt8*>(player) + 0x690),
+                animationData);
+        UInt8 controlFlags = 0;
+        const bool controlFlagsReadable
+            = safeRead(reinterpret_cast<const UInt8*>(player) + 0x680, controlFlags);
+
+        out << "{\"available\":true"
+            << ",\"playerRootReadable\":" << (rootReadable ? "true" : "false")
+            << ",\"firstPersonRuntimeFlag\":";
+        if (firstPersonFlagReadable)
+            out << (firstPersonRuntimeFlag ? "true" : "false");
+        else
+            out << "null";
+        out << ",\"thirdPerson\":";
+        if (thirdPersonReadable)
+            out << (thirdPerson ? "true" : "false");
+        else
+            out << "null";
+        out << ",\"shouldOpenPipboy\":";
+        if (shouldOpenReadable)
+            out << (shouldOpenPipboy ? "true" : "false");
+        else
+            out << "null";
+        out << ",\"controlFlags\":";
+        if (controlFlagsReadable)
+            out << static_cast<UInt32>(controlFlags);
+        else
+            out << "null";
+        out << ",\"worldFov\":";
+        if (worldFovReadable)
+            sidecarWriteFinite(out, worldFov);
+        else
+            out << "null";
+        out << ",\"firstPersonFov\":";
+        if (firstPersonFovReadable)
+            sidecarWriteFinite(out, firstPersonFov);
+        else
+            out << "null";
+        out << ",\"cameraPosition1st\":";
+        if (cameraPosition1stReadable)
+            out << '[' << cameraPosition1st[0] << ',' << cameraPosition1st[1] << ','
+                << cameraPosition1st[2] << ']';
+        else
+            out << "null";
+        out << ",\"cameraPosition\":";
+        if (cameraPositionReadable)
+            out << '[' << cameraPosition[0] << ',' << cameraPosition[1] << ','
+                << cameraPosition[2] << ']';
+        else
+            out << "null";
+
+        out << ",\"camera1st\":";
+        if (cameraReadable && camera1st != nullptr)
+            writeTransform(out, *camera1st);
+        else
+            out << "null";
+        out << ",\"cameraBiped\":";
+        if (cameraBipedReadable && cameraBiped != nullptr)
+            writeTransform(out, *cameraBiped);
+        else
+            out << "null";
+        out << ",\"root\":";
+        if (rootReadable && playerRoot != nullptr)
+            writeTransform(out, *playerRoot);
+        else
+            out << "null";
+
+        out << ",\"nodes\":[";
+        bool firstNode = true;
+        if (rootReadable && playerRoot != nullptr)
+            writeNodeRecursive(out, playerRoot, firstNode, 0);
+        out << ']';
+
+        out << ",\"animDataReadable\":"
+            << (animationDataReadable ? "true" : "false")
+            << ",\"animDataSequences\":[";
+        for (UInt32 index = 0; index < 8; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            BSAnimGroupSequence* sequence = nullptr;
+            if (animationDataReadable && animationData != nullptr)
+                safeRead(&animationData->animSequence[index], sequence);
+            writeRetailAnimationSequenceSummary(out, sequence);
+        }
+        out << ']';
+        if (detailedAnimations)
+        {
+            out << ",\"detailedAnimationSequences\":[";
+            for (UInt32 index = 0; index < 8; ++index)
+            {
+                if (index != 0)
+                    out << ',';
+                BSAnimGroupSequence* sequence = nullptr;
+                if (animationDataReadable && animationData != nullptr)
+                    safeRead(&animationData->animSequence[index], sequence);
+                writeSequence(out, sequence);
+            }
+            out << ']';
+        }
+        out << '}';
+    }
+
+    void writeRetailPipBoySnapshot(const char* label)
+    {
+        PlayerCharacter* player = nullptr;
+        safeRead(reinterpret_cast<PlayerCharacter**>(0x011DEA3C), player);
+        InterfaceManager* interfaceManager = nullptr;
+        safeRead(reinterpret_cast<InterfaceManager**>(0x011D8A80), interfaceManager);
+
+        std::ostringstream out;
+        out << std::setprecision(9)
+            << "{\"schema\":" << sSchemaJson
+            << ",\"event\":\"retail-pipboy-snapshot\""
+            << ",\"label\":" << jsonString(label)
+            << ",\"frame\":" << gFrame
+            << ",\"interface\":{";
+        if (interfaceManager == nullptr)
+            out << "\"available\":false}";
+        else
+        {
+            UInt32 flags = 0;
+            FOPipboyManager* pipboyManager = nullptr;
+            Menu* activeMenu = nullptr;
+            Tile* activeTile = nullptr;
+            const bool flagsReadable = safeRead(&interfaceManager->flags, flags);
+            const bool pipboyManagerReadable = safeRead(&interfaceManager->pipboyManager, pipboyManager);
+            const bool activeMenuReadable = safeRead(&interfaceManager->activeMenu, activeMenu);
+            const bool activeTileReadable = safeRead(&interfaceManager->activeTile, activeTile);
+            UInt32 pipBoyMode = 0;
+            UInt32 queuedPipBoyTab = 0;
+            UInt8 renderedManager = 0;
+            const bool pipBoyModeReadable = safeRead(
+                reinterpret_cast<const UInt8*>(interfaceManager) + 0x4BC, pipBoyMode);
+            const bool queuedPipBoyTabReadable = safeRead(
+                reinterpret_cast<const UInt8*>(interfaceManager) + 0x4B8, queuedPipBoyTab);
+            const bool renderedManagerReadable = safeRead(
+                reinterpret_cast<const UInt8*>(interfaceManager) + 0x4B4, renderedManager);
+            UInt32 activeMenuId = 0;
+            const bool activeMenuIdReadable = activeMenu != nullptr && safeRead(&activeMenu->id, activeMenuId);
+            bool activeMenuTileReadable = false;
+            Tile* activeMenuTile = nullptr;
+            if (activeMenu != nullptr)
+                activeMenuTileReadable = safeRead(&activeMenu->tile, activeMenuTile);
+            bool activeTileNameReadable = false;
+            const std::string activeTileName = retailQualifiedTileName(activeTile, activeTileNameReadable);
+            bool activeMenuTileNameReadable = false;
+            const std::string activeMenuTileName
+                = retailQualifiedTileName(activeMenuTile, activeMenuTileNameReadable);
+
+            out << "\"available\":true"
+                << ",\"flags\":";
+            if (flagsReadable)
+                out << flags;
+            else
+                out << "null";
+            out << ",\"pipboyManagerAllocated\":"
+                << (pipboyManagerReadable && pipboyManager != nullptr ? "true" : "false")
+                << ",\"pipBoyMode\":";
+            if (pipBoyModeReadable)
+                out << pipBoyMode;
+            else
+                out << "null";
+            out << ",\"queuedPipBoyTab\":";
+            if (queuedPipBoyTabReadable)
+                out << queuedPipBoyTab;
+            else
+                out << "null";
+            out << ",\"renderedMenuOrPipboyManager\":";
+            if (renderedManagerReadable)
+                out << static_cast<UInt32>(renderedManager);
+            else
+                out << "null";
+            out
+                << ",\"physical\":";
+            writeRetailPipBoyPhysicalState(out, pipboyManagerReadable ? pipboyManager : nullptr);
+            out << ",\"pages\":";
+            writeRetailPipBoyPageState(out);
+            out
+                << ",\"activeMenu\":{\"pointerReadable\":"
+                << (activeMenuReadable ? "true" : "false")
+                << ",\"id\":";
+            if (activeMenuIdReadable)
+                out << activeMenuId;
+            else
+                out << "null";
+            out << ",\"tilePointerReadable\":" << (activeMenuTileReadable ? "true" : "false")
+                << ",\"tilePath\":";
+            if (activeMenuTileNameReadable)
+                out << jsonString(activeMenuTileName.c_str());
+            else
+                out << "null";
+            out << '}';
+            out << ",\"activeTile\":{\"pointerReadable\":"
+                << (activeTileReadable ? "true" : "false")
+                << ",\"path\":";
+            if (activeTileNameReadable)
+                out << jsonString(activeTileName.c_str());
+            else
+                out << "null";
+            out << '}';
+
+            out << ",\"menuStack\":[";
+            bool firstStackItem = true;
+            for (UInt32 index = 0; index < 10; ++index)
+            {
+                UInt32 menuType = 0;
+                if (!safeRead(interfaceManager->menuStack + index, menuType) || menuType == 0)
+                    continue;
+                if (!firstStackItem)
+                    out << ',';
+                firstStackItem = false;
+                out << menuType;
+            }
+            out << ']';
+
+            out << ",\"visibleMenus\":[";
+            bool firstVisibleMenu = true;
+            bool visibleMenusReadable = true;
+            for (const RetailMenuProbe& menu : sRetailPipBoyProbeMenus)
+            {
+                bool menuReadable = false;
+                const bool visible = retailMenuVisible(menu.type, menuReadable);
+                visibleMenusReadable = visibleMenusReadable && menuReadable;
+                if (!visible)
+                    continue;
+                if (!firstVisibleMenu)
+                    out << ',';
+                firstVisibleMenu = false;
+                out << "{\"type\":" << menu.type
+                    << ",\"name\":" << jsonString(menu.name) << '}';
+            }
+            out << "]"
+                << ",\"visibleMenusReadable\":" << (visibleMenusReadable ? "true" : "false")
+                << '}';
+        }
+
+        out << ",\"player\":{";
+        if (player == nullptr)
+            out << "\"available\":false}";
+        else
+        {
+            float health = 0.f;
+            float actionPoints = 0.f;
+            const bool healthReadable = sidecarReadActorValueUnsafe(player, eActorVal_Health, health);
+            const bool actionPointsReadable
+                = sidecarReadActorValueUnsafe(player, eActorVal_ActionPoints, actionPoints);
+            const UInt32 equippedWeapon = sidecarEquippedWeaponForm(player);
+            out << "\"available\":true,\"health\":";
+            if (healthReadable)
+                sidecarWriteFinite(out, health);
+            else
+                out << "null";
+            out << ",\"actionPoints\":";
+            if (actionPointsReadable)
+                sidecarWriteFinite(out, actionPoints);
+            else
+                out << "null";
+            out << ",\"equippedWeapon\":" << equippedWeapon
+                << ",\"weapon\":";
+            sidecarWriteCombatWeapon(out, player, equippedWeapon);
+            out << ",\"firstPerson\":";
+            writeRetailFirstPersonState(out, player, label != nullptr && strcmp(label, "sample") != 0);
+            out << ",\"inventory\":";
+            sidecarWritePipBoyInventory(out, player);
+            out << '}';
+        }
+        out << "}\n";
+        gOutput << out.str();
+        gOutput.flush();
+    }
+
+    bool scheduledPipBoySnapshot(const std::string& command)
+    {
+        constexpr char prefix[] = "PipBoySnapshot";
+        constexpr std::size_t prefixLength = sizeof(prefix) - 1;
+        if (command.compare(0, prefixLength, prefix) != 0)
+            return false;
+        if (command.size() != prefixLength && command[prefixLength] != ' ')
+            return false;
+        std::string label = command.size() == prefixLength ? "scheduled"
+            : command.substr(prefixLength + 1);
+        const std::size_t first = label.find_first_not_of(" \t");
+        if (first == std::string::npos)
+            label = "scheduled";
+        else
+            label = label.substr(first, 128);
+        writeRetailPipBoySnapshot(label.c_str());
+        return true;
+    }
+
+    bool scheduledPipBoyTileTreeSnapshot(const std::string& command)
+    {
+        constexpr char prefix[] = "PipBoyTreeSnapshot";
+        constexpr std::size_t prefixLength = sizeof(prefix) - 1;
+        if (command.compare(0, prefixLength, prefix) != 0)
+            return false;
+        if (command.size() != prefixLength && command[prefixLength] != ' ')
+            return false;
+        std::string label = command.size() == prefixLength ? "scheduled"
+            : command.substr(prefixLength + 1);
+        const std::size_t first = label.find_first_not_of(" \t");
+        if (first == std::string::npos)
+            label = "scheduled";
+        else
+            label = label.substr(first, 128);
+        writeRetailPipBoyTileTreeSnapshot(label.c_str());
+        return true;
+    }
+
     void sidecarWriteCombatActor(std::ostringstream& out, Actor* actor)
     {
         if (actor == nullptr)
@@ -6781,10 +7734,131 @@ namespace
         return invoked && restored;
     }
 
+    void holdRetailPipBoyRenderedState()
+    {
+        if (!gHoldRetailPipBoyRenderedState)
+            return;
+        __try
+        {
+            InterfaceManager* interfaceManager
+                = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+            if (interfaceManager == nullptr)
+                return;
+            bool* menuVisibility = reinterpret_cast<bool*>(0x011F308F);
+            menuVisibility[1002] = false;
+            menuVisibility[1003] = true;
+            menuVisibility[1023] = false;
+            *reinterpret_cast<UInt8*>(
+                reinterpret_cast<UInt8*>(interfaceManager) + 0x4B4) = 1;
+            *reinterpret_cast<UInt32*>(
+                reinterpret_cast<UInt8*>(interfaceManager) + 0x4BC) = 3;
+
+            PlayerCharacter* player
+                = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
+            AnimData* firstPersonAnimation = nullptr;
+            if (player != nullptr)
+                firstPersonAnimation = *reinterpret_cast<AnimData**>(
+                    reinterpret_cast<UInt8*>(player) + 0x690);
+            if (firstPersonAnimation == nullptr)
+                return;
+            for (UInt32 index = 0; index < 8; ++index)
+            {
+                BSAnimGroupSequence* sequence = firstPersonAnimation->animSequence[index];
+                if (sequence == nullptr || sequence->filePath == nullptr)
+                    continue;
+                if (std::strstr(sequence->filePath, "PipboyWaver.kf") != nullptr
+                    || (std::strstr(sequence->filePath, "\\pipboy.kf") != nullptr
+                        && sequence->last >= 0.36f))
+                    sequence->freq = 0.f;
+            }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+        }
+    }
+
     bool runScheduledConsoleCommand(const ScheduledConsoleCommand& scheduled, TESObjectREFR* target)
     {
+        if (scheduled.targetForm == 0 && scheduled.command == "OpenPipBoyRenderedManager")
+        {
+            bool invoked = false;
+            __try
+            {
+                InterfaceManager* interfaceManager
+                    = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+                FOPipboyManager* manager
+                    = interfaceManager != nullptr ? interfaceManager->pipboyManager : nullptr;
+                if (manager != nullptr)
+                {
+                    gHoldRetailPipBoyRenderedState = true;
+                    void** virtualTable = *reinterpret_cast<void***>(manager);
+                    reinterpret_cast<void(__thiscall*)(FOPipboyManager*)>(virtualTable[12])(manager);
+                    bool* menuVisibility = reinterpret_cast<bool*>(0x011F308F);
+                    menuVisibility[1002] = false;
+                    menuVisibility[1003] = true;
+                    menuVisibility[1023] = false;
+                    *reinterpret_cast<UInt8*>(
+                        reinterpret_cast<UInt8*>(interfaceManager) + 0x4B4) = 1;
+                    *reinterpret_cast<UInt32*>(
+                        reinterpret_cast<UInt8*>(interfaceManager) + 0x4BC) = 3;
+                    invoked = true;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                invoked = false;
+            }
+            return invoked;
+        }
+        if (scheduled.targetForm == 0 && scheduled.command == "ClosePipBoyRenderedManager")
+        {
+            bool invoked = false;
+            __try
+            {
+                InterfaceManager* interfaceManager
+                    = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+                FOPipboyManager* manager
+                    = interfaceManager != nullptr ? interfaceManager->pipboyManager : nullptr;
+                if (manager != nullptr)
+                {
+                    gHoldRetailPipBoyRenderedState = false;
+                    bool* menuVisibility = reinterpret_cast<bool*>(0x011F308F);
+                    menuVisibility[1002] = false;
+                    menuVisibility[1003] = false;
+                    menuVisibility[1023] = false;
+                    PlayerCharacter* player
+                        = *reinterpret_cast<PlayerCharacter**>(0x011DEA3C);
+                    AnimData* firstPersonAnimation = nullptr;
+                    if (player != nullptr)
+                        firstPersonAnimation = *reinterpret_cast<AnimData**>(
+                            reinterpret_cast<UInt8*>(player) + 0x690);
+                    if (firstPersonAnimation != nullptr)
+                    {
+                        for (UInt32 index = 0; index < 8; ++index)
+                        {
+                            if (firstPersonAnimation->animSequence[index] != nullptr
+                                && firstPersonAnimation->animSequence[index]->freq == 0.f)
+                                firstPersonAnimation->animSequence[index]->freq = 1.f;
+                        }
+                    }
+                    reinterpret_cast<void(__thiscall*)(FOPipboyManager*)>(0x007FFD50)(manager);
+                    *reinterpret_cast<UInt32*>(
+                        reinterpret_cast<UInt8*>(interfaceManager) + 0x4BC) = 4;
+                    invoked = true;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                invoked = false;
+            }
+            return invoked;
+        }
         if (scheduled.targetForm == 0 && scheduled.command == "CaptureBackBuffer")
             return scheduledCaptureBackBuffer();
+        if (scheduled.targetForm == 0 && scheduledPipBoyTileTreeSnapshot(scheduled.command))
+            return true;
+        if (scheduled.targetForm == 0 && scheduledPipBoySnapshot(scheduled.command))
+            return true;
         if (scheduled.targetForm == 0 && scheduled.command == "EnableBackgroundInputPolling")
             return scheduledEnableBackgroundInputPolling();
         if (scheduled.targetForm == 0 && scheduled.command == "BeginJamSprintMovement")
@@ -6834,10 +7908,30 @@ namespace
         if (target != nullptr && scheduled.targetForm == 0x14 && scheduled.command == "FirstPerson")
         {
             PlayerCharacter* player = static_cast<PlayerCharacter*>(target);
-            player->bThirdPerson = false;
+            *reinterpret_cast<UInt8*>(reinterpret_cast<UInt8*>(player) + 0x64A) = 0;
             if (player->playerNode != nullptr)
                 reinterpret_cast<void(__thiscall*)(PlayerCharacter*, UInt8, UInt8)>(0x0094AE40)(player, 0, 0);
             return true;
+        }
+        if (target != nullptr && scheduled.targetForm == 0x14
+            && scheduled.command == "RequestPipBoyOpen")
+        {
+            bool applied = false;
+            __try
+            {
+                *reinterpret_cast<bool*>(reinterpret_cast<UInt8*>(target) + 0xD54) = true;
+                InterfaceManager* interfaceManager
+                    = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+                if (interfaceManager != nullptr)
+                    *reinterpret_cast<UInt32*>(
+                        reinterpret_cast<UInt8*>(interfaceManager) + 0x4BC) = 1;
+                applied = true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                applied = false;
+            }
+            return applied;
         }
         if (target != nullptr && target->IsActor_Runtime() && scheduled.command == "SetWeaponOut 1")
             return setWeaponOutUnsafe(static_cast<Actor*>(target));
@@ -10153,7 +11247,10 @@ namespace
         captureTargetAppearance();
         captureAppearanceBatch();
         driveScheduledConsoleCommands();
+        holdRetailPipBoyRenderedState();
         driveJamSprintMovement();
+        if (gPipBoyProbe && gFrame % gSampleEvery == 0)
+            writeRetailPipBoySnapshot("sample");
         if (gCaptureSession && gFrame % gSampleEvery == 0)
             sidecarWriteCombatSessionTelemetry();
         if (!gScheduledCommands.empty() && gFrame % gSampleEvery == 0)
@@ -10362,6 +11459,7 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gAllHighActors = envUInt("NIKAMI_ORACLE_ALL_HIGH_ACTORS", 1) != 0;
     gCaptureAnimation = envUInt("NIKAMI_ORACLE_CAPTURE_ANIMATION", 1) != 0;
     gCaptureSession = envUInt("NIKAMI_ORACLE_CAPTURE_SESSION", 0) != 0;
+    gPipBoyProbe = envUInt("NIKAMI_ORACLE_PIPBOY_PROBE", 0) != 0;
     gSessionTargetForm = envUInt("NIKAMI_ORACLE_SESSION_TARGET_FORM", 0);
     gFurnitureOnly = envUInt("NIKAMI_ORACLE_FURNITURE_ONLY", 0) != 0;
     gExitAfterFurnitureRelease = envUInt("NIKAMI_ORACLE_EXIT_AFTER_FURNITURE_RELEASE", 0) != 0;
