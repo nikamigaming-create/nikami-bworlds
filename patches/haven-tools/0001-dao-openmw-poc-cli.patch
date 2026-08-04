@@ -1,0 +1,514 @@
+diff --git a/src/Core/types.h b/src/Core/types.h
+index 0bc89fb..99e6d7c 100644
+--- a/src/Core/types.h
++++ b/src/Core/types.h
+@@ -448,6 +448,13 @@ struct AppState {
+         int nextInstanceId = 0;   // running unique id per placed object instance
+     };
+     LevelLoadState levelLoad;
++    struct LevelActorWork {
++        std::string templateResRef;
++        float px = 0, py = 0, pz = 0;
++        float qx = 0, qy = 0, qz = 0, qw = 1;
++        bool active = true;
++    };
++    std::vector<LevelActorWork> levelActors;
+ 
+     struct LevelExportState {
+         int stage = 0;
+diff --git a/src/IO/terrain_export.cpp b/src/IO/terrain_export.cpp
+index 8a38168..e9c333d 100644
+--- a/src/IO/terrain_export.cpp
++++ b/src/IO/terrain_export.cpp
+@@ -670,7 +670,17 @@ void tickLevelExport(AppState& state) {
+             }
+             json << "      ]\n    }";
+         }
+-        json << "\n  }\n}\n";
++        json << "\n  },\n  \"actors\": [\n";
++        for (size_t ai = 0; ai < state.levelActors.size(); ai++) {
++            const auto& actor = state.levelActors[ai];
++            json << "    {\"template\": " << jsonStr(actor.templateResRef)
++                 << ", \"position\": " << jsonVec3(actor.px, actor.py, actor.pz)
++                 << ", \"rotation\": " << jsonVec4(actor.qx, actor.qy, actor.qz, actor.qw)
++                 << ", \"active\": " << (actor.active ? "true" : "false") << "}";
++            if (ai + 1 < state.levelActors.size()) json << ",";
++            json << "\n";
++        }
++        json << "  ]\n}\n";
+         std::ofstream jsonFile(ex.outputDir + "/" + ex.rimStem + ".havenarea");
+         jsonFile << json.str();
+ 
+@@ -683,4 +693,4 @@ void tickLevelExport(AppState& state) {
+         s_erfCache.clear();
+         ex.stage = 0;
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/Loaders/level_loader.cpp b/src/Loaders/level_loader.cpp
+index 5b4f199..6cb15c5 100644
+--- a/src/Loaders/level_loader.cpp
++++ b/src/Loaders/level_loader.cpp
+@@ -1,6 +1,7 @@
+ #include "level_loader.h"
+ #include <cstring>
+ #include <algorithm>
++#include <iostream>
+ 
+ static uint32_t readU32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24); }
+ static int32_t readI32(const uint8_t* p) { return (int32_t)readU32(p); }
+@@ -61,19 +62,18 @@ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea) {
+         return false;
+     }
+ 
+-    uint32_t topLevelFieldCount = readU32(p + 0x0C);
+-    uint32_t structOffset = readU32(p + 0x10);
+-    uint32_t structCount = readU32(p + 0x14);
+-    uint32_t fieldOffset = readU32(p + 0x18);
+-    uint32_t fieldCount = readU32(p + 0x1C);
+-    uint32_t labelOffset = readU32(p + 0x20);
+-    uint32_t labelCount = readU32(p + 0x24);
+-    uint32_t fieldDataOffset = readU32(p + 0x28);
+-    uint32_t fieldDataSize = readU32(p + 0x2C);
+-    uint32_t fieldIndicesOffset = readU32(p + 0x30);
+-    uint32_t fieldIndicesSize = readU32(p + 0x34);
+-    uint32_t listIndicesOffset = readU32(p + 0x38);
+-    uint32_t listIndicesSize = readU32(p + 0x3C);
++    uint32_t structOffset = readU32(p + 0x08);
++    uint32_t structCount = readU32(p + 0x0C);
++    uint32_t fieldOffset = readU32(p + 0x10);
++    uint32_t fieldCount = readU32(p + 0x14);
++    uint32_t labelOffset = readU32(p + 0x18);
++    uint32_t labelCount = readU32(p + 0x1C);
++    uint32_t fieldDataOffset = readU32(p + 0x20);
++    uint32_t fieldDataSize = readU32(p + 0x24);
++    uint32_t fieldIndicesOffset = readU32(p + 0x28);
++    uint32_t fieldIndicesSize = readU32(p + 0x2C);
++    uint32_t listIndicesOffset = readU32(p + 0x30);
++    uint32_t listIndicesSize = readU32(p + 0x34);
+ 
+     std::vector<std::string> labels;
+     for (uint32_t i = 0; i < labelCount && labelOffset + (i+1)*16 <= data.size(); i++) {
+@@ -87,8 +87,6 @@ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea) {
+         return "";
+     };
+ 
+-    uint32_t topFieldsOffset = 0x40;
+-
+     struct FieldEntry {
+         uint32_t labelIdx;
+         uint32_t type;
+@@ -96,17 +94,6 @@ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea) {
+         std::string label;
+     };
+ 
+-    std::vector<FieldEntry> topFields;
+-    for (uint32_t i = 0; i < topLevelFieldCount && topFieldsOffset + 12 <= data.size(); i++) {
+-        FieldEntry fe;
+-        fe.labelIdx = readU32(p + topFieldsOffset);
+-        fe.type = readU32(p + topFieldsOffset + 4);
+-        fe.dataOffset = readU32(p + topFieldsOffset + 8);
+-        fe.label = getLabel(fe.labelIdx);
+-        topFields.push_back(fe);
+-        topFieldsOffset += 12;
+-    }
+-
+     auto readListIndices = [&](uint32_t offset) -> std::vector<uint32_t> {
+         std::vector<uint32_t> result;
+         if (listIndicesOffset == 0xFFFFFFFF) {
+@@ -146,8 +133,8 @@ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea) {
+                 uint32_t foff = fieldOffset + dataOrIdx * 12;
+                 if (foff + 12 <= data.size()) {
+                     FieldEntry fe;
+-                    fe.labelIdx = readU32(p + foff);
+-                    fe.type = readU32(p + foff + 4);
++                    fe.type = readU32(p + foff);
++                    fe.labelIdx = readU32(p + foff + 4);
+                     fe.dataOffset = readU32(p + foff + 8);
+                     fe.label = getLabel(fe.labelIdx);
+                     fields.push_back(fe);
+@@ -162,8 +149,8 @@ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea) {
+                     uint32_t foff = fieldOffset + fieldIdx * 12;
+                     if (foff + 12 <= data.size()) {
+                         FieldEntry fe;
+-                        fe.labelIdx = readU32(p + foff);
+-                        fe.type = readU32(p + foff + 4);
++                        fe.type = readU32(p + foff);
++                        fe.labelIdx = readU32(p + foff + 4);
+                         fe.dataOffset = readU32(p + foff + 8);
+                         fe.label = getLabel(fe.labelIdx);
+                         fields.push_back(fe);
+@@ -182,10 +169,10 @@ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea) {
+         return std::string((char*)(p + absOff + 1), len);
+     };
+ 
+-    auto readFloatField = [&](uint32_t offset) -> float {
+-        uint32_t absOff = fieldDataOffset + offset;
+-        if (absOff + 4 > data.size()) return 0.0f;
+-        return readF32(p + absOff);
++    auto readFloatField = [&](uint32_t inlineValue) -> float {
++        float result = 0.0f;
++        memcpy(&result, &inlineValue, sizeof(result));
++        return result;
+     };
+ 
+     auto parseObject = [&](uint32_t structIdx) -> LevelObject {
+@@ -215,6 +202,7 @@ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea) {
+         return obj;
+     };
+ 
++    const auto topFields = readStructFields(0);
+     for (const auto& tf : topFields) {
+         if (tf.type == 15) {
+             auto structIndices = readListIndices(tf.dataOffset);
+@@ -227,6 +215,9 @@ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea) {
+                 }
+             }
+ 
++            std::cout << "[ARE] list '" << tf.label << "' structs=" << structIndices.size()
++                      << " resolved=" << objects.size() << std::endl;
++
+             if (tf.label == "CreatureList") {
+                 outArea.creatures = objects;
+             } else if (tf.label == "PlaceableList") {
+@@ -253,7 +244,7 @@ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea) {
+     return true;
+ }
+ 
+-bool loadTMSHFile(const std::vector<uint8_t>& data, TerrainSector& outSector) {
++bool loadTMSHFile(const std::vector<uint8_t>& data, DaoTerrainSector& outSector) {
+     if (data.size() < 32) return false;
+ 
+     const uint8_t* p = data.data();
+@@ -317,7 +308,7 @@ bool loadTMSHFile(const std::vector<uint8_t>& data, TerrainSector& outSector) {
+ 
+                 float height = (float)(255 - heightLow) + (float)heightHigh * 0.1f;
+ 
+-                TerrainVertex v;
++                DaoTerrainVertex v;
+                 v.x = (float)x * (outSector.sectorSize / gridSize);
+                 v.y = (float)y * (outSector.sectorSize / gridSize);
+                 v.z = height * 0.5f;
+@@ -377,4 +368,4 @@ bool loadLevelHeader(const std::vector<uint8_t>& data, LevelData& outLevel) {
+     }
+ 
+     return true;
+-}
+\ No newline at end of file
++}
+diff --git a/src/Loaders/level_loader.h b/src/Loaders/level_loader.h
+index 715227d..64d372c 100644
+--- a/src/Loaders/level_loader.h
++++ b/src/Loaders/level_loader.h
+@@ -27,7 +27,7 @@ struct LevelArea {
+     std::vector<LevelObject> stages;
+ };
+ 
+-struct TerrainVertex {
++struct DaoTerrainVertex {
+     float x, y, z;
+     float nx, ny, nz;
+     float u, v;
+@@ -35,20 +35,20 @@ struct TerrainVertex {
+     uint8_t blendIndices[4];
+ };
+ 
+-struct TerrainSector {
++struct DaoTerrainSector {
+     int sectorX = 0;
+     int sectorY = 0;
+     float offsetX = 0, offsetY = 0;
+     float sectorSize = 0;
+     int gridWidth = 0;
+     int gridHeight = 0;
+-    std::vector<TerrainVertex> vertices;
++    std::vector<DaoTerrainVertex> vertices;
+     std::vector<uint32_t> indices;
+ };
+ 
+ struct LevelTerrain {
+     std::string name;
+-    std::vector<TerrainSector> sectors;
++    std::vector<DaoTerrainSector> sectors;
+     float minX = 0, minY = 0, minZ = 0;
+     float maxX = 0, maxY = 0, maxZ = 0;
+ };
+@@ -62,5 +62,5 @@ struct LevelData {
+ };
+ 
+ bool loadAREFile(const std::vector<uint8_t>& data, LevelArea& outArea);
+-bool loadTMSHFile(const std::vector<uint8_t>& data, TerrainSector& outSector);
+-bool loadLevelHeader(const std::vector<uint8_t>& data, LevelData& outLevel);
+\ No newline at end of file
++bool loadTMSHFile(const std::vector<uint8_t>& data, DaoTerrainSector& outSector);
++bool loadLevelHeader(const std::vector<uint8_t>& data, LevelData& outLevel);
+diff --git a/src/UI/ui.h b/src/UI/ui.h
+index 9514530..92c7903 100644
+--- a/src/UI/ui.h
++++ b/src/UI/ui.h
+@@ -10,3 +10,4 @@ void handleInput(AppState& state, GLFWwindow* window, ImGuiIO& io);
+ 
+ void saveSettings(const AppState& state);
+ void loadSettings(AppState& state);
++void preloadErfs(AppState& state);
+diff --git a/src/UI/ui_browser.cpp b/src/UI/ui_browser.cpp
+index 2118461..cca04cc 100644
+--- a/src/UI/ui_browser.cpp
++++ b/src/UI/ui_browser.cpp
+@@ -6,6 +6,7 @@
+ #include "Gff.h"
+ #include "GffViewer.h"
+ #include "LevelDatabase.h"
++#include "level_loader.h"
+ #include "blender_addon_embedded.h"
+ #include <cstring>
+ #include <fstream>
+@@ -57,7 +58,7 @@ static void mergeLevelInstances(Model& model) {
+     model.meshes = std::move(out);
+ }
+ 
+-static void startLevelLoad(AppState& state, const std::string& rimPath, const std::string& displayName) {
++void startLevelLoad(AppState& state, const std::string& rimPath, const std::string& displayName) {
+     if (state.levelLoad.stage != 0) return;
+     state.showTerrain = false;
+     g_terrainLoader.clear();
+@@ -68,6 +69,26 @@ static void startLevelLoad(AppState& state, const std::string& rimPath, const st
+     }
+ 
+     state.currentRIMPath = rimPath;
++    state.levelActors.clear();
++    for (const auto& entry : state.currentErf->entries()) {
++        std::string entryLower = entry.name;
++        std::transform(entryLower.begin(), entryLower.end(), entryLower.begin(), ::tolower);
++        if (entryLower.size() > 4 && entryLower.substr(entryLower.size() - 4) == ".are") {
++            const auto areaData = state.currentErf->readEntry(entry);
++            LevelArea parsedArea;
++            if (!areaData.empty() && loadAREFile(areaData, parsedArea)) {
++                for (const auto& actor : parsedArea.creatures) {
++                    AppState::LevelActorWork work;
++                    work.templateResRef = actor.templateResRef;
++                    work.px = actor.posX; work.py = actor.posY; work.pz = actor.posZ;
++                    work.qx = actor.rotX; work.qy = actor.rotY; work.qz = actor.rotZ; work.qw = actor.rotW;
++                    work.active = actor.active;
++                    state.levelActors.push_back(std::move(work));
++                }
++                break;
++            }
++        }
++    }
+     state.rimEntries.clear();
+     for (size_t ei = 0; ei < state.currentErf->entries().size(); ei++) {
+         CachedEntry re;
+diff --git a/src/UI/ui_internal.h b/src/UI/ui_internal.h
+index 9bd6669..e5fb9cd 100644
+--- a/src/UI/ui_internal.h
++++ b/src/UI/ui_internal.h
+@@ -83,6 +83,7 @@ void drawVirtualList(int itemCount, std::function<void(int)> renderItem);
+ void drawMeshBrowserWindow(AppState& state);
+ void drawImportMenu(AppState& state);
+ void drawBrowserWindow(AppState& state);
++void startLevelLoad(AppState& state, const std::string& rimPath, const std::string& displayName);
+ void markModelAsImported(const std::string& modelName);
+ void drawRenderSettingsWindow(AppState& state);
+ void drawSettingsWindow(AppState& state);
+diff --git a/src/main.cpp b/src/main.cpp
+index 1162f4a..b778c5e 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -4,6 +4,11 @@
+ #include "Shaders/d3d_context.h"
+ #include "animation.h"
+ #include "ui.h"
++#include "ui/ui_internal.h"
++#include "io/terrain_export.h"
++#include "loaders/level_loader.h"
++#include "formats/gff32.h"
++#include "formats/gda.h"
+ #include "version.h"
+ #include "update/update.h"
+ #include "spt.h"
+@@ -16,6 +21,7 @@
+ #include "Fonts/IconsFontAwesome6.h"
+ #include "fa_solid_embedded.h"
+ #include "roboto_embedded.h"
++#include <iostream>
+ 
+ namespace fs = std::filesystem;
+ 
+@@ -100,9 +106,97 @@ static void framebufferSizeCallback(GLFWwindow*, int width, int height) {
+ int main(int argc, char** argv) {
+     if (Update::HandleUpdaterMode(argc, argv)) return 0;
+ 
++    if (argc == 3 && std::string(argv[1]) == "--list-erf") {
++        ERFFile erf;
++        if (!erf.open(argv[2])) return 2;
++        for (const auto& entry : erf.entries())
++            std::cout << entry.name << "\t" << entry.length << std::endl;
++        return 0;
++    }
++    if (argc == 4 && std::string(argv[1]) == "--dump-gff-entry") {
++        ERFFile erf;
++        if (!erf.open(argv[2])) return 2;
++        for (const auto& entry : erf.entries()) {
++            if (entry.name != argv[3]) continue;
++            GFFFile::initLabelCache();
++            GFFFile gff;
++            if (!gff.load(erf.readEntry(entry))) return 3;
++            gff.walk([](const std::string& path, const std::string& label,
++                        const std::string& typeName, const std::string& value,
++                        int depth, bool isComplex) {
++                std::cout << path << "\t" << label << "\t" << typeName << "\t" << value << std::endl;
++            });
++            return 0;
++        }
++        return 4;
++    }
++    if (argc == 4 && std::string(argv[1]) == "--probe-are") {
++        ERFFile erf;
++        if (!erf.open(argv[2])) return 2;
++        for (const auto& entry : erf.entries()) {
++            if (entry.name != argv[3]) continue;
++            const auto bytes = erf.readEntry(entry);
++            std::cout << "bytes=" << bytes.size() << " header=";
++            for (size_t i = 0; i < std::min<size_t>(32, bytes.size()); i++)
++                std::cout << std::hex << (int)bytes[i] << ' ';
++            std::cout << std::dec << std::endl;
++            LevelArea area;
++            const bool ok = loadAREFile(bytes, area);
++            std::cout << "ok=" << ok << " creatures=" << area.creatures.size()
++                      << " placeables=" << area.placeables.size() << std::endl;
++            return ok ? 0 : 3;
++        }
++        return 4;
++    }
++    if (argc == 4 && std::string(argv[1]) == "--dump-gff32-entry") {
++        ERFFile erf;
++        if (!erf.open(argv[2])) return 2;
++        for (const auto& entry : erf.entries()) {
++            if (entry.name != argv[3]) continue;
++            GFF32::GFF32File gff;
++            if (!gff.load(erf.readEntry(entry)) || !gff.root()) return 3;
++            GFF32::walkStructure(*gff.root(), [](const std::string& path,
++                                                 const GFF32::Field& field, int depth) {
++                std::cout << path << '\t' << field.getTypeName() << '\t'
++                          << field.getDisplayValue() << std::endl;
++            });
++            return 0;
++        }
++        return 4;
++    }
++    if ((argc == 4 || argc == 5) && std::string(argv[1]) == "--dump-gda-entry") {
++        ERFFile erf;
++        if (!erf.open(argv[2])) return 2;
++        for (const auto& entry : erf.entries()) {
++            if (entry.name != argv[3]) continue;
++            GDAFile gda;
++            if (!gda.load(erf.readEntry(entry), entry.name)) return 3;
++            const int onlyRow = argc == 5 ? std::stoi(argv[4]) : -1;
++            for (size_t ri = 0; ri < gda.rows().size(); ri++) {
++                if (onlyRow >= 0 && (int)ri != onlyRow) continue;
++                std::cout << "ROW " << ri << std::endl;
++                const auto& row = gda.rows()[ri];
++                for (size_t ci = 0; ci < row.values.size() && ci < gda.columns().size(); ci++) {
++                    std::cout << gda.columns()[ci].name << '=';
++                    std::visit([](const auto& value) { std::cout << value; }, row.values[ci]);
++                    std::cout << std::endl;
++                }
++            }
++            return 0;
++        }
++        return 4;
++    }
++
++    const bool batchLevel = (argc == 5 || argc == 6) && std::string(argv[1]) == "--batch-level";
++    const std::string batchGameRoot = batchLevel ? argv[2] : "";
++    const std::string batchRimPath = batchLevel ? argv[3] : "";
++    const std::string batchOutputDir = batchLevel ? argv[4] : "";
++    const std::string batchActorRim = batchLevel && argc == 6 ? argv[5] : "";
++
+     if (!glfwInit()) return -1;
+ 
+     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
++    if (batchLevel) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+     GLFWwindow* window = glfwCreateWindow(1280, 720, "Haven Tools", nullptr, nullptr);
+     if (!window) {
+         glfwTerminate();
+@@ -143,13 +237,55 @@ int main(int argc, char** argv) {
+     state.extractPath = (fs::path(getExeDir()) / "extracted").string();
+     initSpeedTree();
+ 
+-    Update::StartAutoCheckAndUpdate();
++    if (!batchLevel) Update::StartAutoCheckAndUpdate();
++
++    if (batchLevel) {
++        state.selectedFolder = batchGameRoot;
++        state.gffViewer.gamePath = batchGameRoot;
++        state.isPreloading = true;
++        preloadErfs(state);
++        if (state.isPreloading || state.erfFiles.empty()) {
++            std::cerr << "Haven batch scan failed: " << state.statusMessage << std::endl;
++            return 2;
++        }
++        startLevelLoad(state, batchRimPath, fs::path(batchRimPath).stem().string());
++        if (state.levelLoad.stage == 0) {
++            std::cerr << "Haven batch level open failed: " << state.statusMessage << std::endl;
++            return 3;
++        }
++        if (!batchActorRim.empty()) {
++            ERFFile actorRim;
++            if (!actorRim.open(batchActorRim)) {
++                std::cerr << "Haven batch actor RIM open failed: " << batchActorRim << std::endl;
++                return 4;
++            }
++            for (const auto& entry : actorRim.entries()) {
++                std::string lower = entry.name;
++                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
++                if (lower.size() <= 4 || lower.substr(lower.size() - 4) != ".are") continue;
++                LevelArea area;
++                if (!loadAREFile(actorRim.readEntry(entry), area)) continue;
++                for (const auto& actor : area.creatures) {
++                    AppState::LevelActorWork work;
++                    work.templateResRef = actor.templateResRef;
++                    work.px = actor.posX; work.py = actor.posY; work.pz = actor.posZ;
++                    work.qx = actor.rotX; work.qy = actor.rotY; work.qz = actor.rotZ; work.qw = actor.rotW;
++                    work.active = actor.active;
++                    state.levelActors.push_back(std::move(work));
++                }
++                std::cout << "Haven batch actor area: " << entry.name
++                          << "; actors=" << state.levelActors.size() << std::endl;
++                break;
++            }
++        }
++    }
+ 
+     float appliedUIFontSize = clampUIFontSize(state.uiFontSize);
++    bool batchExportStarted = false;
+ 
+     while (!glfwWindowShouldClose(window)) {
+         glfwPollEvents();
+-        if (state.levelLoad.stage == 0)
++        if (!batchLevel && state.levelLoad.stage == 0)
+             handleInput(state, window, io);
+ 
+         state.uiFontSize = clampUIFontSize(state.uiFontSize);
+@@ -166,6 +302,18 @@ int main(int argc, char** argv) {
+         ImGui_ImplGlfw_NewFrame();
+         ImGui::NewFrame();
+         drawUI(state, window, io);
++
++        if (batchLevel && state.levelLoad.stage == 0 && !batchExportStarted) {
++            LevelExportOptions opts;
++            opts.useFbx = false;
++            startLevelExport(state, batchOutputDir, opts);
++            batchExportStarted = true;
++        } else if (batchLevel && batchExportStarted && state.levelExport.stage == 0) {
++            std::cout << "Haven batch export complete: "
++                      << (fs::path(batchOutputDir) / fs::path(batchRimPath).stem())
++                      << "; actors=" << state.levelActors.size() << std::endl;
++            glfwSetWindowShouldClose(window, true);
++        }
+         ImGui::Render();
+ 
+         int display_w, display_h;
+
