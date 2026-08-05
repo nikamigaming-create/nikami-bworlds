@@ -1,9 +1,10 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("outside-walk", "people", "native-people", "outside-look", "waterfront", "town-match", "town-survey", "cluster-match", "tavern")]
+    [ValidateSet("outside-walk", "people", "native-people", "actor-closeup", "outside-look", "waterfront", "native-water", "water-dock", "water-scout", "runtime-town", "runtime-water", "town-core", "town-post", "town-people-front", "town-match", "town-survey", "cluster-match", "tavern")]
     [string]$Shot = "outside-walk",
     [string]$OutputRoot,
     [string]$Binary = "D:\code\nikami-worlds\local\labs\openmw-051-threeway-candidate-r30\openmw.exe",
+    [string]$ActorAsset,
     [ValidateRange(2, 5)]
     [int]$Seconds = 3
 )
@@ -29,17 +30,43 @@ $godotNativeEnvironment = "D:\code\opendao-poc\godot\assets\generated\redcliffe-
 $godotExactConnectedEnvironment = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-environment-connected.obj"
 $godotExactActors = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-actors-direct.obj"
 $godotNativeActors = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-actors-direct.glb"
+if (-not [string]::IsNullOrWhiteSpace($ActorAsset)) {
+    $godotNativeActors = (Resolve-Path -LiteralPath $ActorAsset).Path
+}
 $godotExactSky = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-sky-dome.obj"
 $godotExactVegetation = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-vegetation.obj"
 $godotExactSetpieces = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-setpieces.obj"
+$godotNativeVegetation = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-vegetation-native-alpha.glb"
+$godotNativeSetpieces = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-setpieces-native.glb"
 $godotExactTerrainRing = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-terrain-ring.obj"
 $godotNativeTerrainRing = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-terrain-ring-dao-shader.glb"
+$godotOpenMWTerrainRing = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-terrain-ring-local-zup.glb"
+$godotAreaRoot = "D:\code\opendao-poc\cache\haven-actors-hair-v9\lak100d"
+$godotAreaFile = Join-Path $godotAreaRoot "lak100d.havenarea"
+$godotConnectedTerrainPaths = @()
+if (Test-Path -LiteralPath $godotAreaFile) {
+    $areaDefinition = Get-Content -LiteralPath $godotAreaFile -Raw | ConvertFrom-Json
+    foreach ($entry in $areaDefinition.terrain.patches.psobject.Properties) {
+        $definition = $entry.Value
+        foreach ($instance in $definition.instances) {
+            $dx = [double]$instance.position[0] - 260.0
+            $dy = [double]$instance.position[1] - 301.0
+            if ([Math]::Sqrt($dx * $dx + $dy * $dy) -le 85.0) { continue }
+            $asset = Join-Path $godotAreaRoot ([string]$definition.file)
+            if (-not (Test-Path -LiteralPath $asset)) { throw "Missing connected terrain asset: $asset" }
+            $godotConnectedTerrainPaths += ("{0}|{1},{2},{3}" -f $asset, $instance.position[0], $instance.position[1], $instance.position[2])
+        }
+    }
+}
+$godotConnectedTerrain = $godotConnectedTerrainPaths -join ';'
+$godotNativeWater = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-authored-water.glb"
+$godotRuntimeOpenMW = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-runtime-openmw.glb"
 $godotTerrainAssets = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\terrain-palettes"
 $tavern = Join-Path $repoRoot "local\dao-openmw-poc\godot-transfer-v1\redcliffe-tavern-openmw.obj"
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repoRoot ("local\dao-openmw-poc\mobile-shorts\{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $Shot)
 }
-foreach ($required in @($Binary, $resources, $baseConfig, $exterior, $exteriorPlayable, $exteriorBaked, $exteriorFullBaked, $exteriorFullBakedNoSky, $exteriorFullClean, $exteriorFullOcean2, $exteriorFullOceanRaised, $exteriorFullOceanDiagnostic, $exteriorSkyOnly, $exteriorFullAlpha, $godotExactEnvironment, $godotNativeEnvironment, $godotExactConnectedEnvironment, $godotExactActors, $godotNativeActors, $godotExactSky, $godotExactVegetation, $godotExactSetpieces, $godotExactTerrainRing, $godotNativeTerrainRing, $godotTerrainAssets, $tavern)) {
+foreach ($required in @($Binary, $resources, $baseConfig, $exterior, $exteriorPlayable, $exteriorBaked, $exteriorFullBaked, $exteriorFullBakedNoSky, $exteriorFullClean, $exteriorFullOcean2, $exteriorFullOceanRaised, $exteriorFullOceanDiagnostic, $exteriorSkyOnly, $exteriorFullAlpha, $godotExactEnvironment, $godotNativeEnvironment, $godotExactConnectedEnvironment, $godotExactActors, $godotNativeActors, $godotExactSky, $godotExactVegetation, $godotExactSetpieces, $godotNativeVegetation, $godotNativeSetpieces, $godotExactTerrainRing, $godotNativeTerrainRing, $godotOpenMWTerrainRing, $godotNativeWater, $godotRuntimeOpenMW, $godotTerrainAssets, $tavern)) {
     if (-not (Test-Path -LiteralPath $required)) { throw "Required OpenMW short dependency is missing: $required" }
 }
 if (Test-Path -LiteralPath $OutputRoot) { throw "Refusing to overwrite existing short directory: $OutputRoot" }
@@ -63,11 +90,19 @@ $shotTable = @{
         # OBJ terrain ring is intentionally excluded here: it has independent
         # transform/material conversion and must pass its own native-glTF gate
         # before it can extend the shot.
-        background=$godotExactSky; scene=([string]$godotNativeTerrainRing + ';' + [string]$godotNativeEnvironment + ';' + [string]$godotExactSetpieces + ';' + [string]$godotExactVegetation); foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"
+        background=$godotExactSky; scene=$godotNativeEnvironment; foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="52"
         # Close validation on the authored militia pair at (255.74,300.74)
         # and (257.49,302.25); retain the same approach side as the oracle.
         frames="0,80,160,240"; ex="252.8,252.8,252.8,252.8"; ey="305.4,305.4,305.4,305.4"; ez="3.25,3.25,3.25,3.25"
         tx="256.6,256.6,256.6,256.6"; ty="301.6,301.6,301.6,301.6"; tz="2.55,2.55,2.55,2.55"
+    }
+    "actor-closeup" = @{
+        # Measured camera on militia_3's positive face-normal side. This avoids
+        # the prior line-of-sight overlap with militia_4 and is the actor
+        # hierarchy/material portfolio gate.
+        background=$godotExactSky; scene=$godotNativeEnvironment; foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"
+        frames="0,80,160,240"; ex="255.8,255.8,255.8,255.8"; ey="303.32,303.32,303.32,303.32"; ez="3.4,3.4,3.4,3.4"
+        tx="257.486,257.486,257.486,257.486"; ty="302.249,302.249,302.249,302.249"; tz="3.3,3.3,3.3,3.3"
     }
     "outside-look" = @{
         scene=$exterior; scale="64"; x="-16640"; y="-19264"; z="0"
@@ -76,25 +111,87 @@ $shotTable = @{
         tx="0,10,20,30"; ty="-64,-64,-64,-64"; tz="455,455,455,455"
     }
     "waterfront" = @{
-        scene=$exteriorFullOceanRaised; background=$exteriorSkyOnly; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"
-        # Seaward establishing shot: remain inside the authored water footprint
-        # and look back toward Redcliffe so ocean, shoreline, and skyline coexist.
-        frames="0,80,160,240"; ex="248,252,256,260"; ey="55,59,63,67"; ez="2.4,2.4,2.4,2.4"
-        tx="260,260,260,260"; ty="295,298,301,304"; tz="5.2,5.2,5.2,5.2"
+        background=$godotExactSky; scene=([string]$godotNativeEnvironment + ';' + [string]$godotNativeWater); foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"
+        # Exact Godot water tour. Player=(260,.18001,-150), desktop head
+        # height=.65, target=(260,4,-300), mapped to OpenMW's Z-up axes.
+        frames="0,80,160,240"; ex="260,260,260,260"; ey="250,250,250,250"; ez="2.2,2.2,2.2,2.2"
+        tx="260,260,260,260"; ty="301,301,301,301"; tz="2.8,2.8,2.8,2.8"
+    }
+    "native-water" = @{
+        # Water parity pass: authored shoreline with OpenMW's own animated
+        # water. Vegetation remains excluded until its root-to-terrain gate
+        # passes; floating props must never contaminate a water validation.
+        background=$godotExactSky; scene=$godotNativeEnvironment; foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="60"; nativeWater="1"; waterHeight="0.02"
+        # Harbor-facing shot from the verified town eye. Looking outward keeps
+        # the authored quay and buildings in front of the native water and
+        # avoids exposing the finite export boundary from offshore.
+        frames="0,80,160,240"; ex="250,250,250,250"; ey="307,307,307,307"; ez="3.782912,3.782912,3.782912,3.782912"
+        tx="250,250,250,250"; ty="150,150,150,150"; tz="2.0,2.0,2.0,2.0"
+    }
+    "water-dock" = @{
+        # Low harbor approach using OpenMW's native animated water, with the
+        # same authored town, setpieces, vegetation, actors, and sky as the
+        # land portfolio shot.
+        background=$godotExactSky; scene=([string]$godotNativeTerrainRing + ';' + [string]$godotNativeEnvironment + ';' + [string]$godotNativeSetpieces + ';' + [string]$godotNativeVegetation); foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"; nativeWater="1"; waterHeight="40.941948"
+        # Godot's approved water proof uses this authored open-water approach.
+        # Opaque DAO shell back faces are culled in the compatibility reader.
+        frames="0,80,160,240"; ex="260,260,260,260"; ey="150,150,150,150"; ez="41.771958,41.771958,41.771958,41.771958"
+        tx="260,260,260,260"; ty="301,301,301,301"; tz="4.0,4.0,4.0,4.0"
+    }
+    "water-scout" = @{
+        background=$godotExactSky; scene=([string]$godotNativeEnvironment + ';' + [string]$godotNativeWater + ';' + [string]$godotExactVegetation); foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="66"
+        # Four headings from the verified clear town camera. Native renderer
+        # screenshots are taken at every keyframe, avoiding unsafe shoreline
+        # guesses that can land beneath DAO's terrain shell.
+        frames="30,90,150,210"; proofFrames="30,90,150,210"; ex="250,250,250,250"; ey="307,307,307,307"; ez="4.65,4.65,4.65,4.65"
+        tx="260,350,250,150"; ty="300,307,407,307"; tz="2.5,1.0,1.0,1.0"
+    }
+    "runtime-town" = @{
+        background=$godotExactSky; scene=$godotRuntimeOpenMW; foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"; notify="NOTICE"; screenshotTimeout="180"
+        frames="0,80,160,240"; ex="250,250,250,250"; ey="307,307,307,307"; ez="3.782912,3.782912,3.782912,3.782912"
+        # Exact rendered Camera3D basis from Godot telemetry, transformed from
+        # Godot Y-up to OpenMW Z-up.  The scripted look-at request is not the
+        # final camera forward vector because Player applies body yaw/pitch.
+        tx="256.712575,256.712575,256.712575,256.712575"; ty="299.728043,299.728043,299.728043,299.728043"; tz="2.347652,2.347652,2.347652,2.347652"
+    }
+    "runtime-water" = @{
+        background=$godotExactSky; scene=$godotRuntimeOpenMW; foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"; notify="NOTICE"; screenshotTimeout="180"
+        frames="0,80,160,240"; ex="260,260,260,260"; ey="150,150,150,150"; ez="0.83001,0.83001,0.83001,0.83001"
+        tx="260,260,260,260"; ty="301,301,301,301"; tz="4,4,4,4"
     }
     "town-match" = @{
-        # Native glTF for both the 14 connected tiles and composed town; this
-        # keeps every terrain transform in the same coordinate pipeline.
-        background=$godotExactSky; scene=([string]$godotNativeTerrainRing + ';' + [string]$godotNativeEnvironment + ';' + [string]$godotExactSetpieces + ';' + [string]$godotExactVegetation); foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"
-        # Exact Godot desktop default after its terrain ray cast: terrain Y
-        # 2.18328 + 1.60 m eye height, mapped to OpenMW Z-up coordinates.
-        frames="0,80,160,240"; ex="250,250,250,250"; ey="307,307,307,307"; ez="3.78328,3.78328,3.78328,3.78328"
-        # Godot/OBJ (x, y, z) maps through OSG OBJ loading as (x, -z, y).
-        # Keep the authored target direction; reversing it points the camera
-        # away from the square and exposes the underside of the terrain shell.
-        # The retained Godot reference applies a right-third composition yaw;
-        # place the bonfire/actor group accordingly, then animate this baseline.
-        tx="256,256,256,256"; ty="300.5,300.5,300.5,300.5"; tz="2.5,2.5,2.5,2.5"
+        # The generated environment contains the two inner terrain cells; the
+        # ring supplies the remaining authored Redcliffe landscape cells.
+        background=$godotExactSky; scene=([string]$godotConnectedTerrain + ';' + [string]$godotNativeEnvironment + ';' + [string]$godotNativeSetpieces + ';' + [string]$godotNativeVegetation); foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"
+        # Identical measured camera to the retained Godot town-core reference.
+        # The previous lower eye/different target/default FOV made correctly
+        # placed 132 m terrain tiles appear falsely foregrounded.
+        frames="0,80,160,240"; ex="250,250,250,250"; ey="307,307,307,307"; ez="4.65,4.65,4.65,4.65"
+        tx="260,260,260,260"; ty="300,300,300,300"; tz="2.5,2.5,2.5,2.5"
+    }
+    "town-core" = @{
+        # Exact Godot-composed neighborhood only. The connected terrain ring
+        # has a separate placement-parity gate and must not occlude this shot.
+        background=$godotExactSky; scene=$godotNativeEnvironment; foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"; nativeWater="1"; waterHeight="0.02"
+        # Exact Godot town tour: player origin at Y=4 plus the .65 m head.
+        frames="0,80,160,240"; ex="250,250,250,250"; ey="307,307,307,307"; ez="4.65,4.65,4.65,4.65"
+        tx="260,260,260,260"; ty="300,300,300,300"; tz="2.5,2.5,2.5,2.5"
+    }
+    "town-post" = @{
+        # Postable square composition: exact native town plus the authored
+        # vegetation pass. The independently baked terrain-ring artifact is
+        # excluded until its placement parity gate passes.
+        background=$godotExactSky; scene=([string]$godotNativeEnvironment + ';' + [string]$godotNativeSetpieces + ';' + [string]$godotNativeVegetation); foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"
+        frames="0,80,160,240"; ex="250,250,250,250"; ey="307,307,307,307"; ez="4.65,4.65,4.65,4.65"
+        tx="260,260,260,260"; ty="300,300,300,300"; tz="2.5,2.5,2.5,2.5"
+    }
+    "town-people-front" = @{
+        # Same exact authored scene and actor state as town-core. The camera
+        # lies on the positive transformed face-normal side of militia 2/3/4
+        # (approximately +X,+Y in OpenMW space), measured from the glTF nodes.
+        background=$godotExactSky; scene=$godotNativeEnvironment; foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="52"
+        frames="0,80,160,240"; ex="260.5,260.5,260.5,260.5"; ey="305.0,305.0,305.0,305.0"; ez="3.4,3.4,3.4,3.4"
+        tx="256.5,256.5,256.5,256.5"; ty="301.0,301.0,301.0,301.0"; tz="3.25,3.25,3.25,3.25"
     }
     "town-survey" = @{
         scene=$exteriorFullOceanRaised; background=$exteriorSkyOnly; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"
@@ -118,10 +215,28 @@ $config = Join-Path $OutputRoot "config"
 $userData = Join-Path $OutputRoot "userdata"
 New-Item -ItemType Directory -Path $config,$userData,(Join-Path $userData "data") -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $baseConfig "openmw.cfg"),(Join-Path $baseConfig "settings.cfg") -Destination $config
+$captureOpenMwCfg = Join-Path $config "openmw.cfg"
+# The proof config names Morrowind.esm but the original seed omitted its BSA
+# registrations. Native OpenMW water reads its animation/material textures
+# through the VFS, so make the installed archives explicit for every isolated
+# capture instead of falling back to the magenta missing-texture marker.
+[System.IO.File]::AppendAllText($captureOpenMwCfg,
+    "`r`nfallback-archive=Morrowind.bsa`r`n" +
+    "fallback-archive=Tribunal.bsa`r`n" +
+    "fallback-archive=Bloodmoon.bsa`r`n")
+$captureSettingsCfg = Join-Path $config "settings.cfg"
+$captureSettings = [System.IO.File]::ReadAllText($captureSettingsCfg)
+$captureSettings = [regex]::Replace($captureSettings,
+    '(?ms)(\[Water\].*?^shader\s*=\s*)false', '${1}true')
+$captureSettings = [regex]::Replace($captureSettings,
+    '(?ms)(\[Water\].*?^rtt size\s*=\s*)512', '${1}1024')
+$captureSettings = [regex]::Replace($captureSettings,
+    '(?ms)(\[Water\].*?^refraction\s*=\s*)false', '${1}true')
+[System.IO.File]::WriteAllText($captureSettingsCfg, $captureSettings)
 
 $extraScenePaths = if ($shotConfig.background) { ([string]$shotConfig.background) + ';' + ([string]$shotConfig.scene) } else { [string]$shotConfig.scene }
 $environment = [ordered]@{
-    OSG_NOTIFY_LEVEL = "DEBUG"
+    OSG_NOTIFY_LEVEL = $(if ($shotConfig.notify) { [string]$shotConfig.notify } else { "DEBUG" })
     OPENMW_WORLD_VIEWER_START_POS_X = "-320"
     OPENMW_WORLD_VIEWER_START_POS_Y = "960"
     OPENMW_WORLD_VIEWER_START_POS_Z = "160"
@@ -142,7 +257,7 @@ $environment = [ordered]@{
     OPENMW_GLTF_DAO_TERRAIN_ASSET_DIR = $godotTerrainAssets
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_DAO_ALPHA_CUTOUT = "1"
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_PRESERVE_MATERIALS = "1"
-    OPENMW_WORLD_VIEWER_EXTRA_SCENE_ISOLATE = "1"
+    OPENMW_WORLD_VIEWER_EXTRA_SCENE_DIRECT_CAMERA = "1"
     OPENMW_WORLD_VIEWER_DAO_TELEMETRY_PATH = (Join-Path $OutputRoot "openmw-runtime-state.json")
     OPENMW_WORLD_VIEWER_CAMERA_SEQUENCE_FRAMES = [string]$shotConfig.frames
     OPENMW_WORLD_VIEWER_CAMERA_SEQUENCE_EYE_X = [string]$shotConfig.ex
@@ -162,7 +277,26 @@ $environment = [ordered]@{
     # The untouched Godot GLB carries all normal palettes and can spend over
     # ten seconds decoding embedded images. Capture after that renderer work,
     # never from the loading/clear frames.
-    OPENMW_PROOF_SCREENSHOT_READY_FRAMES = "60"
+}
+if ($shotConfig.nativeWater) {
+    # The dry-start guard is evaluated every frame. Leaving it enabled resets
+    # the native lake to -200000 immediately after the one-time water setup.
+    $environment.OPENMW_WORLD_VIEWER_START_DRY = "0"
+    $environment.OPENMW_WORLD_VIEWER_DAO_NATIVE_WATER_HEIGHT = [string]$shotConfig.waterHeight
+    $environment.OPENMW_PROOF_HIDE_WORLD_OCCLUDERS = "1"
+} else {
+    $environment.OPENMW_WORLD_VIEWER_EXTRA_SCENE_ISOLATE = "1"
+}
+if ($shotConfig.raycastCamera) {
+    $environment.OPENMW_WORLD_VIEWER_DAO_RAYCAST_CAMERA = "1"
+}
+if ($shotConfig.proofFrames) {
+    $environment.OPENMW_PROOF_SCREENSHOT_FRAME = [string]$shotConfig.proofFrames
+} else {
+    $environment.OPENMW_PROOF_SCREENSHOT_READY_FRAMES = "1"
+}
+if ($shotConfig.fov) {
+    $environment.OPENMW_WORLD_VIEWER_EXTRA_SCENE_DIRECT_CAMERA_FOV_Y = [string]$shotConfig.fov
 }
 if ($shotConfig.background) {
     $environment.OPENMW_WORLD_VIEWER_EXTRA_SCENE_BACKGROUND_FIRST = "1"
@@ -220,11 +354,19 @@ try {
         Start-Sleep -Milliseconds 100
     }
     if ((Get-Date) -ge $deadline) { throw "Timed out waiting for the DAO scene load gate." }
-    # The loader gate fires before the splash swap has reached the D3D window.
-    # Native GLB decoding finishes on the update traversal that emits the load
-    # gate. Give the subsequent render traversals enough time to retire the
-    # loading wallpaper and upload embedded textures before recording evidence.
-    Start-Sleep -Milliseconds 5000
+    # The untouched Godot GLB uploads more than 500 embedded textures on its
+    # first render traversal. Wait for the renderer-native artifact instead of
+    # racing that upload with a fixed sleep.
+    $screenshotDirectory = Join-Path $userData "screenshots"
+    $screenshotDeadline = (Get-Date).AddSeconds($(if ($shotConfig.screenshotTimeout) { [int]$shotConfig.screenshotTimeout } else { 45 }))
+    while ((Get-Date) -lt $screenshotDeadline) {
+        $readyScreenshot = Get-ChildItem -LiteralPath $screenshotDirectory -Filter "screenshot*.png" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime | Select-Object -Last 1
+        if ($readyScreenshot) { break }
+        if ($process.HasExited) { throw "OpenMW exited while waiting for the native DAO frame (exit $($process.ExitCode))." }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $readyScreenshot) { throw "Timed out waiting for the renderer-native DAO frame." }
     & ffmpeg -hide_banner -loglevel warning -y -f gdigrab -framerate 60 -draw_mouse 0 -i "title=OpenMW" -t $Seconds `
         -vf "scale=1280:720:flags=lanczos" -c:v libx264 -preset fast -crf 19 -pix_fmt yuv420p -an -movflags +faststart $mp4
     if ($LASTEXITCODE -ne 0) { throw "OpenMW exact-title recording failed with exit code $LASTEXITCODE." }

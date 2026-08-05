@@ -12,6 +12,9 @@ area_path = Path(os.environ["OPENDAO_AREA_INPUT"])
 root = Path(os.environ["OPENDAO_AREA_ROOT"])
 target = Path(os.environ["OPENDAO_OBJ_OUTPUT"])
 native_gltf = target.suffix.lower() == ".glb"
+forward_correction_degrees = float(
+    os.environ.get("OPENDAO_ACTOR_FORWARD_CORRECTION_DEGREES", "180" if native_gltf else "0")
+)
 area = json.loads(area_path.read_text(encoding="utf-8"))
 telemetry_path = os.environ.get("OPENDAO_ACTOR_TELEMETRY", "")
 runtime_animation = {}
@@ -48,11 +51,17 @@ for actor in area.get("actors", []):
         # Godot's imported Character node contributes this model-local forward
         # correction. Blender bakes that Character hierarchy away, so retain
         # the equivalent turn here without altering the authored actor yaw.
-        @ Matrix.Rotation(pi if native_gltf else 0.0, 4, "Z")
+        @ Matrix.Rotation(forward_correction_degrees * pi / 180.0, 4, "Z")
         @ Matrix.Scale(scale, 4)
     )
     for obj in imported:
-        obj.matrix_world = placement @ obj.matrix_world
+        # Native GLB output is posed and baked below. Keep the imported
+        # armature hierarchy in model space and apply placement once to each
+        # evaluated mesh; transforming both armature and children here makes
+        # inherited rotations cancel or double. The legacy OBJ path has no
+        # retained hierarchy, so it still needs placement at import time.
+        if not native_gltf:
+            obj.matrix_world = placement @ obj.matrix_world
         if obj.type == "MESH":
             mesh_count += 1
 
@@ -86,7 +95,7 @@ for actor in area.get("actors", []):
                 f"{actor_name}::{source.name}_RuntimeBaked", baked_mesh
             )
             bpy.context.collection.objects.link(baked)
-            baked.matrix_world = source.matrix_world.copy()
+            baked.matrix_world = placement @ source.matrix_world
             baked_objects.append(baked)
         print(
             "OPENDAO_ACTOR_POSE",
@@ -113,6 +122,7 @@ if target.suffix.lower() == ".glb":
         export_morph=True,
     )
     print(f"OPENDAO_ACTORS_GLTF actors={actor_count} meshes={mesh_count} output={target}")
+    print(f"OPENDAO_ACTOR_FORWARD_CORRECTION degrees={forward_correction_degrees:.3f}")
     raise SystemExit(0)
 
 texture_dir = target.parent / f"{target.stem}-textures"
