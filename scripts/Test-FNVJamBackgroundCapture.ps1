@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy")]
+    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy", "RealSave")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -20,14 +20,27 @@ param(
     [string]$OpeningTtwRoot = "D:\Modlists\fnv\mods\Tale of Two Wastelands - OpenMW",
     [string]$OpeningNewVegasData = "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data",
     [string]$OpeningAudioDevice = "Stereo Mix (Realtek(R) Audio)",
-    [string]$SavePath =
-        "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\Save 331     Goodsprings  00 17 36.fos"
+    [string]$SavePath = "",
+    [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")]
+    [string]$RealSaveRouteId = "save330-cold-load-settle-v1",
+    [ValidateRange(5, 600)]
+    [int]$RealSaveCaptureSeconds = 30,
+    [string]$OutputRoot = "",
+    [switch]$InteractiveHandoff
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+if ([string]::IsNullOrWhiteSpace($SavePath)) {
+    $SavePath = if ($Scenario -eq "RealSave") {
+        Join-Path $WorldsRoot "local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos"
+    }
+    else {
+        "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos"
+    }
+}
 if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
     if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
@@ -38,6 +51,16 @@ if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     }
 }
 $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
+
+if ($Scenario -eq "RealSave" -and $Target -eq "All") {
+    throw "RealSave is a single-engine lane. Run Retail and OpenMW as separate sequential captures."
+}
+if ($Scenario -eq "RealSave" -and $InteractiveHandoff -and $Target -eq "Retail") {
+    throw "Interactive handoff is restricted to the playable OpenMW lane."
+}
+if ($Scenario -eq "RealSave" -and $OutputRoot -and (Test-Path -LiteralPath $OutputRoot)) {
+    throw "Refusing to reuse an existing RealSave output root: $OutputRoot"
+}
 
 $checks = [Collections.Generic.List[object]]::new()
 function Add-Check([string]$Name, [bool]$Passed, [string]$Detail) {
@@ -86,6 +109,7 @@ $openingRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVOpeningCapture.
 $testMapRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTestMapDiagnostic.ps1"
 $pipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVPipBoyShowcaseCapture.ps1"
 $retailPipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailPipBoyStateCapture.ps1"
+$realSaveRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRealSaveCapture.ps1"
 $ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
 $newVegasInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-OpenNVBaseProfile.ps1"
 $oracleSourcePath =
@@ -137,6 +161,15 @@ elseif ($Scenario -eq "PipBoy") {
         }
     }
 }
+elseif ($Scenario -eq "RealSave") {
+    $canonicalFiles.Add($realSaveRunnerPath)
+    if ($Target -eq "Retail") {
+        $canonicalFiles.Add($oracleSourcePath)
+    }
+    if ($Target -eq "OpenMW") {
+        $canonicalFiles.Add($newVegasInitializerPath)
+    }
+}
 else {
     $canonicalFiles.Add($testMapRunnerPath)
 }
@@ -184,6 +217,10 @@ if ($null -ne $catalog) {
         @($catalog.showcaseRecipes | Where-Object {
             $_.target -eq $Target
         })
+    } elseif ($Scenario -eq "RealSave") {
+        @($catalog.realSaveRecipes | Where-Object {
+            $_.target -eq $Target
+        })
     } else {
         @($catalog.diagnosticRecipes | Where-Object {
             [string]$_.id -eq "opennv-testmap01-clean-native-v1" -and $_.target -eq $Target
@@ -196,6 +233,9 @@ if ($null -ne $catalog) {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
     }
     elseif ($Scenario -eq "PipBoy") {
+        if ($Target -in @("Retail", "OpenMW")) { 1 } else { 0 }
+    }
+    elseif ($Scenario -eq "RealSave") {
         if ($Target -in @("Retail", "OpenMW")) { 1 } else { 0 }
     }
     elseif ($OpeningCampaign -eq "NewVegas") {
@@ -284,6 +324,9 @@ elseif ($Scenario -eq "PipBoy") {
     if ($Target -eq "Retail") { $scriptsToParse.Add($retailPipBoyRunnerPath) }
     else { $scriptsToParse.Add($pipBoyRunnerPath) }
 }
+elseif ($Scenario -eq "RealSave") {
+    $scriptsToParse.Add($realSaveRunnerPath)
+}
 else {
     $scriptsToParse.Add($testMapRunnerPath)
 }
@@ -326,6 +369,14 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
         }
         Add-Check "Pip-Boy invocation routes to the declared showcase runner" `
             $expectedPipBoyRoute `
+            $entryPointPath
+    }
+    elseif ($Scenario -eq "RealSave") {
+        $realSaveRoutePresent = $entryText -match 'Invoke-FNVRealSaveCapture'
+        Add-Check "RealSave invocation routes to the declared real-save runner" `
+            ($realSaveRoutePresent -and
+                $entryText -match '\$Scenario\s+-eq\s+"RealSave"' -and
+                $entryText -match '(?s)&\s+\$preflight.*?-RuntimeReady.*?-RequireIdle') `
             $entryPointPath
     }
     else {
@@ -528,6 +579,35 @@ if ($Scenario -eq "PipBoy" -and $Target -eq "OpenMW" -and
             $pipBoyText -match 'foregroundActivationUsed\s*=\s*\$false' -and
             $pipBoyText -match 'foregroundInputInjected\s*=\s*\$false') `
         $pipBoyRunnerPath
+}
+
+if ($Scenario -eq "RealSave" -and (Test-Path -LiteralPath $realSaveRunnerPath -PathType Leaf)) {
+    $realSaveText = Get-Content -Raw -LiteralPath $realSaveRunnerPath
+    foreach ($forbidden in @(
+        "AppActivate", "SetForegroundWindow", "BringWindowToTop",
+        "SetFocus", "SendInput", "Invoke-FNVRetailJamInput"
+    )) {
+        Add-Check "RealSave runner excludes $forbidden" `
+            ($realSaveText -notmatch [regex]::Escape($forbidden)) $realSaveRunnerPath
+    }
+    Add-Check "RealSave OpenMW route uses ordinary load-savegame" `
+        ($realSaveText -match '"--load-savegame"' -and
+            $realSaveText -notmatch '"--start"' -and
+            $realSaveText -notmatch '"--new-game"') $realSaveRunnerPath
+    Add-Check "RealSave runner excludes synthetic/bootstrap state" `
+        ($realSaveText -notmatch 'TestMap01' -and
+            $realSaveText -notmatch 'OPENMW_FNV_BOOTSTRAP' -and
+            $realSaveText -notmatch 'OPENMW_FNV_GAMEPLAY_START_WORLDSPACE' -and
+            $realSaveText -notmatch 'executeInConsole') $realSaveRunnerPath
+    Add-Check "RealSave runner retains native frame, telemetry, and exact-title video" `
+        ($realSaveText -match 'ScreenCaptureHandler' -and
+            $realSaveText -match 'OPENMW_PROOF_SCREENSHOT_READY_FRAMES' -and
+            $realSaveText -match 'OPENMW_WORLD_VIEWER_TELEMETRY' -and
+            $realSaveText -match 'title=OpenMW') $realSaveRunnerPath
+    Add-Check "RealSave runner records no-control policy fields" `
+        ($realSaveText -match 'windowsAppControlUsed\s*=\s*\$false' -and
+            $realSaveText -match 'foregroundActivationUsed\s*=\s*\$false' -and
+            $realSaveText -match 'foregroundInputInjected\s*=\s*\$false') $realSaveRunnerPath
 }
 
 if ($Scenario -eq "TestMap" -and $Target -eq "OpenMW" -and
@@ -816,6 +896,51 @@ if ($RuntimeReady) {
             [void](Test-Directory "Standalone New Vegas Pip-Boy Data root exists" $OpeningNewVegasData)
             [void](Test-File "Standalone New Vegas Pip-Boy master exists" `
                 (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
+        }
+    }
+    elseif ($Scenario -eq "RealSave") {
+        $expectedSaveBytes = 3395328L
+        $expectedSaveSha256 = "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f"
+        $saveExists = Test-File "Immutable Save330 fixture exists" $SavePath
+        if ($saveExists) {
+            $saveFile = Get-Item -LiteralPath $SavePath
+            $actualSaveSha256 = (Get-FileHash -LiteralPath $SavePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            Add-Check "Immutable Save330 fixture size is pinned" `
+                ([long]$saveFile.Length -eq $expectedSaveBytes) `
+                "expected=$expectedSaveBytes actual=$($saveFile.Length)"
+            Add-Check "Immutable Save330 fixture SHA-256 is pinned" `
+                ($actualSaveSha256 -eq $expectedSaveSha256) `
+                "expected=$expectedSaveSha256 actual=$actualSaveSha256"
+        }
+        Add-Check "RealSave route ID is bounded" `
+            ($RealSaveRouteId -in @("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")) $RealSaveRouteId
+        if ($RealSaveRouteId -in @("save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")) {
+            Add-Check "RealSave selected production route is OpenMW-only" `
+                ($Target -eq "OpenMW") $Target
+        }
+        Add-Check "RealSave capture duration is bounded" `
+            ($RealSaveCaptureSeconds -ge 5 -and $RealSaveCaptureSeconds -le 600) `
+            ([string]$RealSaveCaptureSeconds)
+        if ($Target -eq "Retail") {
+            [void](Test-File "Retail FalloutNV binary exists for RealSave" `
+                (Join-Path (Split-Path -Parent $OpeningNewVegasData) "FalloutNV.exe"))
+            [void](Test-File "Retail RealSave oracle DLL exists" $oracleDllPath)
+            [void](Test-File "Retail RealSave oracle runner exists" `
+                (Join-Path $WorldsRoot "scripts\Invoke-FNVRetailOracle.ps1"))
+        }
+        elseif ($Target -eq "OpenMW") {
+            [void](Test-File "Deployed OpenMW RealSave binary exists" `
+                (Join-Path $OpeningRuntimeRoot "openmw.exe"))
+            [void](Test-Directory "Deployed OpenMW RealSave resources exist" `
+                (Join-Path $OpeningRuntimeRoot "resources"))
+            [void](Test-File "Standalone New Vegas RealSave profile initializer exists" $newVegasInitializerPath)
+            [void](Test-Directory "Standalone New Vegas RealSave Data root exists" $OpeningNewVegasData)
+            [void](Test-File "Standalone New Vegas RealSave master exists" `
+                (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
+        }
+        if ($OutputRoot) {
+            Add-Check "RealSave output root is unused" `
+                (-not (Test-Path -LiteralPath $OutputRoot)) $OutputRoot
         }
     }
     else {

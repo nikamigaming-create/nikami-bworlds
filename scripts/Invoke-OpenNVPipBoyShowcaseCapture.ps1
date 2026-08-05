@@ -4,14 +4,14 @@ param(
     [string]$BinaryRoot = "",
     [string]$FalloutNewVegasData = "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data",
     [string]$OutputRoot = "",
-    [ValidateRange(60, 90)]
+    [ValidateRange(15, 90)]
     [int]$CaptureSeconds = 80,
     [ValidateRange(45, 300)]
     [int]$TimeoutSeconds = 150,
     # One Pip-Boy action should finish its visible reach-and-return before the
     # next state changes.  This makes the retained native video useful for
     # reviewing the two-arm motion rather than a rapid panel slideshow.
-    [ValidateRange(60, 300)]
+    [ValidateRange(30, 300)]
     [int]$FramesPerPane = 150,
     [ValidateRange(1, 299)]
     [int]$CaptureDelayFrames = 135,
@@ -19,7 +19,8 @@ param(
     # --start bypass and the report records the distinction.
     [string]$TestMapWorldspace = "FormId:0x010d703c",
     [int]$TestMapGridX = -3,
-    [int]$TestMapGridY = 6
+    [int]$TestMapGridY = 6,
+    [switch]$LifecycleOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -252,12 +253,16 @@ $captureStderrPath = Join-Path $OutputRoot "ffmpeg.stderr.log"
 $rawVideoPath = Join-Path $OutputRoot "OpenMW-PipBoy-live-exact-title-raw.mp4"
 $collagePath = Join-Path $OutputRoot "PipBoy-live-panel-collage.png"
 $reportPath = Join-Path $OutputRoot "pipboy-showcase-report.json"
-$panelNames = @(
+$panelNames = if ($LifecycleOnly) { @(
+    "STATS-CND", "ITEMS-WEAP-9MM", "ITEMS-WEAP-VARMINT-SCROLL",
+    "ITEMS-AID-STIMPAK", "MAP-WORLD", "MAP-WORLD-ZOOM-PAN", "ITEMS-WEAP-VARMINT-EQUIP",
+    "WORLD-VARMINT-EQUIPPED"
+) } else { @(
     "STATS-CND", "STATS-RAD", "STATS-EFF", "STATS-SPECIAL", "STATS-SKILLS", "STATS-PERKS", "STATS-GENERAL",
     "ITEMS-WEAP-9MM", "ITEMS-WEAP-VARMINT", "ITEMS-APP-SUIT", "ITEMS-APP-HAT", "ITEMS-AID-STIMPAK",
     "ITEMS-MISC-CAPS", "ITEMS-AMMO-9MM", "ITEMS-AMMO-556", "DATA-QUESTS", "DATA-QUESTS-SCROLL", "DATA-NOTES",
     "DATA-RADIO", "MAP-WORLD", "MAP-WORLD-ZOOM-PAN", "MAP-LOCAL", "MAP-LOCAL-ZOOM-PAN", "WORLD-VARMINT-EQUIPPED"
-)
+) }
 $expectedNativeStateCount = $panelNames.Count
 $nativeFramePaths = @($panelNames | ForEach-Object { Join-Path $OutputRoot ("PipBoy-$($_)-native.png") })
 
@@ -302,6 +307,7 @@ try {
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_GAMEPLAY_START_GRID_X", [string]$TestMapGridX, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_GAMEPLAY_START_GRID_Y", [string]$TestMapGridY, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_SHOWCASE", "1", "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_LIFECYCLE_ONLY", $(if ($LifecycleOnly) { "1" } else { "0" }), "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_SHOWCASE_LOADOUT", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_SHOWCASE_FIRST_READY_FRAME", "60", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_SHOWCASE_FRAMES_PER_PANE", [string]$FramesPerPane, "Process")
@@ -333,6 +339,7 @@ try {
         "OPENMW_FNV_GAMEPLAY_START_GRID_X" = [string]$TestMapGridX
         "OPENMW_FNV_GAMEPLAY_START_GRID_Y" = [string]$TestMapGridY
         "OPENMW_FNV_PIPBOY_SHOWCASE" = "1"
+        "OPENMW_FNV_PIPBOY_LIFECYCLE_ONLY" = $(if ($LifecycleOnly) { "1" } else { "0" })
         "OPENMW_FNV_PIPBOY_SHOWCASE_LOADOUT" = "1"
         "OPENMW_FNV_PIPBOY_SHOWCASE_FIRST_READY_FRAME" = "60"
         "OPENMW_FNV_PIPBOY_SHOWCASE_FRAMES_PER_PANE" = [string]$FramesPerPane
@@ -506,6 +513,36 @@ $authoredLoadoutObserved = $logText -match 'FNV Pip-Boy showcase: authored loado
 $fallbackInventoryRecordsObserved = $logText -match 'inserted fallback inventory (weapon|potion|misc)'
 $panelOpenEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy showcase: opened live state=' })
 $panelCaptureEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy showcase: queuing GUI-inclusive native frame state=' })
+$selectionEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy selection:' })
+$pistolSelectionObserved = @($selectionEvents | Where-Object { $_ -match 'result="EQUIPPED 9MM PISTOL"' }).Count -gt 0
+$rifleSelectionObserved = @($selectionEvents | Where-Object { $_ -match 'result="EQUIPPED VARMINT RIFLE"' }).Count -gt 0
+$stimpakUseObserved = $false
+$stimpakStateDeltaObserved = $false
+foreach ($line in $selectionEvents) {
+    if ($line -match 'result="USED STIMPAK"') {
+        $stimpakUseObserved = $true
+    }
+    if ($line -match 'result="USED STIMPAK".*before=\{[^}]*stimpak=(\d+),health=([0-9.]+)\} after=\{[^}]*stimpak=(\d+),health=([0-9.]+)\}') {
+        $stimpakStateDeltaObserved = [int]$Matches[3] -lt [int]$Matches[1] -and
+            [double]$Matches[4] -gt [double]$Matches[2]
+    }
+}
+$reloadRequestEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy post-close reload:' })
+$reloadAuditEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy post-close audit:' })
+$reloadRequested = @($reloadRequestEvents | Where-Object { $_ -match 'requested=1' }).Count -gt 0
+$reloadStateDeltaObserved = $false
+if ($reloadRequestEvents.Count -gt 0 -and $reloadAuditEvents.Count -gt 0 -and
+    $reloadRequestEvents[-1] -match 'loadedBefore=(\d+) reserveBefore=(\d+)' -and
+    $reloadAuditEvents[-1] -match 'loadedAfter=(\d+) reserveAfter=(\d+)') {
+    $loadedBefore = [int]([regex]::Match($reloadRequestEvents[-1], 'loadedBefore=(\d+)').Groups[1].Value)
+    $reserveBefore = [int]([regex]::Match($reloadRequestEvents[-1], 'reserveBefore=(\d+)').Groups[1].Value)
+    $loadedAfter = [int]([regex]::Match($reloadAuditEvents[-1], 'loadedAfter=(\d+)').Groups[1].Value)
+    $reserveAfter = [int]([regex]::Match($reloadAuditEvents[-1], 'reserveAfter=(\d+)').Groups[1].Value)
+    $reloadStateDeltaObserved = $loadedAfter -gt $loadedBefore -and $reserveAfter -lt $reserveBefore -and
+        ($loadedAfter - $loadedBefore) -eq ($reserveBefore - $reserveAfter)
+}
+$lifecycleInteractionsPassed = $pistolSelectionObserved -and $rifleSelectionObserved -and
+    $stimpakUseObserved -and $stimpakStateDeltaObserved -and $reloadRequested -and $reloadStateDeltaObserved
 $runtimeErrors = @($logLines | Where-Object { $_ -match '\sE\]' })
 $runtimeWarnings = @($logLines | Where-Object { $_ -match '\[[^\]]*\sW\]' })
 $nativeFrameArtifacts = @(
@@ -516,7 +553,7 @@ $collageArtifact = Get-Artifact $collagePath
 $passed = [string]::IsNullOrWhiteSpace($captureError) -and $normalNewGameObserved -and $testMapPlacementObserved -and
     $authoredLoadoutObserved -and -not $fallbackInventoryRecordsObserved -and $panelOpenEvents.Count -eq $expectedNativeStateCount -and
     $panelCaptureEvents.Count -eq $expectedNativeStateCount -and $nativeFrameArtifacts.Count -eq $expectedNativeStateCount -and $null -ne $rawVideoArtifact -and
-    $null -ne $collageArtifact
+    $null -ne $collageArtifact -and $lifecycleInteractionsPassed
 
 $report = [ordered]@{
     schema = "opennv-pipboy-live-panel-showcase/v2"
@@ -558,6 +595,15 @@ $report = [ordered]@{
         nativeStateNames = @($panelNames)
         panelOpenEvents = @($panelOpenEvents)
         panelCaptureEvents = @($panelCaptureEvents)
+        selectionEvents = @($selectionEvents)
+        pistolSelectionObserved = $pistolSelectionObserved
+        rifleSelectionObserved = $rifleSelectionObserved
+        stimpakUseObserved = $stimpakUseObserved
+        stimpakCountAndHealthDeltaObserved = $stimpakStateDeltaObserved
+        reloadRequested = $reloadRequested
+        reloadAmmoTransferObserved = $reloadStateDeltaObserved
+        postCloseReloadEvents = @($reloadRequestEvents)
+        postCloseAuditEvents = @($reloadAuditEvents)
         nativePanelCount = $nativeFrameArtifacts.Count
         collageDerivedOnlyFromNativePanels = $null -ne $collageArtifact
     }

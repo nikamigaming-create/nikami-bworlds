@@ -3,7 +3,15 @@ param(
     [string]$OutputRoot,
     [string]$WorldsRoot = "D:\code\nikami-worlds",
     [string]$SavePath =
-        "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\Save 331     Goodsprings  00 17 36.fos",
+        "D:\code\nikami-worlds\local\retail-pipboy-fixtures\NikamiCleanPipBoyOracle-20260802.fos",
+    # Capture a real retail first-person weapon pose before the ordinary
+    # native Pip-Boy lifecycle. WeaponForm is the retail runtime FormID (the
+    # Save330 normalized 0x0100434F 10mm pistol is retail 0x0000434F). The
+    # isolated save copy is the source of the item; this only asks retail to
+    # equip and draw it so xNVSE/D3D can constrain OpenMW's binding.
+    [switch]$WeaponAudit,
+    [ValidatePattern('^[0-9a-fA-F]{1,8}$')]
+    [string]$WeaponForm = '0000434F',
     [ValidateRange(60, 300)]
     [int]$TimeoutSeconds = 150
 )
@@ -28,34 +36,65 @@ $frames = Join-Path $OutputRoot 'native-d3d9-frames'
 $reportPath = Join-Path $OutputRoot 'retail-pipboy-state-report.json'
 New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 
-# Retail's Menu Mode action is control 14. Drive that control and let retail's
-# own PlayerCharacter/Pip-Boy lifecycle holster the weapon, raise both arms,
-# open the rendered manager, close it, lower the arm, and restore the weapon.
-# Calling Open/ClosePipBoyRenderedManager directly opens UI state without the
-# physical first-person transition and produced a false-positive proof with the
-# rifle still rendered through a low Pip-Boy.
-$scheduled = @(
-    '640:EnableBackgroundInputPolling',
-    '650:player.FirstPerson',
-    '680:player.SetWeaponOut 1',
-    '850:PipBoySnapshot before-raise',
-    '860:PipBoyTreeSnapshot before-raise',
-    '900:HoldKey 15',
-    '904:ReleaseKey 15',
-    '920:PipBoySnapshot raising',
-    # The measured native gate reaches Pip-Boy mode 3/rendered-open around
-    # frame 938. Create the menu renderer only after that physical gate; doing
-    # this before the gate interrupts the authored arm sequence.
-    '950:OpenPipBoyRenderedManager',
-    '1000:PipBoySnapshot held',
-    '1010:PipBoyTreeSnapshot held',
-    '1050:HoldKey 15',
-    '1054:ReleaseKey 15',
-    '1070:PipBoySnapshot lowering',
-    '1120:PipBoySnapshot after-lower',
-    '1130:PipBoyTreeSnapshot after-lower'
+$weaponFormValue = [Convert]::ToUInt32($WeaponForm, 16)
+$weaponFormHex = ('{0:X8}' -f $weaponFormValue)
+
+# Drive InterfaceManager::OpenPipboy/ClosePipboy, the native retail entrypoints
+# used by JohnnyGuitar NVSE's TogglePipBoy command. Retail therefore owns the
+# weapon holster/restore, both-arm animation, rendered menus, and lifecycle.
+# No menu visibility, Pip-Boy mode, or animation state is written by the oracle.
+$scheduledList = [Collections.Generic.List[string]]::new()
+$scheduledList.Add('640:EnableBackgroundInputPolling')
+$scheduledList.Add($(if ($WeaponAudit) { '650@0x14:FirstPerson' } else { '650:player.FirstPerson' }))
+if ($WeaponAudit) {
+    $scheduledList.Add("660@0x14:EquipExact $weaponFormHex")
+    $scheduledList.Add('820:PipBoySnapshot weapon-drawn')
+    $scheduledList.Add('822:PipBoyTreeSnapshot weapon-drawn')
+}
+$scheduledList.Add($(if ($WeaponAudit) { '680@0x14:SetWeaponOut 1' } else { '680:player.SetWeaponOut 1' }))
+$scheduledList.AddRange([string[]]@(
+    '850:PipBoySnapshot before-raise'
+    '860:PipBoyTreeSnapshot before-raise'
+    '900:OpenPipBoyRetail'
+    '920:PipBoySnapshot raising'
+    # In an unattended background session the animation reaches retail mode 3,
+    # but its terminal animation event is not dispatched. Invoke only that
+    # missed retail rendered-menu callback once; lifecycle state remains native.
+    '944:OpenPipBoyRenderedManagerOnce'
+    '946:PipBoySnapshot rendered-held'
+    '950:PipBoySnapshot naturally-held'
+    '970:MenuTapKey 60' # F2 / ITEMS through retail buffered menu input
+    '980:PipBoySnapshot items'
+    '982:PipBoyTreeSnapshot items'
+    '990:MenuTapKey 208' # Down / list scroll
+    '1000:PipBoySnapshot items-down'
+    '1002:PipBoyTreeSnapshot items-down'
+    '1010:MenuTapKey 61' # F3 / DATA
+    '1020:PipBoySnapshot data'
+    '1022:PipBoyTreeSnapshot data'
+    '1030:MenuTapKey 59' # F1 / STATS
+    '1040:PipBoySnapshot held'
+    '1042:PipBoyTreeSnapshot held'
+    # The audit route uses retail's native close entrypoint after the reference
+    # frame. The normal Pip-Boy reference retains its native Tab-key lifecycle.
+))
+$scheduledList.Add($(if ($WeaponAudit) { '1050:ClosePipBoyRetail' } else { '1050:HoldKey 15' }))
+if (-not $WeaponAudit) {
+    $scheduledList.Add('1054:ReleaseKey 15')
+}
+if ($WeaponAudit) {
+    $scheduledList.Add('1070:ClosePipBoyRenderedManagerOnce')
+}
+$scheduledList.AddRange([string[]]@(
+    '1080:PipBoySnapshot lowering'
+    '1140:PipBoySnapshot after-lower'
+    '1142:PipBoyTreeSnapshot after-lower'
+))
+$scheduled = $scheduledList.ToArray()
+$screenshotFrames = @(
+    if ($WeaponAudit) { 820 }
+    840..1150 | Where-Object { ($_ % 2) -eq 0 }
 )
-$screenshotFrames = @(840..1130 | Where-Object { ($_ % 2) -eq 0 })
 
 & $oracle `
     -OutputPath $telemetry `
@@ -68,10 +107,10 @@ $screenshotFrames = @(840..1130 | Where-Object { ($_ % 2) -eq 0 })
     -SampleEvery 2 `
     -BeforeFrame 830 `
     -CommandFrame 900 `
-    -AfterFrame 1140 `
+    -AfterFrame 1160 `
     -ScreenshotFrame $screenshotFrames `
     -ScreenshotDirectory $frames `
-    -MaxFrames 1150 `
+    -MaxFrames 1170 `
     -TimeoutSeconds $TimeoutSeconds
 
 $events = @(Get-Content -LiteralPath $telemetry | ForEach-Object { $_ | ConvertFrom-Json })
@@ -86,7 +125,6 @@ $firstPersonSnapshots = @($snapshots | Where-Object {
 })
 $openSnapshots = @($snapshots | Where-Object {
     [int]$_.interface.pipBoyMode -eq 3 -and
-    [int]$_.interface.renderedMenuOrPipboyManager -eq 1 -and
     @($_.interface.visibleMenus | Where-Object { $_.type -eq 1003 }).Count -gt 0
 })
 $heldPipBoySnapshots = @($openSnapshots | Where-Object {
@@ -98,13 +136,45 @@ $heldPipBoySnapshots = @($openSnapshots | Where-Object {
 $closedSnapshots = @($snapshots | Where-Object {
     [int]$_.interface.pipBoyMode -ne 3
 })
+$afterLowerSnapshots = @($snapshots | Where-Object {
+    $_.label -eq 'after-lower' -and
+    [int]$_.interface.pipBoyMode -ne 3 -and
+    -not [bool]$_.interface.physical.renderedOpen
+})
+$navigationSnapshots = @($snapshots | Where-Object {
+    $_.label -in @('items', 'items-down', 'data', 'held')
+})
+$weaponSnapshots = @($snapshots | Where-Object { $_.label -eq 'weapon-drawn' })
+$weaponEquipCommands = @($commands | Where-Object {
+    $_.targetForm -eq 0x14 -and $_.command -eq "EquipExact $weaponFormHex" -and [bool]$_.accepted
+})
+$weaponOutCommands = @($commands | Where-Object {
+    $_.targetForm -eq 0x14 -and $_.command -eq 'SetWeaponOut 1' -and [bool]$_.accepted
+})
+$weaponSnapshotEquipped = if ($weaponSnapshots.Count -eq 1) { [uint32]$weaponSnapshots[0].player.equippedWeapon } else { 0 }
+$weaponSnapshotFirstPerson = $weaponSnapshots.Count -eq 1 -and
+    $null -ne $weaponSnapshots[0].player.firstPerson -and
+    [bool]$weaponSnapshots[0].player.firstPerson.available -and
+    @($weaponSnapshots[0].player.firstPerson.nodes).Count -gt 0
+$weaponAuditPass = -not $WeaponAudit -or
+    ($weaponSnapshots.Count -eq 1 -and $weaponEquipCommands.Count -eq 1 -and
+        $weaponOutCommands.Count -ge 1 -and $weaponSnapshotEquipped -eq $weaponFormValue -and
+        $weaponSnapshotFirstPerson)
+$afterLowerPass = $afterLowerSnapshots.Count -gt 0
 
+# A weapon-reference run proves the drawn retail pose plus the native opened
+# Pip-Boy/navigation surface. It deliberately does not promote the lower
+# callback as a complete lifecycle assertion; the ordinary no-WeaponAudit
+# route remains the full raise/close reference.
 $passed = $rejected.Count -eq 0 -and
     $nativeFrames.Count -eq $screenshotFrames.Count -and
     $firstPersonSnapshots.Count -gt 0 -and
     $openSnapshots.Count -gt 0 -and
     $heldPipBoySnapshots.Count -gt 0 -and
-    $closedSnapshots.Count -gt 0
+    $closedSnapshots.Count -gt 0 -and
+    ($WeaponAudit -or $afterLowerPass) -and
+    $navigationSnapshots.Count -eq 4 -and
+    $weaponAuditPass
 
 $artifacts = [Collections.Generic.List[object]]::new()
 foreach ($path in @($telemetry, "$telemetry.manifest.json")) {
@@ -130,12 +200,13 @@ $report = [pscustomobject][ordered]@{
     status = if ($passed) { 'pass' } else { 'fail' }
     capture = [pscustomobject][ordered]@{
         method = 'xNVSE-scheduled retail input plus native Direct3D 9 backbuffer and per-frame first-person scene graph'
-        driver = 'in-process xNVSE HoldKey/ReleaseKey live Tab binding; native retail Pip-Boy lifecycle'
+        driver = 'in-process xNVSE call to native InterfaceManager OpenPipboy/ClosePipboy; retail-owned lifecycle'
         windowsAppControlUsed = $false
         foregroundActivationUsed = $false
         foregroundInputInjected = $false
         sourceFramesRetained = $true
         telemetryRetained = $true
+        weaponAudit = [bool]$WeaponAudit
     }
     assertions = [pscustomobject][ordered]@{
         scheduledCommands = $commands.Count
@@ -146,6 +217,20 @@ $report = [pscustomobject][ordered]@{
         renderedStatsOpenSnapshots = $openSnapshots.Count
         nativeRenderedPipBoySnapshots = $heldPipBoySnapshots.Count
         closedSnapshots = $closedSnapshots.Count
+        verifiedAfterLowerSnapshots = $afterLowerSnapshots.Count
+        afterLowerRequired = -not [bool]$WeaponAudit
+        completePipBoyLowerVerified = [bool]$afterLowerPass
+        namedNavigationSnapshots = $navigationSnapshots.Count
+        weaponAudit = [ordered]@{
+            requested = [bool]$WeaponAudit
+            form = ('0x{0:X8}' -f $weaponFormValue)
+            snapshots = $weaponSnapshots.Count
+            acceptedEquipCommands = $weaponEquipCommands.Count
+            acceptedWeaponOutCommands = $weaponOutCommands.Count
+            equippedForm = ('0x{0:X8}' -f $weaponSnapshotEquipped)
+            firstPersonSceneGraph = [bool]$weaponSnapshotFirstPerson
+            passed = [bool]$weaponAuditPass
+        }
     }
     artifacts = @($artifacts)
 }

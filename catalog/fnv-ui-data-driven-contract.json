@@ -108,6 +108,34 @@
         "PipBoyInventory",
         "LeftWristTop"
       ]
+    },
+    {
+      "id": "retail-pipboy-animation",
+      "owner": "apps/openmw/mwrender/esm4npcanimation.cpp",
+      "runtimeDataPath": "retail Pip-Boy arm NIF plus the Save330-observed pipboy.kf raise and 1stPPipboyWaver.kf held pose",
+      "proofNeedles": [
+        "requireAsset(\"pipboy-arm\"",
+        "meshes/characters/_1stperson/locomotion/male/pipboy.kf",
+        "meshes/characters/_male/idleanims/1stppipboywaver.kf",
+        "sequence=retail-waver-resting-right-hand",
+        "manipulateObservedRetail=0",
+        "retailDataOnly=1",
+        "static_cast<void>(interactionPulse);"
+      ],
+      "forbiddenNeedles": [
+        "applyPipBoyContactIk",
+        "mPipBoyInteractionHandRoot",
+        "handContactTargets",
+        "physical-control contact IK: source=player-skeleton-extension",
+        "FNV Pip-Boy physical right-arm IK",
+        "PipBoyPhysicalControl",
+        "PipBoyControlLocator",
+        "initializePipBoyPhysicalControls",
+        "meshes/characters/_male/idleanims/pipboymanipulate.kf",
+        "retailHeldPipBoyWaverSample",
+        "waverState->second.mSpeedMult = 0.f",
+        "waverState->second.setTime(heldTime)"
+      ]
     }
   ],
   "normalRunProofPolicy": {

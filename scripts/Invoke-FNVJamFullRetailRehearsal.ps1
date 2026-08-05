@@ -5,7 +5,7 @@ param(
     [string]$ShadowRoot =
         "D:\code\nikami-worlds\run\jam-retail-side-video-20260724-191235\retail-game",
     [string]$SavePath =
-        "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\Save 331     Goodsprings  00 17 36.fos",
+        "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos",
     [string]$OutputRoot = "",
     [int]$TimeoutSeconds = 130,
     [switch]$SmokeTest,

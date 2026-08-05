@@ -5,7 +5,7 @@ param(
     [string]$ParityRoot = "D:\code\nikami-worlds-fnv-parity",
     [string]$JamRoot = "D:\code\nikami-worlds\local\mods\jam-4.6-original",
     [string]$JamArchive = "D:\code\nikami-worlds\local\mod-depot\archives\jam\Just Assorted Mods-66666-4-6-1717763151.7z",
-    [string]$SavePath = "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\Save 331     Goodsprings  00 17 36.fos",
+    [string]$SavePath = "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos",
     [string]$OutputRoot = "",
     [int]$TimeoutSeconds = 120,
     [ValidateRange(5, 600)]

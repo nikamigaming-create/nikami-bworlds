@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy")]
+    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy", "RealSave")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -28,11 +28,27 @@ param(
     [int]$OpeningSceneSeconds = 8,
     [ValidateRange(6, 60)]
     [int]$TestMapCaptureSeconds = 16,
-    [ValidateRange(60, 90)]
+    [ValidateRange(15, 90)]
     [int]$PipBoyCaptureSeconds = 80,
+    [switch]$PipBoyLifecycleOnly,
     # Optional isolated retail fixture for the Pip-Boy interaction oracle.
     # The source save is copied by Invoke-FNVRetailOracle and never modified.
     [string]$RetailPipBoySavePath = "",
+    # Request a retail xNVSE first-person weapon reference before the normal
+    # Pip-Boy sequence. This remains a retail-only, public-entry capture.
+    [switch]$RetailPipBoyWeaponAudit,
+    [ValidatePattern('^[0-9a-fA-F]{1,8}$')]
+    [string]$RetailPipBoyWeaponForm = '0000434F',
+    # Immutable native Save330 fixture for the canonical single-engine lane.
+    [string]$SavePath = "",
+    [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")]
+    [string]$RealSaveRouteId = "save330-cold-load-settle-v1",
+    [ValidateRange(5, 600)]
+    [int]$RealSaveCaptureSeconds = 30,
+    [ValidateSet("", "invBindThenSkeleton", "skeleton", "skeletonThenInvBind", "bindThenSkeleton", "skeletonThenBind", "source", "identity")]
+    [string]$RealSaveHandSkinningMode = "",
+    [switch]$RealSaveHandPoseAudit,
+    [switch]$InteractiveHandoff,
     [ValidateRange(60, 3600)]
     [int]$TestMapNativeScreenshotFrame = 480,
     # Opt-in native-driver telemetry for an OpenMW TestMap renderer issue.
@@ -68,6 +84,16 @@ $openingRunner = Join-Path $PSScriptRoot "Invoke-OpenNVOpeningCapture.ps1"
 $testMapRunner = Join-Path $PSScriptRoot "Invoke-OpenNVTestMapDiagnostic.ps1"
 $pipBoyRunner = Join-Path $PSScriptRoot "Invoke-OpenNVPipBoyShowcaseCapture.ps1"
 $retailPipBoyRunner = Join-Path $PSScriptRoot "Invoke-FNVRetailPipBoyStateCapture.ps1"
+$realSaveRunner = Join-Path $PSScriptRoot "Invoke-FNVRealSaveCapture.ps1"
+$canonicalSave330Path = Join-Path $WorldsRoot "local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos"
+if ([string]::IsNullOrWhiteSpace($SavePath)) {
+    $SavePath = if ($Scenario -eq "RealSave") {
+        $canonicalSave330Path
+    }
+    else {
+        "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos"
+    }
+}
 if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
     if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
@@ -81,7 +107,8 @@ $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $OutputRoot = Join-Path $WorldsRoot "run\jam-background-$($Target.ToLowerInvariant())-$stamp"
+    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } else { "jam-background-$($Target.ToLowerInvariant())" }
+    $OutputRoot = Join-Path $WorldsRoot "run\$outputPrefix-$stamp"
 }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 if (Test-Path -LiteralPath $OutputRoot) {
@@ -98,6 +125,12 @@ if ($Scenario -eq "TestMap" -and $Target -ne "OpenMW") {
 }
 if ($Scenario -eq "PipBoy" -and $Target -eq "Both") {
     throw "Pip-Boy state captures are intentionally single-engine. Run Retail first, then OpenMW."
+}
+if ($Scenario -eq "RealSave" -and $Target -eq "Both") {
+    throw "RealSave captures are intentionally single-engine. Run Retail first, then OpenMW."
+}
+if ($Scenario -eq "RealSave" -and $InteractiveHandoff -and $Target -eq "Retail") {
+    throw "Interactive handoff is restricted to the playable OpenMW lane."
 }
     if (($OpeningDiagnostic -or $OpeningInputDiagnostic -or $OpeningTitleGateDiagnostic -or $OpeningTitleStateDiagnostic -or $OpeningTitleInputDiagnostic -or $OpeningWorldLoadDiagnostic) -and ($Scenario -ne "Opening" -or $Target -ne "Retail")) {
     throw "Opening diagnostics are short retail TTW fresh-game diagnostics. Use -Target Retail -Scenario Opening."
@@ -122,6 +155,11 @@ $preflightTarget = if ($Target -eq "Both") { "All" } else { $Target }
     -Scenario $Scenario `
     -OpeningCampaign $OpeningCampaign `
     -OpeningRuntimeRoot $OpeningRuntimeRoot `
+    -SavePath $SavePath `
+    -RealSaveRouteId $RealSaveRouteId `
+    -RealSaveCaptureSeconds $RealSaveCaptureSeconds `
+    -OutputRoot $OutputRoot `
+    -InteractiveHandoff:$InteractiveHandoff `
     -RuntimeReady `
     -RequireIdle | Out-Null
 
@@ -133,6 +171,7 @@ $retailOpeningResult = $null
 $openingResult = $null
 $testMapResult = $null
 $pipBoyResult = $null
+$realSaveResult = $null
 
 if ($Scenario -eq "Opening") {
     if ($Target -in @("Retail", "Both")) {
@@ -233,6 +272,10 @@ if ($Scenario -eq "PipBoy") {
         if (-not [string]::IsNullOrWhiteSpace($RetailPipBoySavePath)) {
             $retailPipBoyArgs.SavePath = [IO.Path]::GetFullPath($RetailPipBoySavePath)
         }
+        if ($RetailPipBoyWeaponAudit) {
+            $retailPipBoyArgs.WeaponAudit = $true
+            $retailPipBoyArgs.WeaponForm = $RetailPipBoyWeaponForm
+        }
         & $retailPipBoyRunner @retailPipBoyArgs
         $pipBoyResult =
             Get-Content -Raw -LiteralPath (Join-Path $pipBoyOutput "retail-pipboy-state-report.json") |
@@ -250,12 +293,19 @@ if ($Scenario -eq "PipBoy") {
         # renderer diagnostic. The engine opens the real Tab mode and queues
         # native UI frames itself; no desktop input is sent.
         $pipBoyOutput = Join-Path $OutputRoot "openmw"
-        & $pipBoyRunner `
-            -WorldsRoot $WorldsRoot `
-            -BinaryRoot $OpeningRuntimeRoot `
-            -OutputRoot $pipBoyOutput `
-            -CaptureSeconds $PipBoyCaptureSeconds `
-            -TimeoutSeconds $TimeoutSeconds
+        $pipBoyArgs = @{
+            WorldsRoot = $WorldsRoot
+            BinaryRoot = $OpeningRuntimeRoot
+            OutputRoot = $pipBoyOutput
+            CaptureSeconds = $PipBoyCaptureSeconds
+            TimeoutSeconds = $TimeoutSeconds
+        }
+        if ($PipBoyLifecycleOnly) {
+            $pipBoyArgs.LifecycleOnly = $true
+            $pipBoyArgs.FramesPerPane = 90
+            $pipBoyArgs.CaptureDelayFrames = 78
+        }
+        & $pipBoyRunner @pipBoyArgs
         $pipBoyResult =
             Get-Content -Raw -LiteralPath (Join-Path $pipBoyOutput "pipboy-showcase-report.json") |
             ConvertFrom-Json
@@ -270,6 +320,31 @@ if ($Scenario -eq "PipBoy") {
             throw "Canonical OpenMW live Pip-Boy showcase did not pass its complete-state, authored-data, or no-control policy gates."
         }
         $openMwResult = $pipBoyResult
+    }
+}
+
+if ($Scenario -eq "RealSave") {
+    $realSaveOutput = Join-Path $OutputRoot $Target.ToLowerInvariant()
+    & $realSaveRunner `
+        -WorldsRoot $WorldsRoot `
+        -Target $Target `
+        -SavePath $SavePath `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -OutputRoot $realSaveOutput `
+        -RouteId $RealSaveRouteId `
+        -CaptureSeconds $RealSaveCaptureSeconds `
+        -HandSkinningMode $RealSaveHandSkinningMode `
+        -HandPoseAudit:$RealSaveHandPoseAudit `
+        -InteractiveHandoff:$InteractiveHandoff `
+        -TimeoutSeconds $TimeoutSeconds
+    $realSaveResult =
+        Get-Content -Raw -LiteralPath (Join-Path $realSaveOutput "real-save-capture-report.json") |
+        ConvertFrom-Json
+    if ($realSaveResult.status -ne "pass" -or
+        [bool]$realSaveResult.capture.windowsAppControlUsed -or
+        [bool]$realSaveResult.capture.foregroundActivationUsed -or
+        [bool]$realSaveResult.capture.foregroundInputInjected) {
+        throw "Canonical RealSave capture did not pass its state/evidence or no-control policy gates."
     }
 }
 
@@ -350,6 +425,13 @@ if ($Scenario -eq "PipBoy" -and $null -ne $pipBoyResult) {
         }
     }
 }
+if ($Scenario -eq "RealSave" -and $null -ne $realSaveResult) {
+    foreach ($artifact in @($realSaveResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
 foreach ($artifact in $artifactPaths) {
     if (-not [string]::IsNullOrWhiteSpace([string]$artifact) -and
         (Test-Path -LiteralPath $artifact -PathType Leaf)) {
@@ -386,6 +468,7 @@ $summary = [ordered]@{
     opening = $openingResult
     testMapDiagnostic = $testMapResult
     pipBoyShowcase = $pipBoyResult
+    realSave = $realSaveResult
     artifacts = @($artifacts)
 }
 $summaryPath = Join-Path $OutputRoot "background-capture-summary.json"

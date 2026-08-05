@@ -65,5 +65,7 @@ __pycache__/
 .vs/
 .vscode/
 .idea/
+haventools_settings.ini
+imgui.ini
 Thumbs.db
 Desktop.ini

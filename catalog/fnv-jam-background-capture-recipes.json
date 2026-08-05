@@ -270,6 +270,61 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoy -OutputRoot .\\run\\opennv-pipboy-live-<unique>"
     }
   ],
+  "realSaveRecipes": [
+    {
+      "id": "retail-real-save330-cold-load-v1",
+      "target": "Retail",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-FNVRealSaveCapture.ps1",
+      "captureMethod": "the isolated retail oracle loads the immutable Save330 fixture through FalloutNV's ordinary save boundary, retains native Direct3D 9 backbuffer frames, telemetry, and an output manifest",
+      "driverMethod": "in-process xNVSE observation and bounded scheduled snapshots; no desktop keyboard, mouse, focus, or foreground activation",
+      "backgroundInputMethod": "no host input is injected; the oracle may only configure its declared background keyboard polling boundary",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "native-d3d9-frames/frame-*.bmp",
+      "telemetryPattern": "retail-real-save.jsonl",
+      "manifestPattern": "real-save-capture-report.json",
+      "videoPattern": null,
+      "requiredTelemetry": [
+        "immutable Save330 fixture size and SHA-256 match",
+        "ordinary retail save load succeeds",
+        "native Direct3D 9 source frame and telemetry are retained",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario RealSave -SavePath '<immutable Save330 fixture>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario RealSave -SavePath '<immutable Save330 fixture>' -OutputRoot .\\run\\fnv-real-save-retail-<unique>"
+    },
+    {
+      "id": "openmw-real-save330-cold-load-v1",
+      "target": "OpenMW",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-FNVRealSaveCapture.ps1",
+      "captureMethod": "OpenMW loads the immutable Save330 fixture through the ordinary --load-savegame path, retains a native ScreenCaptureHandler world frame, exact-title transport video, state telemetry, and a hash-locked manifest",
+      "driverMethod": "bounded engine-owned capture hook only; no TestMap/start placement, bootstrap inventory, console injection, Windows input, focus, or foreground activation",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent; the shown OpenMW window is observed by exact title only",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "occlusionPolicy": "OpenMW remains shown and unminimized for gdigrab exact-title capture; no focus operation is allowed or needed",
+      "sourceFramePattern": "Save330-native-world.png",
+      "telemetryPattern": "openmw.stdout.log; openmw.stderr.log; profile-local openmw.log",
+      "manifestPattern": "real-save-state.json; real-save-capture-report.json",
+      "videoPattern": "OpenMW-Save330-exact-title-raw.mp4",
+      "requiredTelemetry": [
+        "ordinary --load-savegame path is observed",
+        "native FNV save load completes with mNativeFalloutSaveLoaded=true",
+        "Player FormID, saved cell/worldspace, transform, inventory, and camera state are retained",
+        "no TestMap placement, fallback inventory, or bootstrap state is observed",
+        "native world frame and exact-title video are retained",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario RealSave -SavePath '<immutable Save330 fixture>' -OpeningRuntimeRoot '<staged runtime>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario RealSave -SavePath '<immutable Save330 fixture>' -OpeningRuntimeRoot '<staged runtime>' -OutputRoot .\\run\\fnv-real-save-campaign\\<unique-run-id>"
+    }
+  ],
   "knownGoodEvidence": {
     "retailSmoke": "run/jam-background-smoke-20260725-ar",
     "retailFull": "run/jam-background-retail-release-20260725-as",

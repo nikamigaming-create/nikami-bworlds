@@ -58,6 +58,15 @@ foreach ($source in @($contract.requiredSources)) {
             Add-Failure "Source '$($source.id)' no longer proves '$needle' in $($source.owner)."
         }
     }
+    $forbiddenNeedles = @()
+    if ($null -ne $source.PSObject.Properties["forbiddenNeedles"]) {
+        $forbiddenNeedles += @($source.forbiddenNeedles | ForEach-Object { [string]$_ })
+    }
+    foreach ($needle in $forbiddenNeedles) {
+        if ($file.Text.Contains($needle)) {
+            Add-Failure "Source '$($source.id)' contains prohibited generated-animation needle '$needle' in $($source.owner)."
+        }
+    }
 }
 
 $flatUiFiles = @(

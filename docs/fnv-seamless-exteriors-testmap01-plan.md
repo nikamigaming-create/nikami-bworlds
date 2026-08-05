@@ -277,6 +277,31 @@ record can share an equivalence-class visual observation, but its state row
 still must run and pass; no official weapon or compatible ammo pair disappears
 from the denominator.
 
+Every weapon action is a two-camera gate. Equip, draw, idle, aim/iron sights,
+fire/attack, recoil, reload, dry state, holster, drop and pickup must pass in
+first person and third person on the same inventory state. First-person success
+does not cover a missing full-body animation, and third-person success does not
+cover a detached hand, bad sight alignment or incorrect viewmodel. Pip-Boy
+entry, held operation and exit additionally require the complete connected
+first-person arm chains; any authored third-person transition or full-body
+state exposed by retail is included rather than substituted.
+
+Aid and food are exhaustive too. Generate a row for every winning official
+ALCH/ingestible record present in the fixture or selected suite. Each row checks
+the retail Pip-Boy name, icon, category, displayed stats and effects; selection
+and activation; exact stack decrement; HP/AP/radiation/limb and timed-effect
+deltas; unavailable-use rejection; HUD feedback; first-person and third-person
+use animation where retail authors one; and save/load persistence.
+
+Each strict row produces paired retail/OpenMW evidence. Retail and OpenMW run
+sequentially from declared equivalent state and emit the same checkpoint keys:
+camera, animation sequence/group and normalized phase, Pip-Boy pane/submenu and
+selected FormID, equipped FormID, ammo/count/condition, actor values/effects,
+and action result. The validator joins on those keys and fails missing or
+unequal state before visual comparison. It then retains matched native frames,
+a labeled side-by-side contact sheet, and a synchronized side-by-side video.
+Two unrelated successful recordings are not a parity proof.
+
 For every crafting row, the suite checks the correct station and recipe list,
 skill/perk and item requirements, exact ingredient and ammo-component
 consumption, exact output/quantity/condition, insufficient-material rejection,

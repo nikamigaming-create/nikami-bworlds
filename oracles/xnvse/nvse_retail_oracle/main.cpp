@@ -6542,6 +6542,20 @@ namespace
         gOutput.flush();
     }
 
+    const char* safeGetFormEditorId(TESForm* form)
+    {
+        if (form == nullptr)
+            return nullptr;
+        __try
+        {
+            return form->GetName();
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            return nullptr;
+        }
+    }
+
     void sidecarWritePipBoyInventory(std::ostringstream& out, Actor* actor)
     {
         std::map<UInt32, SidecarInventoryItem> inventory;
@@ -6572,6 +6586,10 @@ namespace
                 break;
             UInt8 type = 0xff;
             const bool typeReadable = safeRead(&pair.second.form->typeID, type);
+            // TESForm::GetName is the retail virtual editor-ID accessor. Copy
+            // through the guarded runtime-string reader because the backing
+            // record can be replaced while a menu rebuilds.
+            const std::string editorId = safeRuntimeString(safeGetFormEditorId(pair.second.form), 256);
             if (!first)
                 out << ',';
             first = false;
@@ -6581,7 +6599,9 @@ namespace
                 out << static_cast<UInt32>(type);
             else
                 out << "null";
-            out << ",\"count\":" << pair.second.count
+            out << ",\"editorId\":"
+                << (editorId.empty() ? "null" : jsonString(editorId.c_str()))
+                << ",\"count\":" << pair.second.count
                 << ",\"worn\":" << (pair.second.worn ? "true" : "false") << '}';
             ++emitted;
         }
@@ -7779,6 +7799,137 @@ namespace
 
     bool runScheduledConsoleCommand(const ScheduledConsoleCommand& scheduled, TESObjectREFR* target)
     {
+        if (scheduled.targetForm == 0 && scheduled.command == "OpenPipBoyRetail")
+        {
+            bool invoked = false;
+            __try
+            {
+                InterfaceManager* interfaceManager
+                    = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+                if (interfaceManager != nullptr)
+                {
+                    // This is the engine's native InterfaceManager::OpenPipboy
+                    // path used by JohnnyGuitar NVSE's TogglePipBoy command.
+                    // The final argument is the retail Stats menu ID. Do not
+                    // write visibility, mode, or animation state around it.
+                    reinterpret_cast<void(__thiscall*)(InterfaceManager*, void(__cdecl*)(), UInt32)>(
+                        0x0070F4E0)(interfaceManager, nullptr, 1003);
+                    invoked = true;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                invoked = false;
+            }
+            return invoked;
+        }
+        if (scheduled.targetForm == 0 && scheduled.command == "ClosePipBoyRetail")
+        {
+            bool invoked = false;
+            __try
+            {
+                InterfaceManager* interfaceManager
+                    = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+                if (interfaceManager != nullptr)
+                {
+                    // Native InterfaceManager::ClosePipboy. Retail owns the
+                    // lowering animation, menu teardown, and weapon restore.
+                    reinterpret_cast<void(__thiscall*)(InterfaceManager*, void(__cdecl*)())>(
+                        0x0070F690)(interfaceManager, nullptr);
+                    invoked = true;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                invoked = false;
+            }
+            return invoked;
+        }
+        if (scheduled.targetForm == 0 && scheduled.command == "ClosePipBoyRenderedManagerOnce")
+        {
+            bool invoked = false;
+            __try
+            {
+                InterfaceManager* interfaceManager
+                    = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+                FOPipboyManager* manager
+                    = interfaceManager != nullptr ? interfaceManager->pipboyManager : nullptr;
+                if (manager != nullptr)
+                {
+                    // Retail FOPipboyManager close callback reached by the
+                    // terminal animation event. Do not mutate interface mode,
+                    // menu visibility, or animation frequency around it.
+                    reinterpret_cast<void(__thiscall*)(FOPipboyManager*)>(
+                        0x007FFD50)(manager);
+                    invoked = true;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                invoked = false;
+            }
+            return invoked;
+        }
+        if (scheduled.targetForm == 0 && scheduled.command == "OpenPipBoyRenderedManagerOnce")
+        {
+            bool invoked = false;
+            __try
+            {
+                InterfaceManager* interfaceManager
+                    = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+                FOPipboyManager* manager
+                    = interfaceManager != nullptr ? interfaceManager->pipboyManager : nullptr;
+                if (manager != nullptr)
+                {
+                    // Invoke retail's own rendered-menu open method exactly
+                    // once after the physical raise reaches mode 3. Unlike the
+                    // older diagnostic command, do not pin visibility bytes,
+                    // Pip-Boy mode, animation frequency, or per-frame state.
+                    void** virtualTable = *reinterpret_cast<void***>(manager);
+                    reinterpret_cast<void(__thiscall*)(FOPipboyManager*)>(virtualTable[12])(manager);
+                    bool* menuVisibility = reinterpret_cast<bool*>(0x011F308F);
+                    menuVisibility[1002] = false;
+                    menuVisibility[1003] = true;
+                    menuVisibility[1023] = false;
+                    *reinterpret_cast<UInt8*>(
+                        reinterpret_cast<UInt8*>(interfaceManager) + 0x4B4) = 1;
+                    invoked = true;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                invoked = false;
+            }
+            return invoked;
+        }
+        if (scheduled.targetForm == 0 && scheduled.command == "ClosePipBoyRenderedManagerLegacy")
+        {
+            bool invoked = false;
+            __try
+            {
+                InterfaceManager* interfaceManager
+                    = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+                FOPipboyManager* manager
+                    = interfaceManager != nullptr ? interfaceManager->pipboyManager : nullptr;
+                if (manager != nullptr)
+                {
+                    reinterpret_cast<void(__thiscall*)(InterfaceManager*, void(__cdecl*)())>(
+                        0x0070F690)(interfaceManager, nullptr);
+                    bool* menuVisibility = reinterpret_cast<bool*>(0x011F308F);
+                    menuVisibility[1002] = false;
+                    menuVisibility[1003] = false;
+                    menuVisibility[1023] = false;
+                    *reinterpret_cast<UInt8*>(
+                        reinterpret_cast<UInt8*>(interfaceManager) + 0x4B4) = 0;
+                    invoked = true;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                invoked = false;
+            }
+            return invoked;
+        }
         if (scheduled.targetForm == 0 && scheduled.command == "OpenPipBoyRenderedManager")
         {
             bool invoked = false;
