@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("outside-walk", "people", "native-people", "actor-closeup", "outside-look", "waterfront", "native-water", "water-dock", "water-scout", "runtime-town", "runtime-water", "town-core", "town-post", "town-people-front", "town-match", "town-survey", "cluster-match", "tavern")]
+    [ValidateSet("outside-walk", "people", "native-people", "actor-closeup", "leliana", "outside-look", "waterfront", "native-water", "water-dock", "water-scout", "runtime-town", "runtime-water", "town-core", "town-post", "town-people-front", "town-match", "town-survey", "cluster-match", "tavern")]
     [string]$Shot = "outside-walk",
     [string]$OutputRoot,
     [string]$Binary = "D:\code\nikami-worlds\local\labs\openmw-051-threeway-candidate-r30\openmw.exe",
@@ -103,6 +103,17 @@ $shotTable = @{
         background=$godotExactSky; scene=$godotNativeEnvironment; foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"
         frames="0,80,160,240"; ex="255.8,255.8,255.8,255.8"; ey="303.32,303.32,303.32,303.32"; ez="3.4,3.4,3.4,3.4"
         tx="257.486,257.486,257.486,257.486"; ty="302.249,302.249,302.249,302.249"; tz="3.3,3.3,3.3,3.3"
+    }
+    "leliana" = @{
+        # Exact high-poly Leliana portrait exported with Origins complexion,
+        # authored auburn hair, younger facial normal, and glTF PBR materials.
+        # Load Leliana as primary DAO scene content. The diagnostic foreground
+        # branch is intentionally hidden by this capture profile.
+        background=([string]$godotExactSky + ';' + [string]$godotExactEnvironment); scene=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="30"
+        # Preserve the accepted Godot view ray at the export's Bethesda-unit
+        # presentation scale, safely beyond OpenMW's near clip.
+        frames="0,80,160,240"; proofFrames="160"; ex="255.9997,255.9997,255.9997,255.9997"; ey="272.5001,272.5001,272.5001,272.5001"; ez="96.6309,96.6309,96.6309,96.6309"
+        tx="255.9997,255.9997,255.9997,255.9997"; ty="300.5001,300.5001,300.5001,300.5001"; tz="95.8599,95.8599,95.8599,95.8599"
     }
     "outside-look" = @{
         scene=$exterior; scale="64"; x="-16640"; y="-19264"; z="0"
