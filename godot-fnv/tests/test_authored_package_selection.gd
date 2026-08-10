@@ -80,6 +80,19 @@ func _init() -> void:
 		fail("unsupported package condition did not fail closed")
 		return
 	fail_closed.free()
+	var calendar_fail_closed: CharacterBody3D = actor_script.new()
+	calendar_fail_closed.call("configure", "calendar-condition-test", "route-humanoid", {
+		"game_hour": 23.0,
+		"packages": [
+			{"id": "0x12", "packageData": {"type": 12},
+				"packageSchedule": {"dayOfWeek": 6, "month": 255, "date": 0, "time": 22, "duration": 4}},
+			{"id": "0x13", "packageData": {"type": 6}, "packageSchedule": {"time": 255, "duration": 0}},
+		],
+	})
+	if str(calendar_fail_closed.get_meta("opennv_active_package", "")) != "0x13":
+		fail("calendar-qualified package ran without decoded calendar state")
+		return
+	calendar_fail_closed.free()
 	print("OPENNV_AUTHORED_PACKAGE_SELECTION_PASS")
 	quit(0)
 

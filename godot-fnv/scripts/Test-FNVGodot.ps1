@@ -105,6 +105,15 @@ if ($LASTEXITCODE -ne 0 -or ($conditionTestOutput | Out-String) -notmatch 'OPENN
     $conditionTestOutput | ForEach-Object { Write-Host $_ }
     throw 'OpenNV condition runtime test failed.'
 }
+$packageConditionAuditPath = Join-Path $projectRoot 'generated\semantic-db\package-condition-audit.json'
+& python (Join-Path $projectRoot 'tools\audit_opennv_package_conditions.py') `
+    --input (Join-Path $projectRoot 'generated\semantic-db\actor-packages.json') `
+    --output $packageConditionAuditPath
+if ($LASTEXITCODE -ne 0) { throw 'OpenNV package condition census failed.' }
+$packageConditionAudit = Get-Content -LiteralPath $packageConditionAuditPath -Raw | ConvertFrom-Json
+if ($packageConditionAudit.status -ne 'pass' -or [int]$packageConditionAudit.counts.unsupportedLayouts -ne 0) {
+    throw 'OpenNV package condition layout coverage failed.'
+}
 $navmeshTestOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_authored_navmesh_runtime.gd' 2>&1
 if ($LASTEXITCODE -ne 0 -or ($navmeshTestOutput | Out-String) -notmatch 'OPENNV_AUTHORED_NAVMESH_RUNTIME_PASS') {
     throw "Authored NAVM runtime lifecycle gate failed:`n$($navmeshTestOutput | Out-String)"

@@ -40,6 +40,20 @@ func configure(id_value: String, category_value: String, semantics: Dictionary =
 
 func _package_covers_hour(package: Dictionary, hour: float) -> bool:
 	var schedule := package.get("packageSchedule", {}) as Dictionary
+	var day_of_week := int(schedule.get("dayOfWeek", 255))
+	var month := int(schedule.get("month", 255))
+	var date := int(schedule.get("date", 0))
+	# Calendar-qualified packages cannot be selected from hour-only state. The
+	# save compiler will populate these fields once their FOS globals are proven.
+	if day_of_week != 255:
+		if not condition_context.has("day_of_week") or int(condition_context["day_of_week"]) != day_of_week:
+			return false
+	if month != 255:
+		if not condition_context.has("month") or int(condition_context["month"]) != month:
+			return false
+	if date != 0:
+		if not condition_context.has("date") or int(condition_context["date"]) != date:
+			return false
 	var start := int(schedule.get("time", 255))
 	var duration := int(schedule.get("duration", 0))
 	if start == 255 or duration <= 0:

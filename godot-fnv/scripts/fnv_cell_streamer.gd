@@ -603,7 +603,7 @@ func _actor_package_semantics(placement: Dictionary, category: String) -> Dictio
 	result["actor_cell"] = _canonical_form_id(placement.get("_runtime_cell", ""))
 	result["actor_interior"] = bool(placement.get("_runtime_interior", false))
 	result["actor_is_creature"] = "creature" in category
-	var cell_index := exterior_cells_by_id.get(result["actor_cell"], {}) as Dictionary
+	var cell_index := cell_indices_by_id.get(result["actor_cell"], {}) as Dictionary
 	result["actor_world"] = "" if bool(result["actor_interior"]) else _canonical_form_id(cell_index.get("world_form_id", primary_world_id))
 	result["random_percent"] = float(abs(str(result["actor_ref"]).hash()) % 100)
 	return result
@@ -614,7 +614,7 @@ func _build_condition_context(save_manifest: Dictionary) -> Dictionary:
 	for global_value in save_manifest.get("globals", []):
 		var global := global_value as Dictionary
 		var form_id := _canonical_form_id(global.get("formId", ""))
-		var wrapped := global.get("value", 0.0)
+		var wrapped: Variant = global.get("value", 0.0)
 		globals[form_id] = float((wrapped as Dictionary).get("value", 0.0)) if wrapped is Dictionary else float(wrapped)
 	var scene := save_manifest.get("scene", {}) as Dictionary
 	var player := save_manifest.get("player", {}) as Dictionary
