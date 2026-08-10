@@ -8,6 +8,9 @@ func _init() -> void:
 		"game_hour": 23.0,
 		"actor_ref": "0x001073e8",
 		"actor_base": "0x000e5cab",
+		"actor_cell": "0x00102f4a",
+		"actor_world": "0x000da726",
+		"actor_interior": false,
 		"globals": {"0x0000002a": 7.0},
 	}
 	_assert_result([
@@ -24,6 +27,11 @@ func _init() -> void:
 	_assert_result([
 		_condition(74, "equal", 7.0, "0x0000002a"),
 	], context, true, true, "global lookup")
+	_assert_result([
+		_condition(67, "equal", 1.0, "0x00102f4a"),
+		_condition(310, "equal", 1.0, "0x000da726"),
+		_condition(300, "equal", 0.0),
+	], context, true, true, "authored cell and world context")
 	print("OPENNV_CONDITION_RUNTIME_PASS")
 	quit(0)
 

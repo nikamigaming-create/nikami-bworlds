@@ -586,7 +586,7 @@ func _retire_navmesh_cell(cell_id_value: String) -> void:
 	resident_navmesh_cells = maxi(0, resident_navmesh_cells - 1)
 
 
-func _actor_package_semantics(placement: Dictionary) -> Dictionary:
+func _actor_package_semantics(placement: Dictionary, category: String) -> Dictionary:
 	var packages: Array = []
 	for package_id_value in placement.get("packages", []):
 		var package_id := _canonical_form_id(package_id_value)
@@ -600,6 +600,11 @@ func _actor_package_semantics(placement: Dictionary) -> Dictionary:
 	result["game_hour"] = game_hour
 	result["actor_ref"] = _canonical_form_id(placement.get("form_id", ""))
 	result["actor_base"] = _canonical_form_id(placement.get("base_form", placement.get("base", "")))
+	result["actor_cell"] = _canonical_form_id(placement.get("_runtime_cell", ""))
+	result["actor_interior"] = bool(placement.get("_runtime_interior", false))
+	result["actor_is_creature"] = "creature" in category
+	var cell_index := exterior_cells_by_id.get(result["actor_cell"], {}) as Dictionary
+	result["actor_world"] = "" if bool(result["actor_interior"]) else _canonical_form_id(cell_index.get("world_form_id", primary_world_id))
 	result["random_percent"] = float(abs(str(result["actor_ref"]).hash()) % 100)
 	return result
 
@@ -1573,7 +1578,7 @@ func _add_actor(mesh: Mesh, placement: Dictionary) -> void:
 	add_child(actor)
 	_register_stream_node(placement.get("_runtime_cell", ""), actor, 1, mesh)
 	actor_nodes_by_form_id[str(placement.get("form_id", "")).to_lower()] = actor
-	actor.call("configure", str(actor_record.get("id", "")), category, _actor_package_semantics(placement))
+	actor.call("configure", str(actor_record.get("id", "")), category, _actor_package_semantics(placement, category))
 	var scope := _placement_scope(placement)
 	_register_visual(scope, actor)
 	_register_collision_body(scope, actor)
@@ -1613,7 +1618,7 @@ func _add_skeletal_actor(skeletal_scene: Node3D, placement: Dictionary) -> void:
 	add_child(actor)
 	_register_stream_node(placement.get("_runtime_cell", ""), actor, 1)
 	actor_nodes_by_form_id[str(placement.get("form_id", "")).to_lower()] = actor
-	actor.call("configure", str(actor_record.get("id", "")), category, _actor_package_semantics(placement))
+	actor.call("configure", str(actor_record.get("id", "")), category, _actor_package_semantics(placement, category))
 	var scope := _placement_scope(placement)
 	_register_visual(scope, actor)
 	_register_collision_body(scope, actor)

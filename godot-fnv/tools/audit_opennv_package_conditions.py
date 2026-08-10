@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 
 
-RUNTIME_FUNCTIONS = {18, 35, 46, 49, 50, 56, 58, 59, 72, 74, 77, 79, 80, 84, 91, 110, 136, 420, 421, 546}
+RUNTIME_FUNCTIONS = {18, 35, 46, 49, 50, 56, 58, 59, 64, 67, 72, 74, 77, 79, 80, 84, 91, 110, 136, 300, 310, 420, 421, 546}
 
 
 def main() -> int:
@@ -48,9 +48,9 @@ def main() -> int:
             "packages": len(packages),
             "conditionalPackages": conditional_packages,
             "conditions": total,
-            "runtimeCoveredConditions": covered,
-            "runtimeUnsupportedConditions": total - covered,
-            "runtimeCoveragePercent": round(100.0 * covered / total, 3) if total else 100.0,
+            "implementedFunctionConditions": covered,
+            "unimplementedFunctionConditions": total - covered,
+            "implementedFunctionCoveragePercent": round(100.0 * covered / total, 3) if total else 100.0,
             "unsupportedLayouts": layouts.get("unsupported", 0),
         },
         "supportedFunctionIds": sorted(RUNTIME_FUNCTIONS),
@@ -66,7 +66,7 @@ def main() -> int:
     print(
         "OPENNV_PACKAGE_CONDITION_AUDIT "
         f"status={report['status']} conditions={total} covered={covered} "
-        f"unsupported={total - covered} coverage={report['counts']['runtimeCoveragePercent']}%"
+        f"unsupported={total - covered} coverage={report['counts']['implementedFunctionCoveragePercent']}%"
     )
     return 0 if report["status"] == "pass" else 1
 
