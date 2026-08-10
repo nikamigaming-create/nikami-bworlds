@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "policies": [
+    {
+      "id": "capital-wasteland-opening",
+      "campaigns": [
+        "Fallout3",
+        "TTW"
+      ],
+      "asset": "Fallout INTRO Vsk.bik",
+      "maxSeconds": 30,
+      "description": "Keep the hula-doll beat, then continue directly into the authored character-creation scene."
+    }
+  ]
+}

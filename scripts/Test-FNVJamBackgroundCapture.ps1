@@ -2,6 +2,10 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW")]
     [string]$Target = "All",
+    [ValidateSet("Jam", "Opening", "TestMap")]
+    [string]$Scenario = "Jam",
+    [ValidateSet("TTW", "NewVegas")]
+    [string]$OpeningCampaign = "TTW",
     [switch]$RuntimeReady,
     [switch]$RequireIdle,
     [string]$WorldsRoot = "D:\code\nikami-worlds",
@@ -11,13 +15,23 @@ param(
         "D:\code\nikami-worlds\run\jam-retail-side-video-20260724-191235\retail-game",
     [string]$JamRoot = "D:\code\nikami-worlds\local\mods\jam-4.6-original",
     [string]$JamArchive =
-        "C:\Users\nbrys\Downloads\Just Assorted Mods-66666-4-6-1717763151.7z",
+        "D:\code\nikami-worlds\local\mod-depot\archives\jam\Just Assorted Mods-66666-4-6-1717763151.7z",
+    [string]$OpeningRuntimeRoot = "",
+    [string]$OpeningTtwRoot = "D:\Modlists\fnv\mods\Tale of Two Wastelands - OpenMW",
+    [string]$OpeningNewVegasData = "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data",
+    [string]$OpeningAudioDevice = "Stereo Mix (Realtek(R) Audio)",
     [string]$SavePath =
         "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\Save 331     Goodsprings  00 17 36.fos"
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+. (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
+if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
+    $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
+}
+$OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 
 $checks = [Collections.Generic.List[object]]::new()
 function Add-Check([string]$Name, [bool]$Passed, [string]$Detail) {
@@ -59,6 +73,13 @@ $entryPointPath = Join-Path $WorldsRoot "scripts\Invoke-FNVJamBackgroundCapture.
 $preflightPath = Join-Path $WorldsRoot "scripts\Test-FNVJamBackgroundCapture.ps1"
 $retailRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVJamFullRetailRehearsal.ps1"
 $openMwRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVJamSprintProof.ps1"
+$retailOpeningRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-RetailTTWOpeningCapture.ps1"
+$retailTtwLayerInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWRetailCompatibilityLayer.ps1"
+$retailTtwLayerManifestPath = Join-Path $WorldsRoot "local\ttw-retail-compat\compatibility-layer.json"
+$openingRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVOpeningCapture.ps1"
+$testMapRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTestMapDiagnostic.ps1"
+$ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
+$newVegasInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-OpenNVBaseProfile.ps1"
 $oracleSourcePath =
     Join-Path $ParityRoot "oracles\xnvse\nvse_retail_oracle\main.cpp"
 $oracleRuntimeManifestPath =
@@ -66,10 +87,40 @@ $oracleRuntimeManifestPath =
 $oracleDllPath =
     Join-Path $ParityRoot "local\xnvse-retail-oracle\plugins\nvse_retail_oracle.dll"
 
-foreach ($path in @(
-    $catalogPath, $runbookPath, $entryPointPath, $preflightPath,
-    $retailRunnerPath, $openMwRunnerPath, $oracleSourcePath
-)) {
+$canonicalFiles = [Collections.Generic.List[string]]::new()
+foreach ($path in @($catalogPath, $runbookPath, $entryPointPath, $preflightPath)) {
+    $canonicalFiles.Add($path)
+}
+if ($Scenario -eq "Jam") {
+    foreach ($path in @($retailRunnerPath, $openMwRunnerPath, $oracleSourcePath)) {
+        $canonicalFiles.Add($path)
+    }
+}
+elseif ($Scenario -eq "Opening") {
+    $openingFiles = [Collections.Generic.List[string]]::new()
+    if ($Target -in @("All", "Retail")) {
+        foreach ($path in @($retailOpeningRunnerPath, $retailTtwLayerInitializerPath, $oracleSourcePath)) {
+            $openingFiles.Add($path)
+        }
+    }
+    if ($Target -in @("All", "OpenMW")) {
+        $openingInitializerPath = if ($OpeningCampaign -eq "TTW") {
+            $ttwInitializerPath
+        } else {
+            $newVegasInitializerPath
+        }
+        foreach ($path in @($openingRunnerPath, $openingInitializerPath)) {
+            $openingFiles.Add($path)
+        }
+    }
+    foreach ($path in $openingFiles) {
+        $canonicalFiles.Add($path)
+    }
+}
+else {
+    $canonicalFiles.Add($testMapRunnerPath)
+}
+foreach ($path in $canonicalFiles) {
     [void](Test-File "Canonical file exists: $([IO.Path]::GetFileName($path))" $path)
 }
 
@@ -96,51 +147,112 @@ if ($null -ne $catalog) {
     Add-Check "Injected Windows input forbidden" `
         (-not [bool]$catalog.policy.injectedWindowsInputAllowed) `
         "injectedWindowsInputAllowed=$($catalog.policy.injectedWindowsInputAllowed)"
-    Add-Check "Exactly two canonical recipes" `
-        (@($catalog.recipes).Count -eq 2) `
-        ((@($catalog.recipes | ForEach-Object id)) -join ", ")
-    foreach ($anchor in $catalog.knownGoodEvidence.PSObject.Properties) {
-        $anchorRoot = Join-Path $WorldsRoot ([string]$anchor.Value)
-        $anchorExists = Test-Path -LiteralPath $anchorRoot -PathType Container
-        Add-Check "Known-good anchor exists: $($anchor.Name)" `
-            $anchorExists $anchorRoot
-        if ($anchorExists) {
-            $anchorSummaryName = if ($anchor.Name -eq "sideBySide") {
-                "side-by-side-proof-manifest.json"
-            } else {
-                "background-capture-summary.json"
-            }
-            $anchorSummary = Join-Path $anchorRoot $anchorSummaryName
-            $summaryExists = Test-Path -LiteralPath $anchorSummary -PathType Leaf
-            Add-Check "Known-good anchor has canonical summary: $($anchor.Name)" `
-                $summaryExists $anchorSummary
-            if ($summaryExists) {
-                try {
-                    $knownGood =
-                        Get-Content -Raw -LiteralPath $anchorSummary |
-                        ConvertFrom-Json
-                    $knownGoodPolicy = if ($anchor.Name -eq "sideBySide") {
-                        $knownGood.capturePolicy
-                    } else {
-                        $knownGood.policy
-                    }
-                    $policyPassed = $knownGood.status -eq "pass" -and
-                        -not [bool]$knownGoodPolicy.windowsAppControlUsed -and
-                        -not [bool]$knownGoodPolicy.foregroundActivationUsed -and
-                        -not [bool]$knownGoodPolicy.foregroundInputInjected
-                    Add-Check "Known-good anchor passes no-control policy: $($anchor.Name)" `
-                        $policyPassed $anchorSummary
+    if ($Scenario -eq "TestMap") {
+        Add-Check "TestMap diagnostic is restricted to OpenMW" `
+            ($Target -eq "OpenMW") "target=$Target"
+    }
+    $selectedRecipes = @($(if ($Scenario -eq "Jam") { $catalog.recipes } elseif ($Scenario -eq "Opening") {
+        @($catalog.openingRecipes | Where-Object {
+            ($Target -eq "All" -or $_.target -eq $Target) -and
+            ((-not $_.PSObject.Properties.Match("campaign")) -or [string]$_.campaign -eq $OpeningCampaign)
+        })
+    } else {
+        @($catalog.diagnosticRecipes | Where-Object {
+            [string]$_.id -eq "opennv-testmap01-clean-native-v1" -and $_.target -eq $Target
+        })
+    }))
+    $expectedRecipeCount = if ($Scenario -eq "Jam") {
+        2
+    }
+    elseif ($Scenario -eq "TestMap") {
+        if ($Target -eq "OpenMW") { 1 } else { 0 }
+    }
+    elseif ($OpeningCampaign -eq "NewVegas") {
+        # Standalone New Vegas has both the ordinary authored opening proof and
+        # the longer, manifest-routed Vit-o-matic/SPECIAL proof. Retail is not
+        # a supported standalone-New-Vegas opening target.
+        if ($Target -eq "Retail") { 0 } else { 2 }
+    }
+    elseif ($Target -eq "All") {
+        2
+    }
+    elseif ($Scenario -eq "Opening") {
+        1
+    }
+    Add-Check "$Scenario scenario declares the expected canonical recipe count" `
+        ($selectedRecipes.Count -eq $expectedRecipeCount) `
+        (($selectedRecipes | ForEach-Object id) -join ", ")
+    foreach ($recipe in $selectedRecipes) {
+        $runnerPath = Join-Path $WorldsRoot ([string]$recipe.runner)
+        Add-Check "$Scenario recipe runner exists: $($recipe.id)" `
+            (Test-Path -LiteralPath $runnerPath -PathType Leaf) $runnerPath
+        Add-Check "$Scenario recipe names a capture method: $($recipe.id)" `
+            (-not [string]::IsNullOrWhiteSpace([string]$recipe.captureMethod)) `
+            ([string]$recipe.captureMethod)
+    }
+
+    if ($Scenario -eq "Jam") {
+        foreach ($anchor in $catalog.knownGoodEvidence.PSObject.Properties) {
+            $anchorRoot = Join-Path $WorldsRoot ([string]$anchor.Value)
+            $anchorExists = Test-Path -LiteralPath $anchorRoot -PathType Container
+            Add-Check "Known-good anchor exists: $($anchor.Name)" `
+                $anchorExists $anchorRoot
+            if ($anchorExists) {
+                $anchorSummaryName = if ($anchor.Name -eq "sideBySide") {
+                    "side-by-side-proof-manifest.json"
+                } else {
+                    "background-capture-summary.json"
                 }
-                catch {
-                    Add-Check "Known-good anchor passes no-control policy: $($anchor.Name)" `
-                        $false $_.Exception.Message
+                $anchorSummary = Join-Path $anchorRoot $anchorSummaryName
+                $summaryExists = Test-Path -LiteralPath $anchorSummary -PathType Leaf
+                Add-Check "Known-good anchor has canonical summary: $($anchor.Name)" `
+                    $summaryExists $anchorSummary
+                if ($summaryExists) {
+                    try {
+                        $knownGood =
+                            Get-Content -Raw -LiteralPath $anchorSummary |
+                            ConvertFrom-Json
+                        $knownGoodPolicy = if ($anchor.Name -eq "sideBySide") {
+                            $knownGood.capturePolicy
+                        } else {
+                            $knownGood.policy
+                        }
+                        $policyPassed = $knownGood.status -eq "pass" -and
+                            -not [bool]$knownGoodPolicy.windowsAppControlUsed -and
+                            -not [bool]$knownGoodPolicy.foregroundActivationUsed -and
+                            -not [bool]$knownGoodPolicy.foregroundInputInjected
+                        Add-Check "Known-good anchor passes no-control policy: $($anchor.Name)" `
+                            $policyPassed $anchorSummary
+                    }
+                    catch {
+                        Add-Check "Known-good anchor passes no-control policy: $($anchor.Name)" `
+                            $false $_.Exception.Message
+                    }
                 }
             }
         }
     }
 }
 
-foreach ($script in @($entryPointPath, $preflightPath, $retailRunnerPath, $openMwRunnerPath)) {
+ $scriptsToParse = [Collections.Generic.List[string]]::new()
+foreach ($script in @($entryPointPath, $preflightPath)) {
+    $scriptsToParse.Add($script)
+}
+if ($Scenario -eq "Jam") {
+    foreach ($script in @($retailRunnerPath, $openMwRunnerPath)) { $scriptsToParse.Add($script) }
+}
+elseif ($Scenario -eq "Opening") {
+    if ($Target -in @("All", "Retail")) {
+        foreach ($script in @($retailOpeningRunnerPath, $retailTtwLayerInitializerPath)) { $scriptsToParse.Add($script) }
+    }
+    if ($Target -in @("All", "OpenMW")) {
+        foreach ($script in @($openingRunnerPath, $ttwInitializerPath)) { $scriptsToParse.Add($script) }
+    }
+}
+else {
+    $scriptsToParse.Add($testMapRunnerPath)
+}
+foreach ($script in $scriptsToParse) {
     if (Test-Path -LiteralPath $script -PathType Leaf) {
         Test-PowerShellParse $script
     }
@@ -156,12 +268,29 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
             ($entryText -notmatch [regex]::Escape($forbidden)) `
             $entryPointPath
     }
-    Add-Check "OpenMW invocation forces SelfDrive" `
-        ($entryText -match '(?s)Invoke-FNVJamSprintProof.*?-SelfDrive') `
-        $entryPointPath
+    if ($Scenario -eq "Jam") {
+        Add-Check "OpenMW invocation forces SelfDrive" `
+            ($entryText -match '(?s)Invoke-FNVJamSprintProof.*?-SelfDrive') `
+            $entryPointPath
+    }
+    elseif ($Scenario -eq "Opening") {
+        $retailRoutePresent = $entryText -match 'Invoke-RetailTTWOpeningCapture'
+        $openMwRoutePresent = $entryText -match 'Invoke-OpenNVOpeningCapture'
+        $expectedRoutePresent =
+            (($Target -notin @("All", "Retail")) -or $retailRoutePresent) -and
+            (($Target -notin @("All", "OpenMW")) -or $openMwRoutePresent)
+        Add-Check "Opening invocation routes to the declared opening runner" `
+            $expectedRoutePresent `
+            $entryPointPath
+    }
+    else {
+        Add-Check "TestMap invocation routes to the declared diagnostic runner" `
+            ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVTestMapDiagnostic') `
+            $entryPointPath
+    }
 }
 
-if ($Target -in @("All", "Retail")) {
+if ($Scenario -eq "Jam" -and $Target -in @("All", "Retail")) {
     if (Test-Path -LiteralPath $retailRunnerPath -PathType Leaf) {
         $retailText = Get-Content -Raw -LiteralPath $retailRunnerPath
         Add-Check "Retail schedules background polling" `
@@ -226,7 +355,7 @@ if ($Target -in @("All", "Retail")) {
     }
 }
 
-if ($Target -in @("All", "OpenMW") -and
+if ($Scenario -eq "Jam" -and $Target -in @("All", "OpenMW") -and
     (Test-Path -LiteralPath $openMwRunnerPath -PathType Leaf)) {
     $openMwText = Get-Content -Raw -LiteralPath $openMwRunnerPath
     Add-Check "Full OpenMW proof refuses non-SelfDrive runs" `
@@ -237,6 +366,118 @@ if ($Target -in @("All", "OpenMW") -and
             $openMwText -match 'foregroundActivationUsed' -and
             $openMwText -match 'foregroundInputInjected') `
         $openMwRunnerPath
+}
+
+if ($Scenario -eq "Opening" -and $Target -in @("All", "Retail") -and
+    (Test-Path -LiteralPath $retailOpeningRunnerPath -PathType Leaf)) {
+    $retailOpeningText = Get-Content -Raw -LiteralPath $retailOpeningRunnerPath
+    foreach ($forbidden in @(
+        "AppActivate", "SetForegroundWindow", "BringWindowToTop",
+        "SetFocus", "SendInput", "Invoke-FNVRetailJamInput"
+    )) {
+        Add-Check "Retail TTW opening runner excludes $forbidden" `
+            ($retailOpeningText -notmatch [regex]::Escape($forbidden)) `
+            $retailOpeningRunnerPath
+    }
+    Add-Check "Retail TTW opening runner awaits a native NewGame event" `
+        ($retailOpeningText -match 'AwaitNewGame' -and
+            $retailOpeningText -match 'new-game-observed') `
+        $retailOpeningRunnerPath
+    Add-Check "Retail TTW opening runner schedules StartNewCharacter and native D3D frames" `
+        ($retailOpeningText -match '\$\{MenuStartGameLoopFrame\}:StartNewCharacter' -and
+            $retailOpeningText -match 'scheduled-backbuffer-capture') `
+        $retailOpeningRunnerPath
+    $retailOracleText = Get-Content -Raw -LiteralPath $oracleSourcePath
+    Add-Check "Retail oracle exposes StartNewCharacter through live New and Yes control API boundaries" `
+        ($retailOracleText -match 'StartNewCharacter' -and
+            $retailOracleText -match 'startMenuVisible' -and
+            $retailOracleText -match 'menuPresent' -and
+            $retailOracleText -match 'option\.tile == action\.actionTile' -and
+            $retailOracleText -match 'dispatchStartMenuListBoxEnter\(\s*readiness\.menu, 0xE4, confirmation\.yesTile\)' -and
+            $retailOracleText -match 'StartMenu\.HandleSpecialKeyInput\(kEnter\)' -and
+            $retailOracleText -match 'specialKeyHandled' -and
+            $retailOracleText -match 'selected == confirmation\.yesTile' -and
+            $retailOracleText -match 'start-new-character-new-api-dispatch' -and
+            $retailOracleText -match 'start-new-character-confirmation-api-dispatch' -and
+            $retailOracleText -match 'xNVSE buffered menu-input queue' -and
+            $retailOracleText -match 'desktopInputUsed\\":false' -and
+            $retailOracleText -notmatch 'SendInput' -and
+            $retailOracleText -match 'sStartMenuNewGameActionName = "New"' -and
+            $retailOracleText -match 'sStartMenuNewGameListIndex = 1\.f') `
+        $oracleSourcePath
+    Add-Check "Retail TTW opening runner composes base Data with the TTW overlay" `
+        ($retailOpeningText -match 'baseDataRoot' -and
+            $retailOpeningText -match 'TTW overlay') `
+        $retailOpeningRunnerPath
+}
+
+if ($Scenario -eq "Opening" -and $Target -in @("All", "OpenMW") -and
+    (Test-Path -LiteralPath $openingRunnerPath -PathType Leaf)) {
+    $openingText = Get-Content -Raw -LiteralPath $openingRunnerPath
+    foreach ($forbidden in @(
+        "AppActivate", "SetForegroundWindow", "BringWindowToTop",
+        "SetFocus", "SendInput", "Invoke-FNVRetailJamInput"
+    )) {
+        Add-Check "Opening runner excludes $forbidden" `
+            ($openingText -notmatch [regex]::Escape($forbidden)) `
+            $openingRunnerPath
+    }
+    Add-Check "Opening runner uses exact-title capture" `
+        ($openingText -match 'title=OpenMW') $openingRunnerPath
+    Add-Check "Opening runner prevents focus-loss minimization without foreground control" `
+        ($openingText -match 'minimize on focus loss' -and
+            $openingText -match 'Get-VideoVisualEvidence' -and
+            $openingText -match 'changingVisibleFrames') $openingRunnerPath
+    Add-Check "Opening runner records a DirectShow audio stream" `
+        ($openingText -match 'audio=\$AudioDevice' -and $openingText -match 'Stereo Mix') `
+        $openingRunnerPath
+    Add-Check "Opening runner uses authored video capture markers" `
+        ($openingText -match 'OPENMW_CAPTURE_VIDEO_READY_PATH' -and
+            $openingText -match 'OPENMW_CAPTURE_VIDEO_GO_PATH') `
+        $openingRunnerPath
+    Add-Check "Opening runner validates the declared TTW data-layer contract" `
+        ($openingText -match 'Assert-OpenNVTtwLayerContract' -and
+            $openingText -match 'dataLayerContract') `
+        $openingRunnerPath
+    if (Test-Path -LiteralPath $ttwInitializerPath -PathType Leaf) {
+        $ttwInitializerText = Get-Content -Raw -LiteralPath $ttwInitializerPath
+        Add-Check "TTW profile declares an ordered base-plus-overlay data union" `
+            ($ttwInitializerText -match 'dataLayers' -and
+                $ttwInitializerText -match 'ttw-generated-overlay' -and
+                $ttwInitializerText -match 'low-to-high precedence') `
+            $ttwInitializerPath
+        Add-Check "TTW profile verifies TTW-owned and base fallback assets" `
+            ($ttwInitializerText -match 'Resolve-TtwLayeredFile' -and
+                $ttwInitializerText -match 'Fallout - Voices1\.bsa' -and
+                $ttwInitializerText -match 'TaleOfTwoWastelands - Textures\.bsa') `
+            $ttwInitializerPath
+    }
+}
+
+if ($Scenario -eq "TestMap" -and $Target -eq "OpenMW" -and
+    (Test-Path -LiteralPath $testMapRunnerPath -PathType Leaf)) {
+    $testMapText = Get-Content -Raw -LiteralPath $testMapRunnerPath
+    foreach ($forbidden in @(
+        "AppActivate", "SetForegroundWindow", "BringWindowToTop",
+        "SetFocus", "SendInput", "Invoke-FNVRetailJamInput"
+    )) {
+        Add-Check "TestMap runner excludes $forbidden" `
+            ($testMapText -notmatch [regex]::Escape($forbidden)) `
+            $testMapRunnerPath
+    }
+    Add-Check "TestMap runner uses an explicit diagnostic-only start cell" `
+        ($testMapText -match '"--start", "TestMap01"' -and
+            $testMapText -match 'diagnosticOnly\s*=\s*\$true') `
+        $testMapRunnerPath
+    Add-Check "TestMap runner retains a native OpenMW framebuffer frame" `
+        ($testMapText -match 'OPENMW_PROOF_SCREENSHOT_FRAME' -and
+            $testMapText -match 'ScreenCaptureHandler native framebuffer screenshot') `
+        $testMapRunnerPath
+    Add-Check "TestMap runner records no-control policy fields" `
+        ($testMapText -match 'windowsAppControlUsed\s*=\s*\$false' -and
+            $testMapText -match 'foregroundActivationUsed\s*=\s*\$false' -and
+            $testMapText -match 'foregroundInputInjected\s*=\s*\$false') `
+        $testMapRunnerPath
 }
 
 if (Test-Path -LiteralPath $runbookPath -PathType Leaf) {
@@ -258,6 +499,7 @@ if ($RuntimeReady) {
         Add-Check "$tool is available" ($null -ne $command) `
             $(if ($null -ne $command) { $command.Source } else { "not on PATH" })
     }
+    if ($Scenario -eq "Jam") {
     [void](Test-File "Shared native save exists" $SavePath)
 
     if ($Target -in @("All", "Retail")) {
@@ -280,12 +522,217 @@ if ($RuntimeReady) {
             (Join-Path $EngineRoot "MSVC2022_64\RelWithDebInfo\openmw.exe"))
         [void](Test-Directory "OpenMW resources exist" `
             (Join-Path $EngineRoot "MSVC2022_64\RelWithDebInfo\resources"))
+        $cmakeCache =
+            Join-Path $EngineRoot "MSVC2022_64\CMakeCache.txt"
+        $cmakeCacheExists =
+            Test-File "OpenMW CMake cache exists" $cmakeCache
+        if ($cmakeCacheExists) {
+            $myGuiLibraryEntry = Select-String -LiteralPath $cmakeCache `
+                -Pattern '^MyGUI_LIBRARY:FILEPATH=(?<path>.+)$' |
+                Select-Object -First 1
+            Add-Check "OpenMW CMake cache declares MyGUI" `
+                ($null -ne $myGuiLibraryEntry) $cmakeCache
+            $osgVersionEntry = Select-String -LiteralPath $cmakeCache `
+                -Pattern '^OPENSCENEGRAPH_VERSION:INTERNAL=(?<version>.+)$' |
+                Select-Object -First 1
+            Add-Check "OpenMW CMake cache declares OSG version" `
+                ($null -ne $osgVersionEntry) $cmakeCache
+            if ($null -ne $myGuiLibraryEntry -and $null -ne $osgVersionEntry) {
+                $myGuiLibrary =
+                    $myGuiLibraryEntry.Matches[0].Groups["path"].Value
+                $dependencyRoot =
+                    Split-Path -Parent (Split-Path -Parent $myGuiLibrary)
+                $myGuiRuntimeCandidates = @(
+                    (Join-Path $dependencyRoot "bin\Release\MyGUIEngine.dll"),
+                    (Join-Path $dependencyRoot "bin\MyGUIEngine.dll")
+                )
+                $myGuiRuntime = @($myGuiRuntimeCandidates | Where-Object {
+                    Test-Path -LiteralPath $_ -PathType Leaf
+                } | Select-Object -First 1)
+                Add-Check "Matching OpenMW MyGUI runtime exists" `
+                    ($myGuiRuntime.Count -eq 1) `
+                    ($myGuiRuntimeCandidates -join ", ")
+
+                $osgVersion =
+                    $osgVersionEntry.Matches[0].Groups["version"].Value
+                $osgPluginPath = Join-Path $dependencyRoot `
+                    "plugins\osgPlugins-$osgVersion"
+                [void](Test-Directory `
+                    "Matching OpenMW OSG plugin directory exists" `
+                    $osgPluginPath)
+                foreach ($pluginName in @(
+                    "osgdb_bmp.dll",
+                    "osgdb_dae.dll",
+                    "osgdb_dds.dll",
+                    "osgdb_freetype.dll",
+                    "osgdb_jpeg.dll",
+                    "osgdb_osg.dll",
+                    "osgdb_png.dll",
+                    "osgdb_serializers_osg.dll",
+                    "osgdb_tga.dll"
+                )) {
+                    [void](Test-File `
+                        "Matching OpenMW OSG plugin exists: $pluginName" `
+                        (Join-Path $osgPluginPath $pluginName))
+                }
+            }
+        }
         [void](Test-File "Untouched JAM ESP exists" `
             (Join-Path $JamRoot "JustAssortedMods.esp"))
         [void](Test-File "Published JAM archive exists" $JamArchive)
         [void](Test-File "OpenMW JAM provider exists" `
             (Join-Path $EngineRoot `
                 "MSVC2022_64\RelWithDebInfo\resources\vfs\scripts\omw\fnv\compat\jam_sprint.lua"))
+    }
+    }
+    elseif ($Scenario -eq "Opening") {
+        if ($Target -in @("All", "Retail")) {
+            [void](Test-File "Retail TTW opening executable exists" `
+                "D:\SteamLibrary\steamapps\common\Fallout New Vegas\FalloutNV.exe")
+            [void](Test-Directory "Retail TTW opening base Data root exists" `
+                "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data")
+            [void](Test-File "Retail TTW opening retains base FNV voices archive" `
+                "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data\Fallout - Voices1.bsa")
+            [void](Test-Directory "Retail TTW opening content root exists" $OpeningTtwRoot)
+            foreach ($asset in @(
+                "FalloutNV.esm",
+                "Fallout3.esm",
+                "TaleOfTwoWastelands.esm",
+                "YUPTTW.esm",
+                "Video\Fallout INTRO Vsk.bik"
+            )) {
+                [void](Test-File "Retail TTW opening asset exists: $asset" `
+                    (Join-Path $OpeningTtwRoot $asset))
+            }
+            [void](Test-File "Retail TTW opening oracle manifest exists" `
+                $oracleRuntimeManifestPath)
+            [void](Test-File "Retail TTW opening oracle DLL exists" $oracleDllPath)
+            [void](Test-File "Retail TTW compatibility-layer manifest exists" `
+                $retailTtwLayerManifestPath)
+            if (Test-Path -LiteralPath $retailTtwLayerManifestPath -PathType Leaf) {
+                try {
+                    $retailTtwLayer = Get-Content -LiteralPath $retailTtwLayerManifestPath -Raw | ConvertFrom-Json
+                    Add-Check "Retail TTW compatibility-layer schema is current" `
+                        ([string]$retailTtwLayer.schema -eq 'opennv-ttw-retail-compat-layer/v1') `
+                        ([string]$retailTtwLayer.schema)
+                    foreach ($entry in @($retailTtwLayer.plugins)) {
+                        $pluginPath = Join-Path (Split-Path -Parent $retailTtwLayerManifestPath) ([string]$entry.path)
+                        $pluginExists = Test-Path -LiteralPath $pluginPath -PathType Leaf
+                        $hashMatches = $pluginExists -and
+                            ((Get-FileHash -LiteralPath $pluginPath -Algorithm SHA256).Hash.ToLowerInvariant() -eq
+                                ([string]$entry.sha256).ToLowerInvariant())
+                        Add-Check "Retail TTW compatibility plugin is present and pinned: $($entry.id)" `
+                            $hashMatches $pluginPath
+                    }
+                }
+                catch {
+                    Add-Check "Retail TTW compatibility-layer manifest parses" $false $_.Exception.Message
+                }
+            }
+        }
+
+        if ($Target -in @("All", "OpenMW")) {
+        [void](Test-File "Deployed OpenNV opening binary exists" `
+            (Join-Path $OpeningRuntimeRoot "openmw.exe"))
+        [void](Test-Directory "Deployed OpenNV opening resources exist" `
+            (Join-Path $OpeningRuntimeRoot "resources"))
+        foreach ($plugin in @("osgdb_dds.dll", "osgdb_png.dll", "osgdb_freetype.dll")) {
+            [void](Test-File "Deployed OpenNV OSG plugin exists: $plugin" `
+                (Join-Path $OpeningRuntimeRoot (Join-Path "osgPlugins-3.6.5" $plugin)))
+        }
+        if ($OpeningCampaign -eq "NewVegas") {
+            [void](Test-File "Standalone New Vegas opening profile initializer exists" $newVegasInitializerPath)
+            [void](Test-Directory "Standalone New Vegas Data root exists" $OpeningNewVegasData)
+            [void](Test-File "Standalone New Vegas opening master exists" `
+                (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
+            [void](Test-File "Standalone New Vegas authored opening Bink exists" `
+                (Join-Path $OpeningNewVegasData "Video\FNVIntro.bik"))
+        }
+        [void](Test-File "TTW opening profile initializer exists" $ttwInitializerPath)
+        [void](Test-Directory "TTW opening content root exists" $OpeningTtwRoot)
+        [void](Test-File "TTW authored opening Bink exists" `
+            (Join-Path $OpeningTtwRoot "Video\Fallout INTRO Vsk.bik"))
+        [void](Test-File "Fallout 3 opening master exists" `
+            "D:\SteamLibrary\steamapps\common\Fallout 3 goty\Data\Fallout3.esm")
+        [void](Test-File "New Vegas opening master exists" `
+            "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data\FalloutNV.esm")
+
+        try {
+            $layerPreflightProfile = Join-Path $WorldsRoot "profiles\_verification\_preflight-ttw-layer-contract"
+            $layerPreflightCampaign = Join-Path $WorldsRoot "profiles\_verification\_campaigns\_preflight-ttw-layer-contract\userdata"
+            $layerPreflight = & $ttwInitializerPath `
+                -TtwRoot $OpeningTtwRoot `
+                -Fallout3Data "D:\SteamLibrary\steamapps\common\Fallout 3 goty\Data" `
+                -FalloutNewVegasData "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data" `
+                -ProfileDirectory $layerPreflightProfile `
+                -CampaignUserdataDirectory $layerPreflightCampaign `
+                -BinaryRoot $OpeningRuntimeRoot `
+                -DryRun
+            $expectedLayerIds = @(
+                "fallout3-base",
+                "fallout-new-vegas-base",
+                "fallout3-archive-aliases",
+                "ttw-generated-overlay"
+            )
+            $actualLayerIds = @($layerPreflight.dataLayers |
+                Sort-Object { [int]$_.priority } |
+                ForEach-Object { [string]$_.id })
+            Add-Check "TTW OpenMW dry-run declares the retail-equivalent data union" `
+                (($actualLayerIds -join '|') -eq ($expectedLayerIds -join '|')) `
+                ($actualLayerIds -join ' -> ')
+            $resolvedAssets = @($layerPreflight.resolvedLayeredAssets)
+            $ttwResolved = @($resolvedAssets | Where-Object {
+                -not [string]::IsNullOrWhiteSpace([string]$_.expectedProviderLayerId)
+            })
+            Add-Check "TTW OpenMW dry-run resolves authored assets from the TTW overlay" `
+                ($ttwResolved.Count -ge 7 -and
+                    @($ttwResolved | Where-Object {
+                        [string]$_.providerLayerId -ne [string]$_.expectedProviderLayerId
+                    }).Count -eq 0) `
+                (@($ttwResolved | ForEach-Object { "$($_.id)=$($_.providerLayerId)" }) -join '; ')
+            $baseFallbacks = @($resolvedAssets | Where-Object {
+                [string]::IsNullOrWhiteSpace([string]$_.expectedProviderLayerId)
+            })
+            Add-Check "TTW OpenMW dry-run preserves required base fallback archives" `
+                ($baseFallbacks.Count -ge 2 -and
+                    @($baseFallbacks | Where-Object {
+                        -not (Test-Path -LiteralPath ([string]$_.providerPath) -PathType Leaf)
+                    }).Count -eq 0) `
+                (@($baseFallbacks | ForEach-Object { "$($_.id)=$($_.providerLayerId)" }) -join '; ')
+        }
+        catch {
+            Add-Check "TTW OpenMW dry-run validates the data-layer union" $false $_.Exception.Message
+        }
+
+        $deviceText = ""
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $deviceText = ((& ffmpeg -hide_banner -list_devices true -f dshow -i dummy 2>&1) | Out-String)
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        Add-Check "DirectShow opening audio device is available" `
+            ($deviceText -match [regex]::Escape('"' + $OpeningAudioDevice + '" (audio)')) `
+            $OpeningAudioDevice
+        }
+    }
+    else {
+        # TestMap01 is a standalone FNV renderer diagnostic. It does not pull
+        # TTW, retail, or Morrowind assets into the profile.
+        [void](Test-File "Deployed OpenNV TestMap binary exists" `
+            (Join-Path $OpeningRuntimeRoot "openmw.exe"))
+        [void](Test-Directory "Deployed OpenNV TestMap resources exist" `
+            (Join-Path $OpeningRuntimeRoot "resources"))
+        foreach ($plugin in @("osgdb_dds.dll", "osgdb_png.dll", "osgdb_freetype.dll")) {
+            [void](Test-File "Deployed OpenNV TestMap OSG plugin exists: $plugin" `
+                (Join-Path $OpeningRuntimeRoot (Join-Path "osgPlugins-3.6.5" $plugin)))
+        }
+        [void](Test-File "Standalone New Vegas TestMap profile initializer exists" $newVegasInitializerPath)
+        [void](Test-Directory "Standalone New Vegas TestMap Data root exists" $OpeningNewVegasData)
+        [void](Test-File "Standalone New Vegas TestMap master exists" `
+            (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
     }
 }
 
@@ -311,6 +758,7 @@ $result = [pscustomobject][ordered]@{
     schema = "nikami-fnv-jam-background-capture-preflight/v1"
     status = if ($failed.Count -eq 0) { "pass" } else { "fail" }
     target = $Target
+    scenario = $Scenario
     runtimeReadyChecked = [bool]$RuntimeReady
     idleChecked = [bool]$RequireIdle
     passedChecks = $checks.Count - $failed.Count

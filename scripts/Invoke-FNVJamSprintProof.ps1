@@ -4,7 +4,7 @@ param(
     [string]$WorldsRoot = "D:\code\nikami-worlds",
     [string]$ParityRoot = "D:\code\nikami-worlds-fnv-parity",
     [string]$JamRoot = "D:\code\nikami-worlds\local\mods\jam-4.6-original",
-    [string]$JamArchive = "C:\Users\nbrys\Downloads\Just Assorted Mods-66666-4-6-1717763151.7z",
+    [string]$JamArchive = "D:\code\nikami-worlds\local\mod-depot\archives\jam\Just Assorted Mods-66666-4-6-1717763151.7z",
     [string]$SavePath = "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\Save 331     Goodsprings  00 17 36.fos",
     [string]$OutputRoot = "",
     [int]$TimeoutSeconds = 120,
@@ -276,6 +276,7 @@ public static class JamProofInput
 
 $binary = Join-Path $EngineRoot "MSVC2022_64\RelWithDebInfo\openmw.exe"
 $engineResources = Join-Path $EngineRoot "MSVC2022_64\RelWithDebInfo\resources"
+$cmakeCache = Join-Path $EngineRoot "MSVC2022_64\CMakeCache.txt"
 $profileConfig = Join-Path $WorldsRoot "profiles\fallout_new_vegas"
 $baselineConfig = Join-Path $ParityRoot "config\playable-baseline"
 $graphicsConfig = Join-Path $ParityRoot "config\fnv-playable-graphics"
@@ -294,6 +295,7 @@ if (-not $SkipBuild) {
 foreach ($required in @(
     $binary,
     $engineResources,
+    $cmakeCache,
     $profileConfig,
     $baselineConfig,
     $graphicsConfig,
@@ -304,6 +306,56 @@ foreach ($required in @(
 )) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "Required JAM proof input is missing: $required"
+    }
+}
+
+$myGuiLibraryEntry = Select-String -LiteralPath $cmakeCache `
+    -Pattern '^MyGUI_LIBRARY:FILEPATH=(?<path>.+)$' | Select-Object -First 1
+if ($null -eq $myGuiLibraryEntry) {
+    throw "The OpenMW CMake cache does not declare MyGUI_LIBRARY."
+}
+$myGuiLibrary = $myGuiLibraryEntry.Matches[0].Groups["path"].Value
+$dependencyRoot = Split-Path -Parent (Split-Path -Parent $myGuiLibrary)
+$runtimeBinCandidates = @(
+    (Join-Path $dependencyRoot "bin\Release"),
+    (Join-Path $dependencyRoot "bin")
+)
+$runtimeBins = @($runtimeBinCandidates | Where-Object {
+    Test-Path -LiteralPath $_ -PathType Container
+})
+$myGuiRuntime = @($runtimeBins | ForEach-Object {
+    Join-Path $_ "MyGUIEngine.dll"
+} | Where-Object {
+    Test-Path -LiteralPath $_ -PathType Leaf
+} | Select-Object -First 1)
+if ($myGuiRuntime.Count -ne 1) {
+    throw "The matching MyGUIEngine.dll was not found beneath $dependencyRoot."
+}
+$osgVersionEntry = Select-String -LiteralPath $cmakeCache `
+    -Pattern '^OPENSCENEGRAPH_VERSION:INTERNAL=(?<version>.+)$' | Select-Object -First 1
+if ($null -eq $osgVersionEntry) {
+    throw "The OpenMW CMake cache does not declare OPENSCENEGRAPH_VERSION."
+}
+$osgVersion = $osgVersionEntry.Matches[0].Groups["version"].Value
+$osgPluginRoot = Join-Path $dependencyRoot "plugins"
+$osgPluginPath = Join-Path $osgPluginRoot "osgPlugins-$osgVersion"
+if (-not (Test-Path -LiteralPath $osgPluginPath -PathType Container)) {
+    throw "The matching OpenSceneGraph plugin directory is missing: $osgPluginPath"
+}
+foreach ($pluginName in @(
+    "osgdb_bmp.dll",
+    "osgdb_dae.dll",
+    "osgdb_dds.dll",
+    "osgdb_freetype.dll",
+    "osgdb_jpeg.dll",
+    "osgdb_osg.dll",
+    "osgdb_png.dll",
+    "osgdb_serializers_osg.dll",
+    "osgdb_tga.dll"
+)) {
+    $pluginRuntime = Join-Path $osgPluginPath $pluginName
+    if (-not (Test-Path -LiteralPath $pluginRuntime -PathType Leaf)) {
+        throw "The matching OpenSceneGraph plugin is missing: $pluginRuntime"
     }
 }
 if (($ProofDrive -or $FullProofDrive) -and -not (Test-Path -LiteralPath $proofContent)) {
@@ -373,6 +425,9 @@ Write-Utf8NoBom (Join-Path $configDir "settings.cfg") @(
     ""
     "[GUI]"
     "subtitles = true"
+    ""
+    "[Post Processing]"
+    "enabled = true"
 )
 
 $stdoutLog = Join-Path $OutputRoot "stdout.log"
@@ -407,9 +462,13 @@ $argumentLine = ($arguments | ForEach-Object { Quote-Arg $_ }) -join " "
 $previousProofYaw = $env:OPENMW_FNV_JAM_PROOF_YAW_DEGREES
 $previousProofDrive = $env:OPENMW_FNV_JAM_PROOF_DRIVE
 $previousProofAutoMove = $env:OPENMW_FNV_JAM_PROOF_AUTOMOVE
+$previousPath = $env:PATH
+$previousOsgLibraryPath = $env:OSG_LIBRARY_PATH
 $previousFullProofDrive = $env:OPENMW_FNV_JAM_FULL_PROOF
 $previousProofWeatherId = $env:OPENMW_FNV_PROOF_WEATHER_ID
 try {
+    $env:PATH = (@($runtimeBins) + @($previousPath)) -join ";"
+    $env:OSG_LIBRARY_PATH = $osgPluginRoot
     $env:OPENMW_FNV_JAM_PROOF_YAW_DEGREES = if ($FullProofDrive) { $null } else { "-15" }
     $env:OPENMW_FNV_JAM_PROOF_DRIVE = if ($ProofDrive) { "1" } else { $null }
     $env:OPENMW_FNV_JAM_PROOF_AUTOMOVE = if ($SelfDrive) { "1" } else { $null }
@@ -423,6 +482,8 @@ finally {
     $env:OPENMW_FNV_JAM_PROOF_YAW_DEGREES = $previousProofYaw
     $env:OPENMW_FNV_JAM_PROOF_DRIVE = $previousProofDrive
     $env:OPENMW_FNV_JAM_PROOF_AUTOMOVE = $previousProofAutoMove
+    $env:PATH = $previousPath
+    $env:OSG_LIBRARY_PATH = $previousOsgLibraryPath
     $env:OPENMW_FNV_JAM_FULL_PROOF = $previousFullProofDrive
     $env:OPENMW_FNV_PROOF_WEATHER_ID = $previousProofWeatherId
 }

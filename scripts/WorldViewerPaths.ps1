@@ -1,26 +1,6 @@
 Set-StrictMode -Version Latest
 
 $script:NikamiRepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$script:NikamiCurrentOpenMWRuntimeDirectory = "openmw-pristine-mads-33568a"
-$script:NikamiRejectedOpenMWRuntimeDirectories = @(
-    "openmw-fo4guard",
-    "openmw-clean-recovery-6a5576"
-)
-
-function Assert-NikamiOpenMWRuntimeIsNotRejected {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$RuntimeRoot
-    )
-
-    $normalized = [IO.Path]::GetFullPath($RuntimeRoot).TrimEnd(
-        [IO.Path]::DirectorySeparatorChar,
-        [IO.Path]::AltDirectorySeparatorChar)
-    $directory = Split-Path -Leaf $normalized
-    if ($script:NikamiRejectedOpenMWRuntimeDirectories -icontains $directory) {
-        throw "Rejected obsolete OpenMW runtime '$directory'. Ordinary FNV launches are locked to local/$($script:NikamiCurrentOpenMWRuntimeDirectory)."
-    }
-}
 
 function Get-NikamiLocalConfig {
     param(
@@ -155,7 +135,9 @@ function Resolve-NikamiRepoRelativePath {
 }
 
 function Get-NikamiOpenMWRuntimeRoot {
-    return (Join-Path $script:NikamiRepoRoot "local\$($script:NikamiCurrentOpenMWRuntimeDirectory)")
+    # This is only the fallback when local/paths.json is absent. The checked
+    # player baseline is the VATS live runtime, not an experimental build.
+    return (Join-Path $script:NikamiRepoRoot "local\openmw-vats-live")
 }
 
 function Get-NikamiOpenMWResourcesRoot {
@@ -164,11 +146,9 @@ function Get-NikamiOpenMWResourcesRoot {
 
 function Resolve-NikamiOpenMWRuntimeRoot {
     param(
-        [string]$ParameterValue = "",
-        [switch]$RequireCurrent
+        [string]$ParameterValue = ""
     )
 
-    $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWRuntimeRoot)
     $configuredRoot = Resolve-NikamiPath `
         -ParameterValue $ParameterValue `
         -EnvName "NIKAMI_OPENMW_BINARY_ROOT" `
@@ -180,10 +160,6 @@ function Resolve-NikamiOpenMWRuntimeRoot {
     $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
     if (-not $candidateRoot.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw "External OpenMW runtime roots are not allowed. Runtime must be under $allowedRoot. Requested: $candidateRoot."
-    }
-    Assert-NikamiOpenMWRuntimeIsNotRejected -RuntimeRoot $candidateRoot
-    if ($RequireCurrent -and $candidateRoot -ine $defaultRoot) {
-        throw "Ordinary OpenMW launches are locked to $defaultRoot. Requested: $candidateRoot."
     }
 
     if (-not (Test-Path -LiteralPath $candidateRoot)) {
@@ -201,7 +177,13 @@ function Resolve-NikamiOpenMWRuntimeRoot {
     # dialog (which is both opaque to the harness and easy to mistake for an
     # engine crash).
     $requiredRuntimeFiles = @(
-        "MyGUIEngine.dll"
+        "MyGUIEngine.dll",
+        # OSG loads image/font readers dynamically. A deployment that carries
+        # only openmw.exe and the OSG core DLLs exits before the game window
+        # exists, so reject it before it can be selected as a player runtime.
+        "osgPlugins-3.6.5\\osgdb_dds.dll",
+        "osgPlugins-3.6.5\\osgdb_png.dll",
+        "osgPlugins-3.6.5\\osgdb_freetype.dll"
     )
     foreach ($requiredRuntimeFile in $requiredRuntimeFiles) {
         $requiredRuntimePath = Join-Path $candidateRoot $requiredRuntimeFile
@@ -215,11 +197,9 @@ function Resolve-NikamiOpenMWRuntimeRoot {
 
 function Resolve-NikamiOpenMWResourcesRoot {
     param(
-        [string]$ParameterValue = "",
-        [switch]$RequireCurrent
+        [string]$ParameterValue = ""
     )
 
-    $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWResourcesRoot)
     $configuredRoot = Resolve-NikamiPath `
         -ParameterValue $ParameterValue `
         -EnvName "NIKAMI_OPENMW_RESOURCES" `
@@ -231,11 +211,6 @@ function Resolve-NikamiOpenMWResourcesRoot {
     $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
     if (-not $candidateRoot.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw "External OpenMW resources roots are not allowed. Resources must be under $allowedRoot. Requested: $candidateRoot."
-    }
-    $runtimeRoot = Split-Path -Parent $candidateRoot
-    Assert-NikamiOpenMWRuntimeIsNotRejected -RuntimeRoot $runtimeRoot
-    if ($RequireCurrent -and $candidateRoot -ine $defaultRoot) {
-        throw "Ordinary OpenMW launches are locked to $defaultRoot. Requested: $candidateRoot."
     }
 
     if (-not (Test-Path -LiteralPath $candidateRoot)) {
@@ -505,8 +480,13 @@ function Clear-NikamiWorldViewerRuntimeEnvironment {
             -or ($name.StartsWith("OPENMW_FNV_", [StringComparison]::OrdinalIgnoreCase) `
                 -and $name.IndexOf("PROOF", [StringComparison]::OrdinalIgnoreCase) -ge 0) `
             -or $name.Equals("OPENMW_STARTUP_SCRIPT", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENMW_AUTHORED_DEFAULT_CHOICE_DELAY_SECONDS", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENMW_AUTHORED_START_TELEMETRY", [StringComparison]::OrdinalIgnoreCase) `
             -or $name.Equals("OPENMW_PLAYABLE_SESSION_BACKGROUND", [StringComparison]::OrdinalIgnoreCase) `
             -or $name.Equals("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENNV_PRESENTATION_VIDEO_MATCH", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.Equals("OPENNV_PRESENTATION_VIDEO_MAX_SECONDS", [StringComparison]::OrdinalIgnoreCase) `
+            -or $name.StartsWith("OPENMW_COMPAT_ROUTE_", [StringComparison]::OrdinalIgnoreCase) `
             -or (Test-NikamiFnvSkyRuntimeEnvironmentName $name)) {
             [Environment]::SetEnvironmentVariable($name, $null, "Process")
         }

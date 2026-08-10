@@ -1,0 +1,172 @@
+{
+  "schema": "opennv-authored-route/v1",
+  "id": "newvegas-doc-mitchell-authored-opening-to-mojave",
+  "description": "Exercises FalloutNV.esm's VCG01 opening from the real wake-up, Vigor Tester, and authored dialogue stages through Doc Mitchell's actual interior exit door. The engine runner performs only declared generic waits, movement, and ordinary reference activation; all quest progression, dialogue results, and door transition behavior come from installed game data.",
+  "steps": [
+    {
+      "id": "courier-controls-returned-at-vigor-handoff",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 55,
+      "stage_done": true,
+      "timeout_seconds": 180
+    },
+    {
+      "id": "vigor-tester-trigger-entered",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x1104c16",
+      "offset": [0, 0, -99],
+      "timeout_seconds": 15
+    },
+    {
+      "id": "vigor-tester-ready-for-activation",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 60,
+      "stage_done": true,
+      "timeout_seconds": 30
+    },
+    {
+      "id": "vigor-tester-authored-objective-displayed",
+      "operation": "wait-quest-objective",
+      "quest": "VCG01",
+      "objective": 30,
+      "displayed": true,
+      "timeout_seconds": 60
+    },
+    {
+      "id": "vigor-tester-reached",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x1104c13",
+      "offset": [0, 72, 1],
+      "timeout_seconds": 15
+    },
+    {
+      "id": "vigor-tester-activated",
+      "operation": "activate-reference",
+      "reference": "FormId:0x1104c13",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "default-special-selection-applied",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 65,
+      "stage_done": true,
+      "timeout_seconds": 30
+    },
+    {
+      "id": "doc-reaction-began-after-vigor-selection",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 70,
+      "stage_done": true,
+      "timeout_seconds": 60
+    },
+    {
+      "id": "psych-exam-authored-objective-opened",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 80,
+      "stage_done": true,
+      "timeout_seconds": 90
+    },
+    {
+      "id": "psych-exam-seat-objective-displayed",
+      "operation": "wait-quest-objective",
+      "quest": "VCG01",
+      "objective": 40,
+      "displayed": true,
+      "timeout_seconds": 30
+    },
+    {
+      "id": "courier-reached-doc-mitchell-couch",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x1103e55",
+      "offset": [0, 72, 1],
+      "timeout_seconds": 15
+    },
+    {
+      "id": "courier-sat-on-doc-mitchell-couch",
+      "operation": "activate-reference",
+      "reference": "FormId:0x1103e55",
+      "timeout_seconds": 30
+    },
+    {
+      "id": "courier-crossed-authored-couch-trigger-while-seated",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x11055b9",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "psych-test-authored-conversation-began",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 85,
+      "stage_done": true,
+      "timeout_seconds": 90
+    },
+    {
+      "id": "tag-skills-handoff-reached",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 90,
+      "stage_done": true,
+      "timeout_seconds": 90
+    },
+    {
+      "id": "traits-handoff-reached",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 102,
+      "stage_done": true,
+      "timeout_seconds": 90
+    },
+    {
+      "id": "doc-farewell-transition-began",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 105,
+      "stage_done": true,
+      "timeout_seconds": 90
+    },
+    {
+      "id": "courier-controls-returned-for-doc-exit",
+      "operation": "wait-quest-stage",
+      "quest": "VCG01",
+      "stage": 110,
+      "stage_done": true,
+      "timeout_seconds": 120
+    },
+    {
+      "id": "doc-house-exit-door-active",
+      "operation": "wait-reference-active",
+      "reference": "FormId:0x1103e61",
+      "timeout_seconds": 30
+    },
+    {
+      "id": "courier-reached-real-doc-house-exit-door",
+      "operation": "move-to-reference",
+      "reference": "FormId:0x1103e61",
+      "offset": [0, 64, 1],
+      "timeout_seconds": 15
+    },
+    {
+      "id": "courier-activated-real-doc-house-exit-door",
+      "operation": "activate-reference",
+      "reference": "FormId:0x1103e61",
+      "timeout_seconds": 30
+    },
+    {
+      "id": "courier-transitioned-to-mojave-exterior",
+      "operation": "wait-player-exterior",
+      "timeout_seconds": 90
+    },
+    {
+      "id": "post-exit-playable-settle",
+      "operation": "wait-seconds",
+      "duration_seconds": 3,
+      "timeout_seconds": 15
+    }
+  ]
+}
