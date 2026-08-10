@@ -20,6 +20,24 @@ def image_texture(nodes, path: Path, *, color: bool):
     return node
 
 
+def openmw_texture_name(name: str) -> str:
+    """Convert JPEG inputs when the packaged OSG runtime lacks osgdb_jpeg."""
+    source = TEXTURES / name
+    if source.suffix.lower() not in {".jpg", ".jpeg"}:
+        return name
+    target = source.with_suffix(".png")
+    if not target.exists() or target.stat().st_mtime < source.stat().st_mtime:
+        image = bpy.data.images.load(str(source), check_existing=True)
+        previous_path = image.filepath_raw
+        previous_format = image.file_format
+        image.filepath_raw = str(target)
+        image.file_format = "PNG"
+        image.save()
+        image.filepath_raw = previous_path
+        image.file_format = previous_format
+    return target.name
+
+
 def replace_portrait_material(material, *, face: bool):
     replacement = bpy.data.materials.new(material.name + " OpenMW")
     replacement.use_nodes = True
@@ -32,7 +50,8 @@ def replace_portrait_material(material, *, face: bool):
 
     if face:
         albedo_path = TEXTURES / "hf_hed_leliana_d.png"
-        normal_path = TEXTURES / "hf_hed_leliana_Younger_N.png"
+        pore_normal_path = TEXTURES / "hf_hed_leliana_Younger_Pore_N.png"
+        normal_path = pore_normal_path if pore_normal_path.exists() else TEXTURES / "hf_hed_leliana_Younger_N.png"
         principled.inputs["Roughness"].default_value = 0.74
         principled.inputs["Specular IOR Level"].default_value = 0.30
     else:
@@ -112,7 +131,11 @@ for obj in bpy.context.scene.objects:
         elif "arrow" in semantic:
             obj.data.materials[index] = replace_authored_material(material, "gen_arrow_D.png", "gen_arrow_N.png")
         elif "armor" in semantic or "leather" in semantic or "belt" in semantic:
-            obj.data.materials[index] = replace_authored_material(material, "yifu01_Base_Color.jpg", "yifu01_Normal_OpenGL.jpg")
+            obj.data.materials[index] = replace_authored_material(
+                material,
+                openmw_texture_name("yifu01_Base_Color.jpg"),
+                openmw_texture_name("yifu01_Normal_OpenGL.jpg"),
+            )
 
 # Place the accepted portrait just in front of Redcliffe's terrain shell.
 # OpenMW's world viewer is Z-up and maps Godot -Z to +Y.
@@ -168,13 +191,29 @@ if OUTPUT.suffix.lower() == ".obj":
         if block.startswith("newmtl Leliana_Face_OpenMW"):
             blocks[index] = re.sub(r"(?m)^Ka .*$", "Ka 1.000000 1.000000 1.000000", blocks[index])
             blocks[index] = re.sub(r"(?m)^illum .*$", "illum 1", blocks[index])
-            blocks[index] = re.sub(r"(?m)^map_Bump .*$\n?", "", blocks[index])
         if block.startswith("newmtl Leliana_Hair_OpenMW"):
             # map_Kd already carries the authored alpha. OSG multiplies map_d
             # by it a second time and discards the hair cards.
             blocks[index] = re.sub(r"(?m)^map_d .*$\n?", "", blocks[index])
+        if block.startswith(("newmtl Leliana_Extras_-_Arrow_", "newmtl Leliana_Extras_-_Quiver_")):
+            # The compatibility OBJ reader can expose these accessory normals
+            # as their color unit. Keep their authored albedo authoritative.
+            blocks[index] = re.sub(r"(?m)^map_Bump .*$\n?", "", blocks[index])
     mtl_text = "".join(blocks)
     mtl_path.write_text(mtl_text, encoding="utf-8")
+    # OSG's OBJ plugin drops `newmtl` names from osg::Material. Preserve the
+    # material identity as OBJ groups so the OpenMW shader visitor can select
+    # face.mat semantics on the actual face drawables.
+    rewritten_obj = []
+    for line in OUTPUT.read_text(encoding="utf-8").splitlines():
+        if line.startswith("usemtl "):
+            group = "DAO_Face_Surface" if "Leliana_Face_OpenMW" in line else "DAO_Standard_Surface"
+        # osgdb_obj discards OBJ group names, but retains object names on the
+        # resulting scene nodes. Split material runs into named objects so the
+        # OpenMW shader visitor can reliably select the DAO face pass.
+        rewritten_obj.append(f"o {group}")
+        rewritten_obj.append(line)
+    OUTPUT.write_text("\n".join(rewritten_obj) + "\n", encoding="utf-8")
 else:
     bpy.ops.export_scene.gltf(
         filepath=str(OUTPUT),

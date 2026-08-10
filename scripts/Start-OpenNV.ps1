@@ -112,11 +112,20 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 if ($OpeningVideoSeconds -lt -1) {
     throw "-OpeningVideoSeconds must be -1 (use campaign policy), 0 (no automatic cutoff), or a positive number."
 }
-$playerRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
 if ([string]::IsNullOrWhiteSpace($BinaryRoot)) {
+    $playerRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
     $BinaryRoot = $playerRuntimeRoot
 }
 $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot -ParameterValue $BinaryRoot
+if (-not $AllowExperimentalRuntime) {
+    $playerRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
+}
+else {
+    # An explicitly authorized runtime must not depend on the configured
+    # default path being present. It is still subject to the lab/download
+    # quarantine checks below.
+    $playerRuntimeRoot = $BinaryRoot
+}
 $binaryRootFull = [IO.Path]::GetFullPath($BinaryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
 $playerRuntimeFull = [IO.Path]::GetFullPath($playerRuntimeRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
 $labRuntimeRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot "local/labs")).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)

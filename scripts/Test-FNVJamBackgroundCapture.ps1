@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("All", "Retail", "OpenMW")]
+    [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy", "RealSave")]
+    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -21,10 +21,12 @@ param(
     [string]$OpeningNewVegasData = "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data",
     [string]$OpeningAudioDevice = "Stereo Mix (Realtek(R) Audio)",
     [string]$SavePath = "",
-    [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")]
+    [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")]
     [string]$RealSaveRouteId = "save330-cold-load-settle-v1",
     [ValidateRange(5, 600)]
     [int]$RealSaveCaptureSeconds = 30,
+    [ValidateRange(52, 90)]
+    [int]$TerminalCaptureSeconds = 55,
     [string]$OutputRoot = "",
     [switch]$InteractiveHandoff
 )
@@ -41,7 +43,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
         "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos"
     }
 }
-if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
+if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
     if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
         $OpeningRuntimeRoot = $pipBoyRuntimeRoot
@@ -50,10 +52,19 @@ if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
         $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
     }
 }
-$OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
+if ($Target -ne "Godot") {
+    $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
+}
+
+if (($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
+    throw "GodotRoute and GodotCinematics are dedicated Godot lanes. Use -Target Godot."
+}
 
 if ($Scenario -eq "RealSave" -and $Target -eq "All") {
     throw "RealSave is a single-engine lane. Run Retail and OpenMW as separate sequential captures."
+}
+if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
+    throw "Terminal interaction is an OpenMW-only lane. Use -Target OpenMW."
 }
 if ($Scenario -eq "RealSave" -and $InteractiveHandoff -and $Target -eq "Retail") {
     throw "Interactive handoff is restricted to the playable OpenMW lane."
@@ -108,6 +119,7 @@ $retailTtwLayerManifestPath = Join-Path $WorldsRoot "local\ttw-retail-compat\com
 $openingRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVOpeningCapture.ps1"
 $testMapRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTestMapDiagnostic.ps1"
 $pipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVPipBoyShowcaseCapture.ps1"
+$terminalRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTerminalCapture.ps1"
 $retailPipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailPipBoyStateCapture.ps1"
 $realSaveRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRealSaveCapture.ps1"
 $ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
@@ -118,6 +130,79 @@ $oracleRuntimeManifestPath =
     Join-Path $ParityRoot "local\xnvse-retail-oracle\oracle-runtime-manifest.json"
 $oracleDllPath =
     Join-Path $ParityRoot "local\xnvse-retail-oracle\plugins\nvse_retail_oracle.dll"
+
+if ($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) {
+	$isCinematic = $Scenario -eq "GodotCinematics"
+	$isPortrait = $Scenario -eq "GodotPortraits"
+	$godotRunnerPath = Join-Path $WorldsRoot $(if ($isPortrait) { "scripts\Invoke-OpenNVFamousPeopleCapture.ps1" } elseif ($isCinematic) { "scripts\Invoke-OpenNVCinematicReelCapture.ps1" } else { "scripts\Invoke-OpenNVGodotShowcaseCapture.ps1" })
+    $godotProjectPath = Join-Path $WorldsRoot "godot-fnv\project.godot"
+	$godotRoutePath = Join-Path $WorldsRoot $(if ($isCinematic -or $isPortrait) { "godot-fnv\generated\cinematics\scene-pack.json" } else { "godot-fnv\generated\world\goodsprings-strip-road-route.json" })
+    $godotActorManifestPath = Join-Path $WorldsRoot "godot-fnv\generated\actors\goodsprings-strip-dense-road-v1\actor-manifest.json"
+    $godotBinary = "D:\code\gd\Godot_v4.6.3-stable_win64.exe"
+    foreach ($path in @($catalogPath, $runbookPath, $entryPointPath, $preflightPath,
+        $godotRunnerPath, $godotProjectPath, $godotRoutePath, $godotActorManifestPath)) {
+        [void](Test-File "Canonical Godot route input exists: $([IO.Path]::GetFileName($path))" $path)
+    }
+    Test-PowerShellParse $entryPointPath
+    Test-PowerShellParse $preflightPath
+    Test-PowerShellParse $godotRunnerPath
+    try {
+        $catalog = Get-Content -Raw -LiteralPath $catalogPath | ConvertFrom-Json
+		$recipeId = if ($isPortrait) { 'opennv-godot-famous-people-v1' } elseif ($isCinematic) { 'opennv-godot-four-scenes-60fps-v1' } else { 'opennv-godot-goodsprings-strip-v1' }
+        $recipe = @($catalog.godotRecipes | Where-Object id -eq $recipeId)
+        Add-Check "Godot route recipe is uniquely declared" ($recipe.Count -eq 1) $catalogPath
+        if ($recipe.Count -eq 1) {
+            Add-Check "Godot route recipe forbids Windows app control" `
+                (-not [bool]$recipe[0].windowsAppControlUsed -and -not [bool]$catalog.policy.windowsAppControlAllowed) `
+                ([string]$recipe[0].captureMethod)
+        }
+    }
+    catch {
+        Add-Check "Godot route recipe catalog parses" $false $_.Exception.Message
+    }
+    $runnerText = Get-Content -Raw -LiteralPath $godotRunnerPath -ErrorAction SilentlyContinue
+    $forbidden = @('AppActivate', 'SetForegroundWindow', 'BringWindowToTop', 'SetFocus', 'SendInput', 'Computer Use')
+    Add-Check "Godot route runner contains no forbidden app-control mechanism" `
+        (@($forbidden | Where-Object { $runnerText -match [regex]::Escape($_) }).Count -eq 0) $godotRunnerPath
+	$driverDeclared = if ($isPortrait) {
+		$runnerText -match 'FNV_GODOT_PORTRAIT_REEL' -and $runnerText -match 'native-source-frames'
+	} elseif ($isCinematic) {
+        $runnerText -match 'FNV_GODOT_CINEMATIC_REEL' -and $runnerText -match "'60'" -and
+            $runnerText -match '--write-movie' -and $runnerText -match '--fixed-fps'
+    } else {
+        $runnerText -match 'FNV_GODOT_SELF_DRIVE' -and $runnerText -match 'FNV_GODOT_LONG_ROUTE'
+    }
+	$captureBoundaryDeclared = if ($isPortrait) { $runnerText -match 'Godot-native framebuffer portraits' } elseif ($isCinematic) { $runnerText -match 'Godot native fixed-step 60 FPS movie writer' } else {
+        $runnerText -match 'MainWindowTitle' -and $runnerText -match 'MainWindowHandle' -and $runnerText -match 'hwnd=0x'
+    }
+    Add-Check "Godot route uses its declared native capture boundary" `
+        ($driverDeclared -and $captureBoundaryDeclared) $godotRunnerPath
+    if ($RuntimeReady) {
+        [void](Test-File "Godot executable exists" $godotBinary)
+        Add-Check "ffmpeg is available" ($null -ne (Get-Command ffmpeg -ErrorAction SilentlyContinue)) "ffmpeg"
+        Add-Check "ffprobe is available" ($null -ne (Get-Command ffprobe -ErrorAction SilentlyContinue)) "ffprobe"
+    }
+    if ($RequireIdle) {
+        $active = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.ProcessName -match '^(Godot.*|openmw|FalloutNV|nvse_loader)$'
+        })
+        Add-Check "Godot route capture engines are idle" ($active.Count -eq 0) `
+            ($(if ($active.Count -eq 0) { 'idle' } else { ($active.ProcessName -join ', ') }))
+    }
+    $passed = @($checks | Where-Object { -not $_.passed }).Count -eq 0
+    $result = [ordered]@{
+        schema = 'nikami-fnv-jam-background-capture-preflight/v1'
+        passed = $passed
+        target = $Target
+        scenario = $Scenario
+        runtimeReadyChecked = [bool]$RuntimeReady
+        idleChecked = [bool]$RequireIdle
+        checks = @($checks)
+    }
+    $result | ConvertTo-Json -Depth 8
+    if (-not $passed) { throw 'Godot route background-capture preflight failed.' }
+    return
+}
 
 $canonicalFiles = [Collections.Generic.List[string]]::new()
 foreach ($path in @($catalogPath, $runbookPath, $entryPointPath, $preflightPath)) {
@@ -159,6 +244,11 @@ elseif ($Scenario -eq "PipBoy") {
         foreach ($path in @($pipBoyRunnerPath, $newVegasInitializerPath)) {
             $canonicalFiles.Add($path)
         }
+    }
+}
+elseif ($Scenario -eq "Terminal") {
+    foreach ($path in @($terminalRunnerPath, $newVegasInitializerPath)) {
+        $canonicalFiles.Add($path)
     }
 }
 elseif ($Scenario -eq "RealSave") {
@@ -208,6 +298,10 @@ if ($null -ne $catalog) {
         Add-Check "Pip-Boy capture selects one engine" `
             ($Target -in @("Retail", "OpenMW")) "target=$Target"
     }
+    if ($Scenario -eq "Terminal") {
+        Add-Check "Terminal capture is restricted to OpenMW" `
+            ($Target -eq "OpenMW") "target=$Target"
+    }
     $selectedRecipes = @($(if ($Scenario -eq "Jam") { $catalog.recipes } elseif ($Scenario -eq "Opening") {
         @($catalog.openingRecipes | Where-Object {
             ($Target -eq "All" -or $_.target -eq $Target) -and
@@ -217,6 +311,8 @@ if ($null -ne $catalog) {
         @($catalog.showcaseRecipes | Where-Object {
             $_.target -eq $Target
         })
+    } elseif ($Scenario -eq "Terminal") {
+        @($catalog.terminalRecipes | Where-Object { $_.target -eq $Target })
     } elseif ($Scenario -eq "RealSave") {
         @($catalog.realSaveRecipes | Where-Object {
             $_.target -eq $Target
@@ -235,8 +331,11 @@ if ($null -ne $catalog) {
     elseif ($Scenario -eq "PipBoy") {
         if ($Target -in @("Retail", "OpenMW")) { 1 } else { 0 }
     }
+    elseif ($Scenario -eq "Terminal") {
+        if ($Target -eq "OpenMW") { 1 } else { 0 }
+    }
     elseif ($Scenario -eq "RealSave") {
-        if ($Target -in @("Retail", "OpenMW")) { 1 } else { 0 }
+        if ($Target -eq "OpenMW") { 2 } elseif ($Target -eq "Retail") { 1 } else { 0 }
     }
     elseif ($OpeningCampaign -eq "NewVegas") {
         # Standalone New Vegas has both the ordinary authored opening proof and
@@ -324,6 +423,9 @@ elseif ($Scenario -eq "PipBoy") {
     if ($Target -eq "Retail") { $scriptsToParse.Add($retailPipBoyRunnerPath) }
     else { $scriptsToParse.Add($pipBoyRunnerPath) }
 }
+elseif ($Scenario -eq "Terminal") {
+    $scriptsToParse.Add($terminalRunnerPath)
+}
 elseif ($Scenario -eq "RealSave") {
     $scriptsToParse.Add($realSaveRunnerPath)
 }
@@ -369,6 +471,12 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
         }
         Add-Check "Pip-Boy invocation routes to the declared showcase runner" `
             $expectedPipBoyRoute `
+            $entryPointPath
+    }
+    elseif ($Scenario -eq "Terminal") {
+        Add-Check "Terminal invocation routes to the declared OpenMW runner" `
+            ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVTerminalCapture' -and
+                $entryText -match '\$Scenario\s+-eq\s+"Terminal"') `
             $entryPointPath
     }
     elseif ($Scenario -eq "RealSave") {
@@ -579,6 +687,34 @@ if ($Scenario -eq "PipBoy" -and $Target -eq "OpenMW" -and
             $pipBoyText -match 'foregroundActivationUsed\s*=\s*\$false' -and
             $pipBoyText -match 'foregroundInputInjected\s*=\s*\$false') `
         $pipBoyRunnerPath
+}
+
+if ($Scenario -eq "Terminal" -and $Target -eq "OpenMW" -and
+    (Test-Path -LiteralPath $terminalRunnerPath -PathType Leaf)) {
+    $terminalText = Get-Content -Raw -LiteralPath $terminalRunnerPath
+    foreach ($forbidden in @(
+        "AppActivate", "SetForegroundWindow", "BringWindowToTop",
+        "SetFocus", "SendInput", "Invoke-FNVRetailJamInput"
+    )) {
+        Add-Check "Terminal runner excludes $forbidden" `
+            ($terminalText -notmatch [regex]::Escape($forbidden)) $terminalRunnerPath
+    }
+    Add-Check "Terminal runner stages visibly then dispatches ordinary faced-object Activate" `
+        ($terminalText -match 'OPENMW_SELF_DRIVE_INPUT_SCRIPT' -and
+            $terminalText -match 'stage-near-form' -and $terminalText -match 'activate-faced-form' -and
+            $terminalText -notmatch '"[0-9]+,activate-form,' -and $terminalText -match 'FalloutNV\.esm') $terminalRunnerPath
+    Add-Check "Terminal runner paces actions and retains native frames plus exact-title video" `
+        ($terminalText -match '12000,screenshot' -and $terminalText -match '16000,activate-faced-form' -and
+            $terminalText -match 'title=OpenMW' -and $terminalText -match 'Terminal-\{0:D2\}-native\.png') $terminalRunnerPath
+    Add-Check "Terminal validator rejects direct activation and requires physical camera restoration" `
+        ($terminalText -match 'directActivationObserved' -and $terminalText -match 'physicalCameraEntryCount' -and
+            $terminalText -match 'cameraRestorationCount' -and $terminalText -match 'ordinaryActivationTargetObserved') `
+        $terminalRunnerPath
+    Add-Check "Terminal runner records OpenMW-only and no-control policy fields" `
+        ($terminalText -match 'retailEngineLaunched\s*=\s*\$false' -and
+            $terminalText -match 'windowsAppControlUsed\s*=\s*\$false' -and
+            $terminalText -match 'foregroundActivationUsed\s*=\s*\$false' -and
+            $terminalText -match 'foregroundInputInjected\s*=\s*\$false') $terminalRunnerPath
 }
 
 if ($Scenario -eq "RealSave" -and (Test-Path -LiteralPath $realSaveRunnerPath -PathType Leaf)) {
@@ -898,6 +1034,23 @@ if ($RuntimeReady) {
                 (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
         }
     }
+    elseif ($Scenario -eq "Terminal") {
+        Add-Check "Terminal capture duration is bounded" `
+            ($TerminalCaptureSeconds -ge 52 -and $TerminalCaptureSeconds -le 90) ([string]$TerminalCaptureSeconds)
+        [void](Test-File "Deployed OpenNV Terminal binary exists" (Join-Path $OpeningRuntimeRoot "openmw.exe"))
+        [void](Test-Directory "Deployed OpenNV Terminal resources exist" (Join-Path $OpeningRuntimeRoot "resources"))
+        foreach ($plugin in @("osgdb_bmp.dll", "osgdb_dae.dll", "osgdb_dds.dll", "osgdb_freetype.dll",
+            "osgdb_jpeg.dll", "osgdb_osg.dll", "osgdb_png.dll", "osgdb_serializers_osg.dll", "osgdb_tga.dll")) {
+            [void](Test-File "Deployed OpenNV Terminal OSG plugin exists: $plugin" `
+                (Join-Path $OpeningRuntimeRoot (Join-Path "osgPlugins-3.6.5" $plugin)))
+        }
+        [void](Test-File "Standalone New Vegas Terminal profile initializer exists" $newVegasInitializerPath)
+        [void](Test-Directory "Standalone New Vegas Terminal Data root exists" $OpeningNewVegasData)
+        [void](Test-File "Standalone New Vegas Terminal master exists" (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
+        if ($OutputRoot) {
+            Add-Check "Terminal output root is unused" (-not (Test-Path -LiteralPath $OutputRoot)) $OutputRoot
+        }
+    }
     elseif ($Scenario -eq "RealSave") {
         $expectedSaveBytes = 3395328L
         $expectedSaveSha256 = "07dbdd2d7c4abe3160628e5463a9603a40f4271042c1da1b89f1c4a4f7dbd81f"
@@ -913,8 +1066,8 @@ if ($RuntimeReady) {
                 "expected=$expectedSaveSha256 actual=$actualSaveSha256"
         }
         Add-Check "RealSave route ID is bounded" `
-            ($RealSaveRouteId -in @("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")) $RealSaveRouteId
-        if ($RealSaveRouteId -in @("save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")) {
+            ($RealSaveRouteId -in @("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")) $RealSaveRouteId
+        if ($RealSaveRouteId -in @("save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")) {
             Add-Check "RealSave selected production route is OpenMW-only" `
                 ($Target -eq "OpenMW") $Target
         }
@@ -937,6 +1090,18 @@ if ($RuntimeReady) {
             [void](Test-Directory "Standalone New Vegas RealSave Data root exists" $OpeningNewVegasData)
             [void](Test-File "Standalone New Vegas RealSave master exists" `
                 (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
+            if ($RealSaveRouteId -eq "save330-pipboy-radio-stations-v1") {
+                $deviceText = ""
+                $previousErrorActionPreference = $ErrorActionPreference
+                try {
+                    $ErrorActionPreference = "Continue"
+                    $deviceText = ((& ffmpeg -hide_banner -list_devices true -f dshow -i dummy 2>&1) | Out-String)
+                }
+                finally { $ErrorActionPreference = $previousErrorActionPreference }
+                Add-Check "RealSave radio DirectShow audio device is available" `
+                    ($deviceText -match [regex]::Escape('"' + $OpeningAudioDevice + '" (audio)')) `
+                    $OpeningAudioDevice
+            }
         }
         if ($OutputRoot) {
             Add-Check "RealSave output root is unused" `

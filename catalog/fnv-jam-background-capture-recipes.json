@@ -270,6 +270,112 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoy -OutputRoot .\\run\\opennv-pipboy-live-<unique>"
     }
   ],
+  "godotRecipes": [
+    {
+      "id": "opennv-godot-goodsprings-strip-v1",
+      "target": "Godot",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-OpenNVGodotShowcaseCapture.ps1",
+      "captureMethod": "ffmpeg records the exact native window owned by the launched Godot process after verifying its OpenNV title, with Stereo Mix audio, while Godot retains native framebuffer checkpoints",
+      "driverMethod": "engine-owned Godot self-drive enters and exits a Goodsprings interior, walks the streamed exterior route, crosses the authored Freeside and Strip door seams, and opens nearby Strip gates",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent; capture starts through engine-owned marker-file gates",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "native-source-frames/*.png",
+      "telemetryPattern": "godot.log; godot.console.log; godot-route-report.json",
+      "manifestPattern": "godot-showcase-report.json; background-capture-summary.json",
+      "videoPattern": "OpenNV-Goodsprings-to-Strip.mp4",
+      "requiredTelemetry": [
+        "the route opens a Goodsprings exterior door and its connected interior return door",
+        "the self-drive reaches all three authored worldspace seams and the collapsed Strip",
+        "thirteen native Godot framebuffer checkpoints are retained",
+        "one H.264 video stream and one AAC audio stream are retained",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotRoute -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotRoute -OutputRoot .\\run\\opennv-godot-route-<unique>"
+    },
+    {
+      "id": "opennv-godot-four-scenes-60fps-v1",
+      "target": "Godot",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-OpenNVCinematicReelCapture.ps1",
+      "captureMethod": "Godot's native movie writer records deterministic fixed-step 60 FPS frames and native game audio; ffmpeg only trims and encodes the four delivery clips from that retained native source",
+      "driverMethod": "engine-owned camera rails present four continuous exact 15-second scenes at Goodsprings, Novac, the Strip, and Vault 21 exterior through its real door into the interior",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent; marker-file gates coordinate the engine and recorder",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "native-source-frames/*.png; OpenNV-Four-Scenes-native-60fps.avi",
+      "telemetryPattern": "godot.log; cinematic-report.json",
+      "manifestPattern": "opennv-cinematic-reel-report.json; background-capture-summary.json",
+      "videoPattern": "OpenNV-*-15s-60fps.mp4",
+      "requiredTelemetry": [
+        "four new continuous scenes are each exactly 15 seconds at 1280x720 and 60 FPS",
+        "Vault 21 exterior door activates and the interior transition completes",
+        "one H.264 video stream and one AAC audio stream are retained per clip",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotCinematics -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotCinematics -OutputRoot .\\run\\opennv-godot-cinematics-<unique>"
+    },
+    {
+      "id": "opennv-godot-famous-people-v1",
+      "target": "Godot",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-OpenNVFamousPeopleCapture.ps1",
+      "captureMethod": "Godot retains native framebuffer portraits and ffmpeg creates mobile 1280x720 JPEG delivery copies from those retained PNG sources",
+      "driverMethod": "engine-owned portrait rails resolve decoded authored actor references and frame Easy Pete, Arcade Gannon, Vulpes Inculta, and Victor at their original placed locations",
+      "backgroundInputMethod": "no host input or Windows app control is used",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "native-source-frames/portrait-*.png",
+      "telemetryPattern": "godot.log; portrait-engine-report.json",
+      "manifestPattern": "opennv-famous-people-report.json; background-capture-summary.json",
+      "requiredTelemetry": [
+        "four authored actor references resolve to resident decoded actors",
+        "eight Godot-native opposing face-axis candidates are retained for deterministic front-view selection",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotPortraits -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotPortraits -OutputRoot .\\run\\opennv-godot-portraits-<unique>"
+    }
+  ],
+  "terminalRecipes": [
+    {
+      "id": "opennv-authored-terminal-paced-input-v1",
+      "target": "OpenMW",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-OpenNVTerminalCapture.ps1",
+      "captureMethod": "OpenMW ScreenCaptureHandler retains seven native framebuffer PNGs while ffmpeg retains an exact-title OpenMW transport MP4.",
+      "driverMethod": "A generic opt-in self-drive event manifest establishes a diagnostic start near the placed FalloutNV.esm terminal, aims from the real first-person camera, dwells for a visible source frame, and dispatches ordinary Activate only after the faced object matches the expected placed record, plus paced controller-menu events.",
+      "backgroundInputMethod": "No host keyboard or mouse input is sent; no Windows app control, focus change, foreground activation, or SendInput path is used.",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "Terminal-01-native.png through Terminal-07-native.png",
+      "telemetryPattern": "openmw.stdout.log; openmw.stderr.log; profile-local openmw.log; terminal-self-drive.csv",
+      "manifestPattern": "terminal-capture-report.json",
+      "videoPattern": "OpenMW-Terminal-exact-title-raw.mp4",
+      "requiredTelemetry": [
+        "only OpenMW is launched",
+        "the generic self-drive manifest is loaded",
+        "the player is staged near the placed FalloutNV.esm FormID without activating it and a native pre-activation frame is retained",
+        "the ordinary faced-object Activate action reaches the expected placed FormID twice and direct reference activation is absent",
+        "the physical terminal camera enters and restores twice around two authored hacking sessions",
+        "four controller actions and seven native screenshots execute with four-second spacing",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario Terminal -OpeningRuntimeRoot '<staged runtime>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario Terminal -OpeningRuntimeRoot '<staged runtime>' -OutputRoot .\\run\\opennv-terminal-<unique>"
+    }
+  ],
   "realSaveRecipes": [
     {
       "id": "retail-real-save330-cold-load-v1",
@@ -323,6 +429,33 @@
       ],
       "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario RealSave -SavePath '<immutable Save330 fixture>' -OpeningRuntimeRoot '<staged runtime>' -RuntimeReady -RequireIdle",
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario RealSave -SavePath '<immutable Save330 fixture>' -OpeningRuntimeRoot '<staged runtime>' -OutputRoot .\\run\\fnv-real-save-campaign\\<unique-run-id>"
+    },
+    {
+      "id": "openmw-real-save330-pipboy-radio-stations-with-audio-v1",
+      "target": "OpenMW",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-FNVRealSaveCapture.ps1",
+      "captureMethod": "OpenMW loads immutable Save330, retains native ScreenCaptureHandler frames for every authored Pip-Boy radio row, and records the exact OpenMW title with DirectShow Stereo Mix audio",
+      "driverMethod": "engine-owned navigation enters the production Pip-Boy DATA/RADIO pane and activates each FalloutNV.esm-derived station row through its normal callback",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent; no focus or foreground activation is used",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "occlusionPolicy": "OpenMW remains shown and unminimized for passive exact-title capture",
+      "sourceFramePattern": "native-source-frames/screenshot*.png; Save330-D03-radio-*.png",
+      "telemetryPattern": "openmw.stdout.log; profile-local openmw.log; real-save-state.json",
+      "manifestPattern": "real-save-capture-report.json",
+      "videoPattern": "OpenMW-Save330-D03-radio-stations-exact-title-raw-with-audio.mp4",
+      "requiredTelemetry": [
+        "radio roster is derived from loaded FalloutNV.esm TACT radio-station records",
+        "every returned station row activates through the production Pip-Boy callback and reports live playback",
+        "one native station frame per returned row is retained",
+        "one audible AAC stream is retained",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario RealSave -RealSaveRouteId save330-pipboy-radio-stations-v1 -OpeningRuntimeRoot '<staged runtime>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario RealSave -RealSaveRouteId save330-pipboy-radio-stations-v1 -RealSaveCaptureSeconds 180 -OpeningRuntimeRoot '<staged runtime>' -OutputRoot .\\run\\fnv-save330-radio-<unique>"
     }
   ],
   "knownGoodEvidence": {

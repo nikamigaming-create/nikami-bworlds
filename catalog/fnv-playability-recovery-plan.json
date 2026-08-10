@@ -1,0 +1,382 @@
+{
+  "schema": "nikami-fnv-playability-recovery/v1",
+  "status": "active",
+  "started": "2026-08-07",
+  "activePriority": {
+    "subsystem": "terminal-hacking",
+    "requested": "2026-08-07",
+    "scope": [
+      "activation-and-exit",
+      "authored-terminal-presentation",
+      "locked-and-password-access",
+      "hacking-minigame",
+      "conditions-submenus-and-result-scripts",
+      "world-state-effects",
+      "save-load-persistence",
+      "paced-openmw-only-verification"
+    ],
+    "pipBoyRecovery": "parked-at-authored-held-arm-loops-v1-candidate",
+    "next": "lockpicking"
+  },
+  "terminalRecovery": {
+    "workingTree": "local/labs/fnv-playability-recovery-work-20260807",
+    "mechanicsStatus": "integrated-under-test",
+    "implemented": [
+      "complete-DNAM-preservation-and-access-resolution",
+      "science-and-password-note-access",
+      "deterministic-BSA-falloutdict-word-sets",
+      "four-attempt-hacking-likeness-dud-and-allowance-rules",
+      "per-placement-hacked-and-lockout-save-state",
+      "conditional-menu-items-and-TNAM-submenus",
+      "source-and-supported-compiled-result-script-transactions",
+      "ANAM-add-note-save-state-and-Pip-Boy-note-list",
+      "DATA-0-1-2-3-note-payload-preservation",
+      "authored-terminal-sound-dispatch",
+      "GMST-driven-hacking-word-count",
+      "difficulty-specific-authored-hack-XP-reward",
+      "shared-Bethesda-Tile-XML-parser-and-recursive-prefab-expansion",
+      "named-tile-expression-resolution-and-authored-modal-frame",
+      "authored-two-column-memory-grid-and-substring-targets",
+      "same-row-bracket-targets-and-single-effect-consumption",
+      "ComputerWhiz-single-retry-and-save-state",
+      "explicit-hacking-cancel-and-logical-controller-target-focus",
+      "installed-runtime-manifest-for-openmw-fnv-menu-layout"
+    ],
+    "focusedTests": { "passed": 107, "failed": 0 },
+    "currentCorrections": [
+      "normalize-authored-menu-image-filenames-into-Fallout-textures-VFS-namespace",
+      "regression-test-XML-texture-path-whitespace-slashes-and-prefix",
+      "scope-terminal-camera-to-authored-TERM-bounds-and-player-approach-side",
+      "restore-previous-camera-mode-orientation-and-FOV-on-all-terminal-exits",
+      "replace-canonical-direct-reference-activation-with-visible-staging-and-production-A-Activate",
+      "require-expected-faced-FormId-two-camera-lifecycles-and-seven-paced-native-frames"
+    ],
+    "build": {
+      "status": "openmw-and-openmw-tests-pass",
+      "runtime": "terminal-authored-grid-controls-v2",
+      "openmwSha256": "F74C4AB42E797470802AE11BBA975C7D84EAFAD71701E917DC09FE8DEE09F7A3"
+    },
+    "preflight": { "runtime": "terminal-authored-grid-controls-v2", "checks": 52, "failed": 0 },
+    "videoReady": false,
+    "rejectedDiagnostics": [
+      {
+        "path": "run/opennv-terminal-20260807-v6-candidate6",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "spawned-at-cell-origin-with-terminal-not-visible",
+          "activated-off-screen-reference-directly",
+          "authored-texture-path-missed-Fallout-textures-VFS-prefix",
+          "generated-missing-texture-X-was-stretched-over-menu",
+          "terminal-content-was-a-floating-modal-not-a-physical-monitor-presentation"
+        ]
+      },
+      {
+        "path": "run/opennv-terminal-20260807-v7-candidate7",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "fixed-eight-second-stage-fired-before-the-placed-TERM-became-active",
+          "new-game-handoff-aborted-on-missing-active-reference",
+          "seven-retained-frames-show-repeated-failure-state-not-terminal-interaction"
+        ]
+      },
+      {
+        "path": "run/opennv-terminal-20260807-v8-candidate8",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "placement-succeeded-but-actor-bounds-eye-estimate-aimed-above-terminal",
+          "first-ordinary-activation-faced-nothing-and-second-faced-unrelated-record",
+          "seven-retained-frames-show-no-terminal-camera-or-hacking-session"
+        ]
+      },
+      {
+        "path": "run/opennv-terminal-20260807-v9-candidate9",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "target-gate-correctly-rejected-both-wrong-faced-objects",
+          "cached-public-camera-position-was-zero-during-input-phase",
+          "first-four-retained-frames-repeat-wall-facing-candidate8-view"
+        ]
+      },
+      {
+        "path": "run/opennv-terminal-20260807-v10-candidate10",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "real-eye-position-used-but-camera-pitch-sign-was-inverted",
+          "frame-displayed-terminal-label-while-view-aimed-farther-toward-ceiling",
+          "full-formid-comparison-rejected-equivalent-load-order-remapped-placement"
+        ]
+      },
+      {
+        "path": "run/opennv-terminal-20260807-v11-candidate11",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "corrected-camera-pitch-was-transient",
+          "first-person-update-restored-zero-pitch-from-player-reference",
+          "retained-frames-returned-to-wall-facing-view-before-activation"
+        ]
+      },
+      {
+        "path": "run/opennv-terminal-20260807-v12-candidate12",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "world-rotateobject-is-not-live-first-person-player-look-owner",
+          "pre-activation-frame-remained-byte-identical-to-wall-facing-baseline",
+          "no-ordinary-activation-terminal-camera-or-hacking-session"
+        ]
+      },
+      {
+        "path": "run/opennv-terminal-20260807-v13-candidate13",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "placed-term-00103b3c-resolved-to-authored-base-000b3b6",
+          "activation-ray-faced-null-then-unrelated-stat",
+          "comparison-with-candidate10-proved-direct-geometric-pitch-sign"
+        ]
+      },
+      {
+        "path": "run/opennv-terminal-20260807-v14-candidate14",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "one-shot-player-pitch-did-not-maintain-term-facing-through-paced-dwell",
+          "ordinary-activation-faced-null-then-unrelated-stat",
+          "no-terminal-camera-or-hacking-session"
+        ]
+      },
+      {
+        "path": "run/opennv-terminal-20260807-v15-candidate15",
+        "status": "fail-not-evidence",
+        "reasons": [
+          "machine-validator-passed-but-visual-physical-presentation-failed",
+          "actor-approached-terminal-from-side-rear-quarter",
+          "equal-depth-crt-background-covered-authored-hacking-glyphs",
+          "gameplay-hud-remained-visible-during-terminal-session"
+        ]
+      }
+    ],
+    "physicalPresentationContract": {
+      "authoredTerminalMeshVisibleBeforeActivation": true,
+      "ordinaryActivationRangeRequired": true,
+      "ordinaryActivateActionRequired": true,
+      "ordinaryActivateMustWaitForExpectedFacedForm": true,
+      "cameraMustSettleOnPhysicalScreen": true,
+      "xmlMustRenderInPhysicalMonitorPresentation": true,
+      "allXmlImagesMustResolveThroughVfs": true,
+      "generatedMissingTextureFallbackAllowed": false,
+      "cameraAndControlsRestoredOnExit": true,
+      "directRemoteActionQualifiesAsEvidence": false
+    },
+    "authoredDnamCensus": {
+      "officialPhysicalTermRecords": 515,
+      "serializedSizes": { "threeBytes": 2, "fourBytes": 513 },
+      "flags": {
+        "none": 192,
+        "leveled": 9,
+        "unlocked": 304,
+        "leveledAndUnlocked": 4,
+        "unlockedAndAlternateColors": 1,
+        "hideWelcome": 2,
+        "unlockedAndHideWelcome": 3
+      },
+      "unlockedAccessImplemented": true,
+      "leveledFormulaVerified": false
+    },
+    "openGates": [
+      "complete-authored-hacking-boot-type-flash-and-skip-timing",
+      "complete-authored-computers-menu-tile-population-and-transition-timing",
+      "apply-alternate-colors-and-hide-welcome-DNAM-presentation-flags",
+      "render-DATA-2-image-notes-and-play-DATA-3-voice-notes",
+      "verify-and-implement-exact-fLeveledLockMult-DNAM-rule-for-13-official-records",
+      "inventory-and-classify-any-unsupported-compiled-terminal-opcodes",
+      "declare-canonical-OpenMW-Terminal-capture-scenario-and-validator",
+      "replace-remote-terminal-trigger-with-visible-in-range-ordinary-activation",
+      "bind-authored-computers-and-hacking-presentation-to-the-physical-terminal-screen",
+      "reject-unresolved-XML-images-and-generated-texture-fallbacks",
+      "paced-OpenMW-only-multi-terminal-save-reload-capture"
+    ]
+  },
+  "scope": {
+    "runtime": "flat-openmw.exe",
+    "campaign": "FalloutNewVegas",
+    "initialModSet": "vanilla",
+    "jamAfterVanillaPromotion": true,
+    "vrAllowed": false
+  },
+  "pipBoyUiModes": {
+    "default": "retail",
+    "available": ["retail", "native"],
+    "retail": "authored New Vegas XML/assets and data-driven behavior",
+    "native": "OpenMW live menu rendered onto the same authored physical screen",
+    "sharedStateAndActions": true,
+    "duplicateGameplayLogicAllowed": false,
+    "implementationOrder": "after-authored-pose-and-transition-recovery",
+    "authoredCorpusConfirmed": [
+      "menus/main/stats_menu.xml",
+      "menus/main/inventory_menu.xml",
+      "menus/main/map_menu.xml",
+      "menus/globals.xml",
+      "menus/prefabs/*.xml"
+    ],
+    "rendererContract": "render shipped Tile XML directly; OpenMW supplies runtime traits, strings, lists, events, animations, and gameplay callbacks",
+    "diagnosticExtraction": "local/diagnostics/fnv-pipboy-authored-xml-20260807-01",
+    "focusedCompatibilityTests": { "passed": 104, "total": 104 }
+  },
+  "worldInteractionMenus": {
+    "terminalHacking": "authored terminal content, hacking rules, script results, and persisted state",
+    "lockpicking": "record-driven lock difficulty, skill/perk rules, minigame, resource use, crime, and persisted state",
+    "hardcodedSolutionsAllowed": false,
+    "proofOnlyBypassesAllowed": false,
+    "implementationOrder": "terminal-hacking-active-now; lockpicking-next"
+  },
+  "candidateLadder": [
+    { "commit": "babcda4f57", "label": "playable-weapon-fire-checkpoint" },
+    { "commit": "41fc45f2e5", "label": "native-compat-before-pipboy-integration" },
+    { "commit": "b1c0b2d841", "label": "clean-recovery-candidate" },
+    { "commit": "5fb9e4e0aa", "label": "pipboy-player-control-integration-boundary" },
+    { "commit": "483127f6d2", "label": "save330-replay-boundary" },
+    { "commit": "843e916fb9", "label": "frozen-mode3-sample" },
+    { "commit": "6719b2cc97", "label": "remove-frozen-mode3-hold" },
+    { "commit": "86cee815f1", "label": "restore-authored-weapon-idle-handoff" },
+    { "commit": "a756aa8a90", "label": "pace-d02-roster-advance" },
+    { "commit": "31c5cb684e", "label": "retire-active-semantics-before-family-rebind" },
+    { "commit": "b9474def69", "label": "restore-pose-after-interrupted-handoff" },
+    { "commit": "1c32ed5b42", "label": "defer-steady-pose-until-stable-frame" },
+    { "commit": "58d1f54da5", "label": "skip-steady-pose-recovery-while-unarmed" },
+    { "commit": "033edc9a40", "label": "retire-stale-action-before-steady-pose", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "d02": { "status": "pass", "weapons": 10, "nativeFrames": 10 },
+      "coldLoadSeconds": { "status": "pass", "seconds": 60 },
+      "d01": { "status": "mechanical-pass-visual-partial", "categories": 5, "nativeFrames": 5, "uprightCentered": true, "retailUi": false }
+    } },
+    { "commit": "f679fd1c13", "label": "separate-frame-trace-from-summary-telemetry" },
+    { "commit": "1757e43546", "label": "require-visible-action-agreement", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "d02": { "status": "pass", "weapons": 10, "nativeFrames": 10, "firstThirdPersonAgreementRecoveryObserved": true },
+      "frameTraceRecords": 0,
+      "stdoutBytes": 2697608
+    } },
+    { "commit": "6c7bada448", "label": "idempotent-fallout-weapon-attachment", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "cleanCandidateBuild": { "status": "infrastructure-fail", "reason": "MSVC LNK1140 linker PDB limit" },
+      "inGameRoute": { "status": "pending-clean-runtime" }
+    } },
+    { "commit": "a8bd525801", "label": "require-visible-action-playback", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "d02": { "status": "fail", "nativeFrames": 9, "reason": "primary action state still trusted getInfo without isPlaying" }
+    } },
+    { "commit": "ae7143db2f", "label": "reject-inactive-fallout-action-state", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "d02": { "status": "pass", "weapons": 10, "nativeFrames": 10, "finalReloadRecovery": "inactive-reload-to-weaponpose" },
+      "coldLoadSeconds": { "status": "pass", "seconds": 60 },
+      "d01": { "status": "mechanical-pass-visual-partial", "categories": 5, "nativeFrames": 5, "uprightCentered": true, "retailUi": false },
+      "attachmentMoveLogCount": 3,
+      "stdoutBytes": 2393244
+    } },
+    { "commit": "accadcc272", "label": "use-authored-ads-and-inventory-data", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "adsFovOwner": "equipped WEAP sightFov",
+      "syntheticProofInventoryRemoved": true
+    } },
+    { "commit": "4ad979f04e", "label": "bind-live-gui-layer-to-pipboy-screen", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "d01": { "status": "rejected-visual", "mechanicalStatus": "pass", "categories": 5, "nativeFrames": 5, "screen": "black" }
+    } },
+    { "commit": "fac6690672", "label": "render-pipboy-gui-direct-fbo", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "d01": { "status": "rejected-visual", "mechanicalStatus": "pass", "categories": 5, "nativeFrames": 5, "screen": "black" },
+      "diagnosis": "premature viewport assignment left MyGUI pixel scale uninitialized"
+    } },
+    { "commit": "d446ca9c61", "label": "initialize-pipboy-gui-render-metrics", "verification": {
+      "build": "incremental-diagnostic",
+      "d01": { "status": "transport-pass-layout-fail", "mechanicalStatus": "pass", "categories": 5, "nativeFrames": 5, "liveCategoryChangesVisible": true, "layout": "small-upper-left" },
+      "promotionBlockedBy": ["authored-tile-xml-not-loaded", "synthetic-terminal-layer", "synthetic-physical-controls"]
+    } },
+    { "commit": "195f3c3706", "label": "remove-generated-pipboy-terminal-rasterizer", "verification": {
+      "incrementalBuild": "pass",
+      "generatedRasterLinesRemoved": 717,
+      "screenTransportPreserved": true
+    } },
+    { "commit": "ceea6b175dca", "label": "render-native-inventory-panes-on-pipboy-screen", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "d01": { "status": "mechanical-pass-physical-mesh-fail", "categories": 5, "nativeFrames": 5, "nativePaneRttBounds": "full", "visibleGlassOccupancy": "upper-left-only" },
+      "capturePolicy": { "windowsAppControlUsed": false, "foregroundActivationUsed": false, "foregroundInputInjected": false },
+      "diagnosis": "native pane fills RTT; skinned pipboyscreen geometry does not fill visible glass",
+      "promotionBlockedBy": ["first-person-pipboy-screen-mesh-skinning", "authored-tile-xml-not-loaded", "synthetic-physical-controls"]
+    } },
+    { "commit": "8c897667b946", "label": "fit-native-pipboy-panes-to-authored-glass", "verification": {
+      "componentTests": { "passed": 1577, "skipped": 8, "failed": 0 },
+      "d01": { "status": "visual-pass-native-pane", "mechanicalStatus": "pass", "categories": 5, "nativeFrames": 5, "upright": true, "readable": true, "authoredGlassFilled": true },
+      "capturePolicy": { "windowsAppControlUsed": false, "foregroundActivationUsed": false, "foregroundInputInjected": false },
+      "dataOwners": ["Screen.dds material references", "live MyGUI widget dimensions", "loaded NIF geometry bounds"],
+      "evidence": "run/fnv-playability-recovery-20260807/native-pane-phosphor-v1-d01-20260807-151322",
+      "remaining": ["authored-first-person-pipboy-animation-ownership", "synthetic-physical-controls", "authored-tile-xml-routing"]
+    } }
+  ],
+  "timing": {
+    "policy": "observable-state-first-with-minimum-settle",
+    "transitions": {
+      "press": { "minimumSettleMs": 100, "timeoutMs": 1000 },
+      "release": { "minimumSettleMs": 150, "timeoutMs": 1000 },
+      "drawHolster": { "minimumSettleMs": 750, "timeoutMs": 4000 },
+      "ads": { "minimumSettleMs": 500, "timeoutMs": 3000 },
+      "reload": { "minimumPostCompletionSettleMs": 250, "timeoutPaddingMs": 3000 },
+      "pipBoyRaise": { "minimumSettleMs": 750, "timeoutMs": 5000 },
+      "pipBoyPage": { "minimumSettleMs": 350, "timeoutMs": 3000 },
+      "pipBoyItem": { "minimumSettleMs": 500, "timeoutMs": 4000 },
+      "pipBoyLower": { "minimumSettleMs": 750, "timeoutMs": 5000 },
+      "cameraMode": { "minimumSettleMs": 500, "timeoutMs": 3000 },
+      "dialogue": { "minimumSettleMs": 500, "timeoutMs": 5000 },
+      "cellTransition": { "minimumSettleMs": 1000, "timeoutMs": 20000 }
+    }
+  },
+  "normalRunForbidden": {
+    "environmentPrefixes": [
+      "OPENMW_FNV_PROOF_",
+      "OPENMW_FNV_VATS_PROOF",
+      "OPENMW_FNV_FORCED_"
+    ],
+    "sourceNeedles": [
+      "retailRaisedContactSeconds",
+      "raiseState->second.setTime",
+      "waverState->second.setTime",
+      "updatePipBoyTerminalTexture",
+      "FNV_PROOF_"
+    ],
+    "behaviors": [
+      "proof-driver-writes-normal-input-state",
+      "proof-driver-rotates-player-or-camera",
+      "save-specific-production-branch",
+      "frozen-animation-time",
+      "synthetic-pipboy-contact-transform",
+      "hard-coded-weapon-fov"
+    ]
+  },
+  "sustainedSessionMinutes": 20,
+  "captureContract": {
+    "preflight": "scripts/Test-FNVJamBackgroundCapture.ps1",
+    "entryPoint": "scripts/Invoke-FNVJamBackgroundCapture.ps1",
+    "liveEngine": "OpenMW-only",
+    "retailLaunchAllowed": false,
+    "retailReferenceMode": "read-only-existing-captures-and-authored-game-data",
+    "windowsAppControlAllowed": false,
+    "foregroundInputAllowed": false,
+    "concurrentRetailAndOpenMWAllowed": false,
+    "overwriteEvidenceAllowed": false
+  },
+  "promotionRequires": [
+    "clean-source",
+    "reproducible-build",
+    "binary-resource-same-tree",
+    "focused-tests-pass",
+    "paced-vanilla-route-pass",
+    "complete-pipboy-transition-pass",
+    "first-third-person-state-agreement",
+    "ordinary-combat-pass",
+    "ui-shader-boundary-pass",
+    "terminal-hacking-route-pass",
+    "lockpicking-route-pass",
+    "no-normal-proof-behavior",
+    "sustained-session-pass",
+    "validated-against-existing-retail-reference-artifacts",
+    "explicit-interactive-acceptance"
+  ]
+}

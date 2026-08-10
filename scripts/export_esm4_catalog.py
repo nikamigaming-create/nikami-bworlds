@@ -11,6 +11,19 @@ REC_COMPRESSED = 0x00040000
 REC_LOCALIZED = 0x00000080
 CELL_INTERIOR = 0x0001
 
+CONDITION_FORM_PARAM1_FUNCTIONS = {
+    1, 47, 67, 68, 69, 71, 72, 74, 79, 84, 110, 180, 214, 237, 258,
+    277, 278, 280, 282, 285, 286, 300, 365, 398, 408, 409, 448, 449, 450,
+}
+CONDITION_OPERATORS = {
+    0x00: "equal",
+    0x20: "not_equal",
+    0x40: "greater",
+    0x60: "greater_or_equal",
+    0x80: "less",
+    0xA0: "less_or_equal",
+}
+
 
 def u16(data, offset):
     return struct.unpack_from("<H", data, offset)[0]
@@ -75,10 +88,11 @@ def subrecords(payload):
 
 
 class ESM4Catalog:
-    def __init__(self, path, mod_index=0, terms=None):
+    def __init__(self, path, mod_index=0, terms=None, form_resolver=None):
         self.path = Path(path)
         self.data = self.path.read_bytes()
         self.mod_index = mod_index
+        self.form_resolver = form_resolver
         self.terms = [term.lower() for term in (terms or []) if term]
         self.header_size = self.detect_header_size()
         self.localized = False
@@ -86,6 +100,56 @@ class ESM4Catalog:
         self.worlds = {}
         self.cells = {}
         self.placements = []
+        self.navmeshes = {}
+
+    def resolve_form(self, raw_form):
+        if raw_form == 0:
+            return None
+        return self.form_resolver(raw_form) if self.form_resolver is not None else form(raw_form, self.mod_index)
+
+    def resolve_form_from_raw(self, raw):
+        return self.resolve_form(u32(raw, 0)) if len(raw) >= 4 else None
+
+    def parse_condition(self, name, raw):
+        if len(raw) not in (20, 24, 28, 36):
+            return {"subrecord": name, "bytes": len(raw), "hex": raw.hex(), "supportedLayout": False}
+        flags = u32(raw, 0)
+        comparison_bits = u32(raw, 4)
+        function_id = u16(raw, 8)
+        param1_raw = u32(raw, 12)
+        param2_raw = u32(raw, 16)
+        if len(raw) == 20:
+            param3_raw, run_on, reference_raw = None, 0, 0
+        elif len(raw) == 24:
+            param3_raw, run_on, reference_raw = None, u32(raw, 20), 0
+        elif len(raw) == 28:
+            param3_raw, run_on, reference_raw = None, u32(raw, 20), u32(raw, 24)
+        else:
+            param3_raw, run_on, reference_raw = u32(raw, 20), u32(raw, 24), u32(raw, 28)
+        uses_global = (flags & 0x04) != 0
+        return {
+            "subrecord": name,
+            "bytes": len(raw),
+            "supportedLayout": True,
+            "flags": flags,
+            "orWithNext": (flags & 0x01) != 0,
+            "runOnTarget": (flags & 0x02) != 0,
+            "comparisonUsesGlobal": uses_global,
+            "operator": CONDITION_OPERATORS.get(flags & 0xE0, "unsupported"),
+            "comparison": None if uses_global else f32(raw, 4),
+            "comparisonGlobal": self.resolve_form(comparison_bits) if uses_global else None,
+            "functionId": function_id,
+            "functionWordHigh": u16(raw, 10),
+            "param1": self.resolve_form(param1_raw)
+            if function_id in CONDITION_FORM_PARAM1_FUNCTIONS else param1_raw,
+            "param1IsForm": function_id in CONDITION_FORM_PARAM1_FUNCTIONS and param1_raw != 0,
+            "param1Raw": param1_raw,
+            "param2Raw": param2_raw,
+            "param3Raw": param3_raw,
+            "runOn": run_on,
+            "reference": self.resolve_form(reference_raw),
+            "referenceRaw": reference_raw,
+        }
 
     def detect_header_size(self):
         if self.data[:4] != b"TES4":
@@ -104,7 +168,13 @@ class ESM4Catalog:
 
     def parse_payload(self, rtype, payload, flags):
         fields = {}
+        current_land_layer = None
+        navmesh_parts = {}
         for name, raw in subrecords(payload):
+            if rtype == "NAVM" and name in {
+                "NVER", "DATA", "NVVX", "NVTR", "NVCA", "NVDP", "NVGD", "NVEX"
+            }:
+                navmesh_parts[name] = raw
             if name == "EDID":
                 fields["editorId"] = zstr(raw)
             elif rtype == "GMST" and name == "DATA" and len(raw) >= 4:
@@ -133,20 +203,54 @@ class ESM4Catalog:
             elif rtype == "CELL" and name == "XCLC" and len(raw) >= 8:
                 fields["x"] = i32(raw, 0)
                 fields["y"] = i32(raw, 4)
+            elif rtype == "LAND" and name == "VHGT" and len(raw) >= 4 + (33 * 33):
+                fields["heightOffset"] = f32(raw, 0)
+                fields["heightDeltas"] = list(struct.unpack_from("<1089b", raw, 4))
+            elif rtype == "LAND" and name == "BTXT" and len(raw) >= 8:
+                fields.setdefault("baseTextures", []).append(
+                    {
+                        "texture": self.resolve_form_from_raw(raw),
+                        "quadrant": raw[4],
+                    }
+                )
+                current_land_layer = None
+            elif rtype == "LAND" and name == "ATXT" and len(raw) >= 8:
+                current_land_layer = {
+                    "texture": self.resolve_form_from_raw(raw),
+                    "quadrant": raw[4],
+                    "layer": u16(raw, 6),
+                    "vertices": [],
+                }
+                fields.setdefault("alphaTextures", []).append(current_land_layer)
+            elif rtype == "LAND" and name == "VTXT" and current_land_layer is not None:
+                # One VTXT subrecord contains sparse 8-byte vertex entries:
+                # quadrant-local vertex index, padding, and authored opacity.
+                for offset in range(0, len(raw) - 7, 8):
+                    current_land_layer["vertices"].append(
+                        {"index": u16(raw, offset), "opacity": f32(raw, offset + 4)}
+                    )
+            elif rtype == "NAVM" and name == "NVNM":
+                fields["navmeshData"] = self.parse_navmesh_nvnm(raw)
+            elif rtype == "LTEX" and name == "ICON":
+                fields["landTexture"] = zstr(raw)
+            elif rtype == "LTEX" and name == "TNAM" and len(raw) >= 4:
+                fields["textureSet"] = self.resolve_form_from_raw(raw)
+            elif rtype == "TXST" and name == "TX00":
+                fields["diffuseTexture"] = zstr(raw)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "NAME" and len(raw) >= 4:
-                fields["base"] = form(u32(raw, 0), self.mod_index)
+                fields["base"] = self.resolve_form(u32(raw, 0))
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "DATA" and len(raw) >= 24:
                 fields["pos"] = [f32(raw, 0), f32(raw, 4), f32(raw, 8)]
                 fields["rot"] = [f32(raw, 12), f32(raw, 16), f32(raw, 20)]
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XSCL" and len(raw) >= 4:
                 fields["scale"] = f32(raw, 0)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XESP" and len(raw) >= 8:
-                fields["enableParent"] = form_from_raw(raw, self.mod_index)
+                fields["enableParent"] = self.resolve_form_from_raw(raw)
                 fields["enableParentFlags"] = u32(raw, 4)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XOWN" and len(raw) >= 4:
-                fields["owner"] = form_from_raw(raw, self.mod_index)
+                fields["owner"] = self.resolve_form_from_raw(raw)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XGLB" and len(raw) >= 4:
-                fields["global"] = form_from_raw(raw, self.mod_index)
+                fields["global"] = self.resolve_form_from_raw(raw)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XRNK" and len(raw) >= 4:
                 fields["factionRank"] = i32(raw, 0)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XCNT" and len(raw) >= 4:
@@ -154,35 +258,98 @@ class ESM4Catalog:
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XLOC" and len(raw) >= 8:
                 fields["isLocked"] = True
                 fields["lockLevel"] = struct.unpack_from("<b", raw, 0)[0]
-                fields["lockKey"] = form_from_raw(raw[4:], self.mod_index)
+                fields["lockKey"] = self.resolve_form_from_raw(raw[4:])
                 fields["lockDataBytes"] = len(raw)
             elif rtype in ("NPC_", "CREA") and name == "ACBS" and len(raw) >= 4:
                 fields["actorFlags"] = u32(raw, 0)
                 # TES4-family actor flags use bit 0 for female on the games we mine here.
                 fields["femaleFlag"] = (fields["actorFlags"] & 1) != 0
             elif rtype == "NPC_" and name == "RNAM" and len(raw) >= 4:
-                fields["race"] = form_from_raw(raw, self.mod_index)
+                fields["race"] = self.resolve_form_from_raw(raw)
             elif rtype == "NPC_" and name == "HNAM" and len(raw) >= 4:
-                fields["hair"] = form_from_raw(raw, self.mod_index)
+                fields["hair"] = self.resolve_form_from_raw(raw)
             elif rtype == "NPC_" and name == "ENAM" and len(raw) >= 4:
-                fields["eyes"] = form_from_raw(raw, self.mod_index)
+                fields["eyes"] = self.resolve_form_from_raw(raw)
             elif rtype == "NPC_" and name == "PNAM" and len(raw) >= 4:
-                fields.setdefault("headParts", []).append(form_from_raw(raw, self.mod_index))
-            elif rtype == "NPC_" and name == "TPLT" and len(raw) >= 4:
-                fields["baseTemplate"] = form_from_raw(raw, self.mod_index)
-            elif rtype == "NPC_" and name == "EAMT" and len(raw) >= 2:
+                fields.setdefault("headParts", []).append(self.resolve_form_from_raw(raw))
+            elif rtype in ("NPC_", "CREA") and name == "TPLT" and len(raw) >= 4:
+                fields["baseTemplate"] = self.resolve_form_from_raw(raw)
+            elif rtype in ("NPC_", "CREA") and name == "EAMT" and len(raw) >= 2:
                 fields["templateFlags"] = u16(raw, 0)
+            elif rtype in ("NPC_", "CREA") and name == "PKID" and len(raw) >= 4:
+                fields.setdefault("packages", []).append(self.resolve_form_from_raw(raw))
+            elif rtype == "PACK" and name == "PKDT" and len(raw) >= 4:
+                package_data = {"flags": u32(raw, 0), "type": 0}
+                if len(raw) >= 12:
+                    package_data.update(
+                        type=raw[4],
+                        procedureFlags=u16(raw, 6),
+                        typeSpecificFlags=u16(raw, 8),
+                    )
+                elif len(raw) >= 8:
+                    package_data["type"] = i32(raw, 4)
+                fields["packageData"] = package_data
+            elif rtype == "PACK" and name == "PSDT" and len(raw) >= 8:
+                fields["packageSchedule"] = {
+                    "month": raw[0],
+                    "dayOfWeek": raw[1],
+                    "date": raw[2],
+                    "time": raw[3],
+                    "duration": u32(raw, 4),
+                }
+            elif rtype == "PACK" and name in ("PLDT", "PLD2") and len(raw) >= 12:
+                location_type = i32(raw, 0)
+                raw_location = u32(raw, 4)
+                location = raw_location if location_type == 5 else self.resolve_form(raw_location)
+                entry = {
+                    "type": location_type,
+                    "location": location,
+                    "locationIsForm": location_type != 5,
+                    "radius": i32(raw, 8),
+                }
+                if name == "PLDT":
+                    fields["packageLocation"] = entry
+                else:
+                    fields.setdefault("packageExtraLocations", []).append(entry)
+            elif rtype == "PACK" and name in ("PTDT", "PTD2") and len(raw) >= 12:
+                target_type = i32(raw, 0)
+                raw_target = u32(raw, 4)
+                target = raw_target if target_type == 2 else self.resolve_form(raw_target)
+                entry = {
+                    "type": target_type,
+                    "target": target,
+                    "targetIsForm": target_type != 2,
+                    "distance": i32(raw, 8),
+                }
+                if len(raw) >= 16:
+                    entry["unknown"] = f32(raw, 12)
+                if name == "PTDT":
+                    fields["packageTarget"] = entry
+                else:
+                    fields.setdefault("packageExtraTargets", []).append(entry)
+            elif rtype == "PACK" and name in ("CTDA", "CTDT"):
+                fields.setdefault("conditionData", []).append(self.parse_condition(name, raw))
+            elif rtype == "PACK" and name == "IDLF" and raw:
+                fields["packageIdleFlags"] = raw[0] if len(raw) == 1 else u32(raw, 0) & 0xff
+            elif rtype == "PACK" and name == "IDLC" and raw:
+                fields["packageIdleCount"] = raw[0] if len(raw) == 1 else u32(raw, 0)
+            elif rtype == "PACK" and name == "IDLT" and len(raw) >= 4:
+                fields["packageIdleTimer"] = f32(raw, 0)
+            elif rtype == "PACK" and name == "IDLA" and len(raw) % 4 == 0:
+                fields["packageIdleAnimations"] = [
+                    self.resolve_form(u32(raw, offset)) for offset in range(0, len(raw), 4)
+                ]
             elif rtype in ("NPC_", "CREA", "CONT") and name == "CNTO" and len(raw) >= 8:
                 fields.setdefault("inventory", []).append(
                     {
-                        "item": form_from_raw(raw, self.mod_index),
+                        "item": self.resolve_form_from_raw(raw),
                         "count": i32(raw, 4),
                     }
                 )
             elif rtype == "NPC_" and name == "DOFT" and len(raw) >= 4:
-                fields["defaultOutfit"] = form_from_raw(raw, self.mod_index)
+                fields["defaultOutfit"] = self.resolve_form_from_raw(raw)
             elif rtype == "NPC_" and name == "SOFT" and len(raw) >= 4:
-                fields["sleepOutfit"] = form_from_raw(raw, self.mod_index)
+                fields["sleepOutfit"] = self.resolve_form_from_raw(raw)
             elif rtype == "NPC_" and name == "LNAM" and len(raw) >= 4:
                 fields["hairLength"] = f32(raw, 0)
             elif rtype == "NPC_" and name == "HCLR" and len(raw) >= 4:
@@ -197,23 +364,27 @@ class ESM4Catalog:
                 fields.setdefault("modelSlots", []).append({"slot": name, "model": zstr(raw)})
             elif rtype in ("HAIR", "EYES", "HDPT") and name in ("MODL", "MOD2", "MOD3", "MOD4"):
                 fields.setdefault("models", []).append(zstr(raw))
+            elif name == "MODL" and rtype in (
+                "STAT", "SCOL", "MSTT", "ACTI", "TACT", "DOOR", "CONT",
+                "FURN", "LIGH", "TREE", "GRAS", "PWAT", "ANIO", "PROJ",
+                "AMMO", "MISC", "KEYM", "BOOK", "ALCH", "INGR",
+            ):
+                # World-runtime consumers need the authored render model for
+                # every placeable base family, not only actors/equipment.
+                fields["model"] = zstr(raw)
             elif rtype == "IDLE" and name == "MODL":
                 fields["model"] = zstr(raw)
+            elif rtype == "TERM" and name == "DNAM":
+                fields["terminalDataBytes"] = list(raw)
             elif rtype == "IDLE" and name == "DNAM":
                 fields["collision"] = zstr(raw)
             elif rtype == "IDLE" and name == "ENAM":
                 fields["event"] = zstr(raw)
             elif rtype == "IDLE" and name == "ANAM" and len(raw) >= 8:
-                fields["parent"] = form_from_raw(raw, self.mod_index)
-                fields["previous"] = form_from_raw(raw[4:], self.mod_index)
+                fields["parent"] = self.resolve_form_from_raw(raw)
+                fields["previous"] = self.resolve_form_from_raw(raw[4:])
             elif rtype == "IDLE" and name in ("CTDA", "CTDT"):
-                fields.setdefault("conditionData", []).append(
-                    {
-                        "subrecord": name,
-                        "bytes": len(raw),
-                        "hex": raw.hex(),
-                    }
-                )
+                fields.setdefault("conditionData", []).append(self.parse_condition(name, raw))
             elif rtype == "IDLM" and name == "MODL":
                 fields["model"] = zstr(raw)
             elif rtype == "IDLM" and name == "IDLF" and raw:
@@ -224,7 +395,7 @@ class ESM4Catalog:
                 fields["idleTimer"] = f32(raw, 0)
             elif rtype == "IDLM" and name == "IDLA" and len(raw) % 4 == 0:
                 fields["idleAnimations"] = [
-                    form(u32(raw, offset), self.mod_index) for offset in range(0, len(raw), 4)
+                    self.resolve_form(u32(raw, offset)) for offset in range(0, len(raw), 4)
                 ]
             elif rtype == "LIGH" and name == "DATA" and len(raw) in (24, 32, 48, 64):
                 fields["light"] = {
@@ -247,45 +418,59 @@ class ESM4Catalog:
             elif rtype in ("ACTI", "TACT", "DOOR") and name == "MODL":
                 fields.setdefault("models", []).append(zstr(raw))
             elif rtype == "ACTI" and name == "SCRI" and len(raw) >= 4:
-                fields["script"] = form_from_raw(raw, self.mod_index)
+                fields["script"] = self.resolve_form_from_raw(raw)
             elif rtype == "ACTI" and name == "SNAM" and len(raw) >= 4:
-                fields["loopingSound"] = form_from_raw(raw, self.mod_index)
+                fields["loopingSound"] = self.resolve_form_from_raw(raw)
             elif rtype == "ACTI" and name == "VNAM" and len(raw) >= 4:
-                fields["activationSound"] = form_from_raw(raw, self.mod_index)
+                fields["activationSound"] = self.resolve_form_from_raw(raw)
             elif rtype == "ACTI" and name == "INAM" and len(raw) >= 4:
-                fields["radioTemplate"] = form_from_raw(raw, self.mod_index)
+                fields["radioTemplate"] = self.resolve_form_from_raw(raw)
             elif rtype == "ACTI" and name == "RNAM" and len(raw) >= 4:
-                fields["radioStation"] = form_from_raw(raw, self.mod_index)
+                fields["radioStation"] = self.resolve_form_from_raw(raw)
             elif rtype == "ACTI" and name == "XATO":
                 fields["activationPrompt"] = zstr(raw)
             elif rtype == "TACT" and name == "SCRI" and len(raw) >= 4:
-                fields["script"] = form_from_raw(raw, self.mod_index)
+                fields["script"] = self.resolve_form_from_raw(raw)
             elif rtype == "TACT" and name == "VNAM" and len(raw) >= 4:
-                fields["voiceType"] = form_from_raw(raw, self.mod_index)
+                fields["voiceType"] = self.resolve_form_from_raw(raw)
             elif rtype == "TACT" and name == "SNAM" and len(raw) >= 4:
-                fields["loopingSound"] = form_from_raw(raw, self.mod_index)
+                fields["loopingSound"] = self.resolve_form_from_raw(raw)
             elif rtype == "TACT" and name == "INAM" and len(raw) >= 4:
-                fields["radioTemplate"] = form_from_raw(raw, self.mod_index)
+                fields["radioTemplate"] = self.resolve_form_from_raw(raw)
             elif rtype == "SOUN" and name == "FNAM":
                 fields["soundFile"] = zstr(raw)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XTEL" and len(raw) >= 28:
-                fields["destDoor"] = form_from_raw(raw, self.mod_index)
+                fields["destDoor"] = self.resolve_form_from_raw(raw)
                 fields["destPos"] = [f32(raw, 4), f32(raw, 8), f32(raw, 12)]
                 fields["destRot"] = [f32(raw, 16), f32(raw, 20), f32(raw, 24)]
                 fields["teleportFlags"] = u32(raw, 28) if len(raw) >= 32 else 0
                 if len(raw) >= 36:
-                    fields["transitionInterior"] = form_from_raw(raw[32:], self.mod_index)
+                    fields["transitionInterior"] = self.resolve_form_from_raw(raw[32:])
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "CNAM" and len(raw) >= 4:
-                fields["audioLocation"] = form_from_raw(raw, self.mod_index)
+                fields["audioLocation"] = self.resolve_form_from_raw(raw)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XRDO" and len(raw) >= 16:
                 fields["radio"] = {
                     "rangeRadius": f32(raw, 0),
                     "broadcastRange": u32(raw, 4),
                     "staticPercentage": f32(raw, 8),
-                    "posReference": form_hex(form_from_raw(raw[12:], self.mod_index)),
+                    "posReference": form_hex(self.resolve_form_from_raw(raw[12:])),
                 }
             elif rtype in ("LVLN", "LVLC") and name == "LVLO" and len(raw) >= 8:
-                fields.setdefault("leveledEntries", []).append(form(u32(raw, 4), self.mod_index))
+                item = self.resolve_form(u32(raw, 4))
+                fields.setdefault("leveledEntries", []).append(item)
+                fields.setdefault("leveledActorEntries", []).append({
+                    "level": u16(raw, 0),
+                    "item": item,
+                    "count": u16(raw, 8) if len(raw) >= 10 else 1,
+                })
+            elif rtype in ("LVLN", "LVLC") and name == "LVLD" and len(raw) >= 1:
+                fields["chanceNone"] = raw[0]
+            elif rtype in ("LVLN", "LVLC") and name == "LVLF" and len(raw) >= 1:
+                fields["leveledFlags"] = raw[0]
+            elif rtype in ("LVLN", "LVLC") and name == "LLCT" and len(raw) >= 1:
+                fields["leveledListCount"] = raw[0]
+            elif rtype in ("LVLN", "LVLC") and name == "TNAM" and len(raw) >= 4:
+                fields["leveledTemplate"] = self.resolve_form_from_raw(raw)
             elif rtype == "LVLI" and name == "LVLO" and len(raw) >= 8:
                 # FO3/FNV LVLO is level:u16, padding:u16, item:FormID and
                 # optionally count:u16/padding:u16. Preserve the authored
@@ -294,22 +479,22 @@ class ESM4Catalog:
                 fields.setdefault("leveledItemEntries", []).append(
                     {
                         "level": u16(raw, 0),
-                        "item": form(u32(raw, 4), self.mod_index),
+                        "item": self.resolve_form(u32(raw, 4)),
                         "count": u16(raw, 8) if len(raw) >= 10 else 1,
                     }
                 )
             elif rtype == "OTFT" and name == "INAM" and len(raw) % 4 == 0:
                 fields.setdefault("outfitItems", []).extend(
-                    form(u32(raw, offset), self.mod_index) for offset in range(0, len(raw), 4)
+                    self.resolve_form(u32(raw, offset)) for offset in range(0, len(raw), 4)
                 )
             elif rtype in ("ARMO", "CLOT") and name in ("BMDT", "BODT") and len(raw) >= 4:
                 fields["bodyFlags"] = u32(raw, 0)
             elif rtype == "WRLD" and name == "WCTR" and len(raw) >= 4:
                 fields["centerCell"] = [struct.unpack_from("<h", raw, 0)[0], struct.unpack_from("<h", raw, 2)[0]]
             elif rtype == "WRLD" and name == "INAM" and len(raw) >= 4:
-                fields["imageSpace"] = form_from_raw(raw, self.mod_index)
+                fields["imageSpace"] = self.resolve_form_from_raw(raw)
             elif rtype == "CELL" and name == "XCIM" and len(raw) >= 4:
-                fields["imageSpace"] = form_from_raw(raw, self.mod_index)
+                fields["imageSpace"] = self.resolve_form_from_raw(raw)
             elif rtype == "CLMT" and name == "TNAM" and len(raw) >= 6:
                 fields["climateTiming"] = {
                     "sunriseBegin": raw[0],
@@ -323,7 +508,248 @@ class ESM4Catalog:
                 fields["sunTexture"] = zstr(raw)
             elif rtype == "CLMT" and name == "GNAM":
                 fields["sunGlareTexture"] = zstr(raw)
+        if rtype == "NAVM" and "navmeshData" not in fields and navmesh_parts:
+            fields["navmeshData"] = self.parse_navmesh_split(navmesh_parts)
         return fields
+
+    def parse_navmesh_split(self, parts):
+        """Decode the FO3/FNV split NAVM layout defined by xEdit.
+
+        DATA owns all array counts. Every array is length-checked against that
+        header so corrupt or misunderstood records fail compilation instead of
+        producing plausible-looking navigation.
+        """
+        required = {"NVER", "DATA", "NVVX", "NVTR", "NVGD"}
+        missing = sorted(required.difference(parts))
+        if missing:
+            raise ValueError(f"{self.path.name}: NAVM missing required subrecords {missing}")
+        if len(parts["NVER"]) != 4:
+            raise ValueError(f"{self.path.name}: NAVM NVER is {len(parts['NVER'])} bytes, expected 4")
+        data = parts["DATA"]
+        if len(data) != 24:
+            raise ValueError(f"{self.path.name}: NAVM DATA is {len(data)} bytes, expected 24")
+
+        version = u32(parts["NVER"], 0)
+        cell = self.resolve_form(u32(data, 0))
+        vertex_count, triangle_count, edge_count, cover_count, door_count = struct.unpack_from("<5I", data, 4)
+        for label, count in (
+            ("vertices", vertex_count), ("triangles", triangle_count),
+            ("edge links", edge_count), ("cover triangles", cover_count),
+            ("door links", door_count),
+        ):
+            if count > 1_000_000:
+                raise ValueError(f"{self.path.name}: absurd NAVM {label} count {count}")
+
+        vertices_raw = parts["NVVX"]
+        if len(vertices_raw) != vertex_count * 12:
+            raise ValueError(
+                f"{self.path.name}: NAVM NVVX is {len(vertices_raw)} bytes, expected {vertex_count * 12}"
+            )
+        vertices = [list(struct.unpack_from("<3f", vertices_raw, index * 12)) for index in range(vertex_count)]
+
+        triangles_raw = parts["NVTR"]
+        if len(triangles_raw) != triangle_count * 16:
+            raise ValueError(
+                f"{self.path.name}: NAVM NVTR is {len(triangles_raw)} bytes, expected {triangle_count * 16}"
+            )
+        triangles = []
+        for index in range(triangle_count):
+            values = struct.unpack_from("<3H3h2H", triangles_raw, index * 16)
+            vertex_indices = list(values[:3])
+            if any(vertex >= vertex_count for vertex in vertex_indices):
+                raise ValueError(
+                    f"{self.path.name}: NAVM triangle {index} references vertex {vertex_indices} / {vertex_count}"
+                )
+            triangles.append({
+                "vertices": vertex_indices,
+                "edges": list(values[3:6]),
+                "flags": values[6],
+                "coverFlags": values[7],
+            })
+
+        covers_raw = parts.get("NVCA", b"")
+        if len(covers_raw) != cover_count * 2:
+            raise ValueError(
+                f"{self.path.name}: NAVM NVCA is {len(covers_raw)} bytes, expected {cover_count * 2}"
+            )
+        covers = list(struct.unpack_from(f"<{cover_count}H", covers_raw, 0)) if cover_count else []
+        if any(triangle >= triangle_count for triangle in covers):
+            raise ValueError(f"{self.path.name}: NAVM cover triangle index is out of range")
+
+        doors_raw = parts.get("NVDP", b"")
+        if len(doors_raw) != door_count * 8:
+            raise ValueError(
+                f"{self.path.name}: NAVM NVDP is {len(doors_raw)} bytes, expected {door_count * 8}"
+            )
+        doors = []
+        invalid_door_triangles = 0
+        for index in range(door_count):
+            raw_door, triangle, unused = struct.unpack_from("<IHH", doors_raw, index * 8)
+            if triangle >= triangle_count:
+                # The shipped masters contain broken door links. Preserve and
+                # count them so the compiler/runtime can quarantine the edge;
+                # never reinterpret the bytes or silently discard the record.
+                invalid_door_triangles += 1
+            doors.append({
+                "door": form_hex(self.resolve_form(raw_door)),
+                "triangle": triangle,
+                "unused": unused,
+            })
+
+        edges_raw = parts.get("NVEX", b"")
+        if len(edges_raw) != edge_count * 10:
+            raise ValueError(
+                f"{self.path.name}: NAVM NVEX is {len(edges_raw)} bytes, expected {edge_count * 10}"
+            )
+        external = []
+        for index in range(edge_count):
+            edge_type, raw_navmesh, triangle = struct.unpack_from("<IIH", edges_raw, index * 10)
+            external.append({
+                "type": edge_type,
+                "navmesh": form_hex(self.resolve_form(raw_navmesh)),
+                "triangle": triangle,
+            })
+
+        grid_raw = parts["NVGD"]
+        if len(grid_raw) < 36:
+            raise ValueError(f"{self.path.name}: NAVM NVGD is {len(grid_raw)} bytes, expected at least 36")
+        divisor = u32(grid_raw, 0)
+        if divisor > 4096:
+            raise ValueError(f"{self.path.name}: absurd NAVM grid divisor {divisor}")
+        grid_offset = 36
+        grid_cells = []
+        for cell_index in range(divisor * divisor):
+            if grid_offset + 2 > len(grid_raw):
+                raise ValueError(f"{self.path.name}: truncated NAVM grid cell {cell_index}")
+            count = u16(grid_raw, grid_offset)
+            grid_offset += 2
+            byte_count = count * 2
+            if grid_offset + byte_count > len(grid_raw):
+                raise ValueError(f"{self.path.name}: truncated NAVM grid cell triangles {cell_index}")
+            indices = list(struct.unpack_from(f"<{count}H", grid_raw, grid_offset)) if count else []
+            if any(triangle >= triangle_count for triangle in indices):
+                raise ValueError(f"{self.path.name}: NAVM grid triangle index is out of range")
+            grid_cells.append(indices)
+            grid_offset += byte_count
+        if grid_offset != len(grid_raw):
+            raise ValueError(
+                f"{self.path.name}: NAVM NVGD has {len(grid_raw) - grid_offset} unexplained trailing bytes"
+            )
+
+        return {
+            "encoding": "fo3-fnv-split",
+            "version": version,
+            "cell": form_hex(cell),
+            "vertices": vertices,
+            "triangles": triangles,
+            "externalConnections": external,
+            "doorTriangles": doors,
+            "invalidDoorTriangleCount": invalid_door_triangles,
+            "coverTriangles": covers,
+            "segmentDivisor": divisor,
+            "segmentTriangleCount": sum(len(indices) for indices in grid_cells),
+            "bounds": {
+                "maxXDistance": f32(grid_raw, 4),
+                "maxYDistance": f32(grid_raw, 8),
+                "minimum": [f32(grid_raw, 12), f32(grid_raw, 16), f32(grid_raw, 20)],
+                "maximum": [f32(grid_raw, 24), f32(grid_raw, 28), f32(grid_raw, 32)],
+            },
+            "bytes": sum(len(raw) for raw in parts.values()),
+            "trailingBytes": 0,
+        }
+
+    def parse_navmesh_nvnm(self, raw):
+        """Decode the FO3/FNV NVNM topology consumed by OpenMW's NavMesh loader."""
+        offset = 0
+
+        def require(size, label):
+            if offset + size > len(raw):
+                raise ValueError(f"{self.path.name}: truncated NAVM {label} at {offset}/{len(raw)}")
+
+        def read_u16(label):
+            nonlocal offset
+            require(2, label)
+            value = u16(raw, offset)
+            offset += 2
+            return value
+
+        def read_u32(label):
+            nonlocal offset
+            require(4, label)
+            value = u32(raw, offset)
+            offset += 4
+            return value
+
+        def read_f32(label):
+            nonlocal offset
+            require(4, label)
+            value = f32(raw, offset)
+            offset += 4
+            return value
+
+        version = read_u32("version")
+        location = read_u32("location")
+        raw_world = read_u32("world")
+        world = self.resolve_form(raw_world)
+        # FO3/FNV encode the owning CELL after the worldspace. The alternate
+        # grid branch in OpenMW is for the older Tamriel/Skywind identifiers.
+        cell = self.resolve_form(read_u32("cell"))
+        vertex_count = read_u32("vertex-count")
+        if vertex_count > 1_000_000:
+            raise ValueError(f"{self.path.name}: absurd NAVM vertex count {vertex_count}")
+        vertices = []
+        for _ in range(vertex_count):
+            vertices.append([read_f32("vertex-x"), read_f32("vertex-y"), read_f32("vertex-z")])
+        triangle_count = read_u32("triangle-count")
+        if triangle_count > 1_000_000:
+            raise ValueError(f"{self.path.name}: absurd NAVM triangle count {triangle_count}")
+        triangles = []
+        for _ in range(triangle_count):
+            triangles.append([read_u16("triangle-field") for _field in range(8)])
+        external_count = read_u32("external-count")
+        external = []
+        for _ in range(external_count):
+            unknown = read_u32("external-unknown")
+            navmesh = self.resolve_form(read_u32("external-navmesh"))
+            external.append({"unknown": unknown, "navmesh": form_hex(navmesh), "triangle": read_u16("external-triangle")})
+        door_count = read_u32("door-count")
+        doors = []
+        for _ in range(door_count):
+            triangle = read_u16("door-triangle")
+            unknown = read_u32("door-unknown")
+            door = self.resolve_form(read_u32("door-reference"))
+            doors.append({"triangle": triangle, "unknown": unknown, "door": form_hex(door)})
+        cover_count = read_u32("cover-count")
+        covers = [read_u16("cover-triangle") for _ in range(cover_count)]
+        divisor = read_u32("segment-divisor")
+        bounds = {
+            "maxXDistance": read_f32("max-x-distance"),
+            "maxYDistance": read_f32("max-y-distance"),
+            "minimum": [read_f32("min-x"), read_f32("min-y"), read_f32("min-z")],
+            "maximum": [read_f32("max-x"), read_f32("max-y"), read_f32("max-z")],
+        }
+        segment_triangle_count = 0
+        for _ in range(divisor * divisor):
+            count = read_u32("segment-triangle-count")
+            segment_triangle_count += count
+            for _index in range(count):
+                read_u16("segment-triangle")
+        return {
+            "version": version,
+            "location": location,
+            "world": form_hex(world),
+            "cell": form_hex(cell),
+            "vertices": vertices,
+            "triangles": triangles,
+            "externalConnections": external,
+            "doorTriangles": doors,
+            "coverTriangles": covers,
+            "segmentDivisor": divisor,
+            "segmentTriangleCount": segment_triangle_count,
+            "bounds": bounds,
+            "bytes": len(raw),
+            "trailingBytes": len(raw) - offset,
+        }
 
     def record_matches_terms(self, item):
         text = " ".join(
@@ -355,9 +781,9 @@ class ESM4Catalog:
                 child_world = current_world
                 child_cell = current_cell
                 if group_type == 1:
-                    child_world = form(u32(label, 0), self.mod_index)
+                    child_world = self.resolve_form(u32(label, 0))
                 elif group_type in (6, 8, 9, 10):
-                    child_cell = form(u32(label, 0), self.mod_index)
+                    child_cell = self.resolve_form(u32(label, 0))
                 child_start = offset + self.header_size
                 child_end = min(offset + group_size, end)
                 self.walk(child_start, child_end, child_world, child_cell)
@@ -373,7 +799,7 @@ class ESM4Catalog:
                 break
             flags = u32(self.data, offset + 8)
             raw_form = u32(self.data, offset + 12)
-            rec_form = form(raw_form, self.mod_index)
+            rec_form = self.resolve_form(raw_form)
             data_start = offset + self.header_size
             data_end = data_start + size
             if data_end > end or data_end > len(self.data):
@@ -428,6 +854,42 @@ class ESM4Catalog:
                     record["openmwBaseTemplate"] = openmw_form_id(fields.get("baseTemplate"))
                 if "templateFlags" in fields:
                     record["templateFlags"] = fields["templateFlags"]
+                if "packages" in fields:
+                    record["packages"] = [form_hex(value) for value in fields["packages"] if value]
+                    record["openmwPackages"] = [openmw_form_id(value) for value in fields["packages"] if value]
+                if "packageData" in fields:
+                    record["packageData"] = fields["packageData"]
+                if "packageSchedule" in fields:
+                    record["packageSchedule"] = fields["packageSchedule"]
+                for field_name, output_name, value_name in (
+                    ("packageLocation", "packageLocation", "location"),
+                    ("packageTarget", "packageTarget", "target"),
+                ):
+                    if field_name in fields:
+                        entry = dict(fields[field_name])
+                        value = entry[value_name]
+                        entry[value_name] = form_hex(value) if entry.pop(value_name + "IsForm") else value
+                        record[output_name] = entry
+                for field_name, output_name, value_name in (
+                    ("packageExtraLocations", "packageExtraLocations", "location"),
+                    ("packageExtraTargets", "packageExtraTargets", "target"),
+                ):
+                    if field_name in fields:
+                        record[output_name] = []
+                        for source_entry in fields[field_name]:
+                            entry = dict(source_entry)
+                            value = entry[value_name]
+                            entry[value_name] = form_hex(value) if entry.pop(value_name + "IsForm") else value
+                            record[output_name].append(entry)
+                for field_name in ("packageIdleFlags", "packageIdleCount", "packageIdleTimer"):
+                    if field_name in fields:
+                        record[field_name] = fields[field_name]
+                if "packageIdleAnimations" in fields:
+                    record["packageIdleAnimations"] = [
+                        form_hex(value) for value in fields["packageIdleAnimations"] if value
+                    ]
+                if rtype == "PACK" and "conditionData" in fields:
+                    record["conditionData"] = fields["conditionData"]
                 if "hairLength" in fields:
                     record["hairLength"] = fields["hairLength"]
                 if "hairColorRgba" in fields:
@@ -470,6 +932,8 @@ class ESM4Catalog:
                         )
                 if "conditionData" in fields:
                     record["conditionData"] = fields["conditionData"]
+                if "terminalDataBytes" in fields:
+                    record["terminalDataBytes"] = fields["terminalDataBytes"]
                 if "idleAnimations" in fields:
                     record["idleAnimations"] = [form_hex(value) for value in fields["idleAnimations"] if value]
                     record["openmwIdleAnimations"] = [
@@ -489,11 +953,35 @@ class ESM4Catalog:
                 for field_name in ("activationPrompt", "soundFile"):
                     if field_name in fields:
                         record[field_name] = fields[field_name]
+                if "landTexture" in fields:
+                    record["landTexture"] = fields["landTexture"]
+                if "textureSet" in fields:
+                    record["textureSet"] = form_hex(fields["textureSet"])
+                if "diffuseTexture" in fields:
+                    record["diffuseTexture"] = fields["diffuseTexture"]
+                if "navmeshData" in fields:
+                    record["navmeshData"] = fields["navmeshData"]
+                    record["parentCell"] = fields["navmeshData"].get("cell") or form_hex(current_cell)
                 if "leveledEntries" in fields:
                     record["leveledEntries"] = [form_hex(entry) for entry in fields["leveledEntries"][:80] if entry]
                     record["openmwLeveledEntries"] = [
                         openmw_form_id(entry) for entry in fields["leveledEntries"][:80] if entry
                     ]
+                if "leveledActorEntries" in fields:
+                    record["leveledActorEntries"] = [
+                        {
+                            "level": entry["level"],
+                            "item": form_hex(entry["item"]),
+                            "count": entry["count"],
+                        }
+                        for entry in fields["leveledActorEntries"]
+                        if entry["item"]
+                    ]
+                for field_name in ("chanceNone", "leveledFlags", "leveledListCount"):
+                    if field_name in fields:
+                        record[field_name] = fields[field_name]
+                if "leveledTemplate" in fields:
+                    record["leveledTemplate"] = form_hex(fields["leveledTemplate"])
                 if "leveledItemEntries" in fields:
                     record["leveledItemEntries"] = [
                         {
@@ -542,6 +1030,8 @@ class ESM4Catalog:
                 if matches:
                     record["matches"] = matches
                 self.records[rec_form] = record
+                if rtype == "NAVM" and "navmeshData" in fields:
+                    self.navmeshes[rec_form] = record
 
             if rtype == "WRLD" and rec_form is not None:
                 world = {
@@ -584,6 +1074,27 @@ class ESM4Catalog:
                 cell["matches"] = self.record_matches_terms(cell)
                 self.cells[rec_form] = cell
                 current_cell = rec_form
+
+            elif rtype == "LAND" and current_cell is not None and current_cell in self.cells:
+                if "heightDeltas" in fields:
+                    self.cells[current_cell]["land"] = {
+                        "formId": form_hex(rec_form),
+                        "heightOffset": fields["heightOffset"],
+                        "heightDeltas": fields["heightDeltas"],
+                        "baseTextures": [
+                            {"texture": form_hex(row["texture"]), "quadrant": row["quadrant"]}
+                            for row in fields.get("baseTextures", []) if row.get("texture")
+                        ],
+                        "alphaTextures": [
+                            {
+                                "texture": form_hex(row["texture"]),
+                                "quadrant": row["quadrant"],
+                                "layer": row["layer"],
+                                "vertices": row["vertices"],
+                            }
+                            for row in fields.get("alphaTextures", []) if row.get("texture")
+                        ],
+                    }
 
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and rec_form is not None and current_cell is not None:
                 placement = {
@@ -824,6 +1335,7 @@ class ESM4Catalog:
                 "worlds": len(self.worlds),
                 "cells": len(self.cells),
                 "placements": len(self.placements),
+                "navmeshes": len(self.navmeshes),
                 "termRecords": len(term_records),
                 "lightRefs": len(light_refs),
             },

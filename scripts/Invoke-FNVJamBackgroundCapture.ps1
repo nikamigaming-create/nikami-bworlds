@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Retail", "OpenMW", "Both")]
+    [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy", "RealSave")]
+    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -22,6 +22,8 @@ param(
     [int]$RetailVideoFrameStep = 3,
     [ValidateRange(5, 600)]
     [int]$OpenMwCaptureSeconds = 160,
+    [ValidateRange(60, 240)]
+    [int]$GodotRouteCaptureSeconds = 210,
     [ValidateRange(5, 120)]
     [int]$OpeningVideoSeconds = 20,
     [ValidateRange(3, 180)]
@@ -30,6 +32,8 @@ param(
     [int]$TestMapCaptureSeconds = 16,
     [ValidateRange(15, 90)]
     [int]$PipBoyCaptureSeconds = 80,
+    [ValidateRange(52, 90)]
+    [int]$TerminalCaptureSeconds = 65,
     [switch]$PipBoyLifecycleOnly,
     # Optional isolated retail fixture for the Pip-Boy interaction oracle.
     # The source save is copied by Invoke-FNVRetailOracle and never modified.
@@ -41,7 +45,7 @@ param(
     [string]$RetailPipBoyWeaponForm = '0000434F',
     # Immutable native Save330 fixture for the canonical single-engine lane.
     [string]$SavePath = "",
-    [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")]
+    [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")]
     [string]$RealSaveRouteId = "save330-cold-load-settle-v1",
     [ValidateRange(5, 600)]
     [int]$RealSaveCaptureSeconds = 30,
@@ -83,8 +87,12 @@ $retailOpeningRunner = Join-Path $PSScriptRoot "Invoke-RetailTTWOpeningCapture.p
 $openingRunner = Join-Path $PSScriptRoot "Invoke-OpenNVOpeningCapture.ps1"
 $testMapRunner = Join-Path $PSScriptRoot "Invoke-OpenNVTestMapDiagnostic.ps1"
 $pipBoyRunner = Join-Path $PSScriptRoot "Invoke-OpenNVPipBoyShowcaseCapture.ps1"
+$terminalRunner = Join-Path $PSScriptRoot "Invoke-OpenNVTerminalCapture.ps1"
 $retailPipBoyRunner = Join-Path $PSScriptRoot "Invoke-FNVRetailPipBoyStateCapture.ps1"
 $realSaveRunner = Join-Path $PSScriptRoot "Invoke-FNVRealSaveCapture.ps1"
+$godotRouteRunner = Join-Path $PSScriptRoot "Invoke-OpenNVGodotShowcaseCapture.ps1"
+$godotCinematicRunner = Join-Path $PSScriptRoot "Invoke-OpenNVCinematicReelCapture.ps1"
+$godotPortraitRunner = Join-Path $PSScriptRoot "Invoke-OpenNVFamousPeopleCapture.ps1"
 $canonicalSave330Path = Join-Path $WorldsRoot "local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos"
 if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
@@ -94,7 +102,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
         "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos"
     }
 }
-if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
+if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
     if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
         $OpeningRuntimeRoot = $pipBoyRuntimeRoot
@@ -103,11 +111,13 @@ if ([string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
         $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
     }
 }
-$OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
+if ($Target -ne "Godot") {
+    $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
+}
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } else { "jam-background-$($Target.ToLowerInvariant())" }
+    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } elseif ($Scenario -eq "GodotRoute") { "opennv-godot-route" } elseif ($Scenario -eq "GodotCinematics") { "opennv-godot-cinematics" } elseif ($Scenario -eq "GodotPortraits") { "opennv-godot-portraits" } else { "jam-background-$($Target.ToLowerInvariant())" }
     $OutputRoot = Join-Path $WorldsRoot "run\$outputPrefix-$stamp"
 }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
@@ -122,6 +132,13 @@ if ($Scenario -eq "Opening" -and $OpeningCampaign -eq "NewVegas" -and $Target -n
 }
 if ($Scenario -eq "TestMap" -and $Target -ne "OpenMW") {
     throw "TestMap01 is an OpenMW-only renderer diagnostic. Use -Target OpenMW."
+}
+if (($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
+    throw "GodotRoute and GodotCinematics are dedicated Godot lanes. Use -Target Godot."
+}
+
+if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
+    throw "Terminal interaction is an OpenMW-only capture route. Use -Target OpenMW."
 }
 if ($Scenario -eq "PipBoy" -and $Target -eq "Both") {
     throw "Pip-Boy state captures are intentionally single-engine. Run Retail first, then OpenMW."
@@ -158,6 +175,7 @@ $preflightTarget = if ($Target -eq "Both") { "All" } else { $Target }
     -SavePath $SavePath `
     -RealSaveRouteId $RealSaveRouteId `
     -RealSaveCaptureSeconds $RealSaveCaptureSeconds `
+    -TerminalCaptureSeconds $TerminalCaptureSeconds `
     -OutputRoot $OutputRoot `
     -InteractiveHandoff:$InteractiveHandoff `
     -RuntimeReady `
@@ -171,7 +189,43 @@ $retailOpeningResult = $null
 $openingResult = $null
 $testMapResult = $null
 $pipBoyResult = $null
+$terminalResult = $null
 $realSaveResult = $null
+$godotRouteResult = $null
+
+if ($Scenario -eq "GodotRoute") {
+    $godotTimeout = [Math]::Max(360, $TimeoutSeconds)
+    & $godotRouteRunner `
+        -WorldsRoot $WorldsRoot `
+        -OutputRoot (Join-Path $OutputRoot "godot") `
+        -CaptureSeconds $GodotRouteCaptureSeconds `
+        -TimeoutSeconds $godotTimeout
+    $godotRouteResult =
+        Get-Content -Raw -LiteralPath (Join-Path $OutputRoot "godot\godot-showcase-report.json") |
+        ConvertFrom-Json
+    if ($godotRouteResult.status -ne "pass" -or
+        [bool]$godotRouteResult.capture.windowsAppControlUsed -or
+        [bool]$godotRouteResult.capture.foregroundActivationUsed -or
+        [bool]$godotRouteResult.capture.foregroundInputInjected) {
+        throw "Canonical Godot Goodsprings-to-Strip capture did not pass its route, media, or no-control gates."
+    }
+}
+
+if ($Scenario -eq "GodotCinematics") {
+    & $godotCinematicRunner -WorldsRoot $WorldsRoot -OutputRoot (Join-Path $OutputRoot "godot") -TimeoutSeconds ([Math]::Max(900, $TimeoutSeconds))
+    $godotRouteResult = Get-Content -Raw -LiteralPath (Join-Path $OutputRoot "godot\opennv-cinematic-reel-report.json") | ConvertFrom-Json
+    if ($godotRouteResult.status -ne "pass" -or [bool]$godotRouteResult.capture.windowsAppControlUsed -or [bool]$godotRouteResult.capture.foregroundActivationUsed -or [bool]$godotRouteResult.capture.foregroundInputInjected) {
+        throw "Canonical Godot cinematic capture did not pass its media or no-control gates."
+    }
+}
+
+if ($Scenario -eq "GodotPortraits") {
+    & $godotPortraitRunner -WorldsRoot $WorldsRoot -OutputRoot (Join-Path $OutputRoot "godot") -TimeoutSeconds ([Math]::Max(120, $TimeoutSeconds))
+    $godotRouteResult = Get-Content -Raw -LiteralPath (Join-Path $OutputRoot "godot\opennv-famous-people-report.json") | ConvertFrom-Json
+    if ($godotRouteResult.status -ne "pass" -or [bool]$godotRouteResult.capture.windowsAppControlUsed) {
+        throw "Canonical Godot famous-people capture failed."
+    }
+}
 
 if ($Scenario -eq "Opening") {
     if ($Target -in @("Retail", "Both")) {
@@ -323,6 +377,36 @@ if ($Scenario -eq "PipBoy") {
     }
 }
 
+if ($Scenario -eq "Terminal") {
+    $terminalOutput = Join-Path $OutputRoot "openmw"
+    & $terminalRunner `
+        -WorldsRoot $WorldsRoot `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -OutputRoot $terminalOutput `
+        -CaptureSeconds $TerminalCaptureSeconds `
+        -TimeoutSeconds $TimeoutSeconds
+    $terminalResult =
+        Get-Content -Raw -LiteralPath (Join-Path $terminalOutput "terminal-capture-report.json") |
+        ConvertFrom-Json
+    if ($terminalResult.status -ne "pass" -or
+        [bool]$terminalResult.launch.retailEngineLaunched -or
+        [bool]$terminalResult.capture.windowsAppControlUsed -or
+        [bool]$terminalResult.capture.foregroundActivationUsed -or
+        [bool]$terminalResult.capture.foregroundInputInjected -or
+        -not [bool]$terminalResult.assertions.selfDriveScriptLoaded -or
+        -not [bool]$terminalResult.assertions.stagingObserved -or
+        -not [bool]$terminalResult.assertions.ordinaryActivationObserved -or
+        -not [bool]$terminalResult.assertions.ordinaryActivationTargetObserved -or
+        [bool]$terminalResult.assertions.directActivationObserved -or
+        [int]$terminalResult.assertions.physicalCameraEntryCount -ne 2 -or
+        [int]$terminalResult.assertions.cameraRestorationCount -ne 2 -or
+        -not [bool]$terminalResult.assertions.hackingOpened -or
+        [int]$terminalResult.assertions.nativeFrameCount -ne 7) {
+        throw "Canonical OpenMW Terminal capture did not pass its authored-activation, paced-input, native-frame, or no-control gates."
+    }
+    $openMwResult = $terminalResult
+}
+
 if ($Scenario -eq "RealSave") {
     $realSaveOutput = Join-Path $OutputRoot $Target.ToLowerInvariant()
     & $realSaveRunner `
@@ -333,6 +417,7 @@ if ($Scenario -eq "RealSave") {
         -OutputRoot $realSaveOutput `
         -RouteId $RealSaveRouteId `
         -CaptureSeconds $RealSaveCaptureSeconds `
+        -RadioAudioDevice $OpeningAudioDevice `
         -HandSkinningMode $RealSaveHandSkinningMode `
         -HandPoseAudit:$RealSaveHandPoseAudit `
         -InteractiveHandoff:$InteractiveHandoff `
@@ -425,8 +510,22 @@ if ($Scenario -eq "PipBoy" -and $null -ne $pipBoyResult) {
         }
     }
 }
+if ($Scenario -eq "Terminal" -and $null -ne $terminalResult) {
+    foreach ($artifact in @($terminalResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
 if ($Scenario -eq "RealSave" -and $null -ne $realSaveResult) {
     foreach ($artifact in @($realSaveResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
+if ($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits") -and $null -ne $godotRouteResult) {
+    foreach ($artifact in @($godotRouteResult.artifacts)) {
         if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
             $artifactPaths.Add([string]$artifact.path)
         }
@@ -468,7 +567,9 @@ $summary = [ordered]@{
     opening = $openingResult
     testMapDiagnostic = $testMapResult
     pipBoyShowcase = $pipBoyResult
+    terminalCapture = $terminalResult
     realSave = $realSaveResult
+    godotRoute = $godotRouteResult
     artifacts = @($artifacts)
 }
 $summaryPath = Join-Path $OutputRoot "background-capture-summary.json"

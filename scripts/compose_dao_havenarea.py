@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Quaternion, Vector
 
 
 def main() -> int:
@@ -33,12 +33,34 @@ def main() -> int:
     area = json.loads(area_path.read_text(encoding="utf-8"))
     import_area_path = area_path
     temporary_area = None
+    stage_actor = os.environ.get("DAO_OPENMW_STAGE_ACTOR", "").strip()
+    if stage_actor:
+        staged = 0
+        only_stage_actor = os.environ.get("DAO_OPENMW_ONLY_STAGE_ACTOR", "") == "1"
+        stage_position = [
+            float(value) for value in os.environ["DAO_OPENMW_STAGE_POSITION"].split(",")
+        ]
+        stage_rotation = [
+            float(value) for value in os.environ["DAO_OPENMW_STAGE_ROTATION"].split(",")
+        ]
+        for actor in area.get("actors", []):
+            if actor.get("template", "").lower() == stage_actor.lower():
+                actor["position"] = stage_position
+                actor["rotation"] = stage_rotation
+                actor["active"] = True
+                staged += 1
+            elif only_stage_actor:
+                actor["active"] = False
+        if staged != 1:
+            raise RuntimeError(f"expected one stage actor {stage_actor!r}, found {staged}")
+        print(f"DAO_OPENMW_STAGE_ACTOR template={stage_actor} position={stage_position} rotation={stage_rotation}")
     terrain_manifest = os.environ.get("DAO_TERRAIN_MATERIALS", "").strip()
     if terrain_manifest:
         descriptors = json.loads(Path(terrain_manifest).read_text(encoding="utf-8"))
         area.setdefault("terrain", {})["materials"] = [
             {"name": name, **descriptor} for name, descriptor in descriptors.items()
         ]
+    if terrain_manifest or stage_actor:
         handle = tempfile.NamedTemporaryFile(
             mode="w", suffix=".havenarea", prefix="openmw-bake-",
             dir=area_path.parent, encoding="utf-8", delete=False
@@ -47,12 +69,38 @@ def main() -> int:
         json.dump(area, handle)
         handle.close()
         import_area_path = temporary_area
-        print(f"DAO_OPENMW_TERRAIN_MANIFEST materials={len(descriptors)} path={terrain_manifest}")
+        if terrain_manifest:
+            print(f"DAO_OPENMW_TERRAIN_MANIFEST materials={len(descriptors)} path={terrain_manifest}")
     try:
         haven.import_havenarea(bpy.context, str(import_area_path), True, True, True)
     finally:
         if temporary_area is not None:
             temporary_area.unlink(missing_ok=True)
+
+    # Godot replaces the imported actor root transform with the authored
+    # stage transform. Haven's Blender importer instead multiplies that stage
+    # quaternion by the GLB root/template quaternion, which reverses the
+    # apparent three-quarter dialogue pose. Use Godot's transform semantics
+    # for parity exports rather than compensating with hand-tuned yaw.
+    if stage_actor and os.environ.get("DAO_OPENMW_GODOT_ACTOR_TRANSFORM", "") == "1":
+        matched_roots = [
+            obj for obj in bpy.context.scene.objects
+            if str(obj.get("dao_template", "")).lower() == stage_actor.lower()
+        ]
+        if len(matched_roots) != 1:
+            raise RuntimeError(
+                f"expected one Godot-parity actor root {stage_actor!r}, found {len(matched_roots)}"
+            )
+        actor_root = matched_roots[0]
+        actor_root.location = Vector(stage_position)
+        actor_root.rotation_mode = "QUATERNION"
+        actor_root.rotation_quaternion = Quaternion((
+            stage_rotation[3], stage_rotation[0], stage_rotation[1], stage_rotation[2]
+        ))
+        print(
+            f"DAO_OPENMW_GODOT_ACTOR_TRANSFORM root={actor_root.name} "
+            f"rotation={stage_rotation}"
+        )
 
     # Bake a real DAO idle pose into the static OpenMW interchange scene. The
     # GLBs carry Haven's exported armature/action and OBJ export evaluates the
@@ -64,18 +112,48 @@ def main() -> int:
     # only that broken conversion from the playable proof.
     trees_collection = bpy.data.collections.get("Trees")
     tree_objects = set(trees_collection.all_objects) if trees_collection else set()
+    keep_trees = os.environ.get("DAO_OPENMW_KEEP_TREES", "") == "1"
+    terrain_collection = bpy.data.collections.get("Terrain")
+    terrain_objects = set(terrain_collection.all_objects) if terrain_collection else set()
+    exclude_terrain = os.environ.get("DAO_OPENMW_EXCLUDE_TERRAIN", "") == "1"
 
     # The exterior proof keeps the visually approved Redcliffe encounter
     # neighborhood. Interior areas are already bounded authored rooms and must
     # remain complete, including their exported actor meshes.
     full_world = os.environ.get("DAO_OPENMW_FULL_WORLD", "") == "1"
+    actor_only = os.environ.get("DAO_OPENMW_ACTOR_ONLY", "") == "1"
+    environment_only = os.environ.get("DAO_OPENMW_ENVIRONMENT_ONLY", "") == "1"
     filter_redcliffe_exterior = area_path.stem.lower() == "lak100d" and not full_world
-    cluster = Vector((260.0, 301.0, 1.2))
+    cluster = Vector((
+        float(os.environ.get("DAO_OPENMW_CLUSTER_X", "260.0")),
+        float(os.environ.get("DAO_OPENMW_CLUSTER_Y", "301.0")),
+        1.2,
+    ))
+    cluster_radius = float(os.environ.get("DAO_OPENMW_CLUSTER_RADIUS", "0"))
     remove_objects = []
     for obj in list(bpy.context.scene.objects):
-        if obj in tree_objects or obj.hide_render or obj.hide_get():
+        is_actor_mesh = obj.type == "MESH" and bool(re.match(r"^(?:E[FM]|D[FM]|H[FM])_", obj.name))
+        if actor_only and obj.type == "MESH" and not is_actor_mesh:
             remove_objects.append(obj)
             continue
+        if environment_only and is_actor_mesh:
+            remove_objects.append(obj)
+            continue
+        if ((obj in tree_objects and not keep_trees)
+                or (obj in terrain_objects and exclude_terrain)
+                or obj.hide_render or obj.hide_get()):
+            remove_objects.append(obj)
+            continue
+        if cluster_radius > 0.0 and obj.type == "MESH":
+            # Cull against the transformed object bounds, not its origin.
+            # Terrain patches and large camp setpieces often have an origin
+            # outside the portrait cluster while their geometry covers it.
+            corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+            nearest_x = min(max(cluster.x, min(c.x for c in corners)), max(c.x for c in corners))
+            nearest_y = min(max(cluster.y, min(c.y for c in corners)), max(c.y for c in corners))
+            if Vector((nearest_x - cluster.x, nearest_y - cluster.y)).length > cluster_radius:
+                remove_objects.append(obj)
+                continue
         if filter_redcliffe_exterior and obj.type == "MESH":
             center = obj.matrix_world.translation
             if Vector((center.x - cluster.x, center.y - cluster.y)).length > 85.0:
@@ -128,9 +206,51 @@ def main() -> int:
     if not visible_meshes:
         raise RuntimeError("Haven import produced no visible mesh objects")
 
+    # DAO hair albedo is intentionally dark because the retail material adds
+    # a character tint at runtime. Bake Marethari's authored silver tint into
+    # the portable glTF payload so non-DAO material passes do not render it
+    # black. Preserve texture detail and alpha rather than replacing the map.
+    if os.environ.get("DAO_OPENMW_MARETHARI_HAIR", "") == "1":
+        tinted_images = {}
+        for obj in visible_meshes:
+            if "_HAR_" not in obj.name:
+                continue
+            for slot in obj.material_slots:
+                material = slot.material
+                if material is None or not material.use_nodes:
+                    continue
+                normal_images = {
+                    node.inputs["Color"].links[0].from_node.image
+                    for node in material.node_tree.nodes
+                    if node.type == "NORMAL_MAP" and node.inputs["Color"].is_linked
+                    and node.inputs["Color"].links[0].from_node.type == "TEX_IMAGE"
+                }
+                source_node = next(
+                    (node for node in material.node_tree.nodes
+                     if node.type == "TEX_IMAGE" and node.image not in normal_images), None
+                )
+                source_image = source_node.image if source_node is not None else None
+                if source_image is None:
+                    continue
+                if source_image.name not in tinted_images:
+                    tinted = source_image.copy()
+                    tinted.name = f"{source_image.name}_marethari_silver"
+                    pixels = list(tinted.pixels)
+                    for offset in range(0, len(pixels), 4):
+                        luminance = max(pixels[offset], pixels[offset + 1], pixels[offset + 2])
+                        value = min(1.0, 0.55 + luminance * 0.65)
+                        pixels[offset] = value * 0.96
+                        pixels[offset + 1] = value * 0.98
+                        pixels[offset + 2] = value
+                    tinted.pixels.foreach_set(pixels)
+                    tinted_images[source_image.name] = tinted
+                source_node.image = tinted_images[source_image.name]
+        print(f"DAO_OPENMW_MARETHARI_HAIR images={len(tinted_images)}")
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_path.suffix.lower() != ".obj":
-        raise RuntimeError("Blender 5.2 POC output must use .obj")
+    output_suffix = output_path.suffix.lower()
+    if output_suffix not in {".obj", ".dae", ".glb", ".gltf"}:
+        raise RuntimeError("OpenMW POC output must use .obj, .dae, .glb, or .gltf")
 
     # GLB images are packed in Blender. OBJ/MTL cannot reference packed data, so
     # material maps must be written beside the interchange scene and rebound to
@@ -205,27 +325,111 @@ def main() -> int:
         obj.hide_set(False)
         obj.select_set(True)
     bpy.context.view_layer.objects.active = visible_meshes[0]
-    bpy.ops.wm.obj_export(
-        filepath=str(output_path),
-        check_existing=False,
-        apply_modifiers=True,
-        apply_transform=True,
-        export_selected_objects=True,
-        export_uv=True,
-        export_normals=True,
-        export_materials=True,
-        export_pbr_extensions=False,
-        path_mode="RELATIVE",
-        export_triangulated_mesh=True,
-        export_object_groups=True,
-        export_material_groups=True,
-    )
+    if output_suffix in {".glb", ".gltf"}:
+        # Keep the same native PBR payload used by the Godot oracle. Flattening
+        # this scene through OBJ/MTL discards normal/roughness/alpha semantics
+        # and makes an OpenMW-vs-Godot material comparison meaningless.
+        bpy.ops.export_scene.gltf(
+            filepath=str(output_path),
+            export_format="GLB" if output_suffix == ".glb" else "GLTF_SEPARATE",
+            use_selection=True,
+            export_apply=True,
+            export_yup=True,
+            export_texcoords=True,
+            export_normals=True,
+            export_tangents=True,
+            export_materials="EXPORT",
+            export_cameras=False,
+            export_lights=False,
+            export_animations=False,
+        )
+    elif output_suffix == ".dae":
+        bpy.ops.wm.collada_export(
+            filepath=str(output_path),
+            apply_modifiers=True,
+            export_mesh_type=0,
+            export_global_forward_selection="-Y",
+            export_global_up_selection="Z",
+            export_object_transformation_type_selection="matrix",
+            export_animation_type_selection="sample",
+            selected=True,
+            include_children=True,
+            include_armatures=True,
+            include_shapekeys=True,
+            include_animations=False,
+            include_all_actions=False,
+            active_uv_only=False,
+            use_texture_copies=False,
+            triangulate=True,
+        )
+    else:
+        if bpy.app.version < (4, 0, 0):
+            bpy.ops.export_scene.obj(
+                filepath=str(output_path),
+                check_existing=False,
+                use_selection=True,
+                use_mesh_modifiers=True,
+                use_edges=False,
+                use_normals=True,
+                use_uvs=True,
+                use_materials=True,
+                use_triangles=True,
+                use_blen_objects=True,
+                group_by_object=True,
+                group_by_material=True,
+                keep_vertex_order=True,
+                path_mode="RELATIVE",
+                axis_forward="-Y",
+                axis_up="Z",
+            )
+            # Haven's Blender importer stores DAO Z-up data as (x, z, -y).
+            # Blender 3.6's legacy OBJ exporter does not honor the same axis
+            # convention as its COLLADA exporter here. Convert both positions
+            # and normals to the OpenMW adapter basis (x, -y, z).
+            converted_path = output_path.with_suffix(".axis-converted.obj")
+            with output_path.open("r", encoding="utf-8") as source, converted_path.open(
+                "w", encoding="utf-8", newline="\n"
+            ) as target:
+                actor_object = False
+                for line in source:
+                    if line.startswith("o "):
+                        object_name = line[2:].strip()
+                        actor_object = bool(re.match(r"^(?:E[FM]|D[FM]|H[FM])_", object_name))
+                        target.write(line)
+                    elif line.startswith("v ") or line.startswith("vn "):
+                        fields = line.split()
+                        if actor_object:
+                            target.write(
+                                f"{fields[0]} {fields[1]} {-float(fields[2]):.6f} {fields[3]}\n"
+                            )
+                        else:
+                            target.write(f"{fields[0]} {fields[1]} {fields[3]} {fields[2]}\n")
+                    else:
+                        target.write(line)
+            converted_path.replace(output_path)
+            print(f"DAO_OPENMW_OBJ_AXIS basis=(x,z,y) path={output_path}")
+        else:
+            bpy.ops.wm.obj_export(
+                filepath=str(output_path),
+                check_existing=False,
+                apply_modifiers=True,
+                apply_transform=True,
+                export_selected_objects=True,
+                export_uv=True,
+                export_normals=True,
+                export_materials=True,
+                export_pbr_extensions=False,
+                path_mode="RELATIVE",
+                export_triangulated_mesh=True,
+                export_object_groups=True,
+                export_material_groups=True,
+            )
 
     # Blender 5.2's Windows OBJ exporter can serialize packed-image names as
     # synthetic C:/Image_*.png paths even after the images have been saved.
     # Point those MTL references at the real portable texture directory.
     mtl_path = output_path.with_suffix(".mtl")
-    if mtl_path.exists():
+    if output_suffix == ".obj" and mtl_path.exists():
         mtl_text = mtl_path.read_text(encoding="utf-8")
         mtl_text = re.sub(
             r"C:/([^/\s]+\.png)",

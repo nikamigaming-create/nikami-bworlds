@@ -7,13 +7,14 @@ param(
     [string]$BinaryRoot = "",
     [Parameter(Mandatory = $true)]
     [string]$OutputRoot,
-    [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")]
+    [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")]
     [string]$RouteId = "save330-cold-load-settle-v1",
     [ValidateSet("", "invBindThenSkeleton", "skeleton", "skeletonThenInvBind", "bindThenSkeleton", "skeletonThenBind", "source", "identity")]
     [string]$HandSkinningMode = "",
     [switch]$HandPoseAudit,
     [ValidateRange(5, 600)]
     [int]$CaptureSeconds = 30,
+    [string]$RadioAudioDevice = "Stereo Mix (Realtek(R) Audio)",
     [switch]$InteractiveHandoff,
     [ValidateRange(30, 900)]
     [int]$TimeoutSeconds = 240
@@ -204,7 +205,10 @@ function Get-RealSaveRuntimeObservation {
         baseRecord = [string]$json.player.baseRecord.value
         referenceRecord = [string]$json.player.referenceRecord.value
     }
-    $telemetryPattern = 'World viewer telemetry: frame=(?<frame>\d+) state=(?<state>-?\d+) loadingGui=(?<loadingGui>[01]) worldReady=(?<worldReady>[01]) readyFrames=(?<readyFrames>\d+) activeCells=(?<activeCells>\d+) hour=(?<hour>[-+0-9.eE]+) weatherId=(?<weatherId>-?\d+) weatherTransition=(?<weatherTransition>[-+0-9.eE]+) playerCell="(?<cell>[^"]+)" exterior=(?<exterior>[01]) grid=\((?<gridX>-?\d+),(?<gridY>-?\d+)\) worldspace=(?<worldspace>[^ ]+) playerPos=\((?<px>[-+0-9.eE]+),(?<py>[-+0-9.eE]+),(?<pz>[-+0-9.eE]+)\) playerRot=\((?<rx>[-+0-9.eE]+),(?<ry>[-+0-9.eE]+),(?<rz>[-+0-9.eE]+)\) cameraMode=(?<cameraMode>-?\d+) cameraPos=\((?<cx>[-+0-9.eE]+),(?<cy>[-+0-9.eE]+),(?<cz>[-+0-9.eE]+)\) cameraPitch=(?<pitch>[-+0-9.eE]+) cameraYaw=(?<yaw>[-+0-9.eE]+) playerHealth=(?<health>[-+0-9.eE]+) playerActionPoints=(?<actionPoints>[-+0-9.eE]+) playerActionPointsMax=(?<actionPointsMax>[-+0-9.eE]+)'
+    # Health/AP fields were added after the first native-FOS-capable builds.
+    # Keep the transform/camera denominator stable while accepting either
+    # telemetry generation; absence remains explicit as null in the manifest.
+    $telemetryPattern = 'World viewer telemetry: frame=(?<frame>\d+) state=(?<state>-?\d+) loadingGui=(?<loadingGui>[01]) worldReady=(?<worldReady>[01]) readyFrames=(?<readyFrames>\d+) activeCells=(?<activeCells>\d+) hour=(?<hour>[-+0-9.eE]+) weatherId=(?<weatherId>-?\d+) weatherTransition=(?<weatherTransition>[-+0-9.eE]+) playerCell="(?<cell>[^"]+)" exterior=(?<exterior>[01]) grid=\((?<gridX>-?\d+),(?<gridY>-?\d+)\) worldspace=(?<worldspace>[^ ]+) playerPos=\((?<px>[-+0-9.eE]+),(?<py>[-+0-9.eE]+),(?<pz>[-+0-9.eE]+)\) playerRot=\((?<rx>[-+0-9.eE]+),(?<ry>[-+0-9.eE]+),(?<rz>[-+0-9.eE]+)\) cameraMode=(?<cameraMode>-?\d+) cameraPos=\((?<cx>[-+0-9.eE]+),(?<cy>[-+0-9.eE]+),(?<cz>[-+0-9.eE]+)\) cameraPitch=(?<pitch>[-+0-9.eE]+) cameraYaw=(?<yaw>[-+0-9.eE]+)(?: playerHealth=(?<health>[-+0-9.eE]+) playerActionPoints=(?<actionPoints>[-+0-9.eE]+) playerActionPointsMax=(?<actionPointsMax>[-+0-9.eE]+))?'
     $telemetryMatches = [regex]::Matches($LogText, $telemetryPattern)
     $telemetryObservations = @($telemetryMatches | ForEach-Object {
         $match = $_
@@ -228,9 +232,9 @@ function Get-RealSaveRuntimeObservation {
             cameraPosition = @([double]$match.Groups["cx"].Value, [double]$match.Groups["cy"].Value, [double]$match.Groups["cz"].Value)
             cameraPitch = [double]$match.Groups["pitch"].Value
             cameraYaw = [double]$match.Groups["yaw"].Value
-            health = [double]$match.Groups["health"].Value
-            actionPoints = [double]$match.Groups["actionPoints"].Value
-            actionPointsMax = [double]$match.Groups["actionPointsMax"].Value
+            health = if ($match.Groups["health"].Success) { [double]$match.Groups["health"].Value } else { $null }
+            actionPoints = if ($match.Groups["actionPoints"].Success) { [double]$match.Groups["actionPoints"].Value } else { $null }
+            actionPointsMax = if ($match.Groups["actionPointsMax"].Success) { [double]$match.Groups["actionPointsMax"].Value } else { $null }
         }
     })
     $readyTelemetry = @($telemetryObservations | Where-Object { $_.worldReady })
@@ -278,6 +282,22 @@ function Get-RealSaveRuntimeObservation {
     $nativeInventoryObserved = $LogText -match 'Native FNV save Player runtime inventory rebuilt: stacks=\d+ visible=\d+'
     $persistenceInventoryObserved = $LogText -match 'FNV B04 persistence: OpenMW save player inventory stacks=\d+ visible=\d+ worn=\d+'
     $nativeIdentityRestored = $LogText -match 'Native FNV save Player identity restored:'
+    if (-not $nativeIdentityRestored) {
+        # Earlier native-FOS builds report the same runtime check before load
+        # as "validated native Player".  Compare normalized content FormIDs
+        # from that observation to the denominator instead of keying on text.
+        $validatedIdentity = [regex]::Match(
+            $LogText,
+            'validated native Player base=0x(?<base>[0-9a-fA-F]{1,8}) reference=0x(?<reference>[0-9a-fA-F]{1,8})')
+        if ($validatedIdentity.Success) {
+            $expectedBase = [Convert]::ToUInt32($playerIdentity.baseRecord.Substring(2), 16)
+            $expectedReference = [Convert]::ToUInt32($playerIdentity.referenceRecord.Substring(2), 16)
+            $observedBase = [Convert]::ToUInt32($validatedIdentity.Groups["base"].Value, 16)
+            $observedReference = [Convert]::ToUInt32($validatedIdentity.Groups["reference"].Value, 16)
+            $nativeIdentityRestored = ($observedBase -band 0x00ffffff) -eq ($expectedBase -band 0x00ffffff) -and
+                ($observedReference -band 0x00ffffff) -eq ($expectedReference -band 0x00ffffff)
+        }
+    }
     $persistenceIdentityRestored = $LogText -match 'FNV B04 persistence: OpenMW save player identity initialized=1'
     $nativeCameraOwnershipObserved = $LogText -match 'Native FNV save owns camera mode='
     $standardReloadPass = $AllowOpenMWSaveReload -and
@@ -432,6 +452,8 @@ function Invoke-OpenMWRealSaveCapture {
         [switch]$C07PersistenceReload,
         [switch]$D01Inventory,
         [switch]$D02WeaponSelection,
+        [switch]$D03RadioStations,
+        [string]$RadioAudioDevice = "Stereo Mix (Realtek(R) Audio)",
         [ValidateSet("", "invBindThenSkeleton", "skeleton", "skeletonThenInvBind", "bindThenSkeleton", "skeletonThenBind", "source", "identity")]
         [string]$HandSkinningMode = "",
         [switch]$HandPoseAudit,
@@ -467,6 +489,13 @@ function Invoke-OpenMWRealSaveCapture {
     Set-CaptureProfileSetting -Path $settingsPath -Section "General" -Key "notify on saved screenshot" -Value "false"
     Set-CaptureProfileSetting -Path $settingsPath -Section "General" -Key "minimize on focus loss" -Value "false"
     Set-CaptureProfileSetting -Path $settingsPath -Section "Physics" -Key "async num threads" -Value "0"
+    if ($D03RadioStations) {
+        # Stereo Mix is the declared canonical recorder input. Route OpenAL to
+        # the matching Realtek playback endpoint instead of the host's current
+        # default (which may be HDMI and therefore inaudible to Stereo Mix).
+        Set-CaptureProfileSetting -Path $settingsPath -Section "Sound" -Key "device" `
+            -Value "OpenAL Soft on Speakers (Realtek(R) Audio)"
+    }
 
     $stdoutPath = Join-Path $Root "openmw.stdout.log"
     $stderrPath = Join-Path $Root "openmw.stderr.log"
@@ -474,8 +503,10 @@ function Invoke-OpenMWRealSaveCapture {
     $captureStderrPath = Join-Path $Root "ffmpeg.stderr.log"
     $mapRoute = $C04MapSelection -or $C05MapTravel -or $C06RejectionMatrix -or
         $C07PersistenceFirst -or $C07PersistenceReload
-    $frameSequenceRoute = $mapRoute -or $D01Inventory -or $D02WeaponSelection
-    $rawVideoFileName = if ($D02WeaponSelection) {
+    $frameSequenceRoute = $mapRoute -or $D01Inventory -or $D02WeaponSelection -or $D03RadioStations
+    $rawVideoFileName = if ($D03RadioStations) {
+        "OpenMW-Save330-D03-radio-stations-exact-title-raw-with-audio.mp4"
+    } elseif ($D02WeaponSelection) {
         "OpenMW-Save330-D02-weapon-selection-exact-title-raw.mp4"
     } elseif ($D01Inventory) {
         "OpenMW-Save330-D01-inventory-exact-title-raw.mp4"
@@ -506,8 +537,10 @@ function Invoke-OpenMWRealSaveCapture {
     # their logged ScreenCaptureHandler requests map deterministically to their
     # retained source frames.  C04 starts with the live MAP/WORLD scroll-knob
     # contact before its overview, focus, and confirmation frames.
-    $mapNativeSourceFrameIndices = if ($D02WeaponSelection) { @(0..9) } elseif ($C04MapSelection) { @(0, 1, 2, 3) } elseif ($C06RejectionMatrix) { @(0, 1, 2, 3, 4) } elseif ($D01Inventory) { @(0, 1, 2, 3, 4) } else { @(0, 1, 2) }
-    $nativeFramePaths = if ($D02WeaponSelection) {
+    $mapNativeSourceFrameIndices = if ($D03RadioStations) { @() } elseif ($D02WeaponSelection) { @(0..9) } elseif ($C04MapSelection) { @(0, 1, 2, 3) } elseif ($C06RejectionMatrix) { @(0, 1, 2, 3, 4) } elseif ($D01Inventory) { @(0, 1, 2, 3, 4) } else { @(0, 1, 2) }
+    $nativeFramePaths = @(if ($D03RadioStations) {
+        @()
+    } elseif ($D02WeaponSelection) {
         @($d02NativeFrameNames | ForEach-Object { Join-Path $Root ("Save330-D02-$_.png") })
     } elseif ($D01Inventory) {
         @($d01NativeFrameNames | ForEach-Object { Join-Path $Root ("Save330-D01-$_.png") })
@@ -523,14 +556,14 @@ function Invoke-OpenMWRealSaveCapture {
         @($c07ReloadNativeFrameNames | ForEach-Object { Join-Path $Root ("Save330-C07-$_.png") })
     } else {
         @($nativeFramePath)
-    }
+    })
     $stateManifestPath = Join-Path $Root "real-save-state.json"
     $reportPath = Join-Path $Root "real-save-capture-report.json"
     $screenshotDirectory = Join-Path $campaignUserdata "screenshots"
     $previousEnvironment = Save-And-ClearOpenMWEnvironment
     $environmentNames = @(
         "OPENMW_DEBUG_LEVEL", "OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG",
-        "OPENMW_PROOF_SCREENSHOT_READY_FRAMES", "OPENMW_WORLD_VIEWER_TELEMETRY",
+        "OPENMW_PROOF_SCREENSHOT_READY_FRAMES", "OPENMW_WORLD_VIEWER_TELEMETRY", "OPENMW_WORLD_VIEWER_TRACE",
         "OPENMW_WORLD_VIEWER_TELEMETRY_INTERVAL", "OPENMW_PROOF_QUICKSAVE_FRAME",
         "OPENMW_PROOF_QUICKSAVE_NAME", "OPENMW_PROOF_QUIT_AFTER_QUICKSAVE",
         "OPENMW_PROOF_QUICKSAVE_QUIT_DELAY_FRAMES", "OPENMW_FNV_B04_PERSISTENCE_TELEMETRY",
@@ -546,6 +579,8 @@ function Invoke-OpenMWRealSaveCapture {
         "OPENMW_FNV_REAL_SAVE_D01_FRAMES_PER_CATEGORY",
         "OPENMW_FNV_REAL_SAVE_D02", "OPENMW_FNV_REAL_SAVE_D02_FIRST_READY_FRAME",
         "OPENMW_FNV_REAL_SAVE_D02_FRAMES_PER_WEAPON",
+        "OPENMW_FNV_REAL_SAVE_D03", "OPENMW_FNV_REAL_SAVE_D03_FIRST_READY_FRAME",
+        "OPENMW_FNV_REAL_SAVE_D03_FRAMES_PER_STATION",
         "OPENMW_ESM4_HAND_SKINNING_MODE", "OPENMW_FNV_HAND_POSE_AUDIT", "OPENMW_FNV_RIG_DRAW_AUDIT",
         "OPENMW_PLAYABLE_SESSION_BACKGROUND", "OPENMW_PROOF_CAPTURE_KEEP_WINDOW_VISIBLE",
         "OSG_GL_TEXTURE_STORAGE"
@@ -568,12 +603,13 @@ function Invoke-OpenMWRealSaveCapture {
         [Environment]::SetEnvironmentVariable("OSG_GL_TEXTURE_STORAGE", "OFF", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_DEBUG_LEVEL", "INFO", "Process")
         [Environment]::SetEnvironmentVariable("OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG", "1", "Process")
-        # The unattended title recorder keeps the SDL window hidden.  Preserve
-        # ordinary in-engine simulation while it is hidden; this is not host
-        # input or a synthetic gameplay route.
-        [Environment]::SetEnvironmentVariable("OPENMW_PLAYABLE_SESSION_BACKGROUND", "1", "Process")
-        # Keep an ordinary titled SDL surface available for the required
-        # passive transport recording without foreground activation.
+        # Exact-title capture requires an ordinary shown SDL surface.  The
+        # background-playable switch deliberately creates a hidden flat window
+        # in older candidates, so enabling it here makes the recorder wait for
+        # a title that can never appear.  A shown window does not require focus,
+        # foreground activation, or host input.
+        [Environment]::SetEnvironmentVariable("OPENMW_PLAYABLE_SESSION_BACKGROUND", "0", "Process")
+        # Keep the titled SDL surface available for passive transport recording.
         [Environment]::SetEnvironmentVariable("OPENMW_PROOF_CAPTURE_KEEP_WINDOW_VISIBLE", "1", "Process")
         $proofReadyFrames = if ($frameSequenceRoute) { "-1" } else { "120" }
         [Environment]::SetEnvironmentVariable("OPENMW_PROOF_SCREENSHOT_READY_FRAMES", $proofReadyFrames, "Process")
@@ -637,6 +673,12 @@ function Invoke-OpenMWRealSaveCapture {
             [Environment]::SetEnvironmentVariable("OPENMW_FNV_REAL_SAVE_D02_FRAMES_PER_WEAPON", "135", "Process")
             [Environment]::SetEnvironmentVariable("OPENMW_FNV_B04_PERSISTENCE_TELEMETRY", "1", "Process")
         }
+        if ($D03RadioStations) {
+            [Environment]::SetEnvironmentVariable("OPENMW_FNV_REAL_SAVE_D03", "1", "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_FNV_REAL_SAVE_D03_FIRST_READY_FRAME", "30", "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_FNV_REAL_SAVE_D03_FRAMES_PER_STATION", "240", "Process")
+            [Environment]::SetEnvironmentVariable("OPENMW_FNV_B04_PERSISTENCE_TELEMETRY", "1", "Process")
+        }
 
         # This is the ordinary OpenMW SaveGame command-line boundary. The
         # engine's existing ScreenCaptureHandler native framebuffer hook is
@@ -678,11 +720,20 @@ function Invoke-OpenMWRealSaveCapture {
 
         $ffmpegArguments = @(
             "-hide_banner", "-loglevel", "warning", "-y",
-            "-f", "gdigrab", "-framerate", "60", "-draw_mouse", "0", "-i", "title=OpenMW",
+            "-f", "gdigrab", "-framerate", "60", "-draw_mouse", "0", "-i", "title=OpenMW"
+        )
+        if ($D03RadioStations) {
+            $ffmpegArguments += @("-f", "dshow", "-i", ("audio=" + $RadioAudioDevice))
+        }
+        $ffmpegArguments += @(
             "-t", ([string]$CaptureSeconds),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-            "-pix_fmt", "yuv420p", "-movflags", "+faststart", $rawVideoPath
+            "-pix_fmt", "yuv420p"
         )
+        if ($D03RadioStations) {
+            $ffmpegArguments += @("-c:a", "aac", "-b:a", "192k")
+        }
+        $ffmpegArguments += @("-movflags", "+faststart", $rawVideoPath)
         $recorderInfo = [Diagnostics.ProcessStartInfo]::new()
         $recorderInfo.FileName = (Get-Command ffmpeg -ErrorAction Stop).Source
         $recorderInfo.Arguments = ($ffmpegArguments | ForEach-Object { Quote-OpenMWArgument $_ }) -join " "
@@ -699,16 +750,38 @@ function Invoke-OpenMWRealSaveCapture {
         $recorderStdoutTask = $recorder.StandardOutput.ReadToEndAsync()
         $recorderStderrTask = $recorder.StandardError.ReadToEndAsync()
 
-        $requiredNativeFrameCount = if ($D02WeaponSelection) { $d02NativeFrameNames.Count } elseif ($C04MapSelection) { $c04NativeFrameNames.Count } elseif ($C06RejectionMatrix) { $c06NativeFrameNames.Count } elseif ($D01Inventory) { $d01NativeFrameNames.Count } elseif ($mapRoute) { 3 } else { 1 }
+        $requiredNativeFrameCount = if ($D03RadioStations) { 1 } elseif ($D02WeaponSelection) { $d02NativeFrameNames.Count } elseif ($C04MapSelection) { $c04NativeFrameNames.Count } elseif ($C06RejectionMatrix) { $c06NativeFrameNames.Count } elseif ($D01Inventory) { $d01NativeFrameNames.Count } elseif ($mapRoute) { 3 } else { 1 }
+        # D01/D02 are short, paced GUI/action routes. Save loading and world
+        # readiness happen before the first route frame can be retained, so
+        # give that initial phase its own grace period. Once the route produces
+        # a settled native frame, keep the tighter per-action progress limit.
+        $progressSensitiveRoute = $D01Inventory -or $D02WeaponSelection
+        $lastNativeFrameCount = 0
+        $initialRouteProgressSeconds = 30
+        $settledRouteProgressSeconds = 15
+        $routeProgressDeadline = [DateTime]::UtcNow.AddSeconds($initialRouteProgressSeconds)
         while ([DateTime]::UtcNow -lt $deadline) {
             if (Test-Path -LiteralPath $screenshotDirectory -PathType Container) {
                 $nativeSourceFrames = @(Get-ChildItem -LiteralPath $screenshotDirectory -File -ErrorAction SilentlyContinue |
                     Where-Object { $_.Length -gt 0 -and $_.Extension.ToLowerInvariant() -in @(".png", ".jpg", ".jpeg") } |
                     Sort-Object LastWriteTimeUtc, Name)
+                if ($progressSensitiveRoute -and $nativeSourceFrames.Count -gt $lastNativeFrameCount) {
+                    $lastNativeFrameCount = $nativeSourceFrames.Count
+                    $routeProgressDeadline = [DateTime]::UtcNow.AddSeconds($settledRouteProgressSeconds)
+                }
                 if ($nativeSourceFrames.Count -ge $requiredNativeFrameCount) {
                     $nativeSourceFrame = $nativeSourceFrames[0]
                     break
                 }
+            }
+            if ($progressSensitiveRoute -and [DateTime]::UtcNow -ge $routeProgressDeadline) {
+                $progressLimit = if ($lastNativeFrameCount -eq 0) {
+                    $initialRouteProgressSeconds
+                }
+                else {
+                    $settledRouteProgressSeconds
+                }
+                throw "Paced route stalled without a new settled native frame for $progressLimit seconds. expected=$requiredNativeFrameCount received=$($nativeSourceFrames.Count)"
             }
             $game.Refresh()
             if ($game.HasExited) {
@@ -720,13 +793,15 @@ function Invoke-OpenMWRealSaveCapture {
             throw "Timed out waiting for the native Save330 frame sequence. expected=$requiredNativeFrameCount received=$($nativeSourceFrames.Count)"
         }
         if ($frameSequenceRoute) {
-            New-Item -ItemType Directory -Path $nativeFramesDirectory | Out-Null
-            for ($index = 0; $index -lt $nativeFramePaths.Count; ++$index) {
-                $sourceIndex = $mapNativeSourceFrameIndices[$index]
-                $source = $nativeSourceFrames[$sourceIndex]
-                $retainedSource = Join-Path $nativeFramesDirectory $source.Name
-                Copy-Item -LiteralPath $source.FullName -Destination $retainedSource -ErrorAction Stop
-                Copy-Item -LiteralPath $source.FullName -Destination $nativeFramePaths[$index] -ErrorAction Stop
+            if (-not $D03RadioStations) {
+                New-Item -ItemType Directory -Path $nativeFramesDirectory | Out-Null
+                for ($index = 0; $index -lt $nativeFramePaths.Count; ++$index) {
+                    $sourceIndex = $mapNativeSourceFrameIndices[$index]
+                    $source = $nativeSourceFrames[$sourceIndex]
+                    $retainedSource = Join-Path $nativeFramesDirectory $source.Name
+                    Copy-Item -LiteralPath $source.FullName -Destination $retainedSource -ErrorAction Stop
+                    Copy-Item -LiteralPath $source.FullName -Destination $nativeFramePaths[$index] -ErrorAction Stop
+                }
             }
         }
         else {
@@ -734,10 +809,26 @@ function Invoke-OpenMWRealSaveCapture {
         }
 
         if ($frameSequenceRoute) {
-            $engineExitDeadline = [DateTime]::UtcNow.AddSeconds(30)
+            $engineExitDeadline = [DateTime]::UtcNow.AddSeconds($(if ($D03RadioStations) { $CaptureSeconds } else { 30 }))
             while (-not $game.HasExited -and [DateTime]::UtcNow -lt $engineExitDeadline) {
                 Start-Sleep -Milliseconds 100
                 $game.Refresh()
+            }
+        }
+
+        if ($D03RadioStations) {
+            $nativeSourceFrames = @(Get-ChildItem -LiteralPath $screenshotDirectory -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Length -gt 0 -and $_.Extension.ToLowerInvariant() -in @(".png", ".jpg", ".jpeg") } |
+                Sort-Object LastWriteTimeUtc, Name)
+            if ($nativeSourceFrames.Count -lt 1) { throw "D03 produced no native station frames." }
+            New-Item -ItemType Directory -Path $nativeFramesDirectory -ErrorAction SilentlyContinue | Out-Null
+            $nativeFramePaths = @()
+            for ($index = 0; $index -lt $nativeSourceFrames.Count; ++$index) {
+                $source = $nativeSourceFrames[$index]
+                $destination = Join-Path $Root ("Save330-D03-radio-{0:d2}.png" -f $index)
+                Copy-Item -LiteralPath $source.FullName -Destination (Join-Path $nativeFramesDirectory $source.Name) -ErrorAction Stop
+                Copy-Item -LiteralPath $source.FullName -Destination $destination -ErrorAction Stop
+                $nativeFramePaths += $destination
             }
         }
 
@@ -801,6 +892,26 @@ function Invoke-OpenMWRealSaveCapture {
     }
 
     $logText = Get-OpenMWLogText -StdoutPath $stdoutPath -StderrPath $stderrPath -ProfileDirectory ([string]$profile.profileDirectory)
+    $d03RosterMatch = [regex]::Match($logText, 'FNV D03 radio roster: stations=(\d+).*status=pass')
+    $d03StationCount = if ($d03RosterMatch.Success) { [int]$d03RosterMatch.Groups[1].Value } else { 0 }
+    $d03PassedStations = @([regex]::Matches($logText, 'FNV D03 radio station: index=(\d+).*status=pass') |
+        ForEach-Object { [int]$_.Groups[1].Value } | Sort-Object -Unique).Count
+    $audioStreamCount = 0
+    $audioMeanVolumeDb = -1000.0
+    if ($D03RadioStations -and (Test-Path -LiteralPath $rawVideoPath -PathType Leaf)) {
+        $probe = (& ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 $rawVideoPath 2>$null | Out-String).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($probe)) { $audioStreamCount = @($probe -split "`r?`n").Count }
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $volumeText = (& ffmpeg -hide_banner -i $rawVideoPath -map 0:a:0 -af volumedetect -f null NUL 2>&1 | Out-String)
+        }
+        finally { $ErrorActionPreference = $previousErrorActionPreference }
+        $volumeMatch = [regex]::Match($volumeText, 'mean_volume:\s*(-?[0-9.]+) dB')
+        if ($volumeMatch.Success) {
+            $audioMeanVolumeDb = [double]::Parse($volumeMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
     $observation = Get-RealSaveRuntimeObservation -LogText $logText -Denominator $Denominator `
         -AllowOpenMWSaveReload:$AllowOpenMWSaveReload -ExpectedTransform $ExpectedTransform
     $stateManifest = [ordered]@{
@@ -894,6 +1005,16 @@ function Invoke-OpenMWRealSaveCapture {
             retainedNativeFrames = @($nativeFramePaths | ForEach-Object { Get-Artifact $_ }) |
                 Where-Object { $null -ne $_ }
         }
+        d03RadioStations = [ordered]@{
+            enabled = [bool]$D03RadioStations
+            authoredStationCount = $d03StationCount
+            passedStationCount = $d03PassedStations
+            audioStreamCount = $audioStreamCount
+            audioMeanVolumeDb = $audioMeanVolumeDb
+            retainedNativeFrameCount = $nativeFramePaths.Count
+            retainedNativeFrames = @($nativeFramePaths | ForEach-Object { Get-Artifact $_ }) |
+                Where-Object { $null -ne $_ }
+        }
         observed = $observation
         logs = @{
             stdout = Get-Artifact $stdoutPath
@@ -915,10 +1036,14 @@ function Invoke-OpenMWRealSaveCapture {
     }
     $nativeFrameRetentionPass = @($nativeFramePaths | Where-Object {
         Test-Path -LiteralPath $_ -PathType Leaf
-    }).Count -eq $nativeFramePaths.Count
+    }).Count -eq $nativeFramePaths.Count -and (-not $D03RadioStations -or $nativeFramePaths.Count -gt 0)
+    $d03Pass = -not $D03RadioStations -or
+        ($d03StationCount -gt 0 -and $d03PassedStations -eq $d03StationCount -and
+            $nativeFramePaths.Count -eq $d03StationCount -and $audioStreamCount -eq 1 -and $audioMeanVolumeDb -gt -60.0)
     $passed = [string]::IsNullOrWhiteSpace($captureError) -and
         [bool]$observation.pass -and
         $nativeFrameRetentionPass -and
+        $d03Pass -and
         (Test-Path -LiteralPath $rawVideoPath -PathType Leaf) -and
         $recorderExitCode -eq 0
     return [ordered]@{
@@ -927,7 +1052,9 @@ function Invoke-OpenMWRealSaveCapture {
         target = "OpenMW"
         routeId = $RouteId
         capture = [ordered]@{
-            method = if ($D02WeaponSelection) {
+            method = if ($D03RadioStations) {
+                "ordinary OpenMW --load-savegame plus FalloutNV.esm-derived Pip-Boy RADIO row activation, verified playback, ScreenCaptureHandler station frames, and exact-title ffmpeg transport with DirectShow audio"
+            } elseif ($D02WeaponSelection) {
                 "ordinary OpenMW --load-savegame plus production Pip-Boy WEAP row activation, production close/reload, live weapon/model audit, ScreenCaptureHandler native world frames, and exact-title ffmpeg transport"
             } elseif ($D01Inventory) {
                 "ordinary OpenMW --load-savegame plus production Pip-Boy ITEMS category navigation through the restored inventory models, ScreenCaptureHandler native GUI frames, and exact-title ffmpeg transport"
@@ -942,7 +1069,9 @@ function Invoke-OpenMWRealSaveCapture {
             } else {
                 "ordinary OpenMW --load-savegame plus ScreenCaptureHandler native world frame and exact-title ffmpeg transport"
             }
-            driver = if ($D02WeaponSelection) {
+            driver = if ($D03RadioStations) {
+                "engine-owned production Pip-Boy radio callbacks only; no host keyboard or mouse input"
+            } elseif ($D02WeaponSelection) {
                 "engine-owned production Pip-Boy weapon row callbacks and MechanicsManager reload only; no host keyboard or mouse input"
             } elseif ($D01Inventory) {
                 "engine-owned production Pip-Boy inventory callbacks only; no host keyboard or mouse input"
@@ -964,6 +1093,8 @@ function Invoke-OpenMWRealSaveCapture {
             userConfigurationRestored = $true
             handSkinningMode = if ([string]::IsNullOrWhiteSpace($HandSkinningMode)) { "default" } else { $HandSkinningMode }
             handPoseAudit = [bool]$HandPoseAudit
+            audioStreamCount = $audioStreamCount
+            audioMeanVolumeDb = $audioMeanVolumeDb
         }
         source = [ordered]@{
             binary = Get-Artifact $binary
@@ -990,6 +1121,7 @@ function Invoke-OpenMWRealSaveCapture {
             c07TravelPersistenceFramesRetained = -not ($C07PersistenceFirst -or $C07PersistenceReload) -or $nativeFramePaths.Count -eq 3
             d01InventoryFramesRetained = -not $D01Inventory -or $nativeFramePaths.Count -eq $d01NativeFrameNames.Count
             d02WeaponSelectionFramesRetained = -not $D02WeaponSelection -or $nativeFramePaths.Count -eq $d02NativeFrameNames.Count
+            d03RadioStationsPassed = $d03Pass
             exactTitleVideoRetained = Test-Path -LiteralPath $rawVideoPath -PathType Leaf
         }
         artifacts = @($artifacts)
@@ -1296,10 +1428,10 @@ if (Test-Path -LiteralPath $OutputRoot) {
 if (-not (Test-Path -LiteralPath $SavePath -PathType Leaf)) {
     throw "Immutable Save330 fixture is missing: $SavePath"
 }
-if ($RouteId -notin @("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1")) {
+if ($RouteId -notin @("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")) {
     throw "Unsupported RealSave route: $RouteId"
 }
-if ($RouteId -in @("save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1") -and $Target -ne "OpenMW") {
+if ($RouteId -in @("save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1") -and $Target -ne "OpenMW") {
     throw "The selected Save330 production route is OpenMW-only."
 }
 $saveFile = Get-Item -LiteralPath $SavePath
@@ -1349,6 +1481,7 @@ try {
             $c06RejectionMatrix = $RouteId -eq "save330-pipboy-rejection-matrix-v1"
             $d01Inventory = $RouteId -eq "save330-pipboy-inventory-v1"
             $d02WeaponSelection = $RouteId -eq "save330-pipboy-weapon-selection-v1"
+            $d03RadioStations = $RouteId -eq "save330-pipboy-radio-stations-v1"
             $result = Invoke-OpenMWRealSaveCapture `
                 -Root $OutputRoot `
                 -Fixture $SavePath `
@@ -1360,6 +1493,8 @@ try {
                 -C06RejectionMatrix:$c06RejectionMatrix `
                 -D01Inventory:$d01Inventory `
                 -D02WeaponSelection:$d02WeaponSelection `
+                -D03RadioStations:$d03RadioStations `
+                -RadioAudioDevice $RadioAudioDevice `
                 -HandSkinningMode $HandSkinningMode `
                 -HandPoseAudit:$HandPoseAudit
         }

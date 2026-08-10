@@ -5,7 +5,11 @@ param(
     [string[]]$TargetId = @(),
     [int]$FirstScreenshotFrame = 180,
     [int]$FramesPerActor = 60,
-    [string[]]$SetEnv = @()
+    [string[]]$SetEnv = @(),
+    [switch]$MeshExportOnly,
+    [switch]$SkeletalExportOnly,
+    [string]$MeshExportRoot = "",
+    [string]$BinaryRoot = ""
 )
 
 Set-StrictMode -Version Latest
@@ -24,12 +28,19 @@ function ConvertTo-FnvRuntimeForm([string]$OpenMwForm) {
         return $OpenMwForm
     }
     $value = [Convert]::ToUInt32($Matches[1], 16)
-    return ("FormId:0x{0:x}" -f (0x01000000 -bor ($value -band 0x00ffffff)))
+    # Canonical compiler IDs use a zero-based load-order index in the high
+    # byte. OpenMW reserves runtime index zero, so retain the plugin identity
+    # and shift that index by one instead of forcing every ref into FalloutNV.
+    $canonicalIndex = ([uint64]$value -shr 24) -band 0xff
+    $runtimeIndex = $canonicalIndex + 1
+    if ($runtimeIndex -gt 0xff) { throw "Runtime plugin index overflow: $OpenMwForm" }
+    $runtimeValue = (($runtimeIndex -shl 24) -bor ([uint64]$value -band 0x00ffffff))
+    return ("FormId:0x{0:x}" -f $runtimeValue)
 }
 
 function ConvertTo-CanonicalForm([string]$Form) {
     if ($Form -notmatch '0x([0-9a-fA-F]+)') { throw "Invalid canonical form id: $Form" }
-    return ('0x{0:x8}' -f ([Convert]::ToUInt32($Matches[1], 16) -band 0x00ffffff))
+    return ('0x{0:x8}' -f [Convert]::ToUInt32($Matches[1], 16))
 }
 
 function ConvertTo-ActualRuntimeRef([string]$PointerToken) {
@@ -39,15 +50,29 @@ function ConvertTo-ActualRuntimeRef([string]$PointerToken) {
     return $PointerToken
 }
 
+if ((ConvertTo-FnvRuntimeForm '0x00000001') -ne 'FormId:0x1000001' -or
+    (ConvertTo-FnvRuntimeForm '0x0400bf34') -ne 'FormId:0x500bf34' -or
+    (ConvertTo-CanonicalForm '0x0400bf34') -ne '0x0400bf34') {
+    throw 'Canonical/OpenNV load-order FormID mapping self-test failed.'
+}
+
 $rosterFile = Resolve-RepoRelativePath $RosterPath
 $rosterImporter = Join-Path $PSScriptRoot 'Import-FNVGoodspringsActorRoster.ps1'
 if (-not (Test-Path -LiteralPath $rosterImporter -PathType Leaf)) {
     throw "Missing canonical Goodsprings roster importer: $rosterImporter"
 }
-. $rosterImporter
 $outputRootAbs = Resolve-RepoRelativePath $OutputRoot
 New-Item -ItemType Directory -Force -Path $outputRootAbs | Out-Null
-$canonicalTargets = @(Import-FNVGoodspringsActorRoster -Path $rosterFile)
+$rosterDocument = Get-Content -LiteralPath $rosterFile -Raw | ConvertFrom-Json
+if ([string]$rosterDocument.schema -eq 'nikami-fnv-actor-roster/v1') {
+    $canonicalTargets = @($rosterDocument.targets)
+    if ([int]$rosterDocument.targetCount -ne $canonicalTargets.Count -or $canonicalTargets.Count -lt 1) {
+        throw "Dynamic actor roster count mismatch: declared $($rosterDocument.targetCount), found $($canonicalTargets.Count)."
+    }
+} else {
+    . $rosterImporter
+    $canonicalTargets = @(Import-FNVGoodspringsActorRoster -Path $rosterFile)
+}
 $rosterSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $rosterFile).Hash.ToLowerInvariant()
 
 $filter = @{}
@@ -81,6 +106,12 @@ $lastFrame = [int]$frames[-1]
 # an assumed 30-fps shutdown time. Heavy actor/material telemetry can reduce
 # startup and staging throughput substantially on a full-roster run.
 $runSeconds = [Math]::Max(60, [int][Math]::Ceiling($lastFrame / 10.0) + 45)
+if ($MeshExportOnly -or $SkeletalExportOnly) {
+    # A complex facegen/skeleton can legitimately spend much longer than one
+    # scheduled frame resolving its post-skin drawable. Keep this a watchdog,
+    # not a false failure that discards a nearly complete mesh-only batch.
+    $runSeconds = [Math]::Max(1200, $runSeconds)
+}
 
 $env = @(
     "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY=1",
@@ -148,6 +179,165 @@ $env = @(
     "OPENMW_PROOF_REQUIRE_ACTOR_FOR_SCREENSHOT=1",
     "OPENMW_PROOF_ACTOR_RESOLVE_RETRY_FRAMES=1"
 ) + @($SetEnv)
+
+if ($MeshExportOnly -or $SkeletalExportOnly) {
+    if ([string]::IsNullOrWhiteSpace($MeshExportRoot)) {
+        $MeshExportRoot = Join-Path $outputRootAbs 'meshes'
+    }
+    $meshRootAbs = Resolve-RepoRelativePath $MeshExportRoot
+    New-Item -ItemType Directory -Path $meshRootAbs -Force | Out-Null
+
+    # Several legacy portrait switches test getenv() rather than their parsed
+    # boolean value, so appending '=0' still activates them. Strip them from a
+    # data-only run; retain alignment solely to drive one post-cull frame.
+    $dataOnlyPortraitPrefixes = @(
+        'OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY=',
+        'OPENMW_WORLD_VIEWER_MESH_LOAD_TELEMETRY=',
+        'OPENMW_WORLD_VIEWER_MATERIAL_TELEMETRY=',
+        'OPENMW_FNV_PART_MATRIX_AUDIT=',
+        'OPENMW_PROOF_ACTOR_VIEW_FULL_BODY=',
+        'OPENMW_PROOF_ACTOR_VIEW_USE_RENDER_BOUNDS=',
+        'OPENMW_PROOF_ACTOR_VIEW_USE_FACE_BOUNDS=',
+        'OPENMW_PROOF_ACTOR_VIEW_MIN_FULL_BODY_SCREEN_WIDTH=',
+        'OPENMW_PROOF_ACTOR_VIEW_MIN_FULL_BODY_SCREEN_HEIGHT=',
+        'OPENMW_PROOF_ACTOR_VIEW_MIN_FULL_BODY_SCREEN_AREA=',
+        'OPENMW_PROOF_ACTOR_VIEW_REQUIRE_HUMAN_POSE=',
+        'OPENMW_PROOF_ACTOR_VIEW_USE_HEAD_POSE_AXIS='
+    )
+    $env = @($env | Where-Object {
+        $assignment = $_
+        -not ($dataOnlyPortraitPrefixes | Where-Object { $assignment.StartsWith($_) })
+    })
+
+    $env += @(
+        "OPENMW_OPENNV_ACTOR_EXPORT_ROOT=$meshRootAbs",
+        "OPENMW_OPENNV_ACTOR_EXPORT_NO_SCREENSHOT=1",
+        "OPENMW_OPENNV_ACTOR_EXPORT_EXIT_AFTER_BATCH=1",
+        # The staging pedestal is a serializer, not a combat encounter. A
+        # hostile creature otherwise attacks/kills the player, opens the
+        # loading GUI, and strands the completion-driven batch on that actor.
+        "OPENMW_PROOF_GOD_MODE=1",
+        "OPENMW_PROOF_SUPPRESS_ACTOR_AI=1",
+        "OPENMW_PROOF_PIN_STAGED_ACTOR=1",
+        "OPENMW_PROOF_DISABLE_ACTOR_COLLISION=1",
+        # Keep the drawable/cull-readiness barrier. Without it a cold creature
+        # skeleton can be serialized on its staging frame before RigGeometry
+        # has initialized, yielding a syntactically valid 16-byte empty file.
+        # NO_SCREENSHOT bypasses only portrait framing, not this asset gate.
+        "OPENMW_PROOF_REQUIRE_ACTOR_FOR_SCREENSHOT=1",
+        # These are proof-camera acceptance gates, not asset-readiness gates.
+        # Data-only exports must accept authored dead/sleeping/seated poses and
+        # actors occluded from the unused portrait camera.
+        "OPENMW_PROOF_ACTOR_VIEW_VISIBILITY_RAYCAST=0",
+        "OPENMW_PROOF_ACTOR_VIEW_VISIBILITY_RAYCAST_GATE_ONLY=0",
+        "OPENMW_PROOF_ACTOR_POSE_ALL_AVAILABLE=0",
+        "OPENMW_PROOF_SCREENSHOT_FRAME=$($frames -join ',')",
+        "OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG=1"
+    )
+
+    $runLeaf = Split-Path -Leaf $outputRootAbs
+    $profileRoot = Join-Path $repoRoot "profiles/_verification/$runLeaf"
+    $campaignUserdata = Join-Path $profileRoot 'userdata'
+    $initializer = Join-Path $PSScriptRoot 'Initialize-OpenNVBaseProfile.ps1'
+    $profile = & $initializer `
+        -ProfileDirectory $profileRoot `
+        -CampaignUserdataDirectory $campaignUserdata `
+        -BinaryRoot $BinaryRoot `
+        -Force
+    $binary = Join-Path ([string]$profile.runtimeRoot) 'openmw.exe'
+    if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+        throw "Missing OpenNV executable: $binary"
+    }
+
+    function Quote-ActorExportArgument([string]$Argument) {
+        if ($Argument -match '[\s"]') { return '"' + ($Argument -replace '"', '\"') + '"' }
+        return $Argument
+    }
+
+    $arguments = @(
+        '--replace', 'config',
+        '--config', [string]$profile.profileDirectory,
+        '--resources', [string]$profile.resourcesRoot,
+        '--skip-menu', '--start', 'Goodsprings', '--no-sound'
+    )
+    $argumentLine = ($arguments | ForEach-Object { Quote-ActorExportArgument $_ }) -join ' '
+    $previousEnvironment = @{}
+    try {
+        foreach ($assignment in $env) {
+            $split = $assignment.IndexOf('=')
+            if ($split -le 0) { throw "Invalid actor export environment assignment: $assignment" }
+            $name = $assignment.Substring(0, $split)
+            $value = $assignment.Substring($split + 1)
+            if (-not $previousEnvironment.ContainsKey($name)) {
+                $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+            }
+            [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+        }
+        Write-Host "Exporting $($targets.Count) Goodsprings actors in one OpenNV process (native screenshots disabled)."
+        $process = Start-Process -FilePath $binary -ArgumentList $argumentLine `
+            -WorkingDirectory (Split-Path -Parent $binary) -WindowStyle Hidden -PassThru
+        if (-not $process.WaitForExit($runSeconds * 1000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "OpenNV actor mesh export timed out after $runSeconds seconds; stopped PID $($process.Id)."
+        }
+        if ($process.ExitCode -ne 0) {
+            throw "OpenNV actor mesh export exited with code $($process.ExitCode)."
+        }
+    }
+    finally {
+        foreach ($name in $previousEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+        }
+    }
+
+    $meshFiles = @()
+    if (-not $SkeletalExportOnly) {
+        $meshFiles = @(Get-ChildItem -LiteralPath $meshRootAbs -Filter 'actor-*.obj' -File |
+            Where-Object { $_.Length -gt 128 } | Sort-Object Name)
+        if ($meshFiles.Count -ne $targets.Count) {
+            throw "Actor mesh export expected $($targets.Count) nonempty OBJ files; found $($meshFiles.Count) in $meshRootAbs."
+        }
+    }
+    $skeletalFiles = @(Get-ChildItem -LiteralPath $meshRootAbs -Filter 'actor-*.onvskel' -File |
+        Where-Object { $_.Length -gt 16 } | Sort-Object Name)
+    if ($skeletalFiles.Count -ne $targets.Count) {
+        throw "Actor mesh export expected $($targets.Count) nonempty ONVSKEL1 files; found $($skeletalFiles.Count) in $meshRootAbs."
+    }
+    $nativeScreenshots = @(Get-ChildItem -LiteralPath $campaignUserdata -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^screenshot[0-9]+\.' })
+    if ($nativeScreenshots.Count -ne 0) {
+        throw "Mesh-only export unexpectedly created $($nativeScreenshots.Count) native screenshot(s)."
+    }
+    $rows = for ($i = 0; $i -lt $targets.Count; ++$i) {
+        [ordered]@{
+            index = $i
+            id = [string]$targets[$i].id
+            category = [string]$targets[$i].category
+            authoredRef = ConvertTo-CanonicalForm ([string]$targets[$i].authoredRef)
+            base = ConvertTo-CanonicalForm ([string]$targets[$i].base)
+            obj = if ($SkeletalExportOnly) { $null } else { $meshFiles[$i].FullName }
+            mtl = if ($SkeletalExportOnly) { $null } else { [IO.Path]::ChangeExtension($meshFiles[$i].FullName, '.mtl') }
+            skeletal = $skeletalFiles[$i].FullName
+            sha256 = if ($SkeletalExportOnly) { $null } else { (Get-FileHash -Algorithm SHA256 -LiteralPath $meshFiles[$i].FullName).Hash.ToLowerInvariant() }
+            skeletalSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $skeletalFiles[$i].FullName).Hash.ToLowerInvariant()
+        }
+    }
+    $reportPath = Join-Path $outputRootAbs 'actor-mesh-export.json'
+    $report = [ordered]@{
+        schema = if ($SkeletalExportOnly) { 'opennv-godot-skeletal-only-actor-export/v1' } else { 'opennv-godot-skeletal-actor-export/v2' }
+        status = 'pass'
+        rosterPath = $rosterFile
+        rosterSha256 = $rosterSha256
+        targetCount = $targets.Count
+        processExitCode = $process.ExitCode
+        nativeScreenshotCount = 0
+        meshRoot = $meshRootAbs
+        actors = @($rows)
+    }
+    [IO.File]::WriteAllText($reportPath, (($report | ConvertTo-Json -Depth 7) + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
+    [pscustomobject]@{ status = 'pass'; outputDirectory = $outputRootAbs; reportPath = $reportPath; meshRoot = $meshRootAbs; actorCount = $targets.Count }
+    return
+}
 
 $runner = Join-Path $PSScriptRoot "Invoke-RealWorldScreenshots.ps1"
 Write-Host "Capturing $($targets.Count) Goodsprings actors in one OpenMW process."

@@ -2,7 +2,8 @@
   "schema": "nikami-fnv-ui-data-driven-contract/v1",
   "scope": "Fallout: New Vegas flat UI, dialogue, inventory, barter, stats, quests, and VR panel placement boundary",
   "policy": {
-    "engineGlueMayBeHardcoded": true,
+    "engineGlueMayBeHardcoded": false,
+    "engineGlueMustBeGeneric": true,
     "gameContentMustBeRuntimeData": true,
     "flatUiPrimaryImplementation": "C++/MyGUI",
     "luaRole": "generic UI mode/window glue and VR panel/input placement only",
@@ -16,9 +17,8 @@
     "allowedCompatibilityConstants": [
       "FalloutNV.esm content detection",
       "FNV canonical currency record Caps001, resolved through the loaded store",
-      "Pip-Boy category captions such as ALL, WEAPONS, APPAREL, AID, MISC / AMMO",
-      "Pip-Boy pane titles such as DATA / QUESTS",
-      "window coordinates and MyGUI layout/resource names"
+      "authored asset identifiers resolved through the runtime VFS",
+      "generic MyGUI layout/resource names"
     ]
   },
   "requiredSources": [
@@ -86,8 +86,7 @@
       "owner": "apps/openmw/mwgui/windowmanagerimp.cpp",
       "runtimeDataPath": "existing native Map, Inventory, Magic/Data, Stats windows",
       "proofNeedles": [
-        "Fallout inventory mode opens all native panes",
-        "WindowBase* windows[4]",
+        "mGuiModeStates[GM_Inventory] = GuiModeState",
         "mMap, mInventoryWindow, mSpellWindow, mStatsWindow"
       ]
     },
@@ -117,10 +116,9 @@
         "requireAsset(\"pipboy-arm\"",
         "meshes/characters/_1stperson/locomotion/male/pipboy.kf",
         "meshes/characters/_male/idleanims/1stppipboywaver.kf",
-        "sequence=retail-waver-resting-right-hand",
-        "manipulateObservedRetail=0",
-        "retailDataOnly=1",
-        "static_cast<void>(interactionPulse);"
+        "FNV Pip-Boy authored hold: played=",
+        "getAnimationSourceName(\"pipboywaver\")",
+        "Physical NIF/KF controller data owns knob, button, and glow state."
       ],
       "forbiddenNeedles": [
         "applyPipBoyContactIk",
@@ -133,8 +131,55 @@
         "initializePipBoyPhysicalControls",
         "meshes/characters/_male/idleanims/pipboymanipulate.kf",
         "retailHeldPipBoyWaverSample",
+        "retailRaisedContactSeconds",
+        "raiseState->second.setTime",
         "waverState->second.mSpeedMult = 0.f",
         "waverState->second.setTime(heldTime)"
+      ]
+    },
+    {
+      "id": "pipboy-screen-source",
+      "owner": "apps/openmw/mwrender/renderingmanager.cpp",
+      "runtimeDataPath": "filtered live MyGUI layer rendered to the authored Pip-Boy screen material",
+      "proofNeedles": [
+        "createGUICamera(osg::Camera::NESTED_RENDER",
+        "pipBoyRtt->getColorTexture()",
+        "source=mygui-layer-rtt"
+      ],
+      "forbiddenNeedles": [
+        "generated:FNV Pip-Boy live terminal surface",
+        "updatePipBoyTerminalTexture",
+        "pipBoyGlyph",
+        "drawPipBoyTerminalText",
+        "drawPipBoyRetailPanelIcon"
+      ]
+    },
+    {
+      "id": "weapon-ads-source",
+      "owner": "apps/openmw/mwinput/actionmanager.cpp",
+      "runtimeDataPath": "equipped FalloutNV.esm WEAP DNAM sightFov and authored animation selectors",
+      "proofNeedles": [
+        "weapon != nullptr ? weapon->mData.sightFov : 0.f",
+        "mFalloutAimPreparationRejected = true;",
+        "rendering->overrideFieldOfView(sightFov)"
+      ],
+      "forbiddenNeedles": [
+        "overrideFieldOfView(35.f)",
+        "fovOverridden ? 35.f"
+      ]
+    },
+    {
+      "id": "no-synthetic-proof-inventory-records",
+      "owner": "apps/openmw/mwworld/esmstore.cpp",
+      "runtimeDataPath": "loaded ESM/ESM4 stores only",
+      "proofNeedles": [],
+      "forbiddenNeedles": [
+        "FNV_PROOF_9MM_PISTOL",
+        "FNV_PROOF_VARMINT_RIFLE",
+        "FNV_PROOF_STIMPAK",
+        "FNV_PROOF_9MM_AMMO",
+        "FNV_PROOF_BOBBY_PIN",
+        "FNV_PROOF_CAPS"
       ]
     }
   ],

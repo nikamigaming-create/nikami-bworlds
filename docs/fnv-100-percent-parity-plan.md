@@ -1,5 +1,10 @@
 # Fallout: New Vegas 100% Parity Plan
 
+> Active playability regression recovery is tracked in
+> `docs/fnv-playability-recovery-20260807.md` and
+> `catalog/fnv-playability-recovery-plan.json`. Complete that recovery ladder
+> before resuming broad parity promotion work.
+
 This is the controlling execution plan for making the English Fallout: New
 Vegas Ultimate Edition naturally playable in OpenMW. Flat OpenMW is the fast,
 repeatable diagnostic and authored-gameplay bench; OpenMW VR is the acceptance

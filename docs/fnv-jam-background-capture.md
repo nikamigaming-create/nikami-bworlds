@@ -250,12 +250,32 @@ completion are proven, and character-generation overlay suppression is active
 after the handoff. Keep other desktop audio quiet during this run because Stereo
 Mix records audible system output.
 
+## Godot Goodsprings-to-Strip route
+
+The Godot route is a third declared lane. It uses the same no-control policy:
+Godot owns all walking and door activation. The runner verifies the exact
+launched process has an `OpenNV` title, then ffmpeg records that process's
+native window handle; native framebuffer checkpoints are retained. Run:
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target Godot -Scenario GodotRoute -RuntimeReady -RequireIdle
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target Godot -Scenario GodotRoute `
+  -OutputRoot .\run\opennv-godot-route-<unique>
+```
+
+This route enters and exits a connected Goodsprings interior, walks the streamed
+exterior corridor, crosses the authored Freeside and Strip seams, and ends inside
+the collapsed Strip. It is not accepted unless the route report, thirteen native
+checkpoints, exact-title video, audio stream, hashes, and no-control flags all pass.
+
 ## Provenance and recovery
 
 Every successful directory must retain:
 
-- raw retail BMPs and `retail-core.jsonl`, or the raw OpenMW MP4 and
-  `stdout.log`;
+- raw retail BMPs and `retail-core.jsonl`, the raw OpenMW MP4 and `stdout.log`,
+  or the Godot exact-process-window MP4, native PNG checkpoints, and Godot logs;
 - the engine-specific manifest/report;
 - SHA-256 hashes;
 - ffmpeg logs;
@@ -286,4 +306,21 @@ make it pass. Its contract definition can be checked independently with:
 
 ```powershell
 & .\scripts\Test-FNVJamFullProof.ps1 -ContractOnly
+```
+# OpenNV four-scene 60 FPS cinematic capture
+
+The canonical Godot cinematic lane records one new 60-second engine-owned reel and splits it into four continuous 15-second 1280x720/60 FPS clips: Goodsprings, Novac, the Strip, and Vault 21 exterior-to-interior. Godot's native fixed-step movie writer supplies genuine rendered 60 FPS frames and native game audio; ffmpeg only trims and encodes from that retained AVI. The lane sends no Windows input, performs no focus or app-control operation, and retains native framebuffer checkpoints and engine telemetry.
+
+```powershell
+.\scripts\Test-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotCinematics -RuntimeReady -RequireIdle
+.\scripts\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotCinematics -OutputRoot .\run\opennv-godot-cinematics-<unique>
+```
+
+# OpenNV famous people in authored locations
+
+This Godot-native screenshot lane frames decoded actor references at their original placements: Easy Pete in Goodsprings, Arcade Gannon at the Old Mormon Fort, Vulpes Inculta on the Strip, and Victor at the Lucky 38. It retains native PNGs and produces 1280x720 JPEG copies without foreground control or host input.
+
+```powershell
+.\scripts\Test-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotPortraits -RuntimeReady -RequireIdle
+.\scripts\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotPortraits -OutputRoot .\run\opennv-godot-portraits-<unique>
 ```

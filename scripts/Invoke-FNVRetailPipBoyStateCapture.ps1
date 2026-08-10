@@ -118,6 +118,37 @@ $snapshots = @($events | Where-Object event -eq 'retail-pipboy-snapshot')
 $commands = @($events | Where-Object event -eq 'scheduled-console-command')
 $rejected = @($commands | Where-Object { -not [bool]$_.accepted })
 $nativeFrames = @(Get-ChildItem -LiteralPath $frames -Filter '*.bmp' -File | Sort-Object Name)
+
+function Measure-PipBoyHeldFrame([string]$Path) {
+    Add-Type -AssemblyName System.Drawing
+    $bitmap = [System.Drawing.Bitmap]::new($Path)
+    try {
+        # A retail held Pip-Boy fills the middle of the native backbuffer with
+        # its opaque CRT and bezel. Sample a resolution-relative region so the
+        # validator checks the rendered result instead of trusting menu state.
+        $dark = 0
+        $samples = 0
+        $step = [Math]::Max(2, [int]($bitmap.Width / 220))
+        for ($y = [int]($bitmap.Height * 0.12); $y -lt [int]($bitmap.Height * 0.72); $y += $step) {
+            for ($x = [int]($bitmap.Width * 0.30); $x -lt [int]($bitmap.Width * 0.70); $x += $step) {
+                $pixel = $bitmap.GetPixel($x, $y)
+                $samples++
+                if ($pixel.R -lt 75 -and $pixel.G -lt 75 -and $pixel.B -lt 75) {
+                    $dark++
+                }
+            }
+        }
+        [pscustomobject][ordered]@{
+            path = $Path
+            samples = $samples
+            darkFraction = if ($samples -gt 0) { $dark / $samples } else { 0.0 }
+            screenDominant = $samples -gt 0 -and ($dark / $samples) -ge 0.75
+        }
+    }
+    finally {
+        $bitmap.Dispose()
+    }
+}
 $firstPersonSnapshots = @($snapshots | Where-Object {
     $null -ne $_.player.firstPerson -and
     [bool]$_.player.firstPerson.available -and
@@ -133,6 +164,14 @@ $heldPipBoySnapshots = @($openSnapshots | Where-Object {
         $null -ne $_ -and [string]$_.file -match '(?i)pipboy.*\.kf$'
     }).Count -gt 0
 })
+$heldFrameEvidence = @($heldPipBoySnapshots | Where-Object { $_.label -eq 'held' } | ForEach-Object {
+    $heldFramePath = Join-Path $frames ('frame-{0:D6}.bmp' -f [int]$_.frame)
+    if (Test-Path -LiteralPath $heldFramePath -PathType Leaf) {
+        Measure-PipBoyHeldFrame $heldFramePath
+    }
+})
+$heldVisualPass = $heldFrameEvidence.Count -gt 0 -and
+    @($heldFrameEvidence | Where-Object { -not $_.screenDominant }).Count -eq 0
 $closedSnapshots = @($snapshots | Where-Object {
     [int]$_.interface.pipBoyMode -ne 3
 })
@@ -171,6 +210,7 @@ $passed = $rejected.Count -eq 0 -and
     $firstPersonSnapshots.Count -gt 0 -and
     $openSnapshots.Count -gt 0 -and
     $heldPipBoySnapshots.Count -gt 0 -and
+    $heldVisualPass -and
     $closedSnapshots.Count -gt 0 -and
     ($WeaponAudit -or $afterLowerPass) -and
     $navigationSnapshots.Count -eq 4 -and
@@ -216,6 +256,8 @@ $report = [pscustomobject][ordered]@{
         firstPersonSnapshots = $firstPersonSnapshots.Count
         renderedStatsOpenSnapshots = $openSnapshots.Count
         nativeRenderedPipBoySnapshots = $heldPipBoySnapshots.Count
+        heldVisualEvidence = @($heldFrameEvidence)
+        heldVisualPass = [bool]$heldVisualPass
         closedSnapshots = $closedSnapshots.Count
         verifiedAfterLowerSnapshots = $afterLowerSnapshots.Count
         afterLowerRequired = -not [bool]$WeaponAudit

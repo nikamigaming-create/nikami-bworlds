@@ -1,0 +1,23 @@
+{
+  "schema": "nikami-worlds-streaming-policy/v1",
+  "cell_size_bethesda_units": 4096,
+  "bethesda_units_per_meter": 70.0,
+  "full_detail_radius_cells": 4,
+  "prefetch_radius_cells": 6,
+  "hlod_radius_cells": 10,
+  "world_lod_radius_cells": 18,
+  "unload_hysteresis_cells": 2,
+  "minimum_resident_seconds": 8.0,
+  "max_concurrent_io_jobs": 4,
+  "max_main_thread_installs_per_frame": 2,
+  "main_thread_install_budget_ms": 3.0,
+  "origin_rebase_distance_meters": 2048.0,
+  "transition_seconds": 0.35,
+  "startup_requires_full_detail_ring": true,
+  "startup_prewarm_during_movie_and_menu": true,
+  "dedicated_loading_screens_allowed": false,
+  "visible_boundary_loads_allowed": false,
+  "velocity_lookahead_seconds": 6.0,
+  "teleport_requires_destination_prefetch": true,
+  "teleport_holds_source_view_until_destination_resident": true
+}

@@ -1,0 +1,49 @@
+{
+  "schema": "nikami-fnv-pipboy-corpus-audit/v1",
+  "auditedAt": "2026-08-06",
+  "disposition": "quarantine-existing-state-capture-passes",
+  "reason": "The state-capture validator accepted telemetry renderedOpen and retained-frame counts without verifying that the named held native frame visibly contained the retail Pip-Boy composition.",
+  "population": {
+    "reportsEvaluated": 39,
+    "reportedPass": 10,
+    "reportedPassWithScreenDominantHeldFrame": 0
+  },
+  "quarantinedReportedPassRuns": [
+    "run/fnv-real-save-campaign/retail-save330-weapon-reference-20260803-080153",
+    "run/retail-pipboy-interaction-oracle-20260802-052347",
+    "run/retail-pipboy-measured-lifecycle-20260802-053917",
+    "run/retail-pipboy-oracle-deep-20260802-090655",
+    "run/retail-pipboy-state-20260801-200300",
+    "run/retail-pipboy-state-20260801-202757",
+    "run/retail-pipboy-state-20260801-203243",
+    "run/retail-pipboy-state-20260801-203400",
+    "run/retail-pipboy-state-20260801-203910",
+    "run/retail-pipboy-state-20260801-205100"
+  ],
+  "visualReferenceOnly": [
+    {
+      "path": "run/retail-pipboy-native-20260801-181200/screens/frame-000086.bmp",
+      "sha256": "D0168521EC37D3B988BD0EA2E311AC39946C96A68140D4254BA6F002864E3390",
+      "claim": "Visible retail held-frame appearance only; not a complete lifecycle proof."
+    },
+    {
+      "path": "run/retail-pipboy-native-20260801-181200/screens/frame-000100.bmp",
+      "sha256": "D7E811CEEE99A904745C4DA0BFA70AC2D7EF06C212D0F5D4DC750BD20047FC3A",
+      "claim": "Visible retail held-frame appearance only; not a complete lifecycle proof."
+    }
+  ],
+  "authoredUiAssets": [
+    "menus/main/inventory_menu.xml",
+    "menus/main/stats_menu.xml",
+    "menus/main/map_menu.xml",
+    "menus/globals.xml",
+    "menus/prefabs/*.xml",
+    "Interface/Shared/Background/pipboy.dds"
+  ],
+  "policy": [
+    "Do not use a quarantined run to assert Pip-Boy visual parity.",
+    "Do not infer visible Pip-Boy pixels from renderedOpen, pipBoyMode, visible menu type, or active KF state.",
+    "Require the named held native frame to pass the screen-dominant visual gate and retain its hash.",
+    "Keep raw evidence immutable; quarantine claims instead of deleting captures."
+  ]
+}

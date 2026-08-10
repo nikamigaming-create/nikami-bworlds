@@ -1,19 +1,30 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("outside-walk", "people", "native-people", "actor-closeup", "leliana", "outside-look", "waterfront", "native-water", "water-dock", "water-scout", "runtime-town", "runtime-water", "town-core", "town-post", "town-people-front", "town-match", "town-survey", "cluster-match", "tavern")]
+    [ValidateSet("outside-walk", "people", "native-people", "actor-closeup", "leliana", "leliana-tavern", "morrigan-hut", "leliana-face", "leliana-forest", "character-forest", "marethari", "marethari-set", "marethari-terrain", "forest-survey", "outside-look", "waterfront", "native-water", "water-dock", "water-scout", "runtime-town", "runtime-water", "redcliffe-world", "town-core", "town-post", "town-people-front", "town-match", "town-survey", "cluster-match", "tavern")]
     [string]$Shot = "outside-walk",
     [string]$OutputRoot,
     [string]$Binary = "D:\code\nikami-worlds\local\labs\openmw-051-threeway-candidate-r30\openmw.exe",
+    [string]$ResourcesRoot,
     [string]$ActorAsset,
+    [ValidateSet("0", "1")]
+    [string]$DaoFaceShader = "1",
     [ValidateRange(2, 5)]
-    [int]$Seconds = 3
+    [int]$Seconds = 3,
+    [switch]$Interactive
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $binaryRoot = Split-Path $Binary -Parent
-$resources = Join-Path $binaryRoot "resources"
+$resources = if ([string]::IsNullOrWhiteSpace($ResourcesRoot)) {
+    Join-Path $binaryRoot "resources"
+} else {
+    (Resolve-Path -LiteralPath $ResourcesRoot).Path
+}
 $baseConfig = Join-Path $repoRoot "local\dao-openmw-poc\openmw-dao-walkaround-20260802-182825\config"
+if (-not (Test-Path -LiteralPath $baseConfig)) {
+    $baseConfig = "D:\code\opendao-poc\cache\openmw-shared\base-config"
+}
 $exterior = Join-Path $repoRoot "local\dao-openmw-poc\haven-export-20260802-10b\lak100d\redcliffe-approved-cluster.obj"
 $exteriorPlayable = Join-Path $repoRoot "local\dao-openmw-poc\haven-export-20260802-10b\lak100d\lak100d-openmw-playable2.obj"
 $exteriorBaked = Join-Path $repoRoot "local\dao-openmw-poc\haven-export-baked-20260803\lak100d\redcliffe-openmw-baked.obj"
@@ -27,11 +38,29 @@ $exteriorSkyOnly = Join-Path $repoRoot "local\dao-openmw-poc\haven-export-full-b
 $exteriorFullAlpha = Join-Path $repoRoot "local\dao-openmw-poc\haven-export-full-baked-20260803-v2\lak100d\redcliffe-openmw-full-baked-alpha.obj"
 $godotExactEnvironment = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-environment-v2.obj"
 $godotNativeEnvironment = "D:\code\opendao-poc\godot\assets\generated\redcliffe-environment-v2.glb"
+$daoForestClearing = Join-Path $repoRoot "local\dao-openmw-poc\brc100d-clearing-20260806\brc100d-clearing-portrait.obj"
+$daoMarethariActor = "D:\code\opendao-poc\cache\openmw-shared\marethari-actor-glb5\keeper-marethari.glb"
+$daoMarethariTerrain59 = "D:\code\opendao-poc\cache\openmw-shared\marethari-terrain-direct-cells\brc997d_59_0.glb"
+$daoMarethariTerrain31 = "D:\code\opendao-poc\cache\openmw-shared\marethari-terrain-direct-cells\brc997d_31_0.glb"
+$daoMarethariTerrain31Local = "D:\code\opendao-poc\cache\dalish-origin-brc997d\brc997d\models\brc997d_31_0.glb"
+$daoMarethariTerrainAssets = "D:\code\opendao-poc\cache\dalish-origin-brc997d\terrain-materials"
+$daoMarethariGroundCell = "D:\code\opendao-poc\cache\openmw-shared\marethari-terrain-surface\brc997d_31_0.glb"
+$daoMarethariWestGroundCell = "D:\code\opendao-poc\cache\openmw-shared\marethari-terrain-surface\brc997d_59_0.glb"
+$daoMarethariAravel01A = "D:\code\opendao-poc\cache\dalish-origin-brc997d\brc997d\models\prp_aravel01_0.glb|255.924805,277.873627,2.305931,0.019157,-0.003702,0.793110,0.608766,1"
+$daoMarethariAravel01B = "D:\code\opendao-poc\cache\openmw-shared\marethari-set-baked\aravel01_242_277.glb"
+$daoMarethariAravel01C = "D:\code\opendao-poc\cache\openmw-shared\marethari-set-baked\aravel01_263_254.glb"
+$daoMarethariAravel01D = "D:\code\opendao-poc\cache\openmw-shared\marethari-set-baked\aravel01_281_260.glb"
+$daoMarethariAravel02 = "D:\code\opendao-poc\cache\dalish-origin-brc997d\brc997d\models\prp_aravel02.glb|245.110092,293.638214,2.391861,0.018455,-0.028633,0.992040,0.121232,1"
+$daoMarethariEnvironment = ([string]$daoMarethariWestGroundCell + '|0,0,0;' +
+    [string]$daoMarethariGroundCell + '|0,0,0;' +
+    [string]$daoMarethariAravel01A + ';' +
+    [string]$daoMarethariAravel02)
 $godotExactConnectedEnvironment = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-environment-connected.obj"
 $godotExactActors = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-actors-direct.obj"
 $godotNativeActors = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-actors-direct.glb"
 if (-not [string]::IsNullOrWhiteSpace($ActorAsset)) {
     $godotNativeActors = (Resolve-Path -LiteralPath $ActorAsset).Path
+    $daoMarethariActor = $godotNativeActors
 }
 $godotExactSky = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-sky-dome.obj"
 $godotExactVegetation = Join-Path $repoRoot "local\dao-openmw-poc\godot-exact-obj-v1\redcliffe-vegetation.obj"
@@ -66,11 +95,15 @@ $tavern = Join-Path $repoRoot "local\dao-openmw-poc\godot-transfer-v1\redcliffe-
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repoRoot ("local\dao-openmw-poc\mobile-shorts\{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $Shot)
 }
-foreach ($required in @($Binary, $resources, $baseConfig, $exterior, $exteriorPlayable, $exteriorBaked, $exteriorFullBaked, $exteriorFullBakedNoSky, $exteriorFullClean, $exteriorFullOcean2, $exteriorFullOceanRaised, $exteriorFullOceanDiagnostic, $exteriorSkyOnly, $exteriorFullAlpha, $godotExactEnvironment, $godotNativeEnvironment, $godotExactConnectedEnvironment, $godotExactActors, $godotNativeActors, $godotExactSky, $godotExactVegetation, $godotExactSetpieces, $godotNativeVegetation, $godotNativeSetpieces, $godotExactTerrainRing, $godotNativeTerrainRing, $godotOpenMWTerrainRing, $godotNativeWater, $godotRuntimeOpenMW, $godotTerrainAssets, $tavern)) {
+foreach ($required in @($Binary, $resources, $baseConfig)) {
     if (-not (Test-Path -LiteralPath $required)) { throw "Required OpenMW short dependency is missing: $required" }
 }
 if (Test-Path -LiteralPath $OutputRoot) { throw "Refusing to overwrite existing short directory: $OutputRoot" }
-if (Get-Process -Name openmw -ErrorAction SilentlyContinue) { throw "OpenMW is already running." }
+$resolvedBinary = (Resolve-Path -LiteralPath $Binary).Path
+$sameBinaryProcess = Get-CimInstance Win32_Process -Filter "Name='openmw.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ExecutablePath -eq $resolvedBinary } |
+    Select-Object -First 1
+if ($sameBinaryProcess) { throw "The requested OpenMW binary is already running (PID $($sameBinaryProcess.ProcessId))." }
 
 $shotTable = @{
     "outside-walk" = @{
@@ -114,6 +147,78 @@ $shotTable = @{
         # presentation scale, safely beyond OpenMW's near clip.
         frames="0,80,160,240"; proofFrames="160"; ex="255.9997,255.9997,255.9997,255.9997"; ey="272.5001,272.5001,272.5001,272.5001"; ez="96.6309,96.6309,96.6309,96.6309"
         tx="255.9997,255.9997,255.9997,255.9997"; ty="300.5001,300.5001,300.5001,300.5001"; tz="95.8599,95.8599,95.8599,95.8599"
+    }
+    "leliana-tavern" = @{
+        # Exact lot120st_commander `leliana` placement and cam_leliana_cu,
+        # sharing the hrt002d tavern export with the Godot portrait capture.
+        scene=([string]$godotNativeActors + '|20.997124,17.492834,0.025964,0,0,-0.971343,0.237686,1'); scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; hideWorld="1"; fov="23"; daoCharacter="leliana"; faceTangents="0"; nativeOnly="1"; crop16x9="1"; captureWidth="1920"; captureHeight="1080"; clearR="0.12"; clearG="0.10"; clearB="0.08"; authoredLotheringManifest="1"; sharedMainCamera="1"
+        frames="0,80,160,240"; proofFrames="160"; ex="21.243518,21.243518,21.243518,21.243518"; ey="16.050750,16.050750,16.050750,16.050750"; ez="1.729767,1.729767,1.729767,1.729767"
+        tx="20.986500,20.986500,20.986500,20.986500"; ty="17.513240,17.513240,17.513240,17.513240"; tz="1.584723,1.584723,1.584723,1.584723"
+    }
+    "morrigan-hut" = @{
+        # pre200st_flemeth_hut_int actor2 and cam2_1_2, composed with the
+        # pre211ar_flemeths_hut_int stage transform. The room manifest is the
+        # same ost102d export consumed by Godot.
+        scene=([string]$godotNativeActors + '|-56.525110,-14.261370,0.054783,0,0,0.659346,0.751840,1'); scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; hideWorld="1"; fov="30"; daoCharacter="morrigan"; faceTangents="0"; nativeOnly="1"; crop16x9="1"; captureWidth="1920"; captureHeight="1080"; clearR="0.07"; clearG="0.045"; clearB="0.03"; authoredAreaManifest="D:\code\opendao-poc\cache\morrigan-hut-layout-export\ost102d\ost102d.havenarea"; sharedMainCamera="1"
+        frames="0,80,160,240"; proofFrames="160"; ex="-59.325572,-59.325572,-59.325572,-59.325572"; ey="-14.901152,-14.901152,-14.901152,-14.901152"; ez="0.955667,0.955667,0.955667,0.955667"
+        tx="-56.525110,-56.525110,-56.525110,-56.525110"; ty="-14.261370,-14.261370,-14.261370,-14.261370"; tz="1.500000,1.500000,1.500000,1.500000"
+    }
+    "leliana-face" = @{
+        # Isolated native face-shader gate. Keep the exact authored portrait
+        # but remove environment geometry and frame tightly enough to inspect
+        # complexion, facial normals, roughness and forward scattering.
+        scene=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="25"
+        frames="0,80,160,240"; proofFrames="160"; ex="255.9997,255.9997,255.9997,255.9997"; ey="287.5001,287.5001,287.5001,287.5001"; ez="96.1000,96.1000,96.1000,96.1000"
+        tx="255.9997,255.9997,255.9997,255.9997"; ty="300.5001,300.5001,300.5001,300.5001"; tz="96.1000,96.1000,96.1000,96.1000"
+    }
+    "leliana-forest" = @{
+        # DAO Brecilian/Dalish clearing composed directly from brc100d.rim.
+        # Leliana is translated into the clearing; no Morrowind cell geometry
+        # or Redcliffe substitute participates in this portrait gate.
+        scene=$daoForestClearing; foreground=$godotNativeActors; foregroundPreserve="0"; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; hideWorld="1"; fov="35"
+        frames="0,80,160,240"; proofFrames="160"; ex="123,123,123,123"; ey="78.05,78.05,78.05,78.05"; ez="3.45,3.45,3.45,3.45"
+        tx="123,123,123,123"; ty="78.5,78.5,78.5,78.5"; tz="3.45,3.45,3.45,3.45"
+    }
+    "character-forest" = @{
+        # Canonical UTC actor GLBs are meter-scale, Z-up and face +Y. Rotate
+        # them toward a camera on the clearing's south side and keep the actor
+        # in the post-render foreground pass so forest depth cannot erase it.
+        scene=$daoForestClearing; foreground=$godotNativeActors; foregroundPreserve="1"; foregroundScale="1"; foregroundX="123"; foregroundY="78.5"; foregroundZ="0"; foregroundRotZ="0"; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; hideWorld="1"; fov="35"
+        frames="0,80,160,240"; proofFrames="160"; ex="123,123,123,123"; ey="77.85,77.85,77.85,77.85"; ez="1.62,1.62,1.62,1.62"
+        tx="123,123,123,123"; ty="78.5,78.5,78.5,78.5"; tz="1.62,1.62,1.62,1.62"
+    }
+    "marethari" = @{
+        # Exact bed200st_keeper stage shot. Coordinates come from the authored
+        # DAO stage and are shared with the Godot portrait reconstruction.
+        # The staged actor is part of the same canonical scene export. A
+        # separate post-render foreground camera caused transform and clipping
+        # divergence, so it is intentionally absent from this parity shot.
+        # Environment and actor share the normal depth/material pass. Marking
+        # the camp as a generic `background` invokes the sky-only override and
+        # turns every authored material into flat grey.
+        scene=$daoMarethariActor; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; hideWorld="1"; fov="10.550000"; daoCharacter="keeper_marethari"; nativeOnly="1"; crop16x9="1"; captureWidth="1920"; captureHeight="1080"; clearR="0.260"; clearG="0.300"; clearB="0.320"; authoredDalishManifest="1"; sharedMainCamera="1"
+        # Exact global camera produced by Godot's stage_transform * cam2_1_1.
+        frames="0,80,160,240"; proofFrames="160"; ex="257.673578,257.673578,257.673578,257.673578"; ey="270.063270,270.063270,270.063270,270.063270"; ez="4.351884,4.351884,4.351884,4.351884"
+        tx="256.7754,256.7754,256.7754,256.7754"; ty="271.8335,271.8335,271.8335,271.8335"; tz="4.2205,4.2205,4.2205,4.2205"
+    }
+    "marethari-terrain" = @{
+        # Minimal parity gate: the single authored ground cell beneath the
+        # stage and Marethari share the exact portrait camera and depth pass.
+        scene=([string]$daoMarethariTerrain31Local + '|287.387512,287.940125,0,0,0,0,1,1'); scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; hideWorld="1"; fov="10.550000"; daoCharacter="keeper_marethari"; nativeOnly="1"; crop16x9="1"; clearR="0.260"; clearG="0.300"; clearB="0.320"; terrainAssets=$daoMarethariTerrainAssets
+        frames="0,80,160,240"; proofFrames="160"; ex="257.673578,257.673578,257.673578,257.673578"; ey="270.063270,270.063270,270.063270,270.063270"; ez="4.351884,4.351884,4.351884,4.351884"
+        tx="256.7664,256.7664,256.7664,256.7664"; ty="271.8289,271.8289,271.8289,271.8289"; tz="4.2205,4.2205,4.2205,4.2205"
+    }
+    "marethari-set" = @{
+        # Set-transform QA: exact portrait camera with the two original Haven
+        # aravel instances, excluding terrain so depth/placement can be judged.
+        scene=([string]$daoMarethariAravel01A + ';' + [string]$daoMarethariAravel02 + ';' + [string]$daoMarethariActor); scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; hideWorld="1"; fov="10.550000"; daoCharacter="keeper_marethari"; nativeOnly="1"; offsetAsOuter="1"; crop16x9="1"; clearR="0.260"; clearG="0.300"; clearB="0.320"; terrainAssets=$daoMarethariTerrainAssets
+        frames="0,80,160,240"; proofFrames="160"; ex="257.673578,257.673578,257.673578,257.673578"; ey="270.063270,270.063270,270.063270,270.063270"; ez="4.351884,4.351884,4.351884,4.351884"
+        tx="256.7664,256.7664,256.7664,256.7664"; ty="271.8289,271.8289,271.8289,271.8289"; tz="4.2205,4.2205,4.2205,4.2205"
+    }
+    "forest-survey" = @{
+        scene=$daoForestClearing; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; hideWorld="1"; fov="70"
+        frames="0,80,160,240"; proofFrames="160"; ex="123,123,123,123"; ey="30,30,30,30"; ez="30,30,30,30"
+        tx="123,123,123,123"; ty="90,90,90,90"; tz="24,24,24,24"
     }
     "outside-look" = @{
         scene=$exterior; scale="64"; x="-16640"; y="-19264"; z="0"
@@ -169,6 +274,14 @@ $shotTable = @{
         background=$godotExactSky; scene=$godotRuntimeOpenMW; foreground=$godotNativeActors; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; fov="72"; notify="NOTICE"; screenshotTimeout="180"
         frames="0,80,160,240"; ex="260,260,260,260"; ey="150,150,150,150"; ez="0.83001,0.83001,0.83001,0.83001"
         tx="260,260,260,260"; ty="301,301,301,301"; tz="4,4,4,4"
+    }
+    "redcliffe-world" = @{
+        # Interactive full-world entry point. This uses the validated Godot-
+        # composed Redcliffe GLB directly and never includes a Morrowind sky,
+        # actor, terrain, or host-cell render layer.
+        scene=$godotNativeEnvironment; scale="1"; x="0"; y="0"; z="0"; outdoorClear="1"; hideWorld="1"; fov="72"; nativeOnly="1"; screenshotTimeout="180"
+        frames="0,80,160,240"; ex="250,250,250,250"; ey="307,307,307,307"; ez="4.65,4.65,4.65,4.65"
+        tx="260,260,260,260"; ty="300,300,300,300"; tz="2.5,2.5,2.5,2.5"
     }
     "town-match" = @{
         # The generated environment contains the two inner terrain cells; the
@@ -237,15 +350,130 @@ $captureOpenMwCfg = Join-Path $config "openmw.cfg"
     "fallback-archive=Bloodmoon.bsa`r`n")
 $captureSettingsCfg = Join-Path $config "settings.cfg"
 $captureSettings = [System.IO.File]::ReadAllText($captureSettingsCfg)
+$captureWidth = if ($shotConfig.captureWidth) { [int]$shotConfig.captureWidth } else { 800 }
+$captureSettings = [regex]::Replace($captureSettings,
+    '(?m)^resolution x\s*=.*$', "resolution x = $captureWidth")
+$captureHeight = if ($shotConfig.captureHeight) { [int]$shotConfig.captureHeight } elseif ($shotConfig.crop16x9) { 450 } else { 600 }
+$captureSettings = [regex]::Replace($captureSettings,
+    '(?m)^resolution y\s*=.*$', "resolution y = $captureHeight")
 $captureSettings = [regex]::Replace($captureSettings,
     '(?ms)(\[Water\].*?^shader\s*=\s*)false', '${1}true')
 $captureSettings = [regex]::Replace($captureSettings,
     '(?ms)(\[Water\].*?^rtt size\s*=\s*)512', '${1}1024')
 $captureSettings = [regex]::Replace($captureSettings,
     '(?ms)(\[Water\].*?^refraction\s*=\s*)false', '${1}true')
+if ($Shot -eq "marethari") {
+    # Match the accepted Godot portrait's CameraAttributesPractical focus
+    # band using OpenMW's own depth-aware postprocessor.
+    $captureSettings = [regex]::Replace($captureSettings,
+        '(?ms)(\[Post Processing\].*?^enabled\s*=\s*)false', '${1}true')
+    $captureSettings = [regex]::Replace($captureSettings,
+        '(?ms)(\[Post Processing\].*?^chain\s*=).*$','$1 opendao_portrait_dof')
+}
 [System.IO.File]::WriteAllText($captureSettingsCfg, $captureSettings)
 
 $extraScenePaths = if ($shotConfig.background) { ([string]$shotConfig.background) + ';' + ([string]$shotConfig.scene) } else { [string]$shotConfig.scene }
+$extraSceneManifestPath = ""
+if ($shotConfig.authoredDalishManifest) {
+    $areaPath = "D:\code\opendao-poc\cache\dalish-origin-brc997d\brc997d\brc997d.havenarea"
+    $areaRoot = Split-Path $areaPath -Parent
+    $area = Get-Content -LiteralPath $areaPath -Raw | ConvertFrom-Json
+    $manifestLines = [System.Collections.Generic.List[string]]::new()
+    $tables = @(
+        @{ data=$area.terrain.patches; radius=85.0 },
+        @{ data=$area.props; radius=105.0 },
+        @{ data=$area.trees; radius=105.0 }
+    )
+    foreach ($table in $tables) {
+        if ([string]$shotConfig.authoredDalishManifest -eq 'propsOnly' -and $table.data -eq $area.terrain.patches) { continue }
+        foreach ($definitionProperty in $table.data.PSObject.Properties) {
+            $definition = $definitionProperty.Value
+            if ([string]$shotConfig.authoredDalishManifest -eq 'stageCore' -and
+                $table.data -eq $area.terrain.patches -and
+                [string]$definition.file -notmatch '(?i)brc997d_(31|59)_0\.glb$') { continue }
+            if ([string]$shotConfig.authoredDalishManifest -eq 'stageCore' -and
+                $table.data -ne $area.terrain.patches -and
+                [string]$definition.file -notmatch '(?i)prp_aravel02(?:_0)?\.glb$') { continue }
+            $seen = [System.Collections.Generic.HashSet[string]]::new()
+            foreach ($instance in $definition.instances) {
+                $px = [double]$instance.position[0]
+                $py = [double]$instance.position[1]
+                $distance = [math]::Sqrt(($px - 260.0) * ($px - 260.0) + ($py - 301.0) * ($py - 301.0))
+                if ($distance -gt [double]$table.radius) { continue }
+                $rotation = $instance.rotation
+                $key = ([string]::Join(',', @($instance.position + $rotation)))
+                if (-not $seen.Add($key)) { continue }
+                $assetPath = Join-Path $areaRoot ([string]$definition.file)
+                # Godot-normalized carriage GLBs preserve the exact DAO mesh,
+                # textures, and instance transform while serializing the
+                # topology/tangents/material layout that both renderers can
+                # consume identically.
+                if ([string]$definition.file -match '(?i)prp_aravel01_0\.glb$') {
+                    $assetPath = 'D:\code\opendao-poc\cache\openmw-shared\godot-canonical-set\prp_aravel01_0.glb'
+                } elseif ([string]$definition.file -match '(?i)prp_aravel02(?:_0)?\.glb$') {
+                    $assetPath = 'D:\code\opendao-poc\cache\openmw-shared\godot-canonical-set\prp_aravel02.glb'
+                }
+                if (-not (Test-Path -LiteralPath $assetPath)) { continue }
+                $scaleValue = if ($null -ne $instance.scale) { [double]$instance.scale } else { 1.0 }
+                $placement = @(
+                    [double]$instance.position[0], [double]$instance.position[1], [double]$instance.position[2],
+                    [double]$rotation[0], [double]$rotation[1], [double]$rotation[2], [double]$rotation[3], $scaleValue
+                ) | ForEach-Object { $_.ToString('R', [Globalization.CultureInfo]::InvariantCulture) }
+                $manifestLines.Add($assetPath + '|' + ([string]::Join(',', $placement)))
+            }
+        }
+    }
+    $extraSceneManifestPath = Join-Path $OutputRoot 'dalish-authored-scene.manifest'
+    [IO.File]::WriteAllLines($extraSceneManifestPath, $manifestLines)
+}
+if ($shotConfig.authoredLotheringManifest) {
+    $areaPath = "D:\code\opendao-poc\cache\lot120-tavern-export\hrt002d\hrt002d.havenarea"
+    $areaRoot = Split-Path $areaPath -Parent
+    $area = Get-Content -LiteralPath $areaPath -Raw | ConvertFrom-Json
+    $manifestLines = [System.Collections.Generic.List[string]]::new()
+    foreach ($definitionProperty in $area.props.PSObject.Properties) {
+        $definition = $definitionProperty.Value
+        foreach ($instance in $definition.instances) {
+            $px = [double]$instance.position[0]
+            $py = [double]$instance.position[1]
+            $distance = [math]::Sqrt(($px - 21.0) * ($px - 21.0) + ($py - 17.5) * ($py - 17.5))
+            if ($distance -gt 18.0) { continue }
+            $assetPath = Join-Path $areaRoot ([string]$definition.file)
+            if (-not (Test-Path -LiteralPath $assetPath)) { continue }
+            $rotation = $instance.rotation
+            $scaleValue = if ($null -ne $instance.scale) { [double]$instance.scale } else { 1.0 }
+            $placement = @(
+                [double]$instance.position[0], [double]$instance.position[1], [double]$instance.position[2],
+                [double]$rotation[0], [double]$rotation[1], [double]$rotation[2], [double]$rotation[3], $scaleValue
+            ) | ForEach-Object { $_.ToString('R', [Globalization.CultureInfo]::InvariantCulture) }
+            $manifestLines.Add($assetPath + '|' + ([string]::Join(',', $placement)))
+        }
+    }
+    $extraSceneManifestPath = Join-Path $OutputRoot 'lothering-authored-scene.manifest'
+    [IO.File]::WriteAllLines($extraSceneManifestPath, $manifestLines)
+}
+if ($shotConfig.authoredAreaManifest) {
+    $areaPath = [string]$shotConfig.authoredAreaManifest
+    $areaRoot = Split-Path $areaPath -Parent
+    $area = Get-Content -LiteralPath $areaPath -Raw | ConvertFrom-Json
+    $manifestLines = [System.Collections.Generic.List[string]]::new()
+    foreach ($definitionProperty in $area.props.PSObject.Properties) {
+        $definition = $definitionProperty.Value
+        foreach ($instance in $definition.instances) {
+            $assetPath = Join-Path $areaRoot ([string]$definition.file)
+            if (-not (Test-Path -LiteralPath $assetPath)) { continue }
+            $rotation = $instance.rotation
+            $scaleValue = if ($null -ne $instance.scale) { [double]$instance.scale } else { 1.0 }
+            $placement = @(
+                [double]$instance.position[0], [double]$instance.position[1], [double]$instance.position[2],
+                [double]$rotation[0], [double]$rotation[1], [double]$rotation[2], [double]$rotation[3], $scaleValue
+            ) | ForEach-Object { $_.ToString('R', [Globalization.CultureInfo]::InvariantCulture) }
+            $manifestLines.Add($assetPath + '|' + ([string]::Join(',', $placement)))
+        }
+    }
+    $extraSceneManifestPath = Join-Path $OutputRoot 'authored-area-scene.manifest'
+    [IO.File]::WriteAllLines($extraSceneManifestPath, $manifestLines)
+}
 $environment = [ordered]@{
     OSG_NOTIFY_LEVEL = $(if ($shotConfig.notify) { [string]$shotConfig.notify } else { "DEBUG" })
     OPENMW_WORLD_VIEWER_START_POS_X = "-320"
@@ -257,6 +485,7 @@ $environment = [ordered]@{
     OPENMW_WORLD_VIEWER_START_DRY = "1"
     OPENMW_WORLD_VIEWER_START_CAMERA_MODE = "static"
     OPENMW_WORLD_VIEWER_EXTRA_SCENE = $extraScenePaths
+    OPENMW_WORLD_VIEWER_EXTRA_SCENE_MANIFEST = $extraSceneManifestPath
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_SCALE = [string]$shotConfig.scale
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_X = [string]$shotConfig.x
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_Y = [string]$shotConfig.y
@@ -264,8 +493,19 @@ $environment = [ordered]@{
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_PROOF_LIGHT = "1"
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_DAO_ATMOSPHERE = "1"
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_DAO_PBR = "1"
+    OPENMW_WORLD_VIEWER_EXTRA_SCENE_SHARED_MAIN_CAMERA = $(if ($shotConfig.sharedMainCamera) { "1" } else { "0" })
+    OPENMW_WORLD_VIEWER_PROOF_CLEAR_R = $(if ($shotConfig.clearR) { [string]$shotConfig.clearR } else { "0.16" })
+    OPENMW_WORLD_VIEWER_PROOF_CLEAR_G = $(if ($shotConfig.clearG) { [string]$shotConfig.clearG } else { "0.19" })
+    OPENMW_WORLD_VIEWER_PROOF_CLEAR_B = $(if ($shotConfig.clearB) { [string]$shotConfig.clearB } else { "0.20" })
     OPENMW_GLTF_DAO_PBR = "1"
-    OPENMW_GLTF_DAO_TERRAIN_ASSET_DIR = $godotTerrainAssets
+    OPENMW_DAO_FACE_SHADER = $DaoFaceShader
+    OPENMW_DAO_FACE_ONLY = "1"
+    OPENMW_DAO_FACE_MATERIAL_DIR = "D:\code\opendao-poc\cache\dao-face-material-contract\textures"
+    OPENMW_DAO_ROBE_TINT_MASK = "D:\code\opendao-poc\godot\assets\generated\keeper_robe_tint_mask_b.png"
+    OPENMW_DAO_FACE_GODOT_MATERIAL_DIR = "D:\code\opendao-poc\godot\assets\generated"
+    OPENMW_DAO_FACE_CHARACTER = $(if ($shotConfig.daoCharacter) { [string]$shotConfig.daoCharacter } else { "" })
+    OPENMW_DAO_FACE_TANGENTS = $(if ($null -ne $shotConfig.faceTangents) { [string]$shotConfig.faceTangents } else { "1" })
+    OPENMW_GLTF_DAO_TERRAIN_ASSET_DIR = $(if ($shotConfig.terrainAssets) { [string]$shotConfig.terrainAssets } else { $godotTerrainAssets })
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_DAO_ALPHA_CUTOUT = "1"
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_PRESERVE_MATERIALS = "1"
     OPENMW_WORLD_VIEWER_EXTRA_SCENE_DIRECT_CAMERA = "1"
@@ -280,6 +520,8 @@ $environment = [ordered]@{
     OPENMW_PROOF_FORCE_CLEAR_LOADING_GUI = "1"
     OPENMW_PROOF_HIDE_GUI = "1"
     OPENMW_PROOF_HIDE_PLAYER_VISUAL = "1"
+    OPENMW_PROOF_CAPTURE_POSTPROCESS = $(if ($shotConfig.sharedMainCamera) { "1" } else { "0" })
+    OPENMW_PROOF_POSTPROCESS_SCREENSHOT_PATH = $(if ($shotConfig.sharedMainCamera) { Join-Path $userData "screenshots\screenshot000.png" } else { "" })
     OPENMW_WORLD_VIEWER_HIDE_DIAGNOSTIC_MODELS = "1"
     OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG = "1"
     # Always retain one renderer-native frame. Desktop/window capture can be
@@ -296,7 +538,9 @@ if ($shotConfig.nativeWater) {
     $environment.OPENMW_WORLD_VIEWER_DAO_NATIVE_WATER_HEIGHT = [string]$shotConfig.waterHeight
     $environment.OPENMW_PROOF_HIDE_WORLD_OCCLUDERS = "1"
 } else {
-    $environment.OPENMW_WORLD_VIEWER_EXTRA_SCENE_ISOLATE = "1"
+    if (-not $shotConfig.sharedMainCamera) {
+        $environment.OPENMW_WORLD_VIEWER_EXTRA_SCENE_ISOLATE = "1"
+    }
 }
 if ($shotConfig.raycastCamera) {
     $environment.OPENMW_WORLD_VIEWER_DAO_RAYCAST_CAMERA = "1"
@@ -312,13 +556,26 @@ if ($shotConfig.fov) {
 if ($shotConfig.background) {
     $environment.OPENMW_WORLD_VIEWER_EXTRA_SCENE_BACKGROUND_FIRST = "1"
 }
+if ($shotConfig.offsetAsOuter) {
+    $environment.OPENMW_WORLD_VIEWER_EXTRA_SCENE_OFFSET_AS_OUTER = [string]$shotConfig.offsetAsOuter
+}
 if ($shotConfig.outdoorClear) {
     $environment.OPENMW_WORLD_VIEWER_PROOF_OUTDOOR_CLEAR = [string]$shotConfig.outdoorClear
+}
+if ($shotConfig.hideWorld) {
+    $environment.OPENMW_PROOF_HIDE_WORLD_OCCLUDERS = [string]$shotConfig.hideWorld
 }
 if ($shotConfig.foreground) {
     $environment.OPENMW_WORLD_VIEWER_EXTRA_FOREGROUND_SCENE = [string]$shotConfig.foreground
     $environment.OPENMW_WORLD_VIEWER_EXTRA_FOREGROUND_PROOF_LIGHT = "1"
-    $environment.OPENMW_WORLD_VIEWER_EXTRA_FOREGROUND_PRESERVE_MATERIALS = "1"
+    if (-not $shotConfig.ContainsKey("foregroundPreserve") -or [string]$shotConfig.foregroundPreserve -ne "0") {
+        $environment.OPENMW_WORLD_VIEWER_EXTRA_FOREGROUND_PRESERVE_MATERIALS = "1"
+    }
+    if ($shotConfig.foregroundScale) { $environment.OPENMW_WORLD_VIEWER_EXTRA_FOREGROUND_SCALE = [string]$shotConfig.foregroundScale }
+    if ($shotConfig.foregroundX) { $environment.OPENMW_WORLD_VIEWER_EXTRA_FOREGROUND_X = [string]$shotConfig.foregroundX }
+    if ($shotConfig.foregroundY) { $environment.OPENMW_WORLD_VIEWER_EXTRA_FOREGROUND_Y = [string]$shotConfig.foregroundY }
+    if ($shotConfig.foregroundZ) { $environment.OPENMW_WORLD_VIEWER_EXTRA_FOREGROUND_Z = [string]$shotConfig.foregroundZ }
+    if ($shotConfig.foregroundRotZ) { $environment.OPENMW_WORLD_VIEWER_EXTRA_FOREGROUND_ROT_Z = [string]$shotConfig.foregroundRotZ }
 }
 if ($shotConfig.gridX) {
     $environment.OPENMW_WORLD_VIEWER_START_WORLDSPACE = [string]$shotConfig.worldspace
@@ -351,7 +608,16 @@ try {
         $value = [string]$_
         if ($value -match '[\s"]') { '"' + ($value -replace '"', '\"') + '"' } else { $value }
     }) -join ' '
-    $process = Start-Process -FilePath $Binary -ArgumentList $argumentLine -WorkingDirectory $binaryRoot -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+    $startParameters = @{
+        FilePath = $Binary
+        ArgumentList = $argumentLine
+        WorkingDirectory = $binaryRoot
+        RedirectStandardOutput = $stdout
+        RedirectStandardError = $stderr
+        PassThru = $true
+    }
+    if ($shotConfig.nativeOnly -and -not $Interactive) { $startParameters.WindowStyle = "Hidden" }
+    $process = Start-Process @startParameters
     $deadline = (Get-Date).AddSeconds(90)
     while ((Get-Date) -lt $deadline) {
         if ($process.HasExited) { throw "OpenMW exited before the DAO scene loaded (exit $($process.ExitCode))." }
@@ -365,6 +631,10 @@ try {
         Start-Sleep -Milliseconds 100
     }
     if ((Get-Date) -ge $deadline) { throw "Timed out waiting for the DAO scene load gate." }
+    if ($Interactive) {
+        [ordered]@{shot=$Shot; pid=$process.Id; interactive=$true; scene=[string]$shotConfig.scene; sceneLoaded=$true} | ConvertTo-Json
+        return
+    }
     # The untouched Godot GLB uploads more than 500 embedded textures on its
     # first render traversal. Wait for the renderer-native artifact instead of
     # racing that upload with a fixed sleep.
@@ -378,11 +648,29 @@ try {
         Start-Sleep -Milliseconds 100
     }
     if (-not $readyScreenshot) { throw "Timed out waiting for the renderer-native DAO frame." }
-    & ffmpeg -hide_banner -loglevel warning -y -f gdigrab -framerate 60 -draw_mouse 0 -i "title=OpenMW" -t $Seconds `
-        -vf "scale=1280:720:flags=lanczos" -c:v libx264 -preset fast -crf 19 -pix_fmt yuv420p -an -movflags +faststart $mp4
-    if ($LASTEXITCODE -ne 0) { throw "OpenMW exact-title recording failed with exit code $LASTEXITCODE." }
+    # OSG creates the destination before its PNG writer has emitted the final
+    # chunks. Do not terminate a native-only proof while that file is growing.
+    $stableSamples = 0
+    $previousLength = -1L
+    $writeDeadline = (Get-Date).AddSeconds(10)
+    while ($stableSamples -lt 5 -and (Get-Date) -lt $writeDeadline) {
+        $currentLength = (Get-Item -LiteralPath $readyScreenshot.FullName).Length
+        if ($currentLength -gt 0 -and $currentLength -eq $previousLength) {
+            ++$stableSamples
+        } else {
+            $stableSamples = 0
+            $previousLength = $currentLength
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    if ($stableSamples -lt 5) { throw "Native DAO frame did not finish writing." }
+    if (-not $shotConfig.nativeOnly) {
+        & ffmpeg -hide_banner -loglevel warning -y -f gdigrab -framerate 60 -draw_mouse 0 -i "title=OpenMW" -t $Seconds `
+            -vf "scale=1280:720:flags=lanczos" -c:v libx264 -preset fast -crf 19 -pix_fmt yuv420p -an -movflags +faststart $mp4
+        if ($LASTEXITCODE -ne 0) { throw "OpenMW exact-title recording failed with exit code $LASTEXITCODE." }
+    }
 } finally {
-    if ($null -ne $process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+    if (-not $Interactive -and $null -ne $process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
     foreach ($entry in $previous.GetEnumerator()) { [Environment]::SetEnvironmentVariable([string]$entry.Key, $entry.Value, "Process") }
 }
 $nativeScreenshot = Get-ChildItem -LiteralPath (Join-Path $userData "screenshots") -Filter "screenshot*.png" -ErrorAction SilentlyContinue |
@@ -393,8 +681,14 @@ if ($nativeScreenshot) {
     & ffmpeg -hide_banner -loglevel error -y -ss ([math]::Max(1, $Seconds / 2)) -i $mp4 -frames:v 1 -update 1 $preview
     if ($LASTEXITCODE -ne 0) { throw "Preview extraction failed." }
 }
-& ffmpeg -hide_banner -loglevel error -y -i $mp4 -vf "fps=1,scale=426:240:flags=lanczos,tile=3x1" -frames:v 1 -update 1 $contactSheet
-if ($LASTEXITCODE -ne 0) { throw "Contact-sheet extraction failed." }
-& ffmpeg -v error -i $mp4 -f null -
-if ($LASTEXITCODE -ne 0) { throw "Full MP4 decode validation failed." }
+# crop16x9 shots render at their requested 16:9 resolution natively. Cropping a 4:3 projection after
+# capture changes the effective vertical FOV and invalidates camera parity.
+if ($shotConfig.nativeOnly) {
+    Copy-Item -LiteralPath $preview -Destination $contactSheet
+} else {
+    & ffmpeg -hide_banner -loglevel error -y -i $mp4 -vf "fps=1,scale=426:240:flags=lanczos,tile=3x1" -frames:v 1 -update 1 $contactSheet
+    if ($LASTEXITCODE -ne 0) { throw "Contact-sheet extraction failed." }
+    & ffmpeg -v error -i $mp4 -f null -
+    if ($LASTEXITCODE -ne 0) { throw "Full MP4 decode validation failed." }
+}
 [ordered]@{shot=$Shot; video=$mp4; preview=$preview; contactSheet=$contactSheet; scene=[string]$shotConfig.scene; seconds=$Seconds} | ConvertTo-Json

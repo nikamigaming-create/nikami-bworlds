@@ -109,6 +109,21 @@ if ($windowManager.Text -like '*OPENMW_FNV_PROOF_PIPBOY_SURFACE*' -and
     $windowManager.Text -notlike '*falloutContent || std::getenv("OPENMW_FNV_PROOF_PIPBOY_SURFACE")*') {
     Add-Failure "Proof-only Pip-Boy surface override appears to be replacing, not supplementing, loaded-content routing."
 }
+$prohibitedPipBoyPresentation = @(
+    "makeFalloutPipBoyTerminalBody",
+    "makeFalloutPipBoyTabRow",
+    'constexpr std::array<std::string_view, 5> categoryNames = { "WEAP", "APP", "AID", "MISC", "AMMO" }'
+)
+foreach ($needle in $prohibitedPipBoyPresentation) {
+    if ($windowManager.Text.Contains($needle)) {
+        Add-Failure "Pip-Boy presentation is manufactured in C++ ('$needle'); load the authored Fallout Tile XML and bind runtime data to it."
+    }
+}
+if (-not ($windowManager.Text.Contains("inventory_menu.xml") -and
+          $windowManager.Text.Contains("stats_menu.xml") -and
+          $windowManager.Text.Contains("map_menu.xml"))) {
+    Add-Failure "Pip-Boy routing does not name the authored inventory, stats, and map Tile XML assets."
+}
 
 $luaUi = Read-Source "files/data/scripts/omw/ui.lua"
 if ($luaUi.Text -like "*FalloutNV.esm*" -or $luaUi.Text -like "*Caps001*" -or $luaUi.Text -like "*Easy Pete*") {

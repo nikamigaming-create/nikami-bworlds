@@ -1,0 +1,2847 @@
+{
+  "schema": "nikami-fnv-actor-roster/v1",
+  "source_ring": "D:\\code\\nikami-worlds\\godot-fnv\\generated\\world\\goodsprings-strip-route.json",
+  "targetCount": 284,
+  "targets": [
+    {
+      "id": "vms02merchantguard01-000a4724",
+      "category": "route-humanoid",
+      "authoredRef": "0x000a4724",
+      "base": "0x000a4723",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19cd",
+      "name": "Traveler"
+    },
+    {
+      "id": "vms02merchantguard02-000a4726",
+      "category": "route-humanoid",
+      "authoredRef": "0x000a4726",
+      "base": "0x000a4725",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19cd",
+      "name": "Traveler"
+    },
+    {
+      "id": "crbarkscorpion-000f0a8a",
+      "category": "route-creature",
+      "authoredRef": "0x000f0a8a",
+      "base": "0x000eb401",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadae",
+      "name": "Bark Scorpion"
+    },
+    {
+      "id": "1edrivernephi-000f570a",
+      "category": "route-humanoid",
+      "authoredRef": "0x000f570a",
+      "base": "0x000f56ff",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad59",
+      "name": "Driver Nephi"
+    },
+    {
+      "id": "lvlfiend2riflevarnv-000f9cdd",
+      "category": "route-humanoid",
+      "authoredRef": "0x000f9cdd",
+      "base": "0x000f1c7a",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad59",
+      "name": ""
+    },
+    {
+      "id": "lvlfiendrifle-000fb85b",
+      "category": "route-humanoid",
+      "authoredRef": "0x000fb85b",
+      "base": "0x000f1c63",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdac3f",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend1gunvarnv-000fb85f",
+      "category": "route-humanoid",
+      "authoredRef": "0x000fb85f",
+      "base": "0x000f1c48",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdac3f",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend1gunvarnv-000fb860",
+      "category": "route-humanoid",
+      "authoredRef": "0x000fb860",
+      "base": "0x000f1c48",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdac3f",
+      "name": ""
+    },
+    {
+      "id": "ncrtroopersentrycm-000fceb1",
+      "category": "route-humanoid",
+      "authoredRef": "0x000fceb1",
+      "base": "0x000fceb0",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdac36",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "lvlfiend2gunvarnv-000ff560",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff560",
+      "base": "0x000f1c49",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad59",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend2specialvar-000ff561",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff561",
+      "base": "0x000f1c77",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad51",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend2gunvarnv-000ff562",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff562",
+      "base": "0x000f1c49",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad51",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend2meleevarnv-000ff563",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff563",
+      "base": "0x000f1c46",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad51",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend2meleevarnv-000ff564",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff564",
+      "base": "0x000f1c46",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad51",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend1gunvarnv-000ff569",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff569",
+      "base": "0x000f1c48",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdac3f",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend1gunvarnv-000ff56a",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff56a",
+      "base": "0x000f1c48",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdac3f",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend2gunvarnv-000ff56b",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff56b",
+      "base": "0x000f1c49",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdac3f",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend2gunvarnv-000ff56c",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff56c",
+      "base": "0x000f1c49",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad50",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend2gunvarnv-000ff56d",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff56d",
+      "base": "0x000f1c49",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad50",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend3gunvarnv-000ff56e",
+      "category": "route-humanoid",
+      "authoredRef": "0x000ff56e",
+      "base": "0x000f1c4a",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad50",
+      "name": ""
+    },
+    {
+      "id": "mcmurphy-00101c9e",
+      "category": "route-humanoid",
+      "authoredRef": "0x00101c9e",
+      "base": "0x00101c9d",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadae",
+      "name": "McMurphy"
+    },
+    {
+      "id": "jessup-00101c9f",
+      "category": "route-humanoid",
+      "authoredRef": "0x00101c9f",
+      "base": "0x00101c9c",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadaf",
+      "name": "Jessup"
+    },
+    {
+      "id": "victor-00103dfe",
+      "category": "route-creature",
+      "authoredRef": "0x00103dfe",
+      "base": "0x00103dfd",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadaf",
+      "name": "Victor"
+    },
+    {
+      "id": "gspgaam-00104c70",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104c70",
+      "base": "0x00104c6a",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aa6",
+      "name": "Powder Ganger"
+    },
+    {
+      "id": "gspgcm2-00104c72",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104c72",
+      "base": "0x00104c71",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19ad",
+      "name": "Powder Ganger"
+    },
+    {
+      "id": "gspgcm-00104c73",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104c73",
+      "base": "0x00104c6f",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19ad",
+      "name": "Powder Ganger"
+    },
+    {
+      "id": "gspghm-00104c75",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104c75",
+      "base": "0x00104c74",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aa6",
+      "name": "Powder Ganger"
+    },
+    {
+      "id": "gspgaam2-00104c77",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104c77",
+      "base": "0x00104c76",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aa6",
+      "name": "Powder Ganger"
+    },
+    {
+      "id": "gseasypete-00104c80",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104c80",
+      "base": "0x00104c7f",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdaeb9",
+      "name": "Easy Pete"
+    },
+    {
+      "id": "gspghm2-00104df2",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104df2",
+      "base": "0x00104df1",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aa6",
+      "name": "Powder Ganger"
+    },
+    {
+      "id": "gssettleraam-00104f03",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104f03",
+      "base": "0x00104f02",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aa7",
+      "name": "Goodsprings Settler"
+    },
+    {
+      "id": "gssettlercf-00104f06",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104f06",
+      "base": "0x00104f05",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdaebb",
+      "name": "Goodsprings Settler"
+    },
+    {
+      "id": "gssettleram-00104f0a",
+      "category": "route-humanoid",
+      "authoredRef": "0x00104f0a",
+      "base": "0x00104f07",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdaebb",
+      "name": "Goodsprings Settler"
+    },
+    {
+      "id": "gsbighorner-00106b16",
+      "category": "route-creature",
+      "authoredRef": "0x00106b16",
+      "base": "0x0010ab79",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdaeba",
+      "name": "Young Bighorner"
+    },
+    {
+      "id": "gsbighorner-0010706e",
+      "category": "route-creature",
+      "authoredRef": "0x0010706e",
+      "base": "0x0010ab79",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aa7",
+      "name": "Young Bighorner"
+    },
+    {
+      "id": "gsbighorner-00107077",
+      "category": "route-creature",
+      "authoredRef": "0x00107077",
+      "base": "0x0010ab79",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aa7",
+      "name": "Young Bighorner"
+    },
+    {
+      "id": "victor-001073e8",
+      "category": "route-creature",
+      "authoredRef": "0x001073e8",
+      "base": "0x00103dfd",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aaf",
+      "name": "Victor"
+    },
+    {
+      "id": "gsbighorner-0010769d",
+      "category": "route-creature",
+      "authoredRef": "0x0010769d",
+      "base": "0x0010ab79",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aaf",
+      "name": "Young Bighorner"
+    },
+    {
+      "id": "gsbighorner-00109a39",
+      "category": "route-creature",
+      "authoredRef": "0x00109a39",
+      "base": "0x0010ab79",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdaeba",
+      "name": "Young Bighorner"
+    },
+    {
+      "id": "vcg02crgecko-0010a1fd",
+      "category": "route-creature",
+      "authoredRef": "0x0010a1fd",
+      "base": "0x0010a1f7",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1abe",
+      "name": "Gecko"
+    },
+    {
+      "id": "vcg02crgecko-0010a1fe",
+      "category": "route-creature",
+      "authoredRef": "0x0010a1fe",
+      "base": "0x0010a1f7",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1abe",
+      "name": "Gecko"
+    },
+    {
+      "id": "vfreeformgoodspringsgecko-0010a20f",
+      "category": "route-creature",
+      "authoredRef": "0x0010a20f",
+      "base": "0x0010a1f8",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1abe",
+      "name": "Gecko"
+    },
+    {
+      "id": "vfreeformgoodspringsgecko-0010a210",
+      "category": "route-creature",
+      "authoredRef": "0x0010a210",
+      "base": "0x0010a1f8",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1abe",
+      "name": "Gecko"
+    },
+    {
+      "id": "vfreeformgoodspringswell3gecko-0010a211",
+      "category": "route-creature",
+      "authoredRef": "0x0010a211",
+      "base": "0x0010a1f9",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19cd",
+      "name": "Gecko"
+    },
+    {
+      "id": "vfreeformgoodspringswell3gecko-0010a212",
+      "category": "route-creature",
+      "authoredRef": "0x0010a212",
+      "base": "0x0010a1f9",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19cd",
+      "name": "Gecko"
+    },
+    {
+      "id": "vfreeformgoodspringswell3gecko-0010a213",
+      "category": "route-creature",
+      "authoredRef": "0x0010a213",
+      "base": "0x0010a1f9",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19cd",
+      "name": "Gecko"
+    },
+    {
+      "id": "vfreeformgoodspringsgecko-0010abb0",
+      "category": "route-creature",
+      "authoredRef": "0x0010abb0",
+      "base": "0x0010a1f8",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1abe",
+      "name": "Gecko"
+    },
+    {
+      "id": "vcg02gssettler-0010b3de",
+      "category": "route-humanoid",
+      "authoredRef": "0x0010b3de",
+      "base": "0x0010b3dd",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19cd",
+      "name": "Goodsprings Settler"
+    },
+    {
+      "id": "vfsrotface-0010d8e1",
+      "category": "route-humanoid",
+      "authoredRef": "0x0010d8e1",
+      "base": "0x0010c683",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da4e",
+      "name": "Rotface"
+    },
+    {
+      "id": "vfsarcadegannon-0010d8eb",
+      "category": "route-humanoid",
+      "authoredRef": "0x0010d8eb",
+      "base": "0x0010c767",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Arcade Gannon"
+    },
+    {
+      "id": "vfsbodyguard01-0010e70a",
+      "category": "route-humanoid",
+      "authoredRef": "0x0010e70a",
+      "base": "0x0010e707",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da4e",
+      "name": "Bodyguard For Hire"
+    },
+    {
+      "id": "vfsbodyguard02-0010e70b",
+      "category": "route-humanoid",
+      "authoredRef": "0x0010e70b",
+      "base": "0x0010e708",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da4e",
+      "name": "Bodyguard For Hire"
+    },
+    {
+      "id": "vfsbodyguard03-0010e70c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0010e70c",
+      "base": "0x0010e709",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da68",
+      "name": "Bodyguard For Hire"
+    },
+    {
+      "id": "vfsdebtgrecks-0010fd32",
+      "category": "route-humanoid",
+      "authoredRef": "0x0010fd32",
+      "base": "0x0010fd31",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da5d",
+      "name": "Grecks"
+    },
+    {
+      "id": "vfsdebtladyjane-0010fd33",
+      "category": "route-humanoid",
+      "authoredRef": "0x0010fd33",
+      "base": "0x0010fd2f",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10beed",
+      "name": "Lady Jane"
+    },
+    {
+      "id": "vfsdebtsantiago-0010fd34",
+      "category": "route-humanoid",
+      "authoredRef": "0x0010fd34",
+      "base": "0x0010fd30",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da38",
+      "name": "Santiago"
+    },
+    {
+      "id": "vfslocalvictim03-0011365d",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011365d",
+      "base": "0x00113649",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Roy"
+    },
+    {
+      "id": "vfslocalvictim02-0011365e",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011365e",
+      "base": "0x00113648",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Wayne"
+    },
+    {
+      "id": "vfslocalvictim01-0011365f",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011365f",
+      "base": "0x00113647",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Farris"
+    },
+    {
+      "id": "vfsjuliefarkas-00115c5f",
+      "category": "route-humanoid",
+      "authoredRef": "0x00115c5f",
+      "base": "0x0010c682",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Julie Farkas"
+    },
+    {
+      "id": "vfsorris-00115c60",
+      "category": "route-humanoid",
+      "authoredRef": "0x00115c60",
+      "base": "0x00115c38",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da68",
+      "name": "Orris"
+    },
+    {
+      "id": "vfsoffdutyncrtrooper01-00116e03",
+      "category": "route-humanoid",
+      "authoredRef": "0x00116e03",
+      "base": "0x00116c61",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da24",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vfsoffdutyncrtrooper02-00116e04",
+      "category": "route-humanoid",
+      "authoredRef": "0x00116e04",
+      "base": "0x00116c63",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da24",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vfsbillronte-0011779c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011779c",
+      "base": "0x0011779b",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf00",
+      "name": "Bill Ronte"
+    },
+    {
+      "id": "vfsjacobhoff-0011779d",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011779d",
+      "base": "0x0011779a",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da38",
+      "name": "Jacob Hoff"
+    },
+    {
+      "id": "vfshightimesdealer-00117e10",
+      "category": "route-humanoid",
+      "authoredRef": "0x00117e10",
+      "base": "0x00117e11",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da38",
+      "name": "Dixon"
+    },
+    {
+      "id": "vfschasedrat-001185d1",
+      "category": "route-creature",
+      "authoredRef": "0x001185d1",
+      "base": "0x001183a4",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da69",
+      "name": "Giant Rat"
+    },
+    {
+      "id": "vfsratchasingchild01-001185d2",
+      "category": "route-humanoid",
+      "authoredRef": "0x001185d2",
+      "base": "0x00118399",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da69",
+      "name": "Child"
+    },
+    {
+      "id": "vfssimon-001185d4",
+      "category": "route-humanoid",
+      "authoredRef": "0x001185d4",
+      "base": "0x00118374",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf00",
+      "name": "Van Graff Thug"
+    },
+    {
+      "id": "vfsratchasingchild02-001185d7",
+      "category": "route-humanoid",
+      "authoredRef": "0x001185d7",
+      "base": "0x0011839c",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da69",
+      "name": "Child"
+    },
+    {
+      "id": "vfsratchasingchild03-001185d8",
+      "category": "route-humanoid",
+      "authoredRef": "0x001185d8",
+      "base": "0x0011839d",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da69",
+      "name": "Child"
+    },
+    {
+      "id": "lucky38followeremily-0011904f",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011904f",
+      "base": "0x0011904e",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3cd",
+      "name": "Emily Ortal"
+    },
+    {
+      "id": "vstreetmpmessenger-0011909b",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011909b",
+      "base": "0x0011909c",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3cd",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vfsgamblertalkingtoorris-001194e5",
+      "category": "route-humanoid",
+      "authoredRef": "0x001194e5",
+      "base": "0x001194d7",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da68",
+      "name": "Gambler"
+    },
+    {
+      "id": "vfssecuritrongreeter-00119792",
+      "category": "route-creature",
+      "authoredRef": "0x00119792",
+      "base": "0x00119790",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10beee",
+      "name": "Securitron Gatekeeper"
+    },
+    {
+      "id": "vfssecuritrongreeter-00119793",
+      "category": "route-creature",
+      "authoredRef": "0x00119793",
+      "base": "0x00119790",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10beee",
+      "name": "Securitron Gatekeeper"
+    },
+    {
+      "id": "vfssecuritrongreeter-00119794",
+      "category": "route-creature",
+      "authoredRef": "0x00119794",
+      "base": "0x00119790",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10beee",
+      "name": "Securitron Gatekeeper"
+    },
+    {
+      "id": "vfssecuritrongreeter-00119795",
+      "category": "route-creature",
+      "authoredRef": "0x00119795",
+      "base": "0x00119790",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10beee",
+      "name": "Securitron Gatekeeper"
+    },
+    {
+      "id": "vfssecuritrongreeter-00119796",
+      "category": "route-creature",
+      "authoredRef": "0x00119796",
+      "base": "0x00119790",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10beee",
+      "name": "Securitron Gatekeeper"
+    },
+    {
+      "id": "vfspacerthug04dead-0011a03c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011a03c",
+      "base": "0x00129390",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf04",
+      "name": "Dead King"
+    },
+    {
+      "id": "vfspacerthug03dead-0011a03d",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011a03d",
+      "base": "0x00129391",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf04",
+      "name": "Dead King"
+    },
+    {
+      "id": "vfspacerthugfollow-0011a03e",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011a03e",
+      "base": "0x00129673",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf00",
+      "name": ""
+    },
+    {
+      "id": "vfspacerthugfollow-0011a03f",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011a03f",
+      "base": "0x00129673",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf00",
+      "name": ""
+    },
+    {
+      "id": "vmqsecuritronmessenger-0011a06b",
+      "category": "route-creature",
+      "authoredRef": "0x0011a06b",
+      "base": "0x0011a069",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vfsbodyguardtalkingaboutorris-0011cd4c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011cd4c",
+      "base": "0x0011cd4b",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da68",
+      "name": "Bodyguard"
+    },
+    {
+      "id": "walterphebus-0011e6b9",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011e6b9",
+      "base": "0x0011e6b6",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Walter Phebus"
+    },
+    {
+      "id": "ethelphebus-0011eb8e",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011eb8e",
+      "base": "0x0011eb5b",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Ethel Phebus"
+    },
+    {
+      "id": "vmstopsbillyknight-0011f9bf",
+      "category": "route-humanoid",
+      "authoredRef": "0x0011f9bf",
+      "base": "0x0011f9ba",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Billy Knight"
+    },
+    {
+      "id": "vstreetncrtroopermpfluffspawnpointb-0012294c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012294c",
+      "base": "0x001228df",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b320",
+      "name": "NCR Military Police"
+    },
+    {
+      "id": "vstreetncrtroopermpfluffspawnpointa-0012294d",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012294d",
+      "base": "0x001228de",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b320",
+      "name": "NCR Military Police"
+    },
+    {
+      "id": "vstreetncrtrooperfluffspawnpointe-0012294e",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012294e",
+      "base": "0x00120bc6",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b320",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstreetncrtrooperfluffspawnpointd-0012294f",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012294f",
+      "base": "0x00120bc5",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b320",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstreetncrtrooperfluffspawnpointc-00122950",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122950",
+      "base": "0x00120bc4",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b320",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstreetncrtrooperfluffspawnpointb-00122951",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122951",
+      "base": "0x00120bc3",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b320",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstreetncrtrooperfluffspawnpointa-00122952",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122952",
+      "base": "0x00120bc2",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b320",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstreetncrtravelerfluffspawnpointe-00122953",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122953",
+      "base": "0x001228dd",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Traveler"
+    },
+    {
+      "id": "vstreetncrtravelerfluffspawnpointd-00122954",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122954",
+      "base": "0x00120ba7",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Traveler"
+    },
+    {
+      "id": "vstreetncrtravelerfluffspawnpointc-00122955",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122955",
+      "base": "0x00120ba6",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Traveler"
+    },
+    {
+      "id": "vstreetncrtravelerfluffspawnpointb-00122956",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122956",
+      "base": "0x00120ba5",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Traveler"
+    },
+    {
+      "id": "vstreetncrtravelerfluffspawnpointa-00122957",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122957",
+      "base": "0x00120ba4",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Traveler"
+    },
+    {
+      "id": "vstreetncrgamblerfluffspawnpointh-00122958",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122958",
+      "base": "0x001228dc",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetncrgamblerfluffspawnpointg-00122959",
+      "category": "route-humanoid",
+      "authoredRef": "0x00122959",
+      "base": "0x001228e1",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetncrgamblerfluffspawnpointf-0012295a",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012295a",
+      "base": "0x00120b8b",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b385",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetncrgamblerfluffspawnpointe-0012295b",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012295b",
+      "base": "0x00120b8a",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b385",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetncrgamblerfluffspawnpointd-0012295c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012295c",
+      "base": "0x00120b89",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetncrgamblerfluffspawnpointc-0012295d",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012295d",
+      "base": "0x0011f88f",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetncrgamblerfluffspawnpointb-0012295e",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012295e",
+      "base": "0x0011f88e",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetncrgamblerfluffspawnpointa-0012295f",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012295f",
+      "base": "0x00120b88",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b385",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetgomorrahbait01-0012299d",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012299d",
+      "base": "0x001228e3",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Hooker"
+    },
+    {
+      "id": "vstreetgomorrahbait03-0012299f",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012299f",
+      "base": "0x001228e5",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Hooker"
+    },
+    {
+      "id": "vstreetgomorrahbait02-001229a1",
+      "category": "route-humanoid",
+      "authoredRef": "0x001229a1",
+      "base": "0x001228e4",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Hooker"
+    },
+    {
+      "id": "vfskingwaterpumpgreeter-00123c8c",
+      "category": "route-humanoid",
+      "authoredRef": "0x00123c8c",
+      "base": "0x00123c91",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da78",
+      "name": "Tapper"
+    },
+    {
+      "id": "vfsfollowersguard1-00124adc",
+      "category": "route-humanoid",
+      "authoredRef": "0x00124adc",
+      "base": "0x00129764",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Followers Guard"
+    },
+    {
+      "id": "vfsfollowersguard2-00124add",
+      "category": "route-humanoid",
+      "authoredRef": "0x00124add",
+      "base": "0x00129763",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Followers Guard"
+    },
+    {
+      "id": "vfsfollowersguard3-00124ade",
+      "category": "route-humanoid",
+      "authoredRef": "0x00124ade",
+      "base": "0x00129762",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Followers Guard"
+    },
+    {
+      "id": "vfsfollowersguard4-00124adf",
+      "category": "route-humanoid",
+      "authoredRef": "0x00124adf",
+      "base": "0x0012975d",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Followers Guard"
+    },
+    {
+      "id": "vfsbeatrixrussell-00124aea",
+      "category": "route-humanoid",
+      "authoredRef": "0x00124aea",
+      "base": "0x0011fc07",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Beatrix Russell"
+    },
+    {
+      "id": "vfssilverrushdrunk-001251f4",
+      "category": "route-humanoid",
+      "authoredRef": "0x001251f4",
+      "base": "0x001251cf",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf00",
+      "name": "Drunk"
+    },
+    {
+      "id": "vstreetstationmerchant01-001264f9",
+      "category": "route-humanoid",
+      "authoredRef": "0x001264f9",
+      "base": "0x001258c0",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Street Vendor"
+    },
+    {
+      "id": "vfsfollowersdoctor2-001268f7",
+      "category": "route-humanoid",
+      "authoredRef": "0x001268f7",
+      "base": "0x00129760",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9c7",
+      "name": "Followers Doctor"
+    },
+    {
+      "id": "vfsfollowersdoctor1-001268f8",
+      "category": "route-humanoid",
+      "authoredRef": "0x001268f8",
+      "base": "0x00129761",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Followers Doctor"
+    },
+    {
+      "id": "vfsfollowersdoctor3-001268f9",
+      "category": "route-humanoid",
+      "authoredRef": "0x001268f9",
+      "base": "0x0012975f",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": "Followers Doctor"
+    },
+    {
+      "id": "vfstomdooley-00129411",
+      "category": "route-humanoid",
+      "authoredRef": "0x00129411",
+      "base": "0x0012938d",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da68",
+      "name": "Tom Dooley"
+    },
+    {
+      "id": "vfsoffdutyncrbarker01-00129423",
+      "category": "route-humanoid",
+      "authoredRef": "0x00129423",
+      "base": "0x0012938b",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da38",
+      "name": "Missionary"
+    },
+    {
+      "id": "vfsoffdutyncrbarker02-00129424",
+      "category": "route-humanoid",
+      "authoredRef": "0x00129424",
+      "base": "0x0012938c",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da5d",
+      "name": "Missionary"
+    },
+    {
+      "id": "vfspacerthug04dead-0012db7d",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012db7d",
+      "base": "0x00129390",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da23",
+      "name": "Dead King"
+    },
+    {
+      "id": "vfspacerthug03dead-0012db80",
+      "category": "route-humanoid",
+      "authoredRef": "0x0012db80",
+      "base": "0x00129391",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da23",
+      "name": "Dead King"
+    },
+    {
+      "id": "vvulpesincultastrip-00131f78",
+      "category": "route-humanoid",
+      "authoredRef": "0x00131f78",
+      "base": "0x00131f77",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Vulpes Inculta"
+    },
+    {
+      "id": "vvmq02aleriostrip-0013a5ff",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013a5ff",
+      "base": "0x0013a5fe",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Alerio"
+    },
+    {
+      "id": "vstreettopspromoterspawnpoint01-0013b59d",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013b59d",
+      "base": "0x00125129",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Tops Promoter"
+    },
+    {
+      "id": "vstreetncrembassyguard01-0013bac1",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013bac1",
+      "base": "0x00129e34",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b386",
+      "name": "NCR Military Police"
+    },
+    {
+      "id": "vstreetsecuritron-0013bac5",
+      "category": "route-creature",
+      "authoredRef": "0x0013bac5",
+      "base": "0x00112643",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vms26lesfretwell-0013baf4",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013baf4",
+      "base": "0x0012512f",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b387",
+      "name": "MP Fretwell"
+    },
+    {
+      "id": "lucky38victorentrance-0013bb18",
+      "category": "route-creature",
+      "authoredRef": "0x0013bb18",
+      "base": "0x00112073",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3cd",
+      "name": "Victor"
+    },
+    {
+      "id": "vstreetsecuritron-0013bb1b",
+      "category": "route-creature",
+      "authoredRef": "0x0013bb1b",
+      "base": "0x00112643",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vstreetsecuritron-0013bb1f",
+      "category": "route-creature",
+      "authoredRef": "0x0013bb1f",
+      "base": "0x00112643",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vstreetsecuritron-0013bb26",
+      "category": "route-creature",
+      "authoredRef": "0x0013bb26",
+      "base": "0x00112643",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vstreetsecuritron-0013bb32",
+      "category": "route-creature",
+      "authoredRef": "0x0013bb32",
+      "base": "0x00112643",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b39f",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vstreetsecuritron-0013bb37",
+      "category": "route-creature",
+      "authoredRef": "0x0013bb37",
+      "base": "0x00112643",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vstreetsecuritron-0013bb3a",
+      "category": "route-creature",
+      "authoredRef": "0x0013bb3a",
+      "base": "0x00112643",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vstreetsecuritron-0013bb3d",
+      "category": "route-creature",
+      "authoredRef": "0x0013bb3d",
+      "base": "0x00112643",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vstreetncrtroopermpfluffspawnpointb-0013d5bb",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013d5bb",
+      "base": "0x001228df",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32b",
+      "name": "NCR Military Police"
+    },
+    {
+      "id": "vstreetncrtroopermpfluffspawnpointa-0013d5bc",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013d5bc",
+      "base": "0x001228de",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "NCR Military Police"
+    },
+    {
+      "id": "vstreetncrtrooperfluffspawnpointd-0013d5bd",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013d5bd",
+      "base": "0x00120bc5",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3cc",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstreetncrtrooperfluffspawnpointc-0013d5be",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013d5be",
+      "base": "0x00120bc4",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstreetncrtrooperfluffspawnpointb-0013d5bf",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013d5bf",
+      "base": "0x00120bc3",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstreetncrtrooperfluffspawnpointa-0013d5c0",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013d5c0",
+      "base": "0x00120bc2",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vfsvangraffcrier-0013ef04",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013ef04",
+      "base": "0x0013ec2f",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf0d",
+      "name": "Silver Rush Crier"
+    },
+    {
+      "id": "vfsgenaro-0013ef05",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013ef05",
+      "base": "0x0013ec2c",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da68",
+      "name": "Genaro"
+    },
+    {
+      "id": "vfskingbodyguardeast-0013ef07",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013ef07",
+      "base": "0x0013ec30",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da4e",
+      "name": "Kings Gang Member"
+    },
+    {
+      "id": "vfskingbodyguardnorth-0013ef08",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013ef08",
+      "base": "0x0013ec2a",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da68",
+      "name": "Kings Gang Member"
+    },
+    {
+      "id": "vfsatomicwranglercrier-0013ef09",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013ef09",
+      "base": "0x0013ec2d",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf2c",
+      "name": "Atomic Wrangler Crier"
+    },
+    {
+      "id": "vfsmickandralphscrier-0013ef0a",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013ef0a",
+      "base": "0x0013ec2e",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da79",
+      "name": "Mick and Ralph's Crier"
+    },
+    {
+      "id": "lvlfiend2meleevarnv-0013f85b",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013f85b",
+      "base": "0x000f1c46",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad51",
+      "name": ""
+    },
+    {
+      "id": "lvlfiend2specialvar-0013f85c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0013f85c",
+      "base": "0x000f1c77",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad59",
+      "name": ""
+    },
+    {
+      "id": "vstreetsecuritron-0014b5da",
+      "category": "route-creature",
+      "authoredRef": "0x0014b5da",
+      "base": "0x00112643",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "nvcrraven-0014c447",
+      "category": "route-creature",
+      "authoredRef": "0x0014c447",
+      "base": "0x00140db0",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdaebb",
+      "name": "Raven"
+    },
+    {
+      "id": "nvcrraven-0014c448",
+      "category": "route-creature",
+      "authoredRef": "0x0014c448",
+      "base": "0x00140db0",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdaeb9",
+      "name": "Raven"
+    },
+    {
+      "id": "nvcrraven-0014c449",
+      "category": "route-creature",
+      "authoredRef": "0x0014c449",
+      "base": "0x00140db0",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdaebb",
+      "name": "Raven"
+    },
+    {
+      "id": "nvcrraven-0014c44a",
+      "category": "route-creature",
+      "authoredRef": "0x0014c44a",
+      "base": "0x00140db0",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdaebb",
+      "name": "Raven"
+    },
+    {
+      "id": "vstreetcrbrahmin-0014d1fe",
+      "category": "route-creature",
+      "authoredRef": "0x0014d1fe",
+      "base": "0x0014d1fd",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3cd",
+      "name": "Brahmin"
+    },
+    {
+      "id": "vstreetgoofchasee-0014d206",
+      "category": "route-humanoid",
+      "authoredRef": "0x0014d206",
+      "base": "0x0014d204",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetgoofchaser-0014d207",
+      "category": "route-humanoid",
+      "authoredRef": "0x0014d207",
+      "base": "0x0014d205",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Gambler"
+    },
+    {
+      "id": "vms49rangefindercourer-0014e836",
+      "category": "route-humanoid",
+      "authoredRef": "0x0014e836",
+      "base": "0x0014e833",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da38",
+      "name": "Man"
+    },
+    {
+      "id": "vms49vagrant-0014e83d",
+      "category": "route-humanoid",
+      "authoredRef": "0x0014e83d",
+      "base": "0x0014e83c",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da38",
+      "name": "Vagrant"
+    },
+    {
+      "id": "vms49max-0014eb3a",
+      "category": "route-humanoid",
+      "authoredRef": "0x0014eb3a",
+      "base": "0x0014eb35",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da43",
+      "name": "Max"
+    },
+    {
+      "id": "vms49stacey-0014eb3b",
+      "category": "route-humanoid",
+      "authoredRef": "0x0014eb3b",
+      "base": "0x0014eb39",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da43",
+      "name": "Stacey"
+    },
+    {
+      "id": "vstripss1ncrtroopergirla-00151de6",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151de6",
+      "base": "0x00151822",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b385",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstripss1ncrtroopergirlb-00151de7",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151de7",
+      "base": "0x00151823",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b385",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstripss1ncrtroopergirlc-00151de8",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151de8",
+      "base": "0x00151824",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b385",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstripss1securitrona-00151de9",
+      "category": "route-creature",
+      "authoredRef": "0x00151de9",
+      "base": "0x00151827",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vstripss1securitronb-00151dea",
+      "category": "route-creature",
+      "authoredRef": "0x00151dea",
+      "base": "0x00151828",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b385",
+      "name": "Securitron Mk I"
+    },
+    {
+      "id": "vstripss1ncrmpa-00151deb",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151deb",
+      "base": "0x00151825",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "NCR Trooper MP"
+    },
+    {
+      "id": "vstripss1ncrmpb-00151dec",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151dec",
+      "base": "0x00151826",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "NCR Trooper MP"
+    },
+    {
+      "id": "vstripss1admirerd-00151e1d",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151e1d",
+      "base": "0x00151e1c",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b385",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstripss1admirera-00151e1e",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151e1e",
+      "base": "0x00151e19",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstripss1admirerc-00151e1f",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151e1f",
+      "base": "0x00151e1b",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Traveler"
+    },
+    {
+      "id": "vstripss1admirerb-00151e20",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151e20",
+      "base": "0x00151e1a",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b385",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreettopspromoterspawnpoint02-00151f64",
+      "category": "route-humanoid",
+      "authoredRef": "0x00151f64",
+      "base": "0x0012512a",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Tops Promoter"
+    },
+    {
+      "id": "vstreetmrholdout-001522d0",
+      "category": "route-humanoid",
+      "authoredRef": "0x001522d0",
+      "base": "0x0014efb2",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Mister Holdout"
+    },
+    {
+      "id": "vfsfollowerssleeper-00152aff",
+      "category": "route-humanoid",
+      "authoredRef": "0x00152aff",
+      "base": "0x00124af3",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": ""
+    },
+    {
+      "id": "vfsfollowerssleeper-00152b03",
+      "category": "route-humanoid",
+      "authoredRef": "0x00152b03",
+      "base": "0x00124af3",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9d3",
+      "name": ""
+    },
+    {
+      "id": "vstreetncrtravelerfluffspawnpointc-0015379a",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015379a",
+      "base": "0x00120ba6",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b39e",
+      "name": "Traveler"
+    },
+    {
+      "id": "vstreetncrtravelerfluffspawnpointcdemo-0015379c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015379c",
+      "base": "0x00153792",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Traveler"
+    },
+    {
+      "id": "vfslocaldrunkrandom-001547ae",
+      "category": "route-humanoid",
+      "authoredRef": "0x001547ae",
+      "base": "0x00154352",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da38",
+      "name": "Drunk"
+    },
+    {
+      "id": "vfslocaldrunkrandom-001547b0",
+      "category": "route-humanoid",
+      "authoredRef": "0x001547b0",
+      "base": "0x00154352",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da38",
+      "name": "Drunk"
+    },
+    {
+      "id": "vfslocaldrunkrandom-001547b2",
+      "category": "route-humanoid",
+      "authoredRef": "0x001547b2",
+      "base": "0x00154352",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da38",
+      "name": "Drunk"
+    },
+    {
+      "id": "vspawntier1coyotemed-00157b36",
+      "category": "route-creature",
+      "authoredRef": "0x00157b36",
+      "base": "0x00156766",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadc4",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed-00157b37",
+      "category": "route-creature",
+      "authoredRef": "0x00157b37",
+      "base": "0x00156766",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadc4",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed-00157b38",
+      "category": "route-creature",
+      "authoredRef": "0x00157b38",
+      "base": "0x00156766",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19ac",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotesmall-00157b39",
+      "category": "route-creature",
+      "authoredRef": "0x00157b39",
+      "base": "0x00156767",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19b4",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed-00157b3a",
+      "category": "route-creature",
+      "authoredRef": "0x00157b3a",
+      "base": "0x00156766",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19b4",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed-00157b3b",
+      "category": "route-creature",
+      "authoredRef": "0x00157b3b",
+      "base": "0x00156766",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19b4",
+      "name": ""
+    },
+    {
+      "id": "vspawntier2geckomed-00157b3d",
+      "category": "route-creature",
+      "authoredRef": "0x00157b3d",
+      "base": "0x00156777",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1ac6",
+      "name": ""
+    },
+    {
+      "id": "vspawntier2geckomed-00157b3e",
+      "category": "route-creature",
+      "authoredRef": "0x00157b3e",
+      "base": "0x00156777",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1ac6",
+      "name": ""
+    },
+    {
+      "id": "vspawntier2radscorpionmed-00157b46",
+      "category": "route-creature",
+      "authoredRef": "0x00157b46",
+      "base": "0x0015677c",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadb5",
+      "name": ""
+    },
+    {
+      "id": "vspawntier3giantradscorpionmed-00157b4b",
+      "category": "route-creature",
+      "authoredRef": "0x00157b4b",
+      "base": "0x00156782",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdada6",
+      "name": ""
+    },
+    {
+      "id": "vspawntier2radscorpionmed-00157b4c",
+      "category": "route-creature",
+      "authoredRef": "0x00157b4c",
+      "base": "0x0015677c",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad9e",
+      "name": ""
+    },
+    {
+      "id": "vspawntier3giantradscorpionmed-00157b4d",
+      "category": "route-creature",
+      "authoredRef": "0x00157b4d",
+      "base": "0x00156782",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadb5",
+      "name": ""
+    },
+    {
+      "id": "vesgsgeckoman-00157c8f",
+      "category": "route-humanoid",
+      "authoredRef": "0x00157c8f",
+      "base": "0x00157c8d",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19cc",
+      "name": "Barton Thorn"
+    },
+    {
+      "id": "vspawntier1coyotemed50-00158190",
+      "category": "route-creature",
+      "authoredRef": "0x00158190",
+      "base": "0x00158182",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19bb",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed30-00158191",
+      "category": "route-creature",
+      "authoredRef": "0x00158191",
+      "base": "0x00158183",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19bb",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotesmall30-00158192",
+      "category": "route-creature",
+      "authoredRef": "0x00158192",
+      "base": "0x00158185",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19bb",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed30-00158193",
+      "category": "route-creature",
+      "authoredRef": "0x00158193",
+      "base": "0x00158183",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19bc",
+      "name": ""
+    },
+    {
+      "id": "vfsexteriorgateking-0015839a",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015839a",
+      "base": "0x00158390",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdabea",
+      "name": ""
+    },
+    {
+      "id": "vfsexteriorgateking-0015839b",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015839b",
+      "base": "0x00158390",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdabea",
+      "name": ""
+    },
+    {
+      "id": "vfsexteriorgateking-0015839c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015839c",
+      "base": "0x00158390",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdabea",
+      "name": ""
+    },
+    {
+      "id": "vfsedescientist-0015882c",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015882c",
+      "base": "0x0015882b",
+      "enableParent": null,
+      "world": "0x12d94e",
+      "cell": "0x12d9c7",
+      "name": "April Martimer"
+    },
+    {
+      "id": "vfsoldben-0015968b",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015968b",
+      "base": "0x0015968a",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10beed",
+      "name": "Old Ben"
+    },
+    {
+      "id": "vspawntier3giantradscorpionmed30-0015981b",
+      "category": "route-creature",
+      "authoredRef": "0x0015981b",
+      "base": "0x00159788",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad9e",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed50-0015982a",
+      "category": "route-creature",
+      "authoredRef": "0x0015982a",
+      "base": "0x00158182",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19bb",
+      "name": ""
+    },
+    {
+      "id": "vstripss3watcher02-0015b7ac",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015b7ac",
+      "base": "0x0015b7a9",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstripss3watcher01-0015b7ad",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015b7ad",
+      "base": "0x0015b7a8",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstripss3trooperdancergomorrah02-0015b7ae",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015b7ae",
+      "base": "0x0015b7aa",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstripss3trooperdancergomorrah01-0015b7af",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015b7af",
+      "base": "0x0015b7ab",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "lvlgunrunnerguard-0015d3ef",
+      "category": "route-humanoid",
+      "authoredRef": "0x0015d3ef",
+      "base": "0x0015d3ed",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdac03",
+      "name": ""
+    },
+    {
+      "id": "gsbighorner-0015ef63",
+      "category": "route-creature",
+      "authoredRef": "0x0015ef63",
+      "base": "0x0010ab79",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aa7",
+      "name": "Young Bighorner"
+    },
+    {
+      "id": "vstreetncrtroopermpharass-00160046",
+      "category": "route-humanoid",
+      "authoredRef": "0x00160046",
+      "base": "0x00160045",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b386",
+      "name": "NCR Trooper MP"
+    },
+    {
+      "id": "vstripss4ncrmpa-00160047",
+      "category": "route-humanoid",
+      "authoredRef": "0x00160047",
+      "base": "0x0015c127",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b386",
+      "name": "NCR Trooper MP"
+    },
+    {
+      "id": "vstripss4ncrmpb-00160048",
+      "category": "route-humanoid",
+      "authoredRef": "0x00160048",
+      "base": "0x0015c128",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b386",
+      "name": "NCR Trooper MP"
+    },
+    {
+      "id": "vfskingstreetsmoker-00161d86",
+      "category": "route-humanoid",
+      "authoredRef": "0x00161d86",
+      "base": "0x00161d6d",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf0d",
+      "name": ""
+    },
+    {
+      "id": "vfskingstreetsmoker-00161d88",
+      "category": "route-humanoid",
+      "authoredRef": "0x00161d88",
+      "base": "0x00161d6d",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf0d",
+      "name": ""
+    },
+    {
+      "id": "vfskingspatrolleader-00161d96",
+      "category": "route-humanoid",
+      "authoredRef": "0x00161d96",
+      "base": "0x00161d72",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf2c",
+      "name": ""
+    },
+    {
+      "id": "vfsalleycorpse01-00161dae",
+      "category": "route-humanoid",
+      "authoredRef": "0x00161dae",
+      "base": "0x00161d71",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da5c",
+      "name": "Dead Squatter"
+    },
+    {
+      "id": "vfsneutralbenefitlocal-00162919",
+      "category": "route-humanoid",
+      "authoredRef": "0x00162919",
+      "base": "0x00162905",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da79",
+      "name": "Local"
+    },
+    {
+      "id": "vfsgoodbenefitking-0016291a",
+      "category": "route-humanoid",
+      "authoredRef": "0x0016291a",
+      "base": "0x00162904",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da79",
+      "name": "Kings Gang Member"
+    },
+    {
+      "id": "vfsevilbenefitthug-0016291b",
+      "category": "route-humanoid",
+      "authoredRef": "0x0016291b",
+      "base": "0x0016290a",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da79",
+      "name": "Freeside Thug"
+    },
+    {
+      "id": "vfsbaitthug-0016291e",
+      "category": "route-humanoid",
+      "authoredRef": "0x0016291e",
+      "base": "0x00162907",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da43",
+      "name": "Freeside Thug"
+    },
+    {
+      "id": "vfswaitingthug01-0016291f",
+      "category": "route-humanoid",
+      "authoredRef": "0x0016291f",
+      "base": "0x00162908",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da43",
+      "name": ""
+    },
+    {
+      "id": "vfswaitingthug01-00162920",
+      "category": "route-humanoid",
+      "authoredRef": "0x00162920",
+      "base": "0x00162908",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da43",
+      "name": ""
+    },
+    {
+      "id": "vfsdeadlocal-0016292f",
+      "category": "route-humanoid",
+      "authoredRef": "0x0016292f",
+      "base": "0x00162909",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da42",
+      "name": "Local"
+    },
+    {
+      "id": "vfsgrannyganger1-00163364",
+      "category": "route-humanoid",
+      "authoredRef": "0x00163364",
+      "base": "0x00163369",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12d9e9",
+      "name": "Malefic Maud"
+    },
+    {
+      "id": "vfsgrannyganger2-00163367",
+      "category": "route-humanoid",
+      "authoredRef": "0x00163367",
+      "base": "0x0016336c",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12d9e9",
+      "name": "Irate Ida"
+    },
+    {
+      "id": "vstreetss6gambler01-00164010",
+      "category": "route-humanoid",
+      "authoredRef": "0x00164010",
+      "base": "0x00163ea0",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetss6gambler02-00164011",
+      "category": "route-humanoid",
+      "authoredRef": "0x00164011",
+      "base": "0x00163ea1",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetss6gambler03-00164012",
+      "category": "route-humanoid",
+      "authoredRef": "0x00164012",
+      "base": "0x00163ea2",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Gambler"
+    },
+    {
+      "id": "vstreetss6traveler01-00164013",
+      "category": "route-humanoid",
+      "authoredRef": "0x00164013",
+      "base": "0x00163ea3",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Traveler"
+    },
+    {
+      "id": "vstreetss6traveler02-00164014",
+      "category": "route-humanoid",
+      "authoredRef": "0x00164014",
+      "base": "0x00163ea4",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Traveler"
+    },
+    {
+      "id": "vstreetss6trooper01-00164015",
+      "category": "route-humanoid",
+      "authoredRef": "0x00164015",
+      "base": "0x00163ea5",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "vstreetss6trooper02-00164016",
+      "category": "route-humanoid",
+      "authoredRef": "0x00164016",
+      "base": "0x00163ea6",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "NCR Trooper"
+    },
+    {
+      "id": "gsvictordisabled-0016473a",
+      "category": "route-creature",
+      "authoredRef": "0x0016473a",
+      "base": "0x0016473b",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1aaf",
+      "name": "Victor"
+    },
+    {
+      "id": "vspawnspecialnorthvegascaravan02brahminpacka-00165164",
+      "category": "route-creature",
+      "authoredRef": "0x00165164",
+      "base": "0x00165163",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdabe2",
+      "name": "Brahmin"
+    },
+    {
+      "id": "vspawnspecialmercenarymalegroup02nv02-00165167",
+      "category": "route-humanoid",
+      "authoredRef": "0x00165167",
+      "base": "0x00165165",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdabe2",
+      "name": "Mercenary"
+    },
+    {
+      "id": "vspawnspecialmerchantfemalegroup01nv02-00165168",
+      "category": "route-humanoid",
+      "authoredRef": "0x00165168",
+      "base": "0x00165166",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdabe2",
+      "name": "Traveling Merchant"
+    },
+    {
+      "id": "vspawnspecialtier1geckosmallgshunter-00165185",
+      "category": "route-creature",
+      "authoredRef": "0x00165185",
+      "base": "0x00159783",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1ac6",
+      "name": "Young Gecko Hunter"
+    },
+    {
+      "id": "vspawnspecialtier1geckosmallgshunter-00165186",
+      "category": "route-creature",
+      "authoredRef": "0x00165186",
+      "base": "0x00159783",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1ac6",
+      "name": "Young Gecko Hunter"
+    },
+    {
+      "id": "vspawnspecialtier1geckosmallgshunter-00165187",
+      "category": "route-creature",
+      "authoredRef": "0x00165187",
+      "base": "0x00159783",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1ac6",
+      "name": "Young Gecko Hunter"
+    },
+    {
+      "id": "vspawntier3cazadorsmallnr-00168ba2",
+      "category": "route-creature",
+      "authoredRef": "0x00168ba2",
+      "base": "0x00168b07",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad96",
+      "name": ""
+    },
+    {
+      "id": "vspawntier3cazadorsmall75-00168ba3",
+      "category": "route-creature",
+      "authoredRef": "0x00168ba3",
+      "base": "0x0015c674",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad96",
+      "name": ""
+    },
+    {
+      "id": "vspawntier4cazadormed75-00168ba4",
+      "category": "route-creature",
+      "authoredRef": "0x00168ba4",
+      "base": "0x0015c683",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad96",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1bloatflymednr-00168c25",
+      "category": "route-creature",
+      "authoredRef": "0x00168c25",
+      "base": "0x00168bd9",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadaf",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1bloatflymednr-00168c26",
+      "category": "route-creature",
+      "authoredRef": "0x00168c26",
+      "base": "0x00168bd9",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadaf",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1bloatflymednr-00168c27",
+      "category": "route-creature",
+      "authoredRef": "0x00168c27",
+      "base": "0x00168bd9",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadaf",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1bloatflymednr-00168c28",
+      "category": "route-creature",
+      "authoredRef": "0x00168c28",
+      "base": "0x00168bd9",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadaf",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed50-00169b77",
+      "category": "route-creature",
+      "authoredRef": "0x00169b77",
+      "base": "0x00158182",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19b3",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed50-00169b7a",
+      "category": "route-creature",
+      "authoredRef": "0x00169b7a",
+      "base": "0x00158182",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadc3",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed75-00169b7b",
+      "category": "route-creature",
+      "authoredRef": "0x00169b7b",
+      "base": "0x0015c64d",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadc3",
+      "name": ""
+    },
+    {
+      "id": "vfstouristvaporized-00169cc2",
+      "category": "route-humanoid",
+      "authoredRef": "0x00169cc2",
+      "base": "0x0011986c",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10beed",
+      "name": ""
+    },
+    {
+      "id": "vfskingcornerleaner-0016a238",
+      "category": "route-humanoid",
+      "authoredRef": "0x0016a238",
+      "base": "0x0011839e",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf0d",
+      "name": "Kings Gang Member"
+    },
+    {
+      "id": "gsgiantmantisnymph-0016aefc",
+      "category": "route-creature",
+      "authoredRef": "0x0016aefc",
+      "base": "0x0011d584",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1ab0",
+      "name": "Giant Mantis Nymph"
+    },
+    {
+      "id": "gsgiantmantisnymph-0016aefd",
+      "category": "route-creature",
+      "authoredRef": "0x0016aefd",
+      "base": "0x0011d584",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1ab0",
+      "name": "Giant Mantis Nymph"
+    },
+    {
+      "id": "gscrbarkscorpion-0016aefe",
+      "category": "route-creature",
+      "authoredRef": "0x0016aefe",
+      "base": "0x0016aefa",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadb7",
+      "name": "Bark Scorpion"
+    },
+    {
+      "id": "vfskingcornerleaner-0016b754",
+      "category": "route-humanoid",
+      "authoredRef": "0x0016b754",
+      "base": "0x0011839e",
+      "enableParent": null,
+      "world": "0x10beea",
+      "cell": "0x10bf0d",
+      "name": "Kings Gang Member"
+    },
+    {
+      "id": "nvprospectormaleadeadjohnny-00171b39",
+      "category": "route-humanoid",
+      "authoredRef": "0x00171b39",
+      "base": "0x00171b38",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1ac6",
+      "name": "Johnny"
+    },
+    {
+      "id": "nvprospectormaleadeadjohnnystandin-00171b3e",
+      "category": "route-humanoid",
+      "authoredRef": "0x00171b3e",
+      "base": "0x00171b3d",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe1ac6",
+      "name": "Prospector"
+    },
+    {
+      "id": "vspawntier1coyotemed-001728aa",
+      "category": "route-creature",
+      "authoredRef": "0x001728aa",
+      "base": "0x00156766",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadc3",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed30-001728c1",
+      "category": "route-creature",
+      "authoredRef": "0x001728c1",
+      "base": "0x00158183",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19ab",
+      "name": ""
+    },
+    {
+      "id": "vspawntier1coyotemed50-001728c2",
+      "category": "route-creature",
+      "authoredRef": "0x001728c2",
+      "base": "0x00158182",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xe19ab",
+      "name": ""
+    },
+    {
+      "id": "littlebusterdead-00172944",
+      "category": "route-humanoid",
+      "authoredRef": "0x00172944",
+      "base": "0x00172943",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da5c",
+      "name": "Little Buster"
+    },
+    {
+      "id": "nvcrraven-0017390a",
+      "category": "route-creature",
+      "authoredRef": "0x0017390a",
+      "base": "0x00140db0",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdadaf",
+      "name": "Raven"
+    },
+    {
+      "id": "vspawntier3deathclawsmall50-00173f14",
+      "category": "route-creature",
+      "authoredRef": "0x00173f14",
+      "base": "0x0015c679",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad9d",
+      "name": ""
+    },
+    {
+      "id": "vfsgrannyganger3-00174983",
+      "category": "route-humanoid",
+      "authoredRef": "0x00174983",
+      "base": "0x0016336b",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12d9e9",
+      "name": "Rancorous Ruth"
+    },
+    {
+      "id": "vspawntier3deathclawsmall50-00174b6e",
+      "category": "route-creature",
+      "authoredRef": "0x00174b6e",
+      "base": "0x0015c679",
+      "enableParent": null,
+      "world": "0xda726",
+      "cell": "0xdad84",
+      "name": ""
+    },
+    {
+      "id": "vfspacerthug03dead-00175a71",
+      "category": "route-humanoid",
+      "authoredRef": "0x00175a71",
+      "base": "0x00129391",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da16",
+      "name": "Dead King"
+    },
+    {
+      "id": "vfspacerthug04dead-00175a72",
+      "category": "route-humanoid",
+      "authoredRef": "0x00175a72",
+      "base": "0x00129390",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da16",
+      "name": "Dead King"
+    },
+    {
+      "id": "lvlfreesidenorthlocal-00175b9c",
+      "category": "route-humanoid",
+      "authoredRef": "0x00175b9c",
+      "base": "0x00175b9a",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da78",
+      "name": ""
+    },
+    {
+      "id": "lvlfreesidenorthlocal-00175ba4",
+      "category": "route-humanoid",
+      "authoredRef": "0x00175ba4",
+      "base": "0x00175b9a",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da5d",
+      "name": ""
+    },
+    {
+      "id": "lvlfreesidenorthlocal-00175ba9",
+      "category": "route-humanoid",
+      "authoredRef": "0x00175ba9",
+      "base": "0x00175b9a",
+      "enableParent": null,
+      "world": "0x12d94d",
+      "cell": "0x12da78",
+      "name": ""
+    },
+    {
+      "id": "vstreetsecuritronmk2-001787ed",
+      "category": "route-creature",
+      "authoredRef": "0x001787ed",
+      "base": "0x001787ec",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Securitron Mk II"
+    },
+    {
+      "id": "vstreetsecuritronmk2-001787ee",
+      "category": "route-creature",
+      "authoredRef": "0x001787ee",
+      "base": "0x001787ec",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32c",
+      "name": "Securitron Mk II"
+    },
+    {
+      "id": "vstreetsecuritronmk2-001787ef",
+      "category": "route-creature",
+      "authoredRef": "0x001787ef",
+      "base": "0x001787ec",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3ce",
+      "name": "Securitron Mk II"
+    },
+    {
+      "id": "vstreetsecuritronmk2-001787f0",
+      "category": "route-creature",
+      "authoredRef": "0x001787f0",
+      "base": "0x001787ec",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Securitron Mk II"
+    },
+    {
+      "id": "vstreetsecuritronmk2-001787f1",
+      "category": "route-creature",
+      "authoredRef": "0x001787f1",
+      "base": "0x001787ec",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b32d",
+      "name": "Securitron Mk II"
+    },
+    {
+      "id": "vstreetcrbrahmin2-0017b588",
+      "category": "route-creature",
+      "authoredRef": "0x0017b588",
+      "base": "0x0017b587",
+      "enableParent": null,
+      "world": "0x13b308",
+      "cell": "0x13b3cd",
+      "name": "Brahmin"
+    }
+  ]
+}
