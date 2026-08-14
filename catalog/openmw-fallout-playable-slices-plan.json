@@ -141,6 +141,17 @@
       "title": "Add barter and native save-process-reload to the working smoke",
       "status": "pending",
       "dependsOn": ["R1-first-smoke"],
+      "execution": {
+        "routeId": "goodsprings-persistent-barter-save-reload-v1",
+        "driverPolicy": "engine-owned ordinary activation and production UI/state paths; no host input, proof inventory, or direct state mutation",
+        "firstImplementationSlice": "R2.0-observe-Chet-live-inventory",
+        "followUpSlices": [
+          "R2.1-container-transfer-and-no-delta-barter-cancel",
+          "R2.2-one-live-merchant-transaction",
+          "R2.3-native-save-clean-exit-cold-reload"
+        ],
+        "promotionRule": "R2 remains pending until all sub-slices run on one manifested runtime and the final report retains hash-verifiable evidence."
+      },
       "requires": [
         "container transfer",
         "Chet barter cancellation and committed transaction",
