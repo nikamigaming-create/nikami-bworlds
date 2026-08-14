@@ -271,7 +271,7 @@ if ($Route -eq "ChetPersistenceSave") {
 $artifacts = [Collections.Generic.List[object]]::new()
 $nativeFramePaths = @($nativeFrames | ForEach-Object { $_.FullName })
 foreach ($path in @($video, $stdout, $stderr, $openmwLog, $ffmpegLog, $runtimeManifest, $SavePath, $generatedSavePath) + $nativeFramePaths) {
-    if (Test-Path -LiteralPath $path -PathType Leaf) {
+    if (-not [string]::IsNullOrWhiteSpace([string]$path) -and (Test-Path -LiteralPath $path -PathType Leaf)) {
         $file = Get-Item -LiteralPath $path
         $artifacts.Add([pscustomobject][ordered]@{
             path = $file.FullName
