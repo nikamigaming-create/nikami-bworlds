@@ -25,6 +25,13 @@ live merchant and player item/caps candidates. It must select no item and make
 no state change. This establishes a real, repeatable transaction candidate
 instead of guessing an item FormID or injecting a fixture.
 
+R2.0 is implemented and passed in the retained `opennv-r2-chet-20260814-005`
+proof directory: six live merchant stacks (55 items) were observed after the
+authored door, dialogue, and barter sequence. The route uses three native
+frames plus exact-title video, exits cleanly, and records all host-control
+flags as false. This is evidence for observation only, not a persistence
+claim.
+
 ### R2.1 — Container transfer and barter cancellation
 
 On the same route, transfer one ordinary item from an unlocked container

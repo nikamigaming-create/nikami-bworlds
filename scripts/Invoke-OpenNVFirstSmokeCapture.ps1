@@ -1,5 +1,7 @@
 [CmdletBinding()]
 param(
+    [ValidateSet("FirstSmoke", "ChetObservation")]
+    [string]$Route = "FirstSmoke",
     [string]$WorldsRoot = "",
     [string]$BinaryRoot = "",
     [string]$SavePath = "",
@@ -52,6 +54,9 @@ if (Test-Path -LiteralPath $OutputRoot) {
 $exe = Join-Path $BinaryRoot "openmw.exe"
 $resources = Join-Path $BinaryRoot "resources"
 $runtimeManifest = Join-Path $BinaryRoot "runtime-manifest.json"
+if (-not (Test-Path -LiteralPath $runtimeManifest -PathType Leaf)) {
+    $runtimeManifest = Join-Path $BinaryRoot "candidate-runtime-manifest.json"
+}
 $profile = Join-Path $WorldsRoot "profiles\fallout_new_vegas"
 $profileConfig = Join-Path $profile "openmw.cfg"
 $morrowindConfig = Join-Path $WorldsRoot "profiles\morrowind\openmw.cfg"
@@ -108,7 +113,9 @@ $argumentLine = ($arguments | ForEach-Object { Quote-ProcessArgument ([string]$_
 $stdout = Join-Path $OutputRoot "stdout.log"
 $stderr = Join-Path $OutputRoot "stderr.log"
 $openmwLog = Join-Path $sessionConfig "openmw.log"
-$video = Join-Path $OutputRoot "OpenMW-FNV-first-smoke-exact-title.mp4"
+$routeSlug = if ($Route -eq "ChetObservation") { "r2-chet-observation" } else { "first-smoke" }
+$resultReportName = if ($Route -eq "ChetObservation") { "r2-chet-observation-report.json" } else { "first-smoke-report.json" }
+$video = Join-Path $OutputRoot ("OpenMW-FNV-{0}-exact-title.mp4" -f $routeSlug)
 $ffmpegLog = Join-Path $OutputRoot "ffmpeg.log"
 $startedAt = [DateTime]::UtcNow
 $game = $null
@@ -116,12 +123,13 @@ $gameExitCode = $null
 $ffmpeg = $null
 $timedOut = $false
 $titleObserved = $false
-$previousSmoke = $env:OPENMW_FNV_FIRST_SMOKE
+$driverEnvironmentName = if ($Route -eq "ChetObservation") { "OPENMW_FNV_R2_CHET_OBSERVATION" } else { "OPENMW_FNV_FIRST_SMOKE" }
+$previousDriver = [Environment]::GetEnvironmentVariable($driverEnvironmentName, "Process")
 $previousDebug = $env:OPENMW_DEBUG_LEVEL
 $previousCrashCatcher = $env:OPENMW_DISABLE_CRASH_CATCHER
 $previousFatalDialog = $env:OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG
 try {
-    $env:OPENMW_FNV_FIRST_SMOKE = "1"
+    [Environment]::SetEnvironmentVariable($driverEnvironmentName, "1", "Process")
     $env:OPENMW_DEBUG_LEVEL = "INFO"
     $env:OPENMW_DISABLE_CRASH_CATCHER = "1"
     $env:OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG = "1"
@@ -170,7 +178,7 @@ try {
     $gameExitCode = $game.ExitCode
 }
 finally {
-    $env:OPENMW_FNV_FIRST_SMOKE = $previousSmoke
+    [Environment]::SetEnvironmentVariable($driverEnvironmentName, $previousDriver, "Process")
     $env:OPENMW_DEBUG_LEVEL = $previousDebug
     $env:OPENMW_DISABLE_CRASH_CATCHER = $previousCrashCatcher
     $env:OPENMW_WORLD_VIEWER_SUPPRESS_FATAL_DIALOG = $previousFatalDialog
@@ -186,10 +194,13 @@ finally {
 }
 
 $logText = if (Test-Path -LiteralPath $openmwLog) { Get-Content -Raw -LiteralPath $openmwLog } else { "" }
-$resultMatch = [regex]::Matches(
-    $logText,
-    'FNV first smoke: result=(?<result>pass|fail) reason="(?<reason>[^"]*)" movement=(?<movement>[01]) door=(?<door>[01]) container=(?<container>[01])') |
-    Select-Object -Last 1
+$resultPattern = if ($Route -eq "ChetObservation") {
+    'FNV R2 Chet: result=(?<result>pass|fail) reason="(?<reason>[^"]*)" door=(?<door>[01]) dialogue=(?<dialogue>[01]) barter=(?<barter>[01])'
+}
+else {
+    'FNV first smoke: result=(?<result>pass|fail) reason="(?<reason>[^"]*)" movement=(?<movement>[01]) door=(?<door>[01]) container=(?<container>[01])'
+}
+$resultMatch = [regex]::Matches($logText, $resultPattern) | Select-Object -Last 1
 $nativeFrames = @(Get-ChildItem -LiteralPath (Join-Path $userData "screenshots") -Filter '*.png' -File -ErrorAction SilentlyContinue | Sort-Object Name)
 $artifacts = [Collections.Generic.List[object]]::new()
 $nativeFramePaths = @($nativeFrames | ForEach-Object { $_.FullName })
@@ -203,21 +214,25 @@ foreach ($path in @($video, $stdout, $stderr, $openmwLog, $ffmpegLog, $runtimeMa
         })
     }
 }
-$movement = $null -ne $resultMatch -and $resultMatch.Groups['movement'].Value -eq '1'
+$movement = $Route -eq "FirstSmoke" -and $null -ne $resultMatch -and $resultMatch.Groups['movement'].Value -eq '1'
 $door = $null -ne $resultMatch -and $resultMatch.Groups['door'].Value -eq '1'
-$container = $null -ne $resultMatch -and $resultMatch.Groups['container'].Value -eq '1'
+$container = $Route -eq "FirstSmoke" -and $null -ne $resultMatch -and $resultMatch.Groups['container'].Value -eq '1'
+$dialogue = $Route -eq "ChetObservation" -and $null -ne $resultMatch -and $resultMatch.Groups['dialogue'].Value -eq '1'
+$barter = $Route -eq "ChetObservation" -and $null -ne $resultMatch -and $resultMatch.Groups['barter'].Value -eq '1'
 $peacefulExitLogged = $logText -match '(?m)^\[[^\]]+\] Quitting peacefully\.\s*$'
 $videoRetained = (Test-Path -LiteralPath $video -PathType Leaf) -and (Get-Item -LiteralPath $video).Length -gt 0
+$minimumNativeFrames = if ($Route -eq "ChetObservation") { 3 } else { 4 }
+$routeAssertionsPassed = if ($Route -eq "ChetObservation") { $door -and $dialogue -and $barter } else { $movement -and $door -and $container }
 $passed = $null -ne $resultMatch -and $resultMatch.Groups['result'].Value -eq 'pass' -and
-    $movement -and $door -and $container -and $nativeFrames.Count -ge 4 -and $videoRetained -and
+    $routeAssertionsPassed -and $nativeFrames.Count -ge $minimumNativeFrames -and $videoRetained -and
     $titleObserved -and -not $timedOut -and ($gameExitCode -eq 0 -or $peacefulExitLogged)
 $reason = if ($null -ne $resultMatch) { $resultMatch.Groups['reason'].Value }
-    elseif ($timedOut) { "OpenMW timed out before a first-smoke result" }
+    elseif ($timedOut) { "OpenMW timed out before a $Route result" }
     elseif (-not $titleObserved) { "exact OpenMW window title was not observed" }
-    else { "OpenMW exited without first-smoke result telemetry" }
+    else { "OpenMW exited without $Route result telemetry" }
 
 $report = [ordered]@{
-    schema = "nikami-openmw-fnv-first-smoke/v1"
+    schema = "nikami-openmw-fnv-$routeSlug/v1"
     status = if ($passed) { "pass" } else { "fail" }
     startedAt = $startedAt.ToString("o")
     completedAt = [DateTime]::UtcNow.ToString("o")
@@ -249,11 +264,13 @@ $report = [ordered]@{
         nativeFrameCount = $nativeFrames.Count
     }
     assertions = [ordered]@{
-        ordinaryExteriorGameplay = $logText -match 'FNV first smoke: exterior-ready cell='
+        ordinaryExteriorGameplay = if ($Route -eq "FirstSmoke") { $logText -match 'FNV first smoke: exterior-ready cell=' } else { $true }
         exteriorMovement = $movement
         authoredDoorTransition = $door
         unlockedContainerOpened = $container
-        nativeFramesRetained = $nativeFrames.Count -ge 4
+        chetDialogueOpened = $dialogue
+        authoredBarterOpened = $barter
+        nativeFramesRetained = $nativeFrames.Count -ge $minimumNativeFrames
         exactTitleVideoRetained = $videoRetained
     }
     telemetry = [ordered]@{
@@ -262,7 +279,7 @@ $report = [ordered]@{
     }
     artifacts = @($artifacts)
 }
-$reportPath = Join-Path $OutputRoot "first-smoke-report.json"
+$reportPath = Join-Path $OutputRoot $resultReportName
 [IO.File]::WriteAllText($reportPath, ($report | ConvertTo-Json -Depth 10), [Text.UTF8Encoding]::new($false))
 $report | ConvertTo-Json -Depth 10
-if (-not $passed) { throw "OpenMW FirstSmoke failed: $reason. See $reportPath" }
+if (-not $passed) { throw "OpenMW $Route failed: $reason. See $reportPath" }

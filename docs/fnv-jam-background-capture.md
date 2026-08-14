@@ -153,6 +153,35 @@ If the title recorder fails, check exact window title, ffmpeg availability,
 window minimization, and capture logs. Do not fall back to clicking or
 foreground activation.
 
+## OpenNV R2 Chet barter observation
+
+This small gameplay route is separate from the long JAM proof. The engine
+enters the Goodsprings General Store through its authored exterior door, talks
+to Chet, selects his real `Show me what you have for sale.` dialogue choice,
+and lets the production `ShowBarterMenu` result open barter. It only observes
+the resulting live merchant stacks: it does not directly push `GM_Barter`,
+seed items or caps, select an item, or mutate proof state.
+
+Run it only through the canonical entry point, from any checkout location:
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario ChetObservation `
+  -OpeningRuntimeRoot <staged-runtime> `
+  -SavePath <goodsprings-save> -RuntimeReady -RequireIdle
+
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario ChetObservation `
+  -OpeningRuntimeRoot <staged-runtime> `
+  -SavePath <goodsprings-save> `
+  -OutputRoot .\run\opennv-r2-chet-<unique>
+```
+
+Acceptance retains three native frames (door, Chet, barter), an exact-title
+video, and `r2-chet-observation-report.json` with all host-control flags
+false. This is R2.0 only; the following slice performs an ordinary container
+transfer and proves that cancelling barter makes no delta.
+
 ## Authored opening comparison route
 
 ## TestMap01 renderer diagnostic

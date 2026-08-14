@@ -111,6 +111,33 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario FirstSmoke -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -OutputRoot .\\run\\opennv-first-smoke-<unique>"
     }
   ],
+  "r2ChetRecipes": [
+    {
+      "id": "opennv-goodsprings-chet-authored-barter-v1",
+      "target": "OpenMW",
+      "runner": "scripts/Invoke-OpenNVFirstSmokeCapture.ps1",
+      "captureMethod": "OpenMW native ScreenCaptureHandler retains General Store, Chet, and barter frames while ffmpeg passively records the exact OpenMW window title",
+      "driverMethod": "OPENMW_FNV_R2_CHET_OBSERVATION activates the authored Goodsprings General Store door and placed Chet actor, then resolves Chet's live dialogue ShowBarterMenu result",
+      "backgroundInputMethod": "engine-owned production action and dialogue paths; no host keyboard or mouse input is sent",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "openmw/user-data/screenshots/*.png",
+      "telemetryPattern": "openmw/session-config/openmw.log",
+      "manifestPattern": "openmw/r2-chet-observation-report.json",
+      "videoPattern": "openmw/OpenMW-FNV-r2-chet-observation-exact-title.mp4",
+      "requiredTelemetry": [
+        "authored Goodsprings General Store door transition completed",
+        "placed Chet dialogue opened",
+        "authored Chet ShowBarterMenu result opened live barter",
+        "Chet's live authored merchant stacks were observed without mutation",
+        "capture.selfDriven=true",
+        "all Windows app-control and foreground-input flags false",
+        "proof-state mutation and camera-driving flags false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetObservation -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetObservation -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -OutputRoot .\\run\\opennv-r2-chet-<unique>"
+    }
+  ],
   "canyonRecipes": [
     {
       "id": "opennv-honest-hearts-zion-joshua-camp-slow-crawl-v1",

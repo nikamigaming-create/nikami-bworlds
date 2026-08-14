@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "FirstSmoke", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -113,7 +113,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
         $canonicalSave330Path
     }
-    elseif ($Scenario -eq "FirstSmoke") {
+    elseif ($Scenario -in @("FirstSmoke", "ChetObservation")) {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
     else { "" }
@@ -149,8 +149,8 @@ if ($Scenario -eq "Opening" -and $OpeningCampaign -eq "NewVegas" -and $Target -n
 if ($Scenario -eq "TestMap" -and $Target -ne "OpenMW") {
     throw "TestMap01 is an OpenMW-only renderer diagnostic. Use -Target OpenMW."
 }
-if ($Scenario -eq "FirstSmoke" -and $Target -ne "OpenMW") {
-    throw "The FNV FirstSmoke route is OpenMW-only. Use -Target OpenMW."
+if ($Scenario -in @("FirstSmoke", "ChetObservation") -and $Target -ne "OpenMW") {
+    throw "The FNV FirstSmoke and ChetObservation routes are OpenMW-only. Use -Target OpenMW."
 }
 if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
     throw "The Honest Hearts canyon crawl is OpenMW-only. Use -Target OpenMW."
@@ -215,6 +215,7 @@ $terminalResult = $null
 $realSaveResult = $null
 $godotRouteResult = $null
 $firstSmokeResult = $null
+$chetObservationResult = $null
 $canyonResult = $null
 
 if ($Scenario -eq "FirstSmoke") {
@@ -241,6 +242,33 @@ if ($Scenario -eq "FirstSmoke") {
         throw "Canonical OpenMW FirstSmoke did not pass movement, door, container, native-evidence, or no-control gates."
     }
     $openMwResult = $firstSmokeResult
+}
+
+if ($Scenario -eq "ChetObservation") {
+    $chetObservationOutput = Join-Path $OutputRoot "openmw"
+    & $firstSmokeRunner `
+        -Route ChetObservation `
+        -WorldsRoot $WorldsRoot `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -SavePath $SavePath `
+        -OutputRoot $chetObservationOutput `
+        -CaptureSeconds $FirstSmokeCaptureSeconds `
+        -TimeoutSeconds $TimeoutSeconds
+    $chetObservationResult = Get-Content -Raw -LiteralPath (Join-Path $chetObservationOutput "r2-chet-observation-report.json") |
+        ConvertFrom-Json
+    if ($chetObservationResult.status -ne "pass" -or
+        -not [bool]$chetObservationResult.capture.selfDriven -or
+        [bool]$chetObservationResult.capture.windowsAppControlUsed -or
+        [bool]$chetObservationResult.capture.foregroundActivationUsed -or
+        [bool]$chetObservationResult.capture.foregroundInputInjected -or
+        [bool]$chetObservationResult.capture.proofStateMutationUsed -or
+        [bool]$chetObservationResult.capture.cameraDrivingUsed -or
+        -not [bool]$chetObservationResult.assertions.authoredDoorTransition -or
+        -not [bool]$chetObservationResult.assertions.chetDialogueOpened -or
+        -not [bool]$chetObservationResult.assertions.authoredBarterOpened) {
+        throw "Canonical OpenMW ChetObservation did not pass the authored door, dialogue, barter, native-evidence, or no-control gates."
+    }
+    $openMwResult = $chetObservationResult
 }
 
 if ($Scenario -eq "Canyon") {
@@ -603,6 +631,13 @@ if ($Scenario -eq "PipBoy" -and $null -ne $pipBoyResult) {
 }
 if ($Scenario -eq "FirstSmoke" -and $null -ne $firstSmokeResult) {
     foreach ($artifact in @($firstSmokeResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
+if ($Scenario -eq "ChetObservation" -and $null -ne $chetObservationResult) {
+    foreach ($artifact in @($chetObservationResult.artifacts)) {
         if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
             $artifactPaths.Add([string]$artifact.path)
         }
