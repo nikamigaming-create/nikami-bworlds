@@ -165,6 +165,33 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetPersistent -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -OutputRoot .\\run\\opennv-r2-persistent-<unique>"
     }
   ],
+  "r2TransactionRecipes": [
+    {
+      "id": "opennv-goodsprings-container-merchant-transaction-v1",
+      "target": "OpenMW",
+      "runner": "scripts/Invoke-OpenNVFirstSmokeCapture.ps1",
+      "captureMethod": "OpenMW native ScreenCaptureHandler retains authored General Store, container, Chet, barter, and completed transaction frames while ffmpeg passively records the exact OpenMW window title",
+      "driverMethod": "OPENMW_FNV_R2_GOODSPRINGS_TRANSACTION activates the authored General Store door and unlocked cash register, transfers one live item through ContainerWindow, then buys one affordable live Chet merchant item through TradeWindow's normal offer path",
+      "backgroundInputMethod": "engine-owned production world-action, container, dialogue, and trade paths; no host keyboard or mouse input is sent",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "openmw/user-data/screenshots/*.png",
+      "telemetryPattern": "openmw/session-config/openmw.log",
+      "manifestPattern": "openmw/r2-goodsprings-transaction-report.json",
+      "videoPattern": "openmw/OpenMW-FNV-r2-goodsprings-transaction-exact-title.mp4",
+      "requiredTelemetry": [
+        "authored Goodsprings General Store door transition completed",
+        "unlocked General Store container transferred one ordinary item through the production container model",
+        "placed Chet dialogue and authored ShowBarterMenu result opened live barter",
+        "one affordable Chet merchant item completed through the production offer path with player and merchant item and caps deltas verified",
+        "capture.selfDriven=true",
+        "all Windows app-control and foreground-input flags false",
+        "proof-state mutation and camera-driving flags false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetTransaction -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetTransaction -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -OutputRoot .\\run\\opennv-r2-transaction-<unique>"
+    }
+  ],
   "canyonRecipes": [
     {
       "id": "opennv-honest-hearts-zion-joshua-camp-slow-crawl-v1",

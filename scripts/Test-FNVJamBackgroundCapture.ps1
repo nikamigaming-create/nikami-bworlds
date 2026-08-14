@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -42,7 +42,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
         Join-Path $WorldsRoot "local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos"
     }
-    elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent")) {
+    elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction")) {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
     else { "" }
@@ -70,7 +70,7 @@ if ($Scenario -eq "RealSave" -and $Target -eq "All") {
 if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
     throw "Terminal interaction is an OpenMW-only lane. Use -Target OpenMW."
 }
-if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent") -and $Target -ne "OpenMW") {
+if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction") -and $Target -ne "OpenMW") {
     throw "FirstSmoke and Chet persistent routes are OpenMW-only lanes. Use -Target OpenMW."
 }
 if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
@@ -367,6 +367,20 @@ if ($null -ne $catalog) {
                 $chetPersistentRunnerText -match 'windowsAppControlUsed = \$false' -and
                 $chetPersistentRunnerText -match 'foregroundInputInjected = \$false') $firstSmokeRunnerPath
     }
+    if ($Scenario -eq "ChetTransaction") {
+        Add-Check "ChetTransaction is restricted to OpenMW" ($Target -eq "OpenMW") "target=$Target"
+        [void](Test-File "ChetTransaction native save exists" $SavePath)
+        [void](Test-File "ChetTransaction candidate runtime manifest exists" (Join-Path $OpeningRuntimeRoot "candidate-runtime-manifest.json"))
+        $chetTransactionRunnerText = Get-Content -Raw -LiteralPath $firstSmokeRunnerPath -ErrorAction SilentlyContinue
+        foreach ($forbidden in @("AppActivate", "SetForegroundWindow", "BringWindowToTop", "SetFocus", "SendInput")) {
+            Add-Check "ChetTransaction runner excludes $forbidden" `
+                ($chetTransactionRunnerText -notmatch [regex]::Escape($forbidden)) $firstSmokeRunnerPath
+        }
+        Add-Check "ChetTransaction runner declares engine-owned no-control capture" `
+            ($chetTransactionRunnerText -match 'OPENMW_FNV_R2_GOODSPRINGS_TRANSACTION' -and
+                $chetTransactionRunnerText -match 'windowsAppControlUsed = \$false' -and
+                $chetTransactionRunnerText -match 'foregroundInputInjected = \$false') $firstSmokeRunnerPath
+    }
     if ($Scenario -eq "Canyon") {
         Add-Check "Canyon is restricted to OpenMW" ($Target -eq "OpenMW") "target=$Target"
         [void](Test-File "Canyon runtime manifest exists" (Join-Path $OpeningRuntimeRoot "runtime-manifest.json"))
@@ -405,6 +419,8 @@ if ($null -ne $catalog) {
         @($catalog.r2ChetRecipes | Where-Object { $_.target -eq $Target })
     } elseif ($Scenario -eq "ChetPersistent") {
         @($catalog.r2PersistentRecipes | Where-Object { $_.target -eq $Target })
+    } elseif ($Scenario -eq "ChetTransaction") {
+        @($catalog.r2TransactionRecipes | Where-Object { $_.target -eq $Target })
     } elseif ($Scenario -eq "Canyon") {
         @($catalog.canyonRecipes | Where-Object { $_.target -eq $Target })
     } else {
@@ -434,6 +450,9 @@ if ($null -ne $catalog) {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
     }
     elseif ($Scenario -eq "ChetPersistent") {
+        if ($Target -eq "OpenMW") { 1 } else { 0 }
+    }
+    elseif ($Scenario -eq "ChetTransaction") {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
     }
     elseif ($Scenario -eq "Canyon") {
@@ -537,6 +556,9 @@ elseif ($Scenario -eq "FirstSmoke") {
 elseif ($Scenario -eq "ChetPersistent") {
     $scriptsToParse.Add($firstSmokeRunnerPath)
 }
+elseif ($Scenario -eq "ChetTransaction") {
+    $scriptsToParse.Add($firstSmokeRunnerPath)
+}
 elseif ($Scenario -eq "Canyon") {
     $scriptsToParse.Add($canyonRunnerPath)
 }
@@ -616,6 +638,13 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
             ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVFirstSmokeCapture' -and
                 $entryText -match '\$Scenario\s+-eq\s+"ChetPersistent"' -and
                 $entryText -match 'Route ChetPersistent') `
+            $entryPointPath
+    }
+    elseif ($Scenario -eq "ChetTransaction") {
+        Add-Check "ChetTransaction invocation routes to the declared OpenMW runner" `
+            ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVFirstSmokeCapture' -and
+                $entryText -match '\$Scenario\s+-eq\s+"ChetTransaction"' -and
+                $entryText -match 'Route ChetTransaction') `
             $entryPointPath
     }
     elseif ($Scenario -eq "Canyon") {

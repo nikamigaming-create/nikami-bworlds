@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("FirstSmoke", "ChetObservation", "ChetPersistent")]
+    [ValidateSet("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction")]
     [string]$Route = "FirstSmoke",
     [string]$WorldsRoot = "",
     [string]$BinaryRoot = "",
@@ -116,11 +116,13 @@ $openmwLog = Join-Path $sessionConfig "openmw.log"
 $routeSlug = switch ($Route) {
     "ChetObservation" { "r2-chet-observation" }
     "ChetPersistent" { "r2-goodsprings-persistent" }
+    "ChetTransaction" { "r2-goodsprings-transaction" }
     default { "first-smoke" }
 }
 $resultReportName = switch ($Route) {
     "ChetObservation" { "r2-chet-observation-report.json" }
     "ChetPersistent" { "r2-goodsprings-persistent-report.json" }
+    "ChetTransaction" { "r2-goodsprings-transaction-report.json" }
     default { "first-smoke-report.json" }
 }
 $video = Join-Path $OutputRoot ("OpenMW-FNV-{0}-exact-title.mp4" -f $routeSlug)
@@ -134,6 +136,7 @@ $titleObserved = $false
 $driverEnvironmentName = switch ($Route) {
     "ChetObservation" { "OPENMW_FNV_R2_CHET_OBSERVATION" }
     "ChetPersistent" { "OPENMW_FNV_R2_GOODSPRINGS_PERSISTENT" }
+    "ChetTransaction" { "OPENMW_FNV_R2_GOODSPRINGS_TRANSACTION" }
     default { "OPENMW_FNV_FIRST_SMOKE" }
 }
 $previousDriver = [Environment]::GetEnvironmentVariable($driverEnvironmentName, "Process")
@@ -206,8 +209,8 @@ finally {
 }
 
 $logText = if (Test-Path -LiteralPath $openmwLog) { Get-Content -Raw -LiteralPath $openmwLog } else { "" }
-$resultPattern = if ($Route -eq "ChetPersistent") {
-    'FNV R2 Chet: result=(?<result>pass|fail) reason="(?<reason>[^"]*)" door=(?<door>[01]) dialogue=(?<dialogue>[01]) barter=(?<barter>[01]) containerTransfer=(?<containerTransfer>[01]) barterCancel=(?<barterCancel>[01])'
+$resultPattern = if ($Route -in @("ChetPersistent", "ChetTransaction")) {
+    'FNV R2 Chet: result=(?<result>pass|fail) reason="(?<reason>[^"]*)" door=(?<door>[01]) dialogue=(?<dialogue>[01]) barter=(?<barter>[01]) containerTransfer=(?<containerTransfer>[01]) barterCancel=(?<barterCancel>[01]) transaction=(?<transaction>[01])'
 }
 elseif ($Route -eq "ChetObservation") {
     'FNV R2 Chet: result=(?<result>pass|fail) reason="(?<reason>[^"]*)" door=(?<door>[01]) dialogue=(?<dialogue>[01]) barter=(?<barter>[01])'
@@ -232,15 +235,16 @@ foreach ($path in @($video, $stdout, $stderr, $openmwLog, $ffmpegLog, $runtimeMa
 $movement = $Route -eq "FirstSmoke" -and $null -ne $resultMatch -and $resultMatch.Groups['movement'].Value -eq '1'
 $door = $null -ne $resultMatch -and $resultMatch.Groups['door'].Value -eq '1'
 $container = $Route -eq "FirstSmoke" -and $null -ne $resultMatch -and $resultMatch.Groups['container'].Value -eq '1'
-$chetRoute = $Route -in @("ChetObservation", "ChetPersistent")
+$chetRoute = $Route -in @("ChetObservation", "ChetPersistent", "ChetTransaction")
 $dialogue = $chetRoute -and $null -ne $resultMatch -and $resultMatch.Groups['dialogue'].Value -eq '1'
 $barter = $chetRoute -and $null -ne $resultMatch -and $resultMatch.Groups['barter'].Value -eq '1'
-$containerTransfer = $Route -eq "ChetPersistent" -and $null -ne $resultMatch -and $resultMatch.Groups['containerTransfer'].Value -eq '1'
+$containerTransfer = $Route -in @("ChetPersistent", "ChetTransaction") -and $null -ne $resultMatch -and $resultMatch.Groups['containerTransfer'].Value -eq '1'
 $barterCancel = $Route -eq "ChetPersistent" -and $null -ne $resultMatch -and $resultMatch.Groups['barterCancel'].Value -eq '1'
+$transaction = $Route -eq "ChetTransaction" -and $null -ne $resultMatch -and $resultMatch.Groups['transaction'].Value -eq '1'
 $peacefulExitLogged = $logText -match '(?m)^\[[^\]]+\] Quitting peacefully\.\s*$'
 $videoRetained = (Test-Path -LiteralPath $video -PathType Leaf) -and (Get-Item -LiteralPath $video).Length -gt 0
-$minimumNativeFrames = if ($Route -eq "ChetPersistent") { 6 } elseif ($Route -eq "ChetObservation") { 3 } else { 4 }
-$routeAssertionsPassed = if ($Route -eq "ChetPersistent") { $door -and $dialogue -and $barter -and $containerTransfer -and $barterCancel } elseif ($Route -eq "ChetObservation") { $door -and $dialogue -and $barter } else { $movement -and $door -and $container }
+$minimumNativeFrames = if ($Route -in @("ChetPersistent", "ChetTransaction")) { 6 } elseif ($Route -eq "ChetObservation") { 3 } else { 4 }
+$routeAssertionsPassed = if ($Route -eq "ChetPersistent") { $door -and $dialogue -and $barter -and $containerTransfer -and $barterCancel } elseif ($Route -eq "ChetTransaction") { $door -and $dialogue -and $barter -and $containerTransfer -and $transaction } elseif ($Route -eq "ChetObservation") { $door -and $dialogue -and $barter } else { $movement -and $door -and $container }
 $passed = $null -ne $resultMatch -and $resultMatch.Groups['result'].Value -eq 'pass' -and
     $routeAssertionsPassed -and $nativeFrames.Count -ge $minimumNativeFrames -and $videoRetained -and
     $titleObserved -and -not $timedOut -and ($gameExitCode -eq 0 -or $peacefulExitLogged)
@@ -290,6 +294,7 @@ $report = [ordered]@{
         authoredBarterOpened = $barter
         ordinaryContainerTransfer = $containerTransfer
         authoredBarterCancellationNoDelta = $barterCancel
+        authoredMerchantTransaction = $transaction
         nativeFramesRetained = $nativeFrames.Count -ge $minimumNativeFrames
         exactTitleVideoRetained = $videoRetained
     }

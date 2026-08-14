@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -113,7 +113,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
         $canonicalSave330Path
     }
-    elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent")) {
+    elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction")) {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
     else { "" }
@@ -149,7 +149,7 @@ if ($Scenario -eq "Opening" -and $OpeningCampaign -eq "NewVegas" -and $Target -n
 if ($Scenario -eq "TestMap" -and $Target -ne "OpenMW") {
     throw "TestMap01 is an OpenMW-only renderer diagnostic. Use -Target OpenMW."
 }
-if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent") -and $Target -ne "OpenMW") {
+if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction") -and $Target -ne "OpenMW") {
     throw "The FNV FirstSmoke and Chet persistent routes are OpenMW-only. Use -Target OpenMW."
 }
 if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
@@ -299,6 +299,35 @@ if ($Scenario -eq "ChetPersistent") {
         throw "Canonical OpenMW ChetPersistent did not pass the container, barter-cancel, native-evidence, or no-control gates."
     }
     $openMwResult = $chetPersistentResult
+}
+
+if ($Scenario -eq "ChetTransaction") {
+    $chetTransactionOutput = Join-Path $OutputRoot "openmw"
+    & $firstSmokeRunner `
+        -Route ChetTransaction `
+        -WorldsRoot $WorldsRoot `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -SavePath $SavePath `
+        -OutputRoot $chetTransactionOutput `
+        -CaptureSeconds $FirstSmokeCaptureSeconds `
+        -TimeoutSeconds $TimeoutSeconds
+    $chetTransactionResult = Get-Content -Raw -LiteralPath (Join-Path $chetTransactionOutput "r2-goodsprings-transaction-report.json") |
+        ConvertFrom-Json
+    if ($chetTransactionResult.status -ne "pass" -or
+        -not [bool]$chetTransactionResult.capture.selfDriven -or
+        [bool]$chetTransactionResult.capture.windowsAppControlUsed -or
+        [bool]$chetTransactionResult.capture.foregroundActivationUsed -or
+        [bool]$chetTransactionResult.capture.foregroundInputInjected -or
+        [bool]$chetTransactionResult.capture.proofStateMutationUsed -or
+        [bool]$chetTransactionResult.capture.cameraDrivingUsed -or
+        -not [bool]$chetTransactionResult.assertions.authoredDoorTransition -or
+        -not [bool]$chetTransactionResult.assertions.ordinaryContainerTransfer -or
+        -not [bool]$chetTransactionResult.assertions.chetDialogueOpened -or
+        -not [bool]$chetTransactionResult.assertions.authoredBarterOpened -or
+        -not [bool]$chetTransactionResult.assertions.authoredMerchantTransaction) {
+        throw "Canonical OpenMW ChetTransaction did not pass the container, merchant-transaction, native-evidence, or no-control gates."
+    }
+    $openMwResult = $chetTransactionResult
 }
 
 if ($Scenario -eq "Canyon") {
@@ -675,6 +704,13 @@ if ($Scenario -eq "ChetObservation" -and $null -ne $chetObservationResult) {
 }
 if ($Scenario -eq "ChetPersistent" -and $null -ne $chetPersistentResult) {
     foreach ($artifact in @($chetPersistentResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
+if ($Scenario -eq "ChetTransaction" -and $null -ne $chetTransactionResult) {
+    foreach ($artifact in @($chetTransactionResult.artifacts)) {
         if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
             $artifactPaths.Add([string]$artifact.path)
         }
