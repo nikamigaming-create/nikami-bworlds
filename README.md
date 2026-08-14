@@ -15,10 +15,18 @@ This repo does not duplicate complete third-party engine trees. Final Nikami
 oracle C/C++ and project files are directly browsable under `oracles/`, and the
 few complete upstream files changed for isolated loading live under
 `upstream-overrides/`. Pinned patches remain under `patches/` as review and
-exact-replay artifacts. The complete compile-ready OpenMW composite is published
-separately in `nikami-openmw-lab`. Runtime launches use the repo-local OpenMW
-bundle under `local/openmw-pristine-mads-33568a` so profile tests do not
-silently bind to the retired `openmw-fo4guard` or 6a5576 recovery builds.
+exact-replay artifacts. The complete compile-ready OpenMW implementation is
+published separately in `nikami-openmw-lab`. There are exactly two canonical
+source workspaces:
+
+- `D:\code\nikami-worlds` (`nikami-bworlds`, `main`) owns worlds, profiles,
+  contracts, capture recipes, Godot code, and build/test tooling.
+- `D:\code\nikami-openmw-lab` (`nikami-openmw-lab`, `main`) owns the actual
+  OpenMW/OpenNV C++ implementation.
+
+Built binaries are artifacts, not a third source workspace. Ordinary launches
+resolve one stable repo-local deployment at `local/openmw-current`; its runtime
+manifest records the exact `nikami-openmw-lab` commit and tree used to build it.
 
 If a downstream patch becomes generally useful, split it into a clean branch in
 the external OpenMW checkout and submit a normal upstream PR. Once accepted, drop
@@ -42,8 +50,8 @@ Then edit `local/paths.json`, or set the equivalent environment variables:
 
 - `NIKAMI_OPENMW_SOURCE`
 - `NIKAMI_OPENMW_BUILD`
-- `NIKAMI_OPENMW_BINARY_ROOT` (legacy only; ordinary launches are locked to `local/openmw-pristine-mads-33568a`)
-- `NIKAMI_OPENMW_RESOURCES` (legacy only; generated profiles are locked to `local/openmw-pristine-mads-33568a/resources`)
+- `NIKAMI_OPENMW_BINARY_ROOT` (legacy only; ordinary launches are locked to `local/openmw-current`)
+- `NIKAMI_OPENMW_RESOURCES` (legacy only; generated profiles are locked to `local/openmw-current/resources`)
 - `NIKAMI_FNV_ROOT`
 - `NIKAMI_FNV_DATA_PATHS` (semicolon-separated OpenMW-ready loose mod data roots)
 - `NIKAMI_STEAM_APPS_ROOTS`
@@ -52,21 +60,17 @@ Then edit `local/paths.json`, or set the equivalent environment variables:
 
 ### Install the current Windows runtime
 
-Download both Windows installers from the
-[FNV world-state prerelease](https://github.com/nikamigaming-create/nikami-openmw-lab/releases/tag/openmw-vr-2026-07-23-fnv-world-state):
-
-- `OpenMW-Flat-0.50.0-win64.exe`
-- `OpenMW-VR-0.50.0-win64.exe`
-
-Install both into this repository's same runtime directory:
+Build the clean `main` checkout in `D:\code\nikami-openmw-lab`, validate the
+candidate, and promote that candidate into this repository's stable runtime
+directory:
 
 ```text
-local\openmw-pristine-mads-33568a
+local\openmw-current
 ```
 
-That directory must contain `openmw.exe`, `openmw_vr.exe`,
-`MyGUIEngine.dll`, and `resources`. The launchers deliberately use this
-repo-local bundle so another OpenMW installation or a Morrowind profile cannot
+That directory must contain `openmw.exe`, `MyGUIEngine.dll`, `resources`, and
+`runtime-manifest.json`. The launchers deliberately use this repo-local bundle
+so another OpenMW installation, stale branch build, or Morrowind profile cannot
 silently contaminate an FNV run.
 
 Run the scanner:

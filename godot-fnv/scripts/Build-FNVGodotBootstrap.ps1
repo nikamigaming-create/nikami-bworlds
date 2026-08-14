@@ -3,8 +3,8 @@ param(
     [string]$SavePath = 'D:\code\nikami-worlds\local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos',
     [string]$ContentProfile = 'D:\code\nikami-worlds\profiles\fallout_new_vegas\openmw.cfg',
     [string]$DataRoot = 'D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data',
-    [string]$DenominatorExe = 'D:\code\nikami-worlds\local\build\fnv-playability-recovery-20260807\authored-ads-gui-direct-fbo-v1\RelWithDebInfo\fnv-save330-denominator.exe',
-    [string]$BsaTool = 'D:\code\nikami-worlds\local\build\openmw-051-full-port-noqt\RelWithDebInfo\bsatool.exe',
+    [string]$DenominatorExe = 'D:\code\nikami-openmw-parity-recovery-build\Release\fnv-save330-denominator.exe',
+    [string]$BsaTool = 'D:\code\nikami-worlds\local\openmw-godot-skeletal-export-v2-canonical-20260810\bsatool.exe',
     [string]$Godot = 'D:\code\gd\Godot_v4.6.3-stable_win64_console.exe',
     [switch]$SkipIntro,
     [switch]$SkipGodotImport
@@ -45,6 +45,20 @@ if (Test-Path -LiteralPath (Join-Path $semanticDirectory 'manifest.json') -PathT
 & python @overlayArguments
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $saveOverlay 'index.json'))) {
     throw 'FOS change-form index generation failed'
+}
+$scriptVariableIndex = Join-Path $semanticDirectory 'script-variable-index.json'
+if (Test-Path -LiteralPath $scriptVariableIndex -PathType Leaf) {
+    & python (Join-Path $projectRoot 'tools\compile_opennv_script_variable_save_state.py') `
+        --index $scriptVariableIndex --save-overlay (Join-Path $saveOverlay 'index.json') `
+        --output (Join-Path $saveOverlay 'script-variable-state.json')
+    if ($LASTEXITCODE -ne 0) { throw 'Save script-variable state compilation failed' }
+}
+$questCatalog = Join-Path $semanticDirectory 'quests.json'
+if (Test-Path -LiteralPath $questCatalog -PathType Leaf) {
+    & python (Join-Path $projectRoot 'tools\compile_opennv_quest_save_state.py') `
+        --semantic-db $semanticDirectory --save-overlay (Join-Path $saveOverlay 'index.json') `
+        --output (Join-Path $saveOverlay 'quest-state.json')
+    if ($LASTEXITCODE -ne 0) { throw 'Save quest-state compilation failed' }
 }
 
 if (-not $SkipIntro) {

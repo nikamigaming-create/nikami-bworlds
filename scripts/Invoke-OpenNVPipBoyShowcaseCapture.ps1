@@ -20,7 +20,11 @@ param(
     [string]$TestMapWorldspace = "FormId:0x010d703c",
     [int]$TestMapGridX = -3,
     [int]$TestMapGridY = 6,
-    [switch]$LifecycleOnly
+    [switch]$LifecycleOnly,
+    [switch]$ApparelOnly,
+    [switch]$AidOnly,
+    [switch]$AmmoOnly,
+    [switch]$MiscOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -253,15 +257,26 @@ $captureStderrPath = Join-Path $OutputRoot "ffmpeg.stderr.log"
 $rawVideoPath = Join-Path $OutputRoot "OpenMW-PipBoy-live-exact-title-raw.mp4"
 $collagePath = Join-Path $OutputRoot "PipBoy-live-panel-collage.png"
 $reportPath = Join-Path $OutputRoot "pipboy-showcase-report.json"
-$panelNames = if ($LifecycleOnly) { @(
+$rttCapturePath = Join-Path $OutputRoot "PipBoy-RTT-pre-mesh.png"
+$panelNames = if ($MiscOnly) { @(
+    "ITEMS-MISC-CAPS", "WORLD-MISC-INSPECTED"
+) } elseif ($AmmoOnly) { @(
+    "ITEMS-AMMO-9MM", "ITEMS-AMMO-556", "WORLD-AMMO-SELECTION"
+) } elseif ($AidOnly) { @(
+    "ITEMS-AID-STIMPAK", "WORLD-AID-STIMPAK-USED"
+) } elseif ($ApparelOnly) { @(
+    "ITEMS-APP-HAT", "WORLD-APP-HAT-OFF", "ITEMS-APP-SUIT", "WORLD-APP-SUIT-OFF"
+) } elseif ($LifecycleOnly) { @(
     "STATS-CND", "ITEMS-WEAP-9MM", "ITEMS-WEAP-VARMINT-SCROLL",
     "ITEMS-AID-STIMPAK", "MAP-WORLD", "MAP-WORLD-ZOOM-PAN", "ITEMS-WEAP-VARMINT-EQUIP",
-    "WORLD-VARMINT-EQUIPPED"
+    "WORLD-VARMINT-EQUIPPED", "ITEMS-WEAP-VARMINT-REOPEN"
 ) } else { @(
     "STATS-CND", "STATS-RAD", "STATS-EFF", "STATS-SPECIAL", "STATS-SKILLS", "STATS-PERKS", "STATS-GENERAL",
-    "ITEMS-WEAP-9MM", "ITEMS-WEAP-VARMINT", "ITEMS-APP-SUIT", "ITEMS-APP-HAT", "ITEMS-AID-STIMPAK",
+    "ITEMS-WEAP-9MM", "ITEMS-WEAP-VARMINT", "ITEMS-APP-HAT", "WORLD-APP-HAT-OFF",
+    "ITEMS-APP-SUIT", "WORLD-APP-SUIT-OFF", "ITEMS-AID-STIMPAK",
     "ITEMS-MISC-CAPS", "ITEMS-AMMO-9MM", "ITEMS-AMMO-556", "DATA-QUESTS", "DATA-QUESTS-SCROLL", "DATA-NOTES",
-    "DATA-RADIO", "MAP-WORLD", "MAP-WORLD-ZOOM-PAN", "MAP-LOCAL", "MAP-LOCAL-ZOOM-PAN", "WORLD-VARMINT-EQUIPPED"
+    "DATA-RADIO", "MAP-WORLD", "MAP-WORLD-ZOOM-PAN", "MAP-LOCAL", "MAP-LOCAL-ZOOM-PAN", "WORLD-VARMINT-EQUIPPED",
+    "ITEMS-WEAP-VARMINT-REOPEN"
 ) }
 $expectedNativeStateCount = $panelNames.Count
 $nativeFramePaths = @($panelNames | ForEach-Object { Join-Path $OutputRoot ("PipBoy-$($_)-native.png") })
@@ -308,10 +323,16 @@ try {
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_GAMEPLAY_START_GRID_Y", [string]$TestMapGridY, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_SHOWCASE", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_LIFECYCLE_ONLY", $(if ($LifecycleOnly) { "1" } else { "0" }), "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_APPAREL_ONLY", $(if ($ApparelOnly) { "1" } else { "0" }), "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_AID_ONLY", $(if ($AidOnly) { "1" } else { "0" }), "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_AMMO_ONLY", $(if ($AmmoOnly) { "1" } else { "0" }), "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_MISC_ONLY", $(if ($MiscOnly) { "1" } else { "0" }), "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_SHOWCASE_LOADOUT", "1", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_SHOWCASE_FIRST_READY_FRAME", "60", "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_SHOWCASE_FRAMES_PER_PANE", [string]$FramesPerPane, "Process")
     [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_SHOWCASE_CAPTURE_DELAY_FRAMES", [string]$CaptureDelayFrames, "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_FNV_WEAPON_POST_KF_AUDIT", "1", "Process")
+    [Environment]::SetEnvironmentVariable("OPENMW_FNV_PIPBOY_RTT_CAPTURE_PATH", $rttCapturePath, "Process")
 
     $arguments = @(
         "--replace", "config",
@@ -340,10 +361,16 @@ try {
         "OPENMW_FNV_GAMEPLAY_START_GRID_Y" = [string]$TestMapGridY
         "OPENMW_FNV_PIPBOY_SHOWCASE" = "1"
         "OPENMW_FNV_PIPBOY_LIFECYCLE_ONLY" = $(if ($LifecycleOnly) { "1" } else { "0" })
+        "OPENMW_FNV_PIPBOY_APPAREL_ONLY" = $(if ($ApparelOnly) { "1" } else { "0" })
+        "OPENMW_FNV_PIPBOY_AID_ONLY" = $(if ($AidOnly) { "1" } else { "0" })
+        "OPENMW_FNV_PIPBOY_AMMO_ONLY" = $(if ($AmmoOnly) { "1" } else { "0" })
+        "OPENMW_FNV_PIPBOY_MISC_ONLY" = $(if ($MiscOnly) { "1" } else { "0" })
         "OPENMW_FNV_PIPBOY_SHOWCASE_LOADOUT" = "1"
         "OPENMW_FNV_PIPBOY_SHOWCASE_FIRST_READY_FRAME" = "60"
         "OPENMW_FNV_PIPBOY_SHOWCASE_FRAMES_PER_PANE" = [string]$FramesPerPane
         "OPENMW_FNV_PIPBOY_SHOWCASE_CAPTURE_DELAY_FRAMES" = [string]$CaptureDelayFrames
+        "OPENMW_FNV_WEAPON_POST_KF_AUDIT" = "1"
+        "OPENMW_FNV_PIPBOY_RTT_CAPTURE_PATH" = $rttCapturePath
     }.GetEnumerator()) {
         $gameStartInfo.EnvironmentVariables[[string]$entry.Key] = [string]$entry.Value
     }
@@ -516,6 +543,12 @@ $panelCaptureEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy showca
 $selectionEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy selection:' })
 $pistolSelectionObserved = @($selectionEvents | Where-Object { $_ -match 'result="EQUIPPED 9MM PISTOL"' }).Count -gt 0
 $rifleSelectionObserved = @($selectionEvents | Where-Object { $_ -match 'result="EQUIPPED VARMINT RIFLE"' }).Count -gt 0
+$hatSlotDeltaObserved = @($selectionEvents | Where-Object {
+    $_ -match 'result="UNEQUIPPED CATTLEMAN COWBOY HAT".*before=\{[^}]*helmet=FormId:0x11083e0[^}]*\} after=\{[^}]*helmet=none'
+}).Count -gt 0
+$suitSlotDeltaObserved = @($selectionEvents | Where-Object {
+    $_ -match 'result="UNEQUIPPED VAULT 21 JUMPSUIT".*before=\{[^}]*body=FormId:0x1104184[^}]*\} after=\{[^}]*body=none'
+}).Count -gt 0
 $stimpakUseObserved = $false
 $stimpakStateDeltaObserved = $false
 foreach ($line in $selectionEvents) {
@@ -529,7 +562,18 @@ foreach ($line in $selectionEvents) {
 }
 $reloadRequestEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy post-close reload:' })
 $reloadAuditEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy post-close audit:' })
+$fireRequestEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy post-close fire: requested=1' })
+$fireAuditEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy post-close fire audit:.*status=pass' })
+$reopenAuditEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy reopen audit:' })
+$apparelWorldEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy apparel world audit:' })
+$aidWorldEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy Aid world audit:' })
+$ammoWorldEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy Ammo world audit:' })
+$miscWorldEvents = @($logLines | Where-Object { $_ -match 'FNV Pip-Boy Misc world audit:' })
+$thirdPersonEquipmentEvents = @($logLines | Where-Object {
+    $_ -match 'FNV third-person equipment bridge: rebuilt=1'
+})
 $reloadRequested = @($reloadRequestEvents | Where-Object { $_ -match 'requested=1' }).Count -gt 0
+$reloadVisualSettledObserved = @($reloadAuditEvents | Where-Object { $_ -match 'actionSettled=1' }).Count -gt 0
 $reloadStateDeltaObserved = $false
 if ($reloadRequestEvents.Count -gt 0 -and $reloadAuditEvents.Count -gt 0 -and
     $reloadRequestEvents[-1] -match 'loadedBefore=(\d+) reserveBefore=(\d+)' -and
@@ -537,14 +581,62 @@ if ($reloadRequestEvents.Count -gt 0 -and $reloadAuditEvents.Count -gt 0 -and
     $loadedBefore = [int]([regex]::Match($reloadRequestEvents[-1], 'loadedBefore=(\d+)').Groups[1].Value)
     $reserveBefore = [int]([regex]::Match($reloadRequestEvents[-1], 'reserveBefore=(\d+)').Groups[1].Value)
     $loadedAfter = [int]([regex]::Match($reloadAuditEvents[-1], 'loadedAfter=(\d+)').Groups[1].Value)
+    if ($fireRequestEvents.Count -gt 0 -and $fireRequestEvents[-1] -match 'loadedBefore=(\d+)') {
+        # The final world audit is intentionally taken after the discharge. Use the
+        # fire request's pre-shot chamber count as the reload transfer endpoint.
+        $loadedAfter = [int]([regex]::Match($fireRequestEvents[-1], 'loadedBefore=(\d+)').Groups[1].Value)
+    }
     $reserveAfter = [int]([regex]::Match($reloadAuditEvents[-1], 'reserveAfter=(\d+)').Groups[1].Value)
     $reloadStateDeltaObserved = $loadedAfter -gt $loadedBefore -and $reserveAfter -lt $reserveBefore -and
         ($loadedAfter - $loadedBefore) -eq ($reserveBefore - $reserveAfter)
 }
-$lifecycleInteractionsPassed = $pistolSelectionObserved -and $rifleSelectionObserved -and
-    $stimpakUseObserved -and $stimpakStateDeltaObserved -and $reloadRequested -and $reloadStateDeltaObserved
+$aidWorldContinuityObserved = @($aidWorldEvents | Where-Object {
+    $_ -match 'state=WORLD-AID-STIMPAK-USED right=FormId:0x10e3778 firstPerson=1 weaponShown=1'
+}).Count -gt 0
+$ammoCompatibleSelectionObserved = @($selectionEvents | Where-Object {
+    $_ -match 'result="SELECTED 9mm Round FOR 9mm Pistol"'
+}).Count -gt 0
+$ammoIncompatibleRejectedObserved = @($selectionEvents | Where-Object {
+    $_ -match 'result="INCOMPATIBLE 5\.56mm Round FOR 9mm Pistol"'
+}).Count -gt 0
+$ammoWorldContinuityObserved = @($ammoWorldEvents | Where-Object {
+    $_ -match 'right=FormId:0x10e3778 selectedAmmo=FormId:0x108ed03 reserve=60 firstPerson=1 weaponShown=1'
+}).Count -gt 0
+$miscSelectionObserved = @($selectionEvents | Where-Object {
+    $_ -match 'result="SELECTED Bobby Pin".*before=\{[^}]*right=FormId:0x10e3778.*after=\{[^}]*right=FormId:0x10e3778'
+}).Count -gt 0
+$miscWorldContinuityObserved = @($miscWorldEvents | Where-Object {
+    $_ -match 'bobbyPins=5 right=FormId:0x10e3778 firstPerson=1 weaponShown=1'
+}).Count -gt 0
+$lifecycleInteractionsPassed = $ApparelOnly -or $AidOnly -or $AmmoOnly -or $MiscOnly -or ($pistolSelectionObserved -and $rifleSelectionObserved -and
+    $stimpakUseObserved -and $stimpakStateDeltaObserved -and $reloadRequested -and $reloadStateDeltaObserved -and
+    $reloadVisualSettledObserved -and $fireRequestEvents.Count -gt 0 -and $fireAuditEvents.Count -gt 0 -and
+    @($reopenAuditEvents | Where-Object {
+        $_ -match 'right=FormId:0x107ea24 ammo=FormId:0x1004240 loaded=4 reserve=55 source=production-input-dispatch'
+    }).Count -gt 0)
+$hatWorldVisualObserved = @($apparelWorldEvents | Where-Object {
+    $_ -match 'state=WORLD-APP-HAT-OFF helmet=none .*firstPerson=0'
+}).Count -gt 0 -and @($thirdPersonEquipmentEvents | Where-Object {
+    $_ -match 'forms=\[FormId:0x1025b83,FormId:0x1104184\]'
+}).Count -gt 0
+$suitWorldVisualObserved = @($apparelWorldEvents | Where-Object {
+    $_ -match 'state=WORLD-APP-SUIT-OFF helmet=none body=none firstPerson=0'
+}).Count -gt 0 -and @($thirdPersonEquipmentEvents | Where-Object {
+    $_ -match 'forms=\[FormId:0x1025b83\]'
+}).Count -gt 0
+$equipmentProxyRebuildObserved = $thirdPersonEquipmentEvents.Count -ge 2
+$apparelInteractionsPassed = $LifecycleOnly -or $AidOnly -or $AmmoOnly -or $MiscOnly -or ($hatSlotDeltaObserved -and $suitSlotDeltaObserved -and
+    $hatWorldVisualObserved -and $suitWorldVisualObserved -and $equipmentProxyRebuildObserved)
+$aidInteractionsPassed = (-not $AidOnly) -or ($stimpakUseObserved -and $stimpakStateDeltaObserved -and
+    $aidWorldContinuityObserved)
+$ammoInteractionsPassed = (-not $AmmoOnly) -or ($ammoCompatibleSelectionObserved -and
+    $ammoIncompatibleRejectedObserved -and $ammoWorldContinuityObserved)
+$miscInteractionsPassed = (-not $MiscOnly) -or ($miscSelectionObserved -and $miscWorldContinuityObserved)
 $runtimeErrors = @($logLines | Where-Object { $_ -match '\sE\]' })
 $runtimeWarnings = @($logLines | Where-Object { $_ -match '\[[^\]]*\sW\]' })
+$retailXmlFallbackEvents = @($logLines | Where-Object {
+    $_ -match 'FNV Pip-Boy surface:.*source=live-openmw-fallback.*reason=retail-xml-pane-not-executable'
+})
 $nativeFrameArtifacts = @(
     @($nativeFramePaths | ForEach-Object { Get-Artifact $_ }) | Where-Object { $null -ne $_ }
 )
@@ -553,7 +645,9 @@ $collageArtifact = Get-Artifact $collagePath
 $passed = [string]::IsNullOrWhiteSpace($captureError) -and $normalNewGameObserved -and $testMapPlacementObserved -and
     $authoredLoadoutObserved -and -not $fallbackInventoryRecordsObserved -and $panelOpenEvents.Count -eq $expectedNativeStateCount -and
     $panelCaptureEvents.Count -eq $expectedNativeStateCount -and $nativeFrameArtifacts.Count -eq $expectedNativeStateCount -and $null -ne $rawVideoArtifact -and
-    $null -ne $collageArtifact -and $lifecycleInteractionsPassed
+    $null -ne $collageArtifact -and $lifecycleInteractionsPassed -and $apparelInteractionsPassed -and
+    $retailXmlFallbackEvents.Count -eq 0 -and $aidInteractionsPassed -and $ammoInteractionsPassed -and
+    $miscInteractionsPassed
 
 $report = [ordered]@{
     schema = "opennv-pipboy-live-panel-showcase/v2"
@@ -598,14 +692,38 @@ $report = [ordered]@{
         selectionEvents = @($selectionEvents)
         pistolSelectionObserved = $pistolSelectionObserved
         rifleSelectionObserved = $rifleSelectionObserved
+        hatEquipmentSlotDeltaObserved = $hatSlotDeltaObserved
+        suitEquipmentSlotDeltaObserved = $suitSlotDeltaObserved
+        hatWorldVisualObserved = $hatWorldVisualObserved
+        suitWorldVisualObserved = $suitWorldVisualObserved
+        apparelWorldEvents = @($apparelWorldEvents)
+        equipmentProxyRebuildObserved = $equipmentProxyRebuildObserved
+        equipmentProxyRebuildEvents = @($thirdPersonEquipmentEvents)
         stimpakUseObserved = $stimpakUseObserved
         stimpakCountAndHealthDeltaObserved = $stimpakStateDeltaObserved
+        aidWorldContinuityObserved = $aidWorldContinuityObserved
+        aidWorldEvents = @($aidWorldEvents)
+        ammoCompatibleSelectionObserved = $ammoCompatibleSelectionObserved
+        ammoIncompatibleRejectedObserved = $ammoIncompatibleRejectedObserved
+        ammoWorldContinuityObserved = $ammoWorldContinuityObserved
+        ammoWorldEvents = @($ammoWorldEvents)
+        miscSelectionObserved = $miscSelectionObserved
+        miscWorldContinuityObserved = $miscWorldContinuityObserved
+        miscWorldEvents = @($miscWorldEvents)
         reloadRequested = $reloadRequested
         reloadAmmoTransferObserved = $reloadStateDeltaObserved
+        reloadVisualSettledObserved = $reloadVisualSettledObserved
         postCloseReloadEvents = @($reloadRequestEvents)
         postCloseAuditEvents = @($reloadAuditEvents)
+        postCloseFireRequested = $fireRequestEvents.Count -gt 0
+        postCloseRoundConsumed = $fireAuditEvents.Count -gt 0
+        postCloseFireEvents = @($fireRequestEvents + $fireAuditEvents)
+        reopenContinuityObserved = $reopenAuditEvents.Count -gt 0
+        reopenContinuityEvents = @($reopenAuditEvents)
         nativePanelCount = $nativeFrameArtifacts.Count
         collageDerivedOnlyFromNativePanels = $null -ne $collageArtifact
+        retailXmlFallbackAbsent = $retailXmlFallbackEvents.Count -eq 0
+        retailXmlFallbackEvents = @($retailXmlFallbackEvents)
     }
     runtimeDiagnostics = [ordered]@{
         errors = @($runtimeErrors)

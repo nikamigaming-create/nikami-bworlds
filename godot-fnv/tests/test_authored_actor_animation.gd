@@ -13,6 +13,7 @@ func _init() -> void:
 	if not _test_actor(SECURITRON_ACTOR, SECURITRON_IDLE, 40):
 		quit(1)
 		return
+	load("res://scripts/opennv_animation_event_runtime.gd").call("reset_shared_audio_runtime")
 	print("OPENNV_ANIMATION_TRANSPORT_EXPERIMENT_PASS humanoid=%s securitron=%s" % [HUMANOID_IDLE, SECURITRON_IDLE])
 	quit(0)
 
@@ -28,20 +29,20 @@ func _test_actor(actor_path: String, animation_path: String, minimum_matches: in
 	var player := animation_loader.call("attach_clip", actor, animation_path, "idle") as AnimationPlayer
 	if player == null:
 		push_error("OPENNV_AUTHORED_ACTOR_ANIMATION_FAIL animation=%s" % animation_path)
-		actor.queue_free()
+		actor.free()
 		return false
 	var matches := int(actor.get_meta("opennv_animation_matched_tracks", 0))
 	var source_tracks := int(actor.get_meta("opennv_animation_source_tracks", 0))
 	var animation := player.get_animation("idle")
 	if matches < minimum_matches or matches > source_tracks or source_tracks < minimum_matches or animation == null or animation.track_get_key_count(0) < 100:
 		push_error("OPENNV_AUTHORED_ACTOR_ANIMATION_FAIL matches=%d source=%d tracks=%d" % [matches, source_tracks, animation.get_track_count() if animation != null else 0])
-		actor.queue_free()
+		actor.free()
 		return false
 	var skeletons: Array[Skeleton3D] = []
 	_collect_skeletons(actor, skeletons)
 	if skeletons.size() != 1 or int(actor.get_meta("opennv_canonical_skeleton_count", 0)) != 1:
 		push_error("OPENNV_AUTHORED_ACTOR_ANIMATION_FAIL canonical skeleton count=%d actor=%s" % [skeletons.size(), actor_path])
-		actor.queue_free()
+		actor.free()
 		return false
 	player.seek(0.0, true)
 	player.advance(0.0)
@@ -56,9 +57,9 @@ func _test_actor(actor_path: String, animation_path: String, minimum_matches: in
 			break
 	if not moved:
 		push_error("OPENNV_AUTHORED_ACTOR_ANIMATION_FAIL no bone pose changed actor=%s" % actor_path)
-		actor.queue_free()
+		actor.free()
 		return false
-	actor.queue_free()
+	actor.free()
 	return true
 
 

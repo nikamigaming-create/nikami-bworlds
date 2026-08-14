@@ -9,6 +9,11 @@ func _init() -> void:
 		"0x00000002": {"id": 2},
 		"0x00000003": {"id": 3},
 		"0x00000004": {"id": 4},
+		"0x00000005": {"id": 5},
+		"0x00000006": {"id": 6},
+		"0x00000007": {"id": 7},
+		"0x00000008": {"id": 8},
+		"0x00000009": {"id": 9},
 	}
 	streamer.set("interior_records_by_id", records)
 	streamer.set("staged_interiors", {
@@ -16,13 +21,20 @@ func _init() -> void:
 		"0x00000002": true,
 		"0x00000003": true,
 		"0x00000004": true,
+		"0x00000005": true,
+		"0x00000006": true,
+		"0x00000007": true,
+		"0x00000008": true,
+		"0x00000009": true,
 	})
 	var lru: Array[String] = [
 		"0x00000001", "0x00000002", "0x00000003", "0x00000004",
+		"0x00000005", "0x00000006", "0x00000007", "0x00000008",
+		"0x00000009",
 	]
 	streamer.set("interior_lru", lru)
 	streamer.set("active_scope", "0x00000001")
-	streamer.set("resident_cells", 4)
+	streamer.set("resident_cells", 9)
 	var pending_paths: Array[String] = ["mesh-a", "mesh-b"]
 	var skeletal: Array[Dictionary] = [
 		{"_runtime_cell": "0x00000002"},
@@ -40,13 +52,13 @@ func _init() -> void:
 	streamer.call("_trim_interior_residency")
 	var staged := streamer.get("staged_interiors") as Dictionary
 	var deferred := streamer.get("deferred_interiors") as Dictionary
-	if staged.size() != 3 or not staged.has("0x00000001"):
-		fail("interior residency did not retain exactly three cells including the active cell: %s" % staged)
+	if staged.size() != 8 or not staged.has("0x00000001"):
+		fail("interior residency did not retain exactly eight cells including the active cell: %s" % staged)
 		return
 	if staged.has("0x00000002") or not deferred.has("0x00000002"):
 		fail("oldest inactive interior was not returned to the deferred index")
 		return
-	if int(streamer.get("resident_cells")) != 3:
+	if int(streamer.get("resident_cells")) != 8:
 		fail("resident cell telemetry did not decrement")
 		return
 	if (streamer.get("waiting_placements") as Dictionary).has("mesh-a") \

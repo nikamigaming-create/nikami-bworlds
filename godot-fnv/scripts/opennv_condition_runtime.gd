@@ -54,14 +54,39 @@ static func _function_value(function_id: int, condition: Dictionary, context: Di
 	var param1 := _canonical(condition.get("param1", condition.get("param1Raw", "")))
 	var param2 := int(condition.get("param2Raw", 0))
 	match function_id:
+		1:
+			var resolver: Variant = context.get("reference_position_resolver")
+			var actor_position: Variant = context.get("actor_position")
+			if not resolver is Callable or not actor_position is Vector3:
+				return {"supported": false, "value": 0.0}
+			var target_position: Variant = (resolver as Callable).call(param1)
+			if not target_position is Vector3:
+				return {"supported": false, "value": 0.0}
+			# Runtime positions are metres; Fallout condition comparisons are units.
+			return _value((actor_position as Vector3).distance_to(target_position as Vector3) * 70.0)
 		18: return _value(context.get("game_hour", 0.0))
+		32:
+			var cell_resolver: Variant = context.get("reference_cell_resolver")
+			if not cell_resolver is Callable:
+				return {"supported": false, "value": 0.0}
+			var target_cell: Variant = (cell_resolver as Callable).call(param1)
+			if target_cell == null:
+				return {"supported": false, "value": 0.0}
+			return _value(1.0 if _canonical(target_cell) == _canonical(context.get("actor_cell", "")) else 0.0)
 		35: return _value(1.0 if bool(context.get("actor_disabled", false)) else 0.0)
 		46: return _value(1.0 if bool(context.get("actor_dead", false)) else 0.0)
 		49: return _value(1.0 if bool(context.get("actor_sleeping", false)) else 0.0)
 		50: return _value(1.0 if bool(context.get("talked_to_player", false)) else 0.0)
+		53:
+			# FNV encodes an explicit reference FormID plus a one-based SCPT
+			# local index. Null-reference rows remain fail-closed until their
+			# subject/reference execution semantics are proven.
+			if param1.is_empty():
+				return {"supported": false, "value": 0.0}
+			return _dictionary_value(context.get("script_variables", {}), "%s:%d" % [param1, param2])
 		56: return _dictionary_value(context.get("quest_running", {}), param1)
 		58: return _dictionary_value(context.get("quest_stages", {}), param1)
-		59: return _dictionary_value(context.get("quest_stage_done", {}), "%s:%d" % [param1, param2])
+		59: return _quest_member_value(context, "quest_stage_done", param1, param2)
 		64: return _value(1.0 if bool(context.get("actor_is_creature", false)) else 0.0)
 		67: return _value(1.0 if _canonical(context.get("actor_cell", "")) == param1 else 0.0)
 		72: return _value(1.0 if _canonical(context.get("actor_base", "")) == param1 else 0.0)
@@ -75,8 +100,8 @@ static func _function_value(function_id: int, condition: Dictionary, context: Di
 		136: return _value(1.0 if _canonical(context.get("actor_ref", "")) == param1 else 0.0)
 		300: return _value(1.0 if bool(context.get("actor_interior", false)) else 0.0)
 		310: return _value(1.0 if _canonical(context.get("actor_world", "")) == param1 else 0.0)
-		420: return _dictionary_value(context.get("objective_completed", {}), "%s:%d" % [param1, param2])
-		421: return _dictionary_value(context.get("objective_displayed", {}), "%s:%d" % [param1, param2])
+		420: return _quest_member_value(context, "objective_completed", param1, param2)
+		421: return _quest_member_value(context, "objective_displayed", param1, param2)
 		546: return _dictionary_value(context.get("quest_completed", {}), param1)
 		_: return {"supported": false, "value": 0.0}
 
@@ -84,6 +109,16 @@ static func _function_value(function_id: int, condition: Dictionary, context: Di
 static func _dictionary_value(value: Variant, key: String) -> Dictionary:
 	var dictionary := value as Dictionary
 	return _value(dictionary[key]) if dictionary.has(key) else {"supported": false, "value": 0.0}
+
+
+static func _quest_member_value(context: Dictionary, member: String, quest_id: String, index: int) -> Dictionary:
+	# A loaded quest with no saved row for a stage/objective has the native zero
+	# value; a quest absent from the effective catalog remains unsupported.
+	var quest_stages := context.get("quest_stages", {}) as Dictionary
+	if not quest_stages.has(quest_id):
+		return {"supported": false, "value": 0.0}
+	var values := context.get(member, {}) as Dictionary
+	return _value(values.get("%s:%d" % [quest_id, index], 0.0))
 
 
 static func _value(value: Variant) -> Dictionary:

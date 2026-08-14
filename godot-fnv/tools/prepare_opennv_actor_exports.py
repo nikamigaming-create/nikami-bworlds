@@ -160,7 +160,11 @@ def main() -> int:
         "texture_count": len(textures),
         "native_screenshot_count": report["nativeScreenshotCount"],
         "coordinate_transform": "inverse-common-staging-yaw; bethesda-z-up-to-godot-y-up",
-        "skeletal_format": "ONVSKEL2" if skeletal_formats == {2} else "mixed",
+        "skeletal_format": (
+            "ONVSKEL2" if skeletal_formats == {2}
+            else "ONVSKEL3" if skeletal_formats == {3}
+            else "mixed"
+        ),
         "skeletal_totals": skeletal_totals,
         "actors": manifest_actors,
     }

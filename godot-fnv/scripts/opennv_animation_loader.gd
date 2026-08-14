@@ -8,18 +8,29 @@ const MAX_FRAMES := 36000
 const UNITS_PER_METER := 70.0
 
 
-static func attach_clip(actor_root: Node3D, path: String, clip_name: String = "idle") -> AnimationPlayer:
+static func attach_clip(actor_root: Node3D, path: String, clip_name: String = "idle",
+		autoplay: bool = true) -> AnimationPlayer:
 	var payload := _read_payload(path)
 	if payload.is_empty():
 		return null
 	var skeletons: Array[Skeleton3D] = []
 	_collect_skeletons(actor_root, skeletons)
-	if skeletons.is_empty():
-		push_error("OPENNV_ANIMATION_NO_SKELETON path=%s" % path)
+	var auxiliary_nodes: Dictionary = {}
+	_collect_auxiliary_nodes(actor_root, auxiliary_nodes)
+	if skeletons.is_empty() and auxiliary_nodes.is_empty():
+		push_error("OPENNV_ANIMATION_NO_TARGET_GRAPH path=%s" % path)
 		return null
 	var animation := Animation.new()
 	animation.length = float(payload.duration)
 	animation.loop_mode = Animation.LOOP_LINEAR
+	var supported_event_keys: Array[Dictionary] = []
+	for text_key_value in payload.text_keys:
+		var text_key := text_key_value as Dictionary
+		var key_time := float(text_key.get("time", -1.0))
+		if key_time < 0.0 or key_time > animation.length \
+				or not str(text_key.get("text", "")).strip_edges().to_lower().begins_with("sound:"):
+			continue
+		supported_event_keys.append(text_key)
 	var matched_bindings := 0
 	var matched_source_tracks: Dictionary = {}
 	var unmatched_source_tracks: Array[String] = []
@@ -44,18 +55,49 @@ static func attach_clip(actor_root: Node3D, path: String, clip_name: String = "i
 			_add_bone_delta_tracks(animation, target, source_track.frames, skeleton.get_bone_rest(bone_index),
 				float(payload.sample_rate), float(payload.duration))
 		if not source_matched:
+			var auxiliary := _find_auxiliary_node(auxiliary_nodes, str(source_track.name))
+			if auxiliary != null:
+				source_matched = true
+				matched_bindings += 1
+				matched_source_tracks[str(source_track.name).to_lower()] = true
+				var target := NodePath(str(actor_root.get_path_to(auxiliary)))
+				_add_node_absolute_tracks(animation, target, source_track.frames, auxiliary.transform,
+					float(payload.sample_rate), float(payload.duration))
+		if not source_matched:
 			unmatched_source_tracks.append(str(source_track.name))
+	if not supported_event_keys.is_empty():
+		var event_runtime := actor_root.get_node_or_null("OpenNVAnimationEvents")
+		if event_runtime == null:
+			event_runtime = load("res://scripts/opennv_animation_event_runtime.gd").new()
+			event_runtime.name = "OpenNVAnimationEvents"
+			actor_root.add_child(event_runtime)
+		var method_track := animation.add_track(Animation.TYPE_METHOD)
+		animation.track_set_path(method_track, NodePath("OpenNVAnimationEvents"))
+		for text_key in supported_event_keys:
+			animation.track_insert_key(method_track, float(text_key.get("time", 0.0)), {
+				"method": &"dispatch_text_key", "args": [str(text_key.get("text", ""))]})
 	if matched_source_tracks.is_empty():
 		push_error("OPENNV_ANIMATION_ZERO_MATCHES path=%s source_tracks=%d" % [path, payload.tracks.size()])
 		return null
-	var library := AnimationLibrary.new()
+	var player := actor_root.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	var library: AnimationLibrary
+	if player == null:
+		player = AnimationPlayer.new()
+		player.name = "AnimationPlayer"
+		player.root_node = NodePath("..")
+		library = AnimationLibrary.new()
+		player.add_animation_library("", library)
+		actor_root.add_child(player)
+	else:
+		library = player.get_animation_library("")
+		if library == null:
+			library = AnimationLibrary.new()
+			player.add_animation_library("", library)
+	if library.has_animation(clip_name):
+		library.remove_animation(clip_name)
 	library.add_animation(clip_name, animation)
-	var player := AnimationPlayer.new()
-	player.name = "AnimationPlayer"
-	player.root_node = NodePath("..")
-	player.add_animation_library("", library)
-	actor_root.add_child(player)
-	player.play(clip_name)
+	if autoplay:
+		player.play(clip_name)
 	actor_root.set_meta("opennv_animation_source", path)
 	actor_root.set_meta("opennv_animation_source_tracks", payload.tracks.size())
 	actor_root.set_meta("opennv_animation_matched_tracks", matched_source_tracks.size())
@@ -87,6 +129,26 @@ static func _add_bone_delta_tracks(animation: Animation, target: NodePath, frame
 		animation.track_insert_key(position_track, time, delta.origin)
 		animation.track_insert_key(rotation_track, time, delta.basis.get_rotation_quaternion().normalized())
 		animation.track_insert_key(scale_track, time, delta.basis.get_scale())
+
+
+static func _add_node_absolute_tracks(animation: Animation, target: NodePath, frames: Array,
+		bind_local: Transform3D, sample_rate: float, duration: float) -> void:
+	var position_track := animation.add_track(Animation.TYPE_POSITION_3D)
+	var rotation_track := animation.add_track(Animation.TYPE_ROTATION_3D)
+	var scale_track := animation.add_track(Animation.TYPE_SCALE_3D)
+	for track_index in [position_track, rotation_track, scale_track]:
+		animation.track_set_path(track_index, target)
+		animation.track_set_interpolation_type(track_index, Animation.INTERPOLATION_LINEAR)
+	var bind_position := bind_local.origin
+	var bind_rotation := bind_local.basis.get_rotation_quaternion().normalized()
+	var bind_scale := bind_local.basis.get_scale()
+	for frame_index in range(frames.size()):
+		var frame := frames[frame_index] as Dictionary
+		var time := minf(duration, float(frame_index) / sample_rate)
+		animation.track_insert_key(position_track, time, frame.get("position", bind_position))
+		animation.track_insert_key(rotation_track, time,
+			(frame.get("rotation", bind_rotation) as Quaternion).normalized())
+		animation.track_insert_key(scale_track, time, frame.get("scale", bind_scale))
 
 
 static func _read_payload(path: String) -> Dictionary:
@@ -134,6 +196,24 @@ static func _collect_skeletons(node: Node, result: Array[Skeleton3D]) -> void:
 		result.append(node as Skeleton3D)
 	for child in node.get_children():
 		_collect_skeletons(child, result)
+
+
+static func _collect_auxiliary_nodes(node: Node, result: Dictionary) -> void:
+	if node is Node3D and node.has_meta("opennv_source_auxiliary_name"):
+		result[str(node.get_meta("opennv_source_auxiliary_name")).to_lower()] = node
+	for child in node.get_children():
+		_collect_auxiliary_nodes(child, result)
+
+
+static func _find_auxiliary_node(nodes: Dictionary, source_name: String) -> Node3D:
+	var key := source_name.to_lower()
+	if nodes.has(key):
+		return nodes[key] as Node3D
+	var base := key.split(":", false, 1)[0]
+	for candidate in [base, base + "root", "bip01 " + base]:
+		if nodes.has(candidate):
+			return nodes[candidate] as Node3D
+	return null
 
 
 static func _find_bone_case_insensitive(skeleton: Skeleton3D, name: String) -> int:

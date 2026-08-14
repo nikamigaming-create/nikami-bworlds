@@ -68,7 +68,11 @@ def main() -> int:
             if cell.get("editor_id") in strip_names
             # The Fort's named subcell owns its actors and clutter, while its
             # enclosing walls and ground are authored in adjacent grid cells.
-            or max(abs(int(cell["grid"][0]) + 4), abs(int(cell["grid"][1]) - 26)) <= 1
+            or (
+                str(cell.get("world_form_id", "")).lower()
+                == str(atlas.get("world_form_id", "")).lower()
+                and max(abs(int(cell["grid"][0]) + 4), abs(int(cell["grid"][1]) - 26)) <= 1
+            )
         ]
     )
 

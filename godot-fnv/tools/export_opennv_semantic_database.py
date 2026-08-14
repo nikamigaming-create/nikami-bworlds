@@ -211,11 +211,14 @@ def compile_semantics(*, bootstrap_path: Path, data_root: Path, resolved_manifes
     actor_bases = [row for _, row in sorted(live_records.items()) if row.get("type") in ("NPC_", "CREA")]
     actor_lists = [row for _, row in sorted(live_records.items()) if row.get("type") in ("LVLN", "LVLC")]
     actor_packages = [row for _, row in sorted(live_records.items()) if row.get("type") == "PACK"]
+    quests = [row for _, row in sorted(live_records.items()) if row.get("type") == "QUST"]
+    scripts = [row for _, row in sorted(live_records.items()) if row.get("type") == "SCPT"]
+    script_owners = [row for _, row in sorted(live_records.items()) if row.get("script")]
     actor_placements = [row for _, row in sorted(live_placements.items()) if row.get("type") in ("ACHR", "ACRE")]
     all_navmeshes = [row for _, row in sorted(live_records.items()) if row.get("type") == "NAVM"]
     navmeshes = [row for row in all_navmeshes if row.get("navmeshData")]
-    expected_navmeshes = int(resolved_manifest.get("types", {}).get("NAVM", {}).get("live", -1))
-    if expected_navmeshes < 0 or len(all_navmeshes) != expected_navmeshes:
+    expected_navmeshes = int(resolved_manifest.get("types", {}).get("NAVM", {}).get("live", 0))
+    if len(all_navmeshes) != expected_navmeshes:
         raise RuntimeError(
             f"semantic NAVM winner census {len(all_navmeshes)} differs from resolved database {expected_navmeshes}"
         )
@@ -242,7 +245,25 @@ def compile_semantics(*, bootstrap_path: Path, data_root: Path, resolved_manifes
     write("actor-bases.json", {"schema": "opennv-semantic-actor-bases/v1", "actors": actor_bases})
     write("actor-lists.json", {"schema": "opennv-semantic-actor-lists/v1", "lists": actor_lists})
     write("actor-packages.json", {"schema": "opennv-semantic-actor-packages/v1", "packages": actor_packages})
+    write("quests.json", {"schema": "opennv-semantic-quests/v1", "quests": quests})
+    write("scripts.json", {"schema": "opennv-semantic-scripts/v1", "scripts": scripts})
+    write("script-owners.json", {"schema": "opennv-semantic-script-owners/v1", "owners": script_owners})
     write("actor-placements.json", {"schema": "opennv-semantic-actor-placements/v1", "placements": actor_placements})
+    sounds = [row for _, row in sorted(live_records.items()) if row.get("type") == "SOUN"]
+    music = [row for _, row in sorted(live_records.items()) if row.get("type") == "MUSC"]
+    sound_consumers = [
+        row for _, row in sorted(live_records.items())
+        if any(key in row for key in (
+            "loopingSound", "activationSound", "openSound", "closeSound", "loopSound",
+            "pickupSound", "dropSound", "weaponSounds",
+        ))
+    ]
+    write("sounds.json", {
+        "schema": "opennv-semantic-sounds/v1",
+        "sounds": sounds,
+        "music": music,
+        "consumers": sound_consumers,
+    })
     navmesh_buckets: dict[int, list[dict]] = defaultdict(list)
     for row in navmeshes:
         cell = str((row.get("navmeshData") or {}).get("cell") or row.get("parentCell") or "0x0")
@@ -279,7 +300,13 @@ def compile_semantics(*, bootstrap_path: Path, data_root: Path, resolved_manifes
             "actor_bases": len(actor_bases),
             "actor_lists": len(actor_lists),
             "actor_packages": len(actor_packages),
+            "quests": len(quests),
+            "scripts": len(scripts),
+            "script_owners": len(script_owners),
             "actor_placements": len(actor_placements),
+            "sounds": len(sounds),
+            "music": len(music),
+            "sound_consumers": len(sound_consumers),
             "navmeshes": len(navmeshes),
             "navmesh_vertices": navmesh_vertices,
             "navmesh_triangles": navmesh_triangles,

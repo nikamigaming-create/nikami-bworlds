@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -22,6 +22,10 @@ param(
     [int]$RetailVideoFrameStep = 3,
     [ValidateRange(5, 600)]
     [int]$OpenMwCaptureSeconds = 160,
+    [ValidateRange(10, 120)]
+    [int]$FirstSmokeCaptureSeconds = 45,
+    [ValidateRange(30, 180)]
+    [int]$CanyonCaptureSeconds = 75,
     [ValidateRange(60, 240)]
     [int]$GodotRouteCaptureSeconds = 210,
     [ValidateRange(5, 120)]
@@ -35,6 +39,10 @@ param(
     [ValidateRange(52, 90)]
     [int]$TerminalCaptureSeconds = 65,
     [switch]$PipBoyLifecycleOnly,
+    [switch]$PipBoyApparelOnly,
+    [switch]$PipBoyAidOnly,
+    [switch]$PipBoyAmmoOnly,
+    [switch]$PipBoyMiscOnly,
     # Optional isolated retail fixture for the Pip-Boy interaction oracle.
     # The source save is copied by Invoke-FNVRetailOracle and never modified.
     [string]$RetailPipBoySavePath = "",
@@ -83,6 +91,8 @@ Set-StrictMode -Version Latest
 $preflight = Join-Path $PSScriptRoot "Test-FNVJamBackgroundCapture.ps1"
 $retailRunner = Join-Path $PSScriptRoot "Invoke-FNVJamFullRetailRehearsal.ps1"
 $openMwRunner = Join-Path $PSScriptRoot "Invoke-FNVJamSprintProof.ps1"
+$firstSmokeRunner = Join-Path $PSScriptRoot "Invoke-OpenNVFirstSmokeCapture.ps1"
+$canyonRunner = Join-Path $PSScriptRoot "Invoke-OpenNVCanyonCrawlCapture.ps1"
 $retailOpeningRunner = Join-Path $PSScriptRoot "Invoke-RetailTTWOpeningCapture.ps1"
 $openingRunner = Join-Path $PSScriptRoot "Invoke-OpenNVOpeningCapture.ps1"
 $testMapRunner = Join-Path $PSScriptRoot "Invoke-OpenNVTestMapDiagnostic.ps1"
@@ -97,6 +107,9 @@ $canonicalSave330Path = Join-Path $WorldsRoot "local\retail-real-save-fixtures\N
 if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
         $canonicalSave330Path
+    }
+    elseif ($Scenario -eq "FirstSmoke") {
+        Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
     else {
         "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos"
@@ -132,6 +145,12 @@ if ($Scenario -eq "Opening" -and $OpeningCampaign -eq "NewVegas" -and $Target -n
 }
 if ($Scenario -eq "TestMap" -and $Target -ne "OpenMW") {
     throw "TestMap01 is an OpenMW-only renderer diagnostic. Use -Target OpenMW."
+}
+if ($Scenario -eq "FirstSmoke" -and $Target -ne "OpenMW") {
+    throw "The FNV FirstSmoke route is OpenMW-only. Use -Target OpenMW."
+}
+if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
+    throw "The Honest Hearts canyon crawl is OpenMW-only. Use -Target OpenMW."
 }
 if (($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
     throw "GodotRoute and GodotCinematics are dedicated Godot lanes. Use -Target Godot."
@@ -192,6 +211,61 @@ $pipBoyResult = $null
 $terminalResult = $null
 $realSaveResult = $null
 $godotRouteResult = $null
+$firstSmokeResult = $null
+$canyonResult = $null
+
+if ($Scenario -eq "FirstSmoke") {
+    $firstSmokeOutput = Join-Path $OutputRoot "openmw"
+    & $firstSmokeRunner `
+        -WorldsRoot $WorldsRoot `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -SavePath $SavePath `
+        -OutputRoot $firstSmokeOutput `
+        -CaptureSeconds $FirstSmokeCaptureSeconds `
+        -TimeoutSeconds $TimeoutSeconds
+    $firstSmokeResult = Get-Content -Raw -LiteralPath (Join-Path $firstSmokeOutput "first-smoke-report.json") |
+        ConvertFrom-Json
+    if ($firstSmokeResult.status -ne "pass" -or
+        -not [bool]$firstSmokeResult.capture.selfDriven -or
+        [bool]$firstSmokeResult.capture.windowsAppControlUsed -or
+        [bool]$firstSmokeResult.capture.foregroundActivationUsed -or
+        [bool]$firstSmokeResult.capture.foregroundInputInjected -or
+        [bool]$firstSmokeResult.capture.proofStateMutationUsed -or
+        [bool]$firstSmokeResult.capture.cameraDrivingUsed -or
+        -not [bool]$firstSmokeResult.assertions.exteriorMovement -or
+        -not [bool]$firstSmokeResult.assertions.authoredDoorTransition -or
+        -not [bool]$firstSmokeResult.assertions.unlockedContainerOpened) {
+        throw "Canonical OpenMW FirstSmoke did not pass movement, door, container, native-evidence, or no-control gates."
+    }
+    $openMwResult = $firstSmokeResult
+}
+
+if ($Scenario -eq "Canyon") {
+    $canyonOutput = Join-Path $OutputRoot "openmw"
+    & $canyonRunner `
+        -WorldsRoot $WorldsRoot `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -OutputRoot $canyonOutput `
+        -CaptureSeconds $CanyonCaptureSeconds `
+        -TimeoutSeconds $TimeoutSeconds
+    $canyonResult = Get-Content -Raw -LiteralPath (Join-Path $canyonOutput "canyon-crawl-report.json") |
+        ConvertFrom-Json
+    if ($canyonResult.status -ne "pass" -or
+        -not [bool]$canyonResult.capture.selfDriven -or
+        [bool]$canyonResult.capture.windowsAppControlUsed -or
+        [bool]$canyonResult.capture.foregroundActivationUsed -or
+        [bool]$canyonResult.capture.foregroundInputInjected -or
+        [bool]$canyonResult.capture.proofStateMutationUsed -or
+        [bool]$canyonResult.capture.forcedActorsUsed -or
+        [bool]$canyonResult.capture.forcedWeatherUsed -or
+        [bool]$canyonResult.capture.cameraDrivingUsed -or
+        -not [bool]$canyonResult.assertions.zionWorldspaceObserved -or
+        -not [bool]$canyonResult.assertions.authoredNpcResolved -or
+        -not [bool]$canyonResult.assertions.slowMovementPassed) {
+        throw "Canonical OpenMW canyon crawl did not pass its Zion, NPC, movement, native-evidence, or no-control gates."
+    }
+    $openMwResult = $canyonResult
+}
 
 if ($Scenario -eq "GodotRoute") {
     $godotTimeout = [Math]::Max(360, $TimeoutSeconds)
@@ -356,8 +430,22 @@ if ($Scenario -eq "PipBoy") {
         }
         if ($PipBoyLifecycleOnly) {
             $pipBoyArgs.LifecycleOnly = $true
-            $pipBoyArgs.FramesPerPane = 90
-            $pipBoyArgs.CaptureDelayFrames = 78
+            # The final firearm frame must be taken after the authored reload
+            # returns to its steady weapon pose, not during its contact frame.
+            $pipBoyArgs.FramesPerPane = 210
+            $pipBoyArgs.CaptureDelayFrames = 195
+        }
+        if ($PipBoyApparelOnly) {
+            $pipBoyArgs.ApparelOnly = $true
+        }
+        if ($PipBoyAidOnly) {
+            $pipBoyArgs.AidOnly = $true
+        }
+        if ($PipBoyAmmoOnly) {
+            $pipBoyArgs.AmmoOnly = $true
+        }
+        if ($PipBoyMiscOnly) {
+            $pipBoyArgs.MiscOnly = $true
         }
         & $pipBoyRunner @pipBoyArgs
         $pipBoyResult =
@@ -510,6 +598,20 @@ if ($Scenario -eq "PipBoy" -and $null -ne $pipBoyResult) {
         }
     }
 }
+if ($Scenario -eq "FirstSmoke" -and $null -ne $firstSmokeResult) {
+    foreach ($artifact in @($firstSmokeResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
+if ($Scenario -eq "Canyon" -and $null -ne $canyonResult) {
+    foreach ($artifact in @($canyonResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
 if ($Scenario -eq "Terminal" -and $null -ne $terminalResult) {
     foreach ($artifact in @($terminalResult.artifacts)) {
         if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
@@ -569,6 +671,8 @@ $summary = [ordered]@{
     pipBoyShowcase = $pipBoyResult
     terminalCapture = $terminalResult
     realSave = $realSaveResult
+    firstSmoke = $firstSmokeResult
+    canyonCrawl = $canyonResult
     godotRoute = $godotRouteResult
     artifacts = @($artifacts)
 }

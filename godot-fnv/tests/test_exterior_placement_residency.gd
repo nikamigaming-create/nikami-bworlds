@@ -55,6 +55,9 @@ func _init() -> void:
 	if str(streamer.get("active_exterior_world_id")) != "0x00000099":
 		fail("isolated exterior did not select its authored worldspace")
 		return
+	if str(streamer.call("_canonical_form_id", null)) != "":
+		fail("null optional FormID was treated as an authored reference")
+		return
 	if not (streamer.get("interior_lru") as Array).is_empty():
 		fail("exterior worldspace was incorrectly inserted into the interior LRU")
 		return
@@ -76,6 +79,21 @@ func _init() -> void:
 	}, "0x00000004", Vector3.ZERO, Vector3.ZERO, false, "world:0x00000099")
 	if int(streamer.get("authored_marker_instances")) != 1:
 		fail("authored furniture marker was silently dropped")
+		return
+	var pending_paths := streamer.get("pending_paths") as Array
+	pending_paths.clear()
+	pending_paths.append_array(["far", "near", "guard"])
+	streamer.set("pending_path_priorities", {"far": 9, "near": 0, "guard": 3})
+	if str(streamer.call("_pop_next_pending_path")) != "near":
+		fail("streaming queue did not prioritize the nearest cell")
+		return
+	var pending_actors := streamer.get("pending_skeletal_placements") as Array
+	pending_actors.append_array([
+		{"id": "far", "_runtime_stream_priority": 8},
+		{"id": "near", "_runtime_stream_priority": 1},
+	])
+	if str((streamer.call("_pop_next_pending_skeletal_placement") as Dictionary).get("id")) != "near":
+		fail("skeletal actor queue did not prioritize the nearest cell")
 		return
 	print("OPENNV_EXTERIOR_PLACEMENT_RESIDENCY_PASS")
 	streamer.free()

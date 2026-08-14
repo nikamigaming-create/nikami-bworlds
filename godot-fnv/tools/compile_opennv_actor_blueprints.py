@@ -100,6 +100,10 @@ def compile_blueprints(semantic_dir: Path, output_path: Path) -> dict:
         package_ids = []
         if package_sources.get("source") in by_id:
             package_ids = by_id[package_sources["source"]].get("packages", [])
+        script_sources = categories["script"]
+        script_id = None
+        if script_sources.get("source") in by_id:
+            script_id = by_id[script_sources["source"]].get("script")
         appearance_payload = {
             "traits": categories["traits"],
             "model": categories["model"],
@@ -113,6 +117,7 @@ def compile_blueprints(semantic_dir: Path, output_path: Path) -> dict:
             "name": actor.get("fullName", ""),
             "categories": categories,
             "packages": package_ids,
+            "script": script_id,
             "appearance_signature": hashlib.sha256(
                 json.dumps(appearance_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
         })

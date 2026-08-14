@@ -94,6 +94,7 @@ def audit(semantic_dir: Path, resolved_manifest_path: Path) -> dict:
         "placements": sum(types.get(name, {}).get("live", 0) for name in PLACED_TYPES),
         "actor_bases": types["NPC_"]["live"] + types["CREA"]["live"],
         "actor_placements": types["ACHR"]["live"] + types["ACRE"]["live"],
+        "scripts": types["SCPT"]["live"],
     }
     observed = dict(manifest["counts"])
     denominator_mismatches = {

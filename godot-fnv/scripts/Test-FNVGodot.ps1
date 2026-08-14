@@ -15,6 +15,8 @@ if (@($manifest.load_order).Count -lt 1 -or $manifest.load_order[0] -ne 'Fallout
 if (@($manifest.inventory).Count -lt 1) { throw 'Decoded save inventory is empty' }
 $saveOverlayPath = Join-Path $projectRoot 'generated\save330-overlay\index.json'
 $saveOverlayPayloadPath = Join-Path $projectRoot 'generated\save330-overlay\changeform-payloads.bin'
+$saveScriptVariablePath = Join-Path $projectRoot 'generated\save330-overlay\script-variable-state.json'
+$saveQuestStatePath = Join-Path $projectRoot 'generated\save330-overlay\quest-state.json'
 if (-not (Test-Path -LiteralPath $saveOverlayPath) -or -not (Test-Path -LiteralPath $saveOverlayPayloadPath)) {
     throw 'Save change-form overlay is missing'
 }
@@ -32,6 +34,31 @@ if ($overlayPayload.Length -ne [int64]$saveOverlay.integrity.payloadArtifact.byt
     $overlayPayloadHash -ne $saveOverlay.integrity.payloadArtifact.sha256) {
     throw 'Save change-form payload artifact mismatch'
 }
+if (-not (Test-Path -LiteralPath $saveScriptVariablePath -PathType Leaf)) {
+    throw 'Save script-variable state artifact is missing'
+}
+$saveScriptVariables = Get-Content -LiteralPath $saveScriptVariablePath -Raw | ConvertFrom-Json
+if ($saveScriptVariables.status -notin @('pass', 'partial') -or
+    $saveScriptVariables.provenance.saveSha256 -ne $hash -or
+    [int]$saveScriptVariables.counts.failures -ne 0 -or
+    [int]$saveScriptVariables.counts.function53ExplicitRows -ne (
+        [int]$saveScriptVariables.counts.operationalResolvedExplicitRows +
+        [int]$saveScriptVariables.counts.unresolvedExplicitRows)) {
+    throw 'Save GetScriptVariable live-value coverage failed'
+}
+if (-not (Test-Path -LiteralPath $saveQuestStatePath -PathType Leaf)) {
+    throw 'Save quest-state artifact is missing'
+}
+$saveQuestState = Get-Content -LiteralPath $saveQuestStatePath -Raw | ConvertFrom-Json
+if ($saveQuestState.schema -ne 'opennv-quest-save-state/v1' -or
+    $saveQuestState.status -notin @('pass', 'partial') -or
+    $saveQuestState.provenance.saveSha256 -ne $hash -or
+    [int]$saveQuestState.counts.quests -ne 640 -or
+    [int]$saveQuestState.counts.savedQuestChangeForms -ne 468 -or
+    [int]$saveQuestState.counts.unmatchedSavedQuestChangeForms -ne 1 -or
+    [int]$saveQuestState.counts.numericVariableDefaults -lt 1) {
+    throw 'Save quest-state coverage or provenance failed'
+}
 $actorManifestPath = Join-Path $projectRoot 'generated\actors\actor-manifest-skeletal-v8.json'
 if (-not (Test-Path -LiteralPath $actorManifestPath)) { throw 'Actor cache manifest is missing' }
 $actorManifest = Get-Content -LiteralPath $actorManifestPath -Raw | ConvertFrom-Json
@@ -41,8 +68,10 @@ $skeletalActorRecords = @($actorManifest.actors | Where-Object {
     $null -ne $property -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)
 }).Count
 $authoredAnimationRecords = @($actorManifest.actors | Where-Object {
-    $property = $_.PSObject.Properties['animation_idle']
-    $null -ne $property -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)
+    $animationProperty = $_.PSObject.Properties['animation_idle']
+    $skeletalProperty = $_.PSObject.Properties['skeletal']
+    $null -ne $animationProperty -and -not [string]::IsNullOrWhiteSpace([string]$animationProperty.Value) -and
+    $null -ne $skeletalProperty -and -not [string]::IsNullOrWhiteSpace([string]$skeletalProperty.Value)
 }).Count
 if ($skeletalActorRecords -lt 1) { throw 'The skeletal actor cache is empty' }
 $actorPayloadAuditPath = Join-Path $projectRoot 'generated\actors\actor-payload-audit.json'
@@ -53,6 +82,19 @@ $actorPayloadAudit = Get-Content -LiteralPath $actorPayloadAuditPath -Raw | Conv
 if ([string]$actorPayloadAudit.status -ne 'pass' -or [int]$actorPayloadAudit.counts.failures -ne 0 -or
     [int]$actorPayloadAudit.counts.skeletal_payloads -ne $skeletalActorRecords) {
     throw 'Promoted actor payload census mismatch'
+}
+$animationFamilyAuditPath = Join-Path $projectRoot 'generated\actors\animation-family-coverage.json'
+& python (Join-Path $projectRoot 'tools\audit_opennv_animation_family_coverage.py') `
+    --manifest $actorManifestPath --project-root $projectRoot `
+    --actor-blueprints (Join-Path $projectRoot 'generated\semantic-db\actor-blueprints.json') `
+    --actor-bases (Join-Path $projectRoot 'generated\semantic-db\actor-bases.json') `
+    --output $animationFamilyAuditPath
+if ($LASTEXITCODE -ne 0) { throw 'Actor animation-family integrity gate failed' }
+$animationFamilyAudit = Get-Content -LiteralPath $animationFamilyAuditPath -Raw | ConvertFrom-Json
+if ([string]$animationFamilyAudit.status -ne 'pass' -or [int]$animationFamilyAudit.counts.failures -ne 0 -or
+    [int]$animationFamilyAudit.counts.skeletalActors -ne $skeletalActorRecords -or
+    [int]$animationFamilyAudit.counts.animatedSkeletalActors -ne $authoredAnimationRecords) {
+    throw 'Actor animation-family census mismatch'
 }
 $fullActorRosterPath = Join-Path $projectRoot 'generated\actors\full-runtime-enabled-actor-roster.json'
 $fullActorResolutionPath = Join-Path $projectRoot 'generated\actors\full-runtime-actor-resolution.json'
@@ -87,9 +129,31 @@ if ([string]$fullAssetAudit.status -ne 'pass' -or [int]$fullAssetAudit.counts.un
         [int]$fullAssetAudit.counts.retail_missing)) {
     throw 'Full-cell asset coverage census does not conserve its denominator'
 }
+# Godot can emit non-fatal ObjectDB/resource cleanup warnings on stderr after a
+# test has printed its pass marker and exited zero. Capture those diagnostics
+# without allowing PowerShell's native-command stderr wrapper to abort the
+# suite; every invocation below is still gated on exit code and its marker.
+$priorErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 $placementTestOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_exterior_placement_residency.gd' 2>&1
 if ($LASTEXITCODE -ne 0 -or ($placementTestOutput | Out-String) -notmatch 'OPENNV_EXTERIOR_PLACEMENT_RESIDENCY_PASS') {
     throw "Exterior placement residency gate failed:`n$($placementTestOutput | Out-String)"
+}
+$atlasParityOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_atlas_coordinate_parity.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($atlasParityOutput | Out-String) -notmatch 'OPENNV_ATLAS_COORDINATE_PARITY_PASS') {
+    throw "Atlas coordinate parity gate failed:`n$($atlasParityOutput | Out-String)"
+}
+$saveActorOverlayOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_save_actor_enable_overlay.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($saveActorOverlayOutput | Out-String) -notmatch 'OPENNV_SAVE_ACTOR_ENABLE_OVERLAY_PASS') {
+    throw "Save actor enable-overlay gate failed:`n$($saveActorOverlayOutput | Out-String)"
+}
+$audioRuntimeOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_opennv_audio_runtime.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($audioRuntimeOutput | Out-String) -notmatch 'OPENNV_AUDIO_RUNTIME_PASS') {
+    throw "Authored audio runtime gate failed:`n$($audioRuntimeOutput | Out-String)"
+}
+$containerRuntimeOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_container_transactions.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($containerRuntimeOutput | Out-String) -notmatch 'OPENNV_CONTAINER_TRANSACTIONS_PASS') {
+    throw "Container transaction gate failed:`n$($containerRuntimeOutput | Out-String)"
 }
 $interiorResidencyOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_interior_residency_lru.gd' 2>&1
 if ($LASTEXITCODE -ne 0 -or ($interiorResidencyOutput | Out-String) -notmatch 'OPENNV_INTERIOR_RESIDENCY_LRU_PASS') {
@@ -108,15 +172,95 @@ if ($LASTEXITCODE -ne 0 -or ($conditionTestOutput | Out-String) -notmatch 'OPENN
 $packageConditionAuditPath = Join-Path $projectRoot 'generated\semantic-db\package-condition-audit.json'
 & python (Join-Path $projectRoot 'tools\audit_opennv_package_conditions.py') `
     --input (Join-Path $projectRoot 'generated\semantic-db\actor-packages.json') `
-    --output $packageConditionAuditPath
+    --output $packageConditionAuditPath `
+    --script-variable-save-state $saveScriptVariablePath `
+    --quest-save-state $saveQuestStatePath
 if ($LASTEXITCODE -ne 0) { throw 'OpenNV package condition census failed.' }
 $packageConditionAudit = Get-Content -LiteralPath $packageConditionAuditPath -Raw | ConvertFrom-Json
 if ($packageConditionAudit.status -ne 'pass' -or [int]$packageConditionAudit.counts.unsupportedLayouts -ne 0) {
     throw 'OpenNV package condition layout coverage failed.'
 }
+$packageRuntimeAuditPath = Join-Path $projectRoot 'generated\semantic-db\package-runtime-semantics-audit.json'
+& python (Join-Path $projectRoot 'tools\audit_opennv_package_runtime_semantics.py') `
+    --packages (Join-Path $projectRoot 'generated\semantic-db\actor-packages.json') `
+    --blueprints (Join-Path $projectRoot 'generated\semantic-db\actor-blueprints.json') `
+    --actor-manifest (Join-Path $projectRoot 'generated\actors\actor-manifest-skeletal-v8.json') `
+    --action-clip (Join-Path $projectRoot 'generated\animations\authored-v1\humanoid-dynamicidle-sleep.onvanim') `
+    --action-clip (Join-Path $projectRoot 'generated\animations\authored-v1\humanoid-eatidle.onvanim') `
+    --output $packageRuntimeAuditPath
+if ($LASTEXITCODE -ne 0) { throw 'OpenNV package runtime semantic census failed.' }
+$packageRuntimeAudit = Get-Content -LiteralPath $packageRuntimeAuditPath -Raw | ConvertFrom-Json
+if ($packageRuntimeAudit.schema -ne 'opennv-package-runtime-semantics-audit/v1' -or
+    $packageRuntimeAudit.status -ne 'partial' -or
+    [int]$packageRuntimeAudit.counts.packages -ne 4885 -or
+    [int]$packageRuntimeAudit.counts.missingPackageIds -ne 0 -or
+    [int]$packageRuntimeAudit.counts.genericActionClipEligiblePackages -le 0 -or
+    [int]$packageRuntimeAudit.counts.genericActionClipEligiblePopulationApplications -le 0 -or
+    [int]$packageRuntimeAudit.counts.worldInteractionPackages -ne 0) {
+    throw 'OpenNV package runtime semantic tier gate failed.'
+}
+$scriptVariableIndexPath = Join-Path $projectRoot 'generated\semantic-db\script-variable-index.json'
+& python (Join-Path $projectRoot 'tools\compile_opennv_script_variable_index.py') `
+    --semantic-dir (Join-Path $projectRoot 'generated\semantic-db') `
+    --output $scriptVariableIndexPath
+if ($LASTEXITCODE -ne 0) { throw 'OpenNV script-variable structural index failed.' }
+$scriptVariableIndex = Get-Content -LiteralPath $scriptVariableIndexPath -Raw | ConvertFrom-Json
+$function53Census = @($packageConditionAudit.functionCensus | Where-Object { [int]$_.functionId -eq 53 })
+if ($scriptVariableIndex.schema -ne 'opennv-script-variable-index/v1' -or
+    [int]$scriptVariableIndex.counts.conflictingLocalIndices -ne 0 -or
+    $function53Census.Count -ne 1 -or
+    [int]$scriptVariableIndex.counts.function53Conditions -ne [int]$function53Census[0].conditions -or
+    [int]$scriptVariableIndex.counts.function53Conditions -ne (
+        [int]$scriptVariableIndex.counts.function53ExplicitReferenceRows +
+        [int]$scriptVariableIndex.counts.function53NullReferenceRows) -or
+    [int]$scriptVariableIndex.counts.function53ExplicitReferenceRows -ne (
+        [int]$scriptVariableIndex.counts.definitionResolvedExplicitRows +
+        [int]$scriptVariableIndex.counts.definitionUnresolvedExplicitRows) -or
+    [int]$scriptVariableIndex.counts.definitionUnresolvedExplicitRows -ne 0 -or
+    [int]$scriptVariableIndex.counts.liveValueResolvedExplicitRows -gt
+        [int]$scriptVariableIndex.counts.definitionResolvedExplicitRows) {
+    throw 'OpenNV GetScriptVariable denominator or structural coverage gate failed.'
+}
 $navmeshTestOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_authored_navmesh_runtime.gd' 2>&1
 if ($LASTEXITCODE -ne 0 -or ($navmeshTestOutput | Out-String) -notmatch 'OPENNV_AUTHORED_NAVMESH_RUNTIME_PASS') {
     throw "Authored NAVM runtime lifecycle gate failed:`n$($navmeshTestOutput | Out-String)"
+}
+$navmeshCorridorOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_actor_navmesh_corridor_runtime.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($navmeshCorridorOutput | Out-String) -notmatch 'OPENNV_ACTOR_NAVMESH_CORRIDOR_PASS') {
+    throw "Authored cross-cell NAVM link/traversal gate failed:`n$($navmeshCorridorOutput | Out-String)"
+}
+$navmeshRepairOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_navmesh_external_repair_runtime.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($navmeshRepairOutput | Out-String) -notmatch 'OPENNV_NAVMESH_EXTERNAL_REPAIR_PASS') {
+    throw "Malformed retail external NAVM seam repair gate failed:`n$($navmeshRepairOutput | Out-String)"
+}
+$sameCellNavmeshOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_same_cell_navmesh_links.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($sameCellNavmeshOutput | Out-String) -notmatch 'OPENNV_SAME_CELL_NAVM_LINK_PASS') {
+    throw "Same-cell multi-NAVM authored-link gate failed:`n$($sameCellNavmeshOutput | Out-String)"
+}
+$actorMigrationOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_actor_cell_migration.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($actorMigrationOutput | Out-String) -notmatch 'OPENNV_ACTOR_CELL_MIGRATION_PASS') {
+    throw "Actor live-cell ownership migration gate failed:`n$($actorMigrationOutput | Out-String)"
+}
+$actorRetryOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_actor_load_retry_runtime.gd' 2>&1
+$actorRetryExitCode = $LASTEXITCODE
+if ($actorRetryExitCode -ne 0 -or ($actorRetryOutput | Out-String) -notmatch 'OPENNV_ACTOR_LOAD_RETRY_PASS') {
+    throw "Actor bounded load-retry/pending-cancellation gate failed:`n$($actorRetryOutput | Out-String)"
+}
+$packageDoorRouteOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_package_door_route_runtime.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($packageDoorRouteOutput | Out-String) -notmatch 'OPENNV_PACKAGE_DOOR_ROUTE_PASS') {
+    throw "Authored package door-route/NPC scope-isolation gate failed:`n$($packageDoorRouteOutput | Out-String)"
+}
+$linkedReferenceOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_global_linked_reference_runtime.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($linkedReferenceOutput | Out-String) -notmatch 'OPENNV_GLOBAL_LINKED_REFERENCE_PASS') {
+    throw "Global linked-reference runtime gate failed:`n$($linkedReferenceOutput | Out-String)"
+}
+$offscreenScheduleOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_offscreen_schedule_runtime.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($offscreenScheduleOutput | Out-String) -notmatch 'OPENNV_OFFSCREEN_SCHEDULE_PASS') {
+    throw "Offscreen bounded schedule-state gate failed:`n$($offscreenScheduleOutput | Out-String)"
+}
+$doorLandingOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_door_landing_runtime.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($doorLandingOutput | Out-String) -notmatch 'OPENNV_DOOR_LANDING_RUNTIME_PASS') {
+    throw "Door capsule-clear/floor-supported landing gate failed:`n$($doorLandingOutput | Out-String)"
 }
 $animationTestOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_authored_actor_animation.gd' 2>&1
 if ($LASTEXITCODE -ne 0 -or ($animationTestOutput | Out-String) -notmatch 'OPENNV_ANIMATION_TRANSPORT_EXPERIMENT_PASS') {
@@ -129,6 +273,33 @@ if ($LASTEXITCODE -ne 0 -or ($skeletalV2LoaderOutput | Out-String) -notmatch 'OP
 $skeletalV2AnimationOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_skeletal_actor_v2_animation.gd' 2>&1
 if ($LASTEXITCODE -ne 0 -or ($skeletalV2AnimationOutput | Out-String) -notmatch 'OPENNV_GODOT_SKELETAL_V2_ANIMATION_PASS') {
     throw "Canonical skeletal-v2 animation/attachment gate failed:`n$($skeletalV2AnimationOutput | Out-String)"
+}
+$skeletalV3AuxiliaryOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_skeletal_actor_v3_auxiliary_animation.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($skeletalV3AuxiliaryOutput | Out-String) -notmatch 'OPENNV_GODOT_SKELETAL_V3_AUXILIARY_ANIMATION_PASS') {
+    throw "Canonical skeletal-v3 auxiliary-node animation gate failed:`n$($skeletalV3AuxiliaryOutput | Out-String)"
+}
+$creatureAnimationOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_creature_family_animation.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($creatureAnimationOutput | Out-String) -notmatch 'OPENNV_CREATURE_FAMILY_ANIMATION_PASS') {
+    throw "Creature family animation/bone-motion gate failed:`n$($creatureAnimationOutput | Out-String)"
+}
+$packageActionAnimationOutput = & $Godot --headless --path $projectRoot --script 'res://tests/test_authored_package_action_animation.gd' 2>&1
+if ($LASTEXITCODE -ne 0 -or ($packageActionAnimationOutput | Out-String) -notmatch 'OPENNV_AUTHORED_PACKAGE_ACTION_ANIMATION_PASS') {
+    throw "Authored package action-animation gate failed:`n$($packageActionAnimationOutput | Out-String)"
+}
+$ErrorActionPreference = $priorErrorActionPreference
+$animationSoundAuditPath = Join-Path $projectRoot 'generated\semantic-db\animation-sound-event-audit.json'
+& python (Join-Path $projectRoot 'tools\audit_opennv_animation_sound_events.py') `
+    --project-root $projectRoot `
+    --actor-manifest (Join-Path $projectRoot 'generated\actors\actor-manifest-skeletal-v8.json') `
+    --audio-index (Join-Path $projectRoot 'generated\semantic-db\audio-runtime-index.json') `
+    --animation 'res://generated/animations/authored-v1/humanoid-dynamicidle-sleep.onvanim' `
+    --animation 'res://generated/animations/authored-v1/humanoid-eatidle.onvanim' `
+    --output $animationSoundAuditPath
+if ($LASTEXITCODE -ne 0) { throw 'Promoted animation sound-event coverage failed.' }
+$animationSoundAudit = Get-Content -LiteralPath $animationSoundAuditPath -Raw | ConvertFrom-Json
+if ($animationSoundAudit.status -ne 'pass' -or
+    [int]$animationSoundAudit.counts.unresolvedSoundEvents -ne 0) {
+    throw 'Promoted animation sound-event gate did not close every text key.'
 }
 $coverageAuditPath = Join-Path $projectRoot 'generated\world\content-coverage-audit.json'
 $coverageAudit = if (Test-Path -LiteralPath $coverageAuditPath) {
@@ -153,6 +324,50 @@ if ($fullRuntimeIndex.schema -ne 'opennv-resolved-runtime-ring/v1' -or
     [int]$fullRuntimeIndex.counts.missingDoorEndpoints -ne 0) {
     throw 'Full runtime index provenance, worldspace or graph census failed'
 }
+$packageNavigationPath = Join-Path $projectRoot 'generated\semantic-db\package-navigation-index.json'
+if (-not (Test-Path -LiteralPath $packageNavigationPath -PathType Leaf)) {
+    throw 'Full package target/door navigation index is missing'
+}
+$packageNavigation = Get-Content -LiteralPath $packageNavigationPath -Raw | ConvertFrom-Json
+$fullRuntimeIndexHash = (Get-FileHash -LiteralPath $fullRuntimeIndexPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$actorPackagesPath = Join-Path $projectRoot 'generated\semantic-db\actor-packages.json'
+$actorPackagesHash = (Get-FileHash -LiteralPath $actorPackagesPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$actorBlueprintsPath = Join-Path $projectRoot 'generated\semantic-db\actor-blueprints.json'
+$actorBlueprintsHash = (Get-FileHash -LiteralPath $actorBlueprintsPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($packageNavigation.schema -ne 'opennv-package-navigation-index/v1' -or
+    $packageNavigation.semanticContract -ne 'linked-location-type6-only/v1' -or
+    $packageNavigation.status -ne 'pass' -or
+    $packageNavigation.provenance.runtimeIndexSha256 -ne $fullRuntimeIndexHash -or
+    $packageNavigation.provenance.packagesSha256 -ne $actorPackagesHash -or
+    $packageNavigation.provenance.blueprintsSha256 -ne $actorBlueprintsHash -or
+    $packageNavigation.coverageTier -ne 'explicit-and-linked-reference-endpoint-integrity; door-only reachability is partial' -or
+    [int]$packageNavigation.counts.shards -ne [int]$semanticDatabaseManifest.counts.cells -or
+    [int]$packageNavigation.counts.placements -ne [int]$semanticDatabaseManifest.counts.placements -or
+    [int]$packageNavigation.counts.missingDoorEndpoints -ne 0 -or
+    [int]$packageNavigation.counts.unresolvedPackageReferenceTargets -ne 0 -or
+    [int]$packageNavigation.counts.explicitReferenceRows -ne 3007 -or
+    [int]$packageNavigation.counts.lockedConditionalOrDisabledDoors -ne 114 -or
+    [int]$packageNavigation.counts.defaultUnavailableReferenceTargets -ne 74 -or
+    [int]$packageNavigation.counts.linkedReferenceSources -ne 6189 -or
+    [int]$packageNavigation.counts.linkedReferenceNodes -ne 8202 -or
+    [int]$packageNavigation.counts.missingLinkedReferenceEndpoints -ne 0 -or
+    [int]$packageNavigation.counts.crossCellLinkedReferenceEdges -ne 1683 -or
+    [int]$packageNavigation.counts.linkedLocationPackages -ne 296 -or
+    [int]$packageNavigation.counts.populationLinkedLocationApplications -ne 1696 -or
+    [int]$packageNavigation.counts.populationLinkedLocationResolvedStarts -ne 546 -or
+    [int]$packageNavigation.counts.populationLinkedLocationMissingStarts -ne 1150 -or
+    [int]$packageNavigation.counts.defaultAccessibleDoorGraphComponents -le 1 -or
+    [int]$packageNavigation.counts.populationUnreachableStaticApplications -le 0 -or
+    [int]$packageNavigation.counts.populationExplicitTargetApplications -ne (
+        [int]$packageNavigation.counts.populationSameCellTargetApplications +
+        [int]$packageNavigation.counts.populationDoorGraphReachableApplications +
+        [int]$packageNavigation.counts.populationRuntimeTargetApplications +
+        [int]$packageNavigation.counts.populationUnreachableStaticApplications) -or
+    [int]$packageNavigation.counts.packageReferenceTargets -ne (
+        [int]$packageNavigation.counts.resolvedPackageReferenceTargets +
+        [int]$packageNavigation.counts.runtimeResolvedPackageReferenceTargets)) {
+    throw 'Full package target/door navigation provenance or coverage gate failed'
+}
 $navmeshRuntimeIndexPath = Join-Path $projectRoot 'generated\world\opennv-navmesh-runtime-index.json'
 $navmeshRuntimeAuditPath = Join-Path $projectRoot 'generated\world\opennv-navmesh-runtime-audit.json'
 & python (Join-Path $projectRoot 'tools\audit_opennv_navmesh_runtime.py') `
@@ -161,6 +376,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Full NAVM runtime topology gate failed' }
 $navmeshRuntimeAudit = Get-Content -LiteralPath $navmeshRuntimeAuditPath -Raw | ConvertFrom-Json
 if ([string]$navmeshRuntimeAudit.status -ne 'pass' -or
     [int]$navmeshRuntimeAudit.counts.navmeshes -ne [int]$semanticDatabaseManifest.counts.navmeshes -or
+    [int]$navmeshRuntimeAudit.counts.external_connections -le 0 -or
+    [int]$navmeshRuntimeAudit.counts.external_cell_edges -ne 10960 -or
+    [int]$navmeshRuntimeAudit.counts.invalid_external_cell_edges -ne 0 -or
+    [int]$navmeshRuntimeAudit.counts.duplicate_navmesh_ids -ne 0 -or
+    [int]$navmeshRuntimeAudit.counts.missing_external_targets -ne 0 -or
+    [int]$navmeshRuntimeAudit.counts.invalid_external_triangles -ne 0 -or
+    [int]$navmeshRuntimeAudit.counts.repaired_external_connections -ne 106 -or
+    [int]$navmeshRuntimeAudit.counts.invalid_repair_metadata -ne 0 -or
     [int]$navmeshRuntimeAudit.counts.invalid_triangle_indices -ne 0 -or
     [int]$navmeshRuntimeAudit.counts.failures -ne 0) {
     throw 'Full NAVM runtime census or triangle topology is invalid'

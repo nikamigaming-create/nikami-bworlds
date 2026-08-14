@@ -26,7 +26,10 @@ foreach ($required in @(
     '"--user-data", $sessionUserData',
     'nikami-fallout-vr-session/v1',
     'executableSha256 = (Get-FileHash',
-    '-WorkingDirectory $runtimeRoot'
+    'WorkingDirectory = $runtimeRoot',
+    'Assert-MetaLinkHeadsetReady $openXrRuntime',
+    "'State':'NotDetected'",
+    'highwind_dap_server.*not found|pc_link_error_initialization_failed'
 )) {
     Assert-Contract ($source.Contains($required)) "Walkaround launcher is missing: $required"
 }

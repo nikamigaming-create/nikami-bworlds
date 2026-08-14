@@ -34,6 +34,15 @@ class DecodeOpenNVAnimationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid channel flags"):
             decode_bytes(bytes(data))
 
+    def test_accepts_float32_integral_duration_product(self) -> None:
+        data = bytearray()
+        data += b"ONVANIM1"
+        # 7.8 is not exact in binary; the C++ float producer still computes
+        # 234 samples plus the inclusive final frame.
+        data += struct.pack("<IffIII", 1, 30.0, 7.8, 235, 1, 0)
+        data += struct.pack("<I", 4) + b"bone" + bytes(235)
+        self.assertEqual(235, decode_bytes(bytes(data))["frame_count"])
+
 
 if __name__ == "__main__":
     unittest.main()

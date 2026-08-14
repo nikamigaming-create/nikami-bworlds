@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 
-MAGICS = {b"ONVSKEL1": 1, b"ONVSKEL2": 2}
+MAGICS = {b"ONVSKEL1": 1, b"ONVSKEL2": 2, b"ONVSKEL3": 3}
 MAX_COUNT = 10_000_000
 
 
@@ -90,6 +90,7 @@ def decode_bytes(data: bytes, *, retain_geometry: bool = False) -> dict[str, Any
         raise DecodeError(f"surface count {surface_count} exceeds safety limit")
 
     canonical_bones: list[dict[str, Any]] = []
+    auxiliary_nodes: list[dict[str, Any]] = []
     canonical_hierarchy_max_residual = 0.0
     if version >= 2:
         canonical_count = reader.u32()
@@ -120,6 +121,28 @@ def decode_bytes(data: bytes, *, retain_geometry: bool = False) -> dict[str, Any
             canonical_hierarchy_max_residual = max(canonical_hierarchy_max_residual, residual)
             if residual > 1e-3:
                 raise DecodeError(f"canonical hierarchy residual {residual} exceeds tolerance")
+    if version >= 3:
+        auxiliary_count = reader.u32()
+        if auxiliary_count > MAX_COUNT:
+            raise DecodeError(f"auxiliary node count {auxiliary_count} exceeds safety limit")
+        known_matrices = {bone["name"].casefold(): bone["skeleton"] for bone in canonical_bones}
+        for node_index in range(auxiliary_count):
+            node_name = reader.string()
+            parent_name = reader.string()
+            local = reader.matrix()
+            actor = reader.matrix()
+            key = node_name.casefold()
+            parent_key = parent_name.casefold()
+            if not node_name or key in known_matrices:
+                raise DecodeError(f"auxiliary node {node_index} has an empty or duplicate name")
+            if parent_name and parent_key not in known_matrices:
+                raise DecodeError(f"auxiliary node {node_index} has unknown parent {parent_name}")
+            reconstructed = local if not parent_name else matrix_multiply(local, known_matrices[parent_key])
+            residual = max(abs(a - b) for a, b in zip(reconstructed, actor))
+            if residual > 1e-3:
+                raise DecodeError(f"auxiliary hierarchy residual {residual} exceeds tolerance")
+            auxiliary_nodes.append({"name": node_name, "parent": parent_name, "local": local, "actor": actor})
+            known_matrices[key] = actor
 
     surfaces: list[dict[str, Any]] = []
     totals = {"vertices": 0, "triangles": 0, "bones": 0, "influences": 0}
@@ -241,6 +264,10 @@ def decode_bytes(data: bytes, *, retain_geometry: bool = False) -> dict[str, Any
         "canonical_hierarchy_max_residual": canonical_hierarchy_max_residual,
         "canonical_bones": canonical_bones if retain_geometry else [
             {"name": bone["name"], "parent": bone["parent"]} for bone in canonical_bones
+        ],
+        "auxiliary_node_count": len(auxiliary_nodes),
+        "auxiliary_nodes": auxiliary_nodes if retain_geometry else [
+            {"name": node["name"], "parent": node["parent"]} for node in auxiliary_nodes
         ],
         "surface_count": surface_count,
         "totals": totals,

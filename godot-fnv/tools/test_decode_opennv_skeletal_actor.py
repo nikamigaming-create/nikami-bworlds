@@ -10,7 +10,7 @@ def string(value: str) -> bytes:
 
 
 def matrix() -> bytes:
-    return struct.pack("<16f", *([1.0, 0.0, 0.0, 0.0] * 4))
+    return struct.pack("<16f", 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
 
 
 def fixture() -> bytes:
@@ -25,6 +25,15 @@ def fixture() -> bytes:
     return bytes(data)
 
 
+def fixture_v3() -> bytes:
+    data = bytearray(b"ONVSKEL3" + struct.pack("<II", 3, 0))
+    data += struct.pack("<I", 1)
+    data += string("Bip01") + struct.pack("<i", -1) + matrix() + matrix()
+    data += struct.pack("<I", 1)
+    data += string("PCloud02Smoke-Emitter") + string("Bip01") + matrix() + matrix()
+    return bytes(data)
+
+
 class DecoderTests(unittest.TestCase):
     def test_valid_payload(self):
         result = decode_bytes(fixture())
@@ -36,6 +45,12 @@ class DecoderTests(unittest.TestCase):
     def test_bad_magic(self):
         with self.assertRaises(DecodeError):
             decode_bytes(b"BADMAGIC" + fixture()[8:])
+
+    def test_v3_auxiliary_transform_hierarchy(self):
+        result = decode_bytes(fixture_v3())
+        self.assertEqual(3, result["format_version"])
+        self.assertEqual(1, result["auxiliary_node_count"])
+        self.assertEqual("Bip01", result["auxiliary_nodes"][0]["parent"])
 
     def test_truncation(self):
         with self.assertRaises(DecodeError):

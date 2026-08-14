@@ -74,15 +74,29 @@ def convert_placement(
         "default_enabled": not bool(int(row.get("recordFlags", 0)) & REC_INITIALLY_DISABLED),
         "source_plugin": row.get("sourcePlugin", ""),
         "source_index": int(row.get("sourceIndex", 0)),
+        "looping_sound": canonical(base.get("loopingSound")) or None,
+        "activation_sound": canonical(base.get("activationSound")) or None,
+        "open_sound": canonical(base.get("openSound")) or None,
+        "close_sound": canonical(base.get("closeSound")) or None,
+        "loop_sound": canonical(base.get("loopSound")) or None,
+        "linked_reference": canonical(row.get("linkedReference")) or None,
+        "patrol_idle_seconds": float(row.get("patrolIdleSeconds", 0.0) or 0.0),
+        "patrol_idle_script_marker": bool(row.get("patrolIdleScriptMarker", False)),
     }
     if result["base_type"] in ("NPC_", "CREA"):
         blueprint = actor_blueprints.get(base_id, {})
         result["packages"] = [
             canonical(value) for value in blueprint.get("packages", base.get("packages", [])) if value
         ]
+        result["script"] = canonical(blueprint.get("script", base.get("script"))) or None
         result["actor_flags"] = int(base.get("actorFlags", 0))
         result["base_template"] = canonical(base.get("baseTemplate")) or None
         result["template_flags"] = int(base.get("templateFlags", 0))
+    elif result["base_type"] == "CONT":
+        result["inventory"] = [
+            {"item": canonical(entry.get("item")), "count": int(entry.get("count", 0))}
+            for entry in base.get("inventory", []) if entry.get("item") and int(entry.get("count", 0)) != 0
+        ]
     if dest_door:
         result["destination_cell"] = door_cells.get(dest_door, "")
     return result

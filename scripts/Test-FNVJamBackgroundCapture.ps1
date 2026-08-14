@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -39,6 +39,9 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
         Join-Path $WorldsRoot "local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos"
     }
+    elseif ($Scenario -eq "FirstSmoke") {
+        Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
+    }
     else {
         "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos"
     }
@@ -65,6 +68,12 @@ if ($Scenario -eq "RealSave" -and $Target -eq "All") {
 }
 if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
     throw "Terminal interaction is an OpenMW-only lane. Use -Target OpenMW."
+}
+if ($Scenario -eq "FirstSmoke" -and $Target -ne "OpenMW") {
+    throw "FirstSmoke is an OpenMW-only lane. Use -Target OpenMW."
+}
+if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
+    throw "Canyon is an OpenMW-only lane. Use -Target OpenMW."
 }
 if ($Scenario -eq "RealSave" -and $InteractiveHandoff -and $Target -eq "Retail") {
     throw "Interactive handoff is restricted to the playable OpenMW lane."
@@ -113,6 +122,8 @@ $entryPointPath = Join-Path $WorldsRoot "scripts\Invoke-FNVJamBackgroundCapture.
 $preflightPath = Join-Path $WorldsRoot "scripts\Test-FNVJamBackgroundCapture.ps1"
 $retailRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVJamFullRetailRehearsal.ps1"
 $openMwRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVJamSprintProof.ps1"
+$firstSmokeRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVFirstSmokeCapture.ps1"
+$canyonRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVCanyonCrawlCapture.ps1"
 $retailOpeningRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-RetailTTWOpeningCapture.ps1"
 $retailTtwLayerInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWRetailCompatibilityLayer.ps1"
 $retailTtwLayerManifestPath = Join-Path $WorldsRoot "local\ttw-retail-compat\compatibility-layer.json"
@@ -260,6 +271,12 @@ elseif ($Scenario -eq "RealSave") {
         $canonicalFiles.Add($newVegasInitializerPath)
     }
 }
+elseif ($Scenario -eq "FirstSmoke") {
+    $canonicalFiles.Add($firstSmokeRunnerPath)
+}
+elseif ($Scenario -eq "Canyon") {
+    $canonicalFiles.Add($canyonRunnerPath)
+}
 else {
     $canonicalFiles.Add($testMapRunnerPath)
 }
@@ -298,6 +315,33 @@ if ($null -ne $catalog) {
         Add-Check "Pip-Boy capture selects one engine" `
             ($Target -in @("Retail", "OpenMW")) "target=$Target"
     }
+    if ($Scenario -eq "FirstSmoke") {
+        Add-Check "FirstSmoke is restricted to OpenMW" ($Target -eq "OpenMW") "target=$Target"
+        [void](Test-File "FirstSmoke native save exists" $SavePath)
+        [void](Test-File "FirstSmoke runtime manifest exists" (Join-Path $OpeningRuntimeRoot "runtime-manifest.json"))
+        $firstSmokeText = Get-Content -Raw -LiteralPath $firstSmokeRunnerPath -ErrorAction SilentlyContinue
+        foreach ($forbidden in @("AppActivate", "SetForegroundWindow", "BringWindowToTop", "SetFocus", "SendInput")) {
+            Add-Check "FirstSmoke runner excludes $forbidden" `
+                ($firstSmokeText -notmatch [regex]::Escape($forbidden)) $firstSmokeRunnerPath
+        }
+        Add-Check "FirstSmoke runner declares engine-owned no-control capture" `
+            ($firstSmokeText -match 'OPENMW_FNV_FIRST_SMOKE' -and
+                $firstSmokeText -match 'windowsAppControlUsed = \$false' -and
+                $firstSmokeText -match 'foregroundInputInjected = \$false') $firstSmokeRunnerPath
+    }
+    if ($Scenario -eq "Canyon") {
+        Add-Check "Canyon is restricted to OpenMW" ($Target -eq "OpenMW") "target=$Target"
+        [void](Test-File "Canyon runtime manifest exists" (Join-Path $OpeningRuntimeRoot "runtime-manifest.json"))
+        $canyonText = Get-Content -Raw -LiteralPath $canyonRunnerPath -ErrorAction SilentlyContinue
+        foreach ($forbidden in @("AppActivate", "SetForegroundWindow", "BringWindowToTop", "SetFocus", "SendInput")) {
+            Add-Check "Canyon runner excludes $forbidden" `
+                ($canyonText -notmatch [regex]::Escape($forbidden)) $canyonRunnerPath
+        }
+        Add-Check "Canyon runner uses authored Zion NPC and no-control evidence" `
+            ($canyonText -match 'NVDLC02ZionCanyon' -and $canyonText -match 'NVDLC02Joshua' -and
+                $canyonText -match 'forcedActorsUsed=\$false' -and
+                $canyonText -match 'foregroundInputInjected=\$false') $canyonRunnerPath
+    }
     if ($Scenario -eq "Terminal") {
         Add-Check "Terminal capture is restricted to OpenMW" `
             ($Target -eq "OpenMW") "target=$Target"
@@ -317,6 +361,10 @@ if ($null -ne $catalog) {
         @($catalog.realSaveRecipes | Where-Object {
             $_.target -eq $Target
         })
+    } elseif ($Scenario -eq "FirstSmoke") {
+        @($catalog.firstSmokeRecipes | Where-Object { $_.target -eq $Target })
+    } elseif ($Scenario -eq "Canyon") {
+        @($catalog.canyonRecipes | Where-Object { $_.target -eq $Target })
     } else {
         @($catalog.diagnosticRecipes | Where-Object {
             [string]$_.id -eq "opennv-testmap01-clean-native-v1" -and $_.target -eq $Target
@@ -336,6 +384,12 @@ if ($null -ne $catalog) {
     }
     elseif ($Scenario -eq "RealSave") {
         if ($Target -eq "OpenMW") { 2 } elseif ($Target -eq "Retail") { 1 } else { 0 }
+    }
+    elseif ($Scenario -eq "FirstSmoke") {
+        if ($Target -eq "OpenMW") { 1 } else { 0 }
+    }
+    elseif ($Scenario -eq "Canyon") {
+        if ($Target -eq "OpenMW") { 1 } else { 0 }
     }
     elseif ($OpeningCampaign -eq "NewVegas") {
         # Standalone New Vegas has both the ordinary authored opening proof and
@@ -429,6 +483,12 @@ elseif ($Scenario -eq "Terminal") {
 elseif ($Scenario -eq "RealSave") {
     $scriptsToParse.Add($realSaveRunnerPath)
 }
+elseif ($Scenario -eq "FirstSmoke") {
+    $scriptsToParse.Add($firstSmokeRunnerPath)
+}
+elseif ($Scenario -eq "Canyon") {
+    $scriptsToParse.Add($canyonRunnerPath)
+}
 else {
     $scriptsToParse.Add($testMapRunnerPath)
 }
@@ -485,6 +545,18 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
             ($realSaveRoutePresent -and
                 $entryText -match '\$Scenario\s+-eq\s+"RealSave"' -and
                 $entryText -match '(?s)&\s+\$preflight.*?-RuntimeReady.*?-RequireIdle') `
+            $entryPointPath
+    }
+    elseif ($Scenario -eq "FirstSmoke") {
+        Add-Check "FirstSmoke invocation routes to the declared OpenMW runner" `
+            ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVFirstSmokeCapture' -and
+                $entryText -match '\$Scenario\s+-eq\s+"FirstSmoke"') `
+            $entryPointPath
+    }
+    elseif ($Scenario -eq "Canyon") {
+        Add-Check "Canyon invocation routes to the declared OpenMW runner" `
+            ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVCanyonCrawlCapture' -and
+                $entryText -match '\$Scenario\s+-eq\s+"Canyon"') `
             $entryPointPath
     }
     else {

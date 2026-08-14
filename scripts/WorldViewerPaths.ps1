@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 
 $script:NikamiRepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$script:NikamiCurrentOpenMWRuntimeDirectory = "openmw-pristine-mads-33568a"
+$script:NikamiCurrentOpenMWRuntimeDirectory = "openmw-current"
 $script:NikamiRejectedOpenMWRuntimeDirectories = @(
     "openmw-fo4guard",
     "openmw-clean-recovery-6a5576"
@@ -169,11 +169,15 @@ function Resolve-NikamiOpenMWRuntimeRoot {
     )
 
     $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWRuntimeRoot)
-    $configuredRoot = Resolve-NikamiPath `
-        -ParameterValue $ParameterValue `
-        -EnvName "NIKAMI_OPENMW_BINARY_ROOT" `
-        -ConfigName "openmwBinaryRoot" `
-        -Fallback (Get-NikamiOpenMWRuntimeRoot)
+    $configuredRoot = if ($RequireCurrent -and [string]::IsNullOrWhiteSpace($ParameterValue)) {
+        Get-NikamiOpenMWRuntimeRoot
+    } else {
+        Resolve-NikamiPath `
+            -ParameterValue $ParameterValue `
+            -EnvName "NIKAMI_OPENMW_BINARY_ROOT" `
+            -ConfigName "openmwBinaryRoot" `
+            -Fallback (Get-NikamiOpenMWRuntimeRoot)
+    }
     $candidateRoot = Resolve-NikamiRepoRelativePath -Path $configuredRoot
 
     $allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $script:NikamiRepoRoot "local"))
@@ -226,11 +230,15 @@ function Resolve-NikamiOpenMWResourcesRoot {
     )
 
     $defaultRoot = Resolve-NikamiRepoRelativePath -Path (Get-NikamiOpenMWResourcesRoot)
-    $configuredRoot = Resolve-NikamiPath `
-        -ParameterValue $ParameterValue `
-        -EnvName "NIKAMI_OPENMW_RESOURCES" `
-        -ConfigName "openmwResources" `
-        -Fallback (Get-NikamiOpenMWResourcesRoot)
+    $configuredRoot = if ($RequireCurrent -and [string]::IsNullOrWhiteSpace($ParameterValue)) {
+        Get-NikamiOpenMWResourcesRoot
+    } else {
+        Resolve-NikamiPath `
+            -ParameterValue $ParameterValue `
+            -EnvName "NIKAMI_OPENMW_RESOURCES" `
+            -ConfigName "openmwResources" `
+            -Fallback (Get-NikamiOpenMWResourcesRoot)
+    }
     $candidateRoot = Resolve-NikamiRepoRelativePath -Path $configuredRoot
 
     $allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $script:NikamiRepoRoot "local"))

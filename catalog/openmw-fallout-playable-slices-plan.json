@@ -1,0 +1,225 @@
+{
+  "schema": "nikami-openmw-fallout-playable-slices-plan/v2",
+  "asOf": "2026-08-11",
+  "status": "active",
+  "truthSource": "docs/openmw-fallout-playable-slices-audit-20260811.md",
+  "currentClaim": "No Fallout target currently has a retained provenance-complete accepted playable slice.",
+  "operatingMode": "results-first",
+  "audit": {
+    "completedLeadReviews": 4,
+    "completedSubordinateReviews": 11,
+    "interruptedSubordinateReviews": 1,
+    "requestedDistinctReviews": 20,
+    "limitation": "The agent environment reached its hard thread limit before a fifth lead and replacement TTW subordinate could be created."
+  },
+  "executionRules": {
+    "cycleMustProduceOneOf": [
+      "new-native-gameplay-observation",
+      "fix-for-first-observed-blocker",
+      "narrow-build-or-runtime-blocker-with-failing-command"
+    ],
+    "portOnlyForNextAction": true,
+    "ttwBeforeFirstFnvSmoke": false,
+    "jamBeforeFirstFnvSmoke": false,
+    "generalHarnessBeforeFirstObservation": false,
+    "maximumConsecutiveHarnessOrDocumentationChangesBeforeEngineReturn": 1,
+    "testPolicy": "smallest-relevant-tests-during-iteration-full-suite-at-promotion",
+    "visualPolicy": "log-nonblocking-defects; block only when navigation or interaction is prevented",
+    "failedRunPolicy": "retain native evidence and record the first blocker",
+    "captureEntryPoint": "scripts/Invoke-FNVJamBackgroundCapture.ps1",
+    "capturePreflight": "scripts/Test-FNVJamBackgroundCapture.ps1",
+    "retailLaunchAllowed": false
+  },
+  "decisions": {
+    "bootstrapLineage": "fastest viable existing OpenMW 0.51 line",
+    "portScopeBeforeFirstSmoke": "only movement, ordinary door transition, and unlocked container dependencies missing from that line",
+    "deferBeforeFirstSmoke": [
+      "complete-ab4e32941a-port",
+      "ttw-lineage-reconciliation",
+      "jam-full-bridge",
+      "pipboy",
+      "terminal",
+      "lockpicking",
+      "quest-completion",
+      "visual-parity",
+      "full-launcher-unification"
+    ],
+    "firstCampaign": "fallout_new_vegas",
+    "firstSmoke": "goodsprings-move-door-container",
+    "firstPromotedSlice": "goodsprings-door-container-barter-native-save-reload",
+    "retailFosRequiredForFirstSlice": false,
+    "globalParityCorpusRole": "discovery-and-final-certification-not-active-sprint-queue"
+  },
+  "gates": [
+    {
+      "id": "R0-bootstrap",
+      "title": "Bootstrap the fastest runnable OpenMW 0.51 FNV candidate",
+      "status": "passed",
+      "requires": [
+        "inspect existing 0.51 candidates and choose one; do not perform exhaustive branch archaeology",
+        "record exact source commit tree and dirty state",
+        "build openmw.exe and package the resources required to launch",
+        "write a minimal runtime manifest with source binary and resource hashes",
+        "run only focused build and movement-door-container tests needed for the smoke",
+        "port only missing code required for movement ordinary door transition and unlocked container activation"
+      ],
+      "stopConditions": [
+        "a minimally manifested candidate is runnable",
+        "or one exact build/runtime blocker is recorded with its failing command"
+      ],
+      "evidence": [
+        {
+          "kind": "minimal-runtime-manifest",
+          "path": "local/openmw-fnv-r1-first-smoke-b1c0b2d841/runtime-manifest.json",
+          "sha256": "dba66c8081a354f2e1dd2555a316dfbc1981be168568b10415a05c7273a1249f",
+          "sourceCommit": "b1c0b2d841c65c54171481e9eca4afc58ebb2939",
+          "sourceTree": "9a23dfea1e5511043428095cae8ef439c2e0b226",
+          "selectedDirtyState": "clean",
+          "packagedOpenmwSha256": "449c0151a3802dc3501db0517482f8c2744fe51e5194874e0c3627f6b26802f0",
+          "focusedTests": "39 passed; 0 failed"
+        }
+      ]
+    },
+    {
+      "id": "R1-first-smoke",
+      "title": "Run the first visible Goodsprings move-door-container smoke",
+      "status": "passed",
+      "dependsOn": ["R0-bootstrap"],
+      "claimLevel": "engineering-smoke-not-promotion",
+      "requires": [
+        "run mandatory capture preflight",
+        "launch OpenMW only through the canonical unattended capture entry point",
+        "reach ordinary Goodsprings gameplay",
+        "move through the exterior",
+        "activate one unlocked or authored-key door",
+        "arrive in the interior",
+        "open one unlocked container",
+        "retain native frames logs and the first observed blocker",
+        "use no proof-state mutation foreground input or Windows app control"
+      ],
+      "evidence": [
+        {
+          "kind": "canonical-first-smoke-report",
+          "path": "run/opennv-first-smoke-20260811-063000-r14/openmw/first-smoke-report.json",
+          "sha256": "405e336a8f043349ec09cba2c510ab132b35ed006557f8771fd771469f19f2be",
+          "result": "pass",
+          "movementDistance": 128.924,
+          "authoredDoor": "FormId:0x110636f -> FormId:0x1106185",
+          "unlockedContainer": "FormId:0x110873e",
+          "nativeFrameCount": 4
+        },
+        {
+          "kind": "canonical-capture-summary",
+          "path": "run/opennv-first-smoke-20260811-063000-r14/background-capture-summary.json",
+          "sha256": "650907c821ad1de6b194ce8ccdcf04ce32794b5e43a5f76370f8f3b48c83b37f"
+        },
+        {
+          "kind": "exact-title-video",
+          "path": "run/opennv-first-smoke-20260811-063000-r14/openmw/OpenMW-FNV-first-smoke-exact-title.mp4",
+          "sha256": "964d98965c4cc87e1a9f770930d41ec723f638796516bf03d30e33b0916d24b1",
+          "bytes": 4074466
+        },
+        {
+          "kind": "native-frame-hashes",
+          "paths": [
+            "run/opennv-first-smoke-20260811-063000-r14/openmw/user-data/screenshots/screenshot000.png",
+            "run/opennv-first-smoke-20260811-063000-r14/openmw/user-data/screenshots/screenshot001.png",
+            "run/opennv-first-smoke-20260811-063000-r14/openmw/user-data/screenshots/screenshot002.png",
+            "run/opennv-first-smoke-20260811-063000-r14/openmw/user-data/screenshots/screenshot003.png"
+          ],
+          "sha256": [
+            "a698b567a5688b327bbe369f09ea41deb31e8522c04bb0d8bbb6d49de526461f",
+            "20fb85901672cce87a898386a68fd5f5df8b39ed87f17723677d4a17d6cdea92",
+            "ae8be6ce9e35a639ab30bef23169de3cec915cd16f1f8abc28ce6b83d5d0d787",
+            "2ec70803fb187ddca69f9f8ef365532aff329d3cc2dec502010bb3cf73884815"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R2-first-persistent-slice",
+      "title": "Add barter and native save-process-reload to the working smoke",
+      "status": "pending",
+      "dependsOn": ["R1-first-smoke"],
+      "requires": [
+        "container transfer",
+        "Chet barter cancellation and committed transaction",
+        "OpenMW-native save",
+        "normal process exit and cold reload",
+        "post-reload mutation assertions and repeated interaction",
+        "full relevant component suite",
+        "retained hash-verifiable evidence",
+        "manual ordinary-play acceptance"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "R3-combat-loot",
+      "title": "Add combat death corpse loot persistence and usable HUD feedback",
+      "status": "pending",
+      "dependsOn": ["R2-first-persistent-slice"],
+      "evidence": []
+    },
+    {
+      "id": "R4-crafting",
+      "title": "Add supported crafting and persistent results",
+      "status": "pending",
+      "dependsOn": ["R3-combat-loot"],
+      "evidence": []
+    },
+    {
+      "id": "R5-pipboy",
+      "title": "Replace fixed Pip-Boy and HUD paths with generic playable behavior",
+      "status": "pending",
+      "dependsOn": ["R4-crafting"],
+      "evidence": []
+    },
+    {
+      "id": "R6-terminals-locks",
+      "title": "Promote physical terminals and implement production lockpicking",
+      "status": "pending",
+      "dependsOn": ["R5-pipboy"],
+      "evidence": []
+    },
+    {
+      "id": "R7-quest-persistence-ai",
+      "title": "Complete one natural quest and expand scripts persistence and AI only as encountered",
+      "status": "pending",
+      "dependsOn": ["R6-terminals-locks"],
+      "evidence": []
+    },
+    {
+      "id": "R8-fo3",
+      "title": "Remove required FNV-only gates and pass the equivalent standalone FO3 slice",
+      "status": "pending",
+      "dependsOn": ["R7-quest-persistence-ai"],
+      "evidence": []
+    },
+    {
+      "id": "R9-ttw",
+      "title": "Reconcile TTW lineage and promote opening checkpoints",
+      "status": "pending",
+      "dependsOn": ["R8-fo3"],
+      "evidence": []
+    },
+    {
+      "id": "R10-jam-mods",
+      "title": "Promote JAM and other mods by module and provider family",
+      "status": "pending",
+      "dependsOn": ["R9-ttw"],
+      "evidence": []
+    }
+  ],
+  "forbiddenPromotionShortcuts": [
+    "component-test-only",
+    "build-only",
+    "screenshot-only",
+    "route-definition-only",
+    "historical-log-with-missing-artifacts",
+    "proof-driver-mutates-production-state",
+    "unsupported-command-silently-succeeds",
+    "unmanifested-runtime",
+    "missing-evidence-path",
+    "pending-user-test"
+  ]
+}

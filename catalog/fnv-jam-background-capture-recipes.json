@@ -84,6 +84,49 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -OutputRoot .\\run\\jam-background-openmw-<unique> -SkipBuild"
     }
   ],
+  "firstSmokeRecipes": [
+    {
+      "id": "opennv-goodsprings-move-door-container-v1",
+      "target": "OpenMW",
+      "runner": "scripts/Invoke-OpenNVFirstSmokeCapture.ps1",
+      "captureMethod": "OpenMW native ScreenCaptureHandler retains gameplay frames while ffmpeg passively records the exact OpenMW window title",
+      "driverMethod": "OPENMW_FNV_FIRST_SMOKE uses ordinary player movement controls and normal activation actions for the authored Prospector Saloon door and unlocked container",
+      "backgroundInputMethod": "engine-owned self-drive; no host keyboard or mouse input is sent",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "openmw/user-data/screenshots/*.png",
+      "telemetryPattern": "openmw/session-config/openmw.log",
+      "manifestPattern": "openmw/first-smoke-report.json",
+      "videoPattern": "openmw/OpenMW-FNV-first-smoke-exact-title.mp4",
+      "requiredTelemetry": [
+        "ordinary exterior gameplay observed",
+        "exterior movement distance >= 32 units",
+        "authored Prospector Saloon door transition completed",
+        "unlocked Prospector Saloon container window opened",
+        "capture.selfDriven=true",
+        "all Windows app-control and foreground-input flags false",
+        "proof-state mutation and camera-driving flags false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario FirstSmoke -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario FirstSmoke -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -OutputRoot .\\run\\opennv-first-smoke-<unique>"
+    }
+  ],
+  "canyonRecipes": [
+    {
+      "id": "opennv-honest-hearts-zion-joshua-camp-slow-crawl-v1",
+      "target": "OpenMW",
+      "runner": "scripts/Invoke-OpenNVCanyonCrawlCapture.ps1",
+      "captureMethod": "OpenMW native ScreenCaptureHandler frames plus passive ffmpeg capture of the exact OpenMW window title",
+      "driverMethod": "OPENMW_PLAYABLE_SESSION applies a low ordinary forward-control value from an authored Zion exterior anchor toward Joshua Graham and the Dead Horse camp",
+      "backgroundInputMethod": "engine-owned self-drive; no host keyboard or mouse input is sent",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "openmw/user-data/screenshots/*.png",
+      "telemetryPattern": "openmw/session-config/openmw.log",
+      "manifestPattern": "openmw/canyon-crawl-report.json",
+      "videoPattern": "openmw/OpenMW-Honest-Hearts-Zion-slow-crawl.mp4"
+    }
+  ],
   "openingRecipes": [
     {
       "id": "retail-ttw-fresh-opening-native-v1",

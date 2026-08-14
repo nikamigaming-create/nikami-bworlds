@@ -12,8 +12,10 @@ REC_LOCALIZED = 0x00000080
 CELL_INTERIOR = 0x0001
 
 CONDITION_FORM_PARAM1_FUNCTIONS = {
-    1, 47, 67, 68, 69, 71, 72, 74, 79, 84, 110, 180, 214, 237, 258,
-    277, 278, 280, 282, 285, 286, 300, 365, 398, 408, 409, 448, 449, 450,
+    # OpenMW's ESM4 script-function signature table, plus FNV's special
+    # GetScriptVariable reference parameter (resolved by the TERM loader too).
+    1, 47, 53, 56, 58, 59, 67, 68, 69, 71, 72, 74, 79, 84, 136, 161, 182,
+    310, 372, 382, 420, 421, 427, 449, 546,
 }
 CONDITION_OPERATORS = {
     0x00: "equal",
@@ -170,6 +172,9 @@ class ESM4Catalog:
         fields = {}
         current_land_layer = None
         navmesh_parts = {}
+        current_quest_stage = None
+        current_quest_entry = None
+        current_quest_objective = None
         for name, raw in subrecords(payload):
             if rtype == "NAVM" and name in {
                 "NVER", "DATA", "NVVX", "NVTR", "NVCA", "NVDP", "NVGD", "NVEX"
@@ -200,6 +205,30 @@ class ESM4Catalog:
                     fields["cellFlags"] = raw[0]
                 elif len(raw) >= 2:
                     fields["cellFlags"] = u16(raw, 0)
+            elif rtype == "QUST" and name == "DATA" and len(raw) >= 2:
+                fields["questData"] = {
+                    "flags": raw[0],
+                    "priority": raw[1],
+                    "delay": f32(raw, 4) if len(raw) >= 8 else 0.0,
+                }
+            elif rtype == "QUST" and name == "INDX" and len(raw) == 2:
+                current_quest_stage = {"index": struct.unpack_from("<h", raw, 0)[0], "entries": []}
+                fields.setdefault("questStages", []).append(current_quest_stage)
+                current_quest_entry = None
+                current_quest_objective = None
+            elif rtype == "QUST" and name == "QSDT" and len(raw) == 1 and current_quest_stage is not None:
+                current_quest_entry = {"flags": raw[0]}
+                current_quest_stage["entries"].append(current_quest_entry)
+            elif rtype == "QUST" and name == "QOBJ" and len(raw) == 4:
+                current_quest_objective = {"index": i32(raw, 0), "targets": []}
+                fields.setdefault("questObjectives", []).append(current_quest_objective)
+                current_quest_stage = None
+                current_quest_entry = None
+            elif rtype == "QUST" and name == "QSTA" and len(raw) >= 8 and current_quest_objective is not None:
+                current_quest_objective["targets"].append({
+                    "target": self.resolve_form_from_raw(raw),
+                    "flags": raw[4],
+                })
             elif rtype == "CELL" and name == "XCLC" and len(raw) >= 8:
                 fields["x"] = i32(raw, 0)
                 fields["y"] = i32(raw, 4)
@@ -260,6 +289,47 @@ class ESM4Catalog:
                 fields["lockLevel"] = struct.unpack_from("<b", raw, 0)[0]
                 fields["lockKey"] = self.resolve_form_from_raw(raw[4:])
                 fields["lockDataBytes"] = len(raw)
+            elif rtype in (
+                "APPA", "ACTI", "ALCH", "AMMO", "ARMO", "BOOK", "CLOT",
+                "CONT", "CREA", "DIAL", "DOOR", "FLOR", "FURN", "IMOD",
+                "INGR", "KEYM", "LIGH", "LVLC", "MISC", "NPC_", "QUST",
+                "SGST", "SLGM", "TACT", "TERM", "WEAP",
+            ) and name == "SCRI" and len(raw) >= 4:
+                fields["script"] = self.resolve_form_from_raw(raw)
+            elif rtype == "SCPT" and name == "SCHR" and len(raw) == 20:
+                unused, reference_count, compiled_size, variable_count, script_type, script_flags = struct.unpack(
+                    "<IIIIHH", raw
+                )
+                fields["scriptHeader"] = {
+                    "unused": unused,
+                    "referenceCount": reference_count,
+                    "compiledSize": compiled_size,
+                    "variableCount": variable_count,
+                    "type": script_type,
+                    "flags": script_flags,
+                }
+            elif rtype == "SCPT" and name == "SCDA":
+                fields["scriptBytecode"] = {
+                    "bytes": len(raw),
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "hex": raw.hex(),
+                }
+            elif rtype == "SCPT" and name == "SCTX":
+                fields["scriptSource"] = raw.rstrip(b"\0").decode("cp1252", errors="replace")
+            elif rtype == "SCPT" and name == "SLSD" and len(raw) == 24:
+                index, unknown1, unknown2, unknown3, variable_type, unknown4 = struct.unpack("<IIIIII", raw)
+                fields.setdefault("scriptLocals", []).append({
+                    "index": index,
+                    "type": variable_type,
+                    "unknown": [unknown1, unknown2, unknown3, unknown4],
+                    "name": "",
+                })
+            elif rtype == "SCPT" and name == "SCVR" and fields.get("scriptLocals"):
+                fields["scriptLocals"][-1]["name"] = zstr(raw)
+            elif rtype == "SCPT" and name == "SCRV" and len(raw) == 4:
+                fields.setdefault("scriptLocalReferenceIndices", []).append(u32(raw, 0))
+            elif rtype == "SCPT" and name == "SCRO" and len(raw) >= 4:
+                fields.setdefault("scriptReferences", []).append(self.resolve_form_from_raw(raw))
             elif rtype in ("NPC_", "CREA") and name == "ACBS" and len(raw) >= 4:
                 fields["actorFlags"] = u32(raw, 0)
                 # TES4-family actor flags use bit 0 for female on the games we mine here.
@@ -439,6 +509,42 @@ class ESM4Catalog:
                 fields["radioTemplate"] = self.resolve_form_from_raw(raw)
             elif rtype == "SOUN" and name == "FNAM":
                 fields["soundFile"] = zstr(raw)
+            elif rtype == "SOUN" and name == "RNAM" and raw:
+                # Preserve FNV's one-byte RNAM without inventing semantics;
+                # file-vs-family resolution comes from FNAM itself.
+                fields["soundRnamByte"] = raw[0]
+            elif rtype == "SOUN" and name in ("SNDX", "SNDD"):
+                # SNDX is the 12-byte prefix; SNDD may append the 24-byte
+                # attenuation curve.  Preserve every byte while exposing the
+                # runtime-critical flags and time window.
+                fields["soundData"] = {
+                    "subrecord": name,
+                    "bytes": len(raw),
+                    "hex": raw.hex(),
+                }
+                if len(raw) >= 12:
+                    fields["soundData"].update({
+                        "minAttenuation": raw[0],
+                        "maxAttenuation": raw[1],
+                        "frequencyAdjustment": struct.unpack_from("<b", raw, 2)[0],
+                        "flags": u16(raw, 4),
+                        "staticAttenuation": u16(raw, 8),
+                        "stopTime": raw[10],
+                        "startTime": raw[11],
+                    })
+            elif rtype == "DOOR" and name in ("SNAM", "ANAM", "BNAM") and len(raw) >= 4:
+                output_name = {"SNAM": "openSound", "ANAM": "closeSound", "BNAM": "loopSound"}[name]
+                fields[output_name] = self.resolve_form_from_raw(raw)
+            elif rtype == "WEAP" and name in ("YNAM", "ZNAM") and len(raw) >= 4:
+                output_name = "pickupSound" if name == "YNAM" else "dropSound"
+                fields[output_name] = self.resolve_form_from_raw(raw)
+            elif rtype == "WEAP" and name in ("SNAM", "XNAM", "TNAM", "NAM8", "NAM9", "WMS1", "WMS2") and len(raw) >= 4:
+                fields.setdefault("weaponSounds", []).append({
+                    "slot": name,
+                    "sound": self.resolve_form_from_raw(raw),
+                })
+            elif rtype == "MUSC" and name == "FNAM":
+                fields["musicFile"] = zstr(raw)
             elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XTEL" and len(raw) >= 28:
                 fields["destDoor"] = self.resolve_form_from_raw(raw)
                 fields["destPos"] = [f32(raw, 4), f32(raw, 8), f32(raw, 12)]
@@ -455,6 +561,12 @@ class ESM4Catalog:
                     "staticPercentage": f32(raw, 8),
                     "posReference": form_hex(self.resolve_form_from_raw(raw[12:])),
                 }
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XLKR" and len(raw) == 4:
+                fields["linkedReference"] = self.resolve_form_from_raw(raw)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XPRD" and len(raw) == 4:
+                fields["patrolIdleSeconds"] = f32(raw, 0)
+            elif rtype in ("REFR", "ACHR", "ACRE", "PGRE", "PHZD") and name == "XPPA" and len(raw) == 0:
+                fields["patrolIdleScriptMarker"] = True
             elif rtype in ("LVLN", "LVLC") and name == "LVLO" and len(raw) >= 8:
                 item = self.resolve_form(u32(raw, 4))
                 fields.setdefault("leveledEntries", []).append(item)
@@ -932,6 +1044,19 @@ class ESM4Catalog:
                         )
                 if "conditionData" in fields:
                     record["conditionData"] = fields["conditionData"]
+                for field_name in ("questData", "questStages", "questObjectives"):
+                    if field_name in fields:
+                        record[field_name] = fields[field_name]
+                for field_name in ("scriptHeader", "scriptBytecode", "scriptSource", "scriptLocals"):
+                    if field_name in fields:
+                        record[field_name] = fields[field_name]
+                if "scriptLocalReferenceIndices" in fields:
+                    record["scriptLocalReferenceIndices"] = fields["scriptLocalReferenceIndices"]
+                if "scriptReferences" in fields:
+                    record["scriptReferences"] = [form_hex(value) for value in fields["scriptReferences"] if value]
+                    record["openmwScriptReferences"] = [
+                        openmw_form_id(value) for value in fields["scriptReferences"] if value
+                    ]
                 if "terminalDataBytes" in fields:
                     record["terminalDataBytes"] = fields["terminalDataBytes"]
                 if "idleAnimations" in fields:
@@ -946,13 +1071,25 @@ class ESM4Catalog:
                     "radioTemplate",
                     "radioStation",
                     "voiceType",
+                    "openSound",
+                    "closeSound",
+                    "loopSound",
+                    "pickupSound",
+                    "dropSound",
                 ):
                     if field_name in fields:
                         record[field_name] = form_hex(fields[field_name])
                         record["openmw" + field_name[0].upper() + field_name[1:]] = openmw_form_id(fields[field_name])
-                for field_name in ("activationPrompt", "soundFile"):
+                for field_name in ("activationPrompt", "soundFile", "musicFile", "soundRnamByte"):
                     if field_name in fields:
                         record[field_name] = fields[field_name]
+                if "soundData" in fields:
+                    record["soundData"] = fields["soundData"]
+                if "weaponSounds" in fields:
+                    record["weaponSounds"] = [
+                        {"slot": entry["slot"], "sound": form_hex(entry["sound"])}
+                        for entry in fields["weaponSounds"] if entry.get("sound")
+                    ]
                 if "landTexture" in fields:
                     record["landTexture"] = fields["landTexture"]
                 if "textureSet" in fields:
@@ -1015,6 +1152,9 @@ class ESM4Catalog:
                     record["teleportFlags"] = fields.get("teleportFlags", 0)
                     record["audioLocation"] = form_hex(fields.get("audioLocation"))
                     record["radio"] = fields.get("radio")
+                    record["linkedReference"] = form_hex(fields.get("linkedReference"))
+                    record["patrolIdleSeconds"] = fields.get("patrolIdleSeconds")
+                    record["patrolIdleScriptMarker"] = fields.get("patrolIdleScriptMarker", False)
                     record["owner"] = form_hex(fields.get("owner"))
                     record["openmwOwner"] = openmw_form_id(fields.get("owner"))
                     record["global"] = form_hex(fields.get("global"))
@@ -1123,6 +1263,9 @@ class ESM4Catalog:
                     "audioLocation": form_hex(fields.get("audioLocation")),
                     "openmwAudioLocation": openmw_form_id(fields.get("audioLocation")),
                     "radio": fields.get("radio"),
+                    "linkedReference": form_hex(fields.get("linkedReference")),
+                    "patrolIdleSeconds": fields.get("patrolIdleSeconds"),
+                    "patrolIdleScriptMarker": fields.get("patrolIdleScriptMarker", False),
                     "owner": form_hex(fields.get("owner")),
                     "openmwOwner": openmw_form_id(fields.get("owner")),
                     "global": form_hex(fields.get("global")),

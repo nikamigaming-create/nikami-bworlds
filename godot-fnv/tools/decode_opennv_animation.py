@@ -71,7 +71,11 @@ def decode_bytes(data: bytes) -> dict:
         tracks.append({"name": name, "channel_frames": channel_frames})
     if offset != len(data):
         raise ValueError(f"trailing bytes: {len(data) - offset}")
-    if frame_count != math.ceil(duration * sample_rate) + 1:
+    # The producer computes this expression in C++ float precision. Re-round
+    # the product to float32 before applying ceil so values such as 7.8 * 30
+    # do not acquire a Python-double epsilon and spuriously demand one frame.
+    duration_frames_f32 = struct.unpack("<f", struct.pack("<f", duration * sample_rate))[0]
+    if frame_count != math.ceil(duration_frames_f32) + 1:
         raise ValueError("frame count is inconsistent with duration and sample rate")
     if nonfinite_values:
         raise ValueError(f"payload contains {nonfinite_values} nonfinite values")

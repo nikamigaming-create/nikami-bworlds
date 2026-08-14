@@ -75,11 +75,16 @@ void sky() {
 """
 
 var manifest: Dictionary = {}
+var save_overlay: Dictionary = {}
 var active_manifest_path := DEFAULT_MANIFEST
 var ui: CanvasLayer
 var menu_root: Control
 var world_root: Node3D
 var pip_boy: Control
+var pip_boy_title: Label
+var pip_boy_inventory: RichTextLabel
+var active_container: Node
+var player_inventory_counts: Dictionary = {}
 var player: CharacterBody3D
 var last_safe_player_position := Vector3.ZERO
 var has_safe_player_position := false
@@ -132,6 +137,32 @@ var showcase_entry_door: Node3D
 var showcase_interior_door: Node3D
 var showcase_target := Vector3.ZERO
 var showcase_phases: Array[String] = []
+var perf_soak_active := false
+var perf_soak_draining := false
+var perf_soak_drain_elapsed := 0.0
+var perf_soak_elapsed := 0.0
+var perf_soak_warmup := 2.0
+var perf_soak_duration := 30.0
+var perf_soak_speed := 100.0
+var perf_soak_route: Array[Vector3] = []
+var perf_soak_route_index := 0
+var perf_soak_direction := 1
+var perf_soak_reversals := 0
+var perf_frame_msec: Array[float] = []
+var perf_crossing_msec: Array[float] = []
+var perf_last_grid := Vector2i(2147483647, 2147483647)
+var perf_memory_samples: Array[int] = []
+var perf_sample_accumulator := 0.0
+var perf_max_pending_meshes := 0
+var perf_max_pending_actors := 0
+var perf_distance_meters := 0.0
+var perf_sampled_seconds := 0.0
+var perf_wall_start_usec := 0
+var perf_last_reversal_elapsed := 0.0
+var perf_min_resident_instances := 2147483647
+var perf_max_resident_instances := 0
+var perf_min_exact_actors := 2147483647
+var perf_max_missing_actors := 0
 
 func _ready() -> void:
 	DisplayServer.window_set_title("OpenNV")
@@ -175,7 +206,10 @@ func _ready() -> void:
 	# The movie and menu are useful presentation time: assemble the save-centered
 	# world behind them so Continue never opens a dedicated loading screen.
 	_build_world()
-	_show_intro_or_menu()
+	if OS.get_environment("FNV_GODOT_PERF_SOAK") == "1":
+		continue_requested = true
+	else:
+		_show_intro_or_menu()
 
 func _initialize_openxr() -> void:
 	if OS.get_environment("FNV_GODOT_OPENXR") != "1":
@@ -294,6 +328,7 @@ func _validate_save_overlay() -> bool:
 	if not parsed is Dictionary:
 		return false
 	var overlay := parsed as Dictionary
+	save_overlay = overlay
 	if str(overlay.get("schema", "")) != "opennv-fos-changeform-index/v1":
 		return false
 	if str(overlay.get("status", "")) != "indexed-opaque":
@@ -496,6 +531,8 @@ func _build_world() -> void:
 	world_root.add_child(cell_streamer)
 	cell_streamer.connect("residency_ready", _on_initial_cells_resident)
 	cell_streamer.connect("portal_transitioned", _on_portal_transitioned)
+	cell_streamer.connect("container_activated", _on_container_activated)
+	manifest["_save_actor_overlay"] = save_overlay
 	cell_streamer.call("begin", manifest)
 
 	# Keep the emergency floor out of authored builds: it otherwise masks the
@@ -596,6 +633,10 @@ func _on_initial_cells_resident(cell_count: int, terrain_count: int, instance_co
 	if OS.get_environment("FNV_GODOT_WORLD_SMOKE") == "1":
 		print("OPENNV_GODOT_AUTHORED_WORLD_SMOKE_PASS cells=%d terrain=%d instances=%d" % [cell_count, terrain_count, instance_count])
 		get_tree().quit(0 if instance_count > 0 and terrain_count > 0 else 3)
+	elif OS.get_environment("FNV_GODOT_PERF_SOAK") == "1" and authored_resident:
+		continue_requested = true
+		_enter_world()
+		call_deferred("_begin_perf_soak")
 	elif continue_requested and authored_resident:
 		_enter_world()
 	var capture_path := OS.get_environment("FNV_GODOT_CAPTURE_PATH")
@@ -1326,30 +1367,86 @@ func _build_pip_boy(parent: Control) -> void:
 	body.position = Vector2(34, 26)
 	body.size = Vector2(872, 520)
 	pip_boy.add_child(body)
-	var title := Label.new()
-	title.text = "PIP-BOY 3000  |  INV   DATA   MAP   RADIO"
-	title.add_theme_font_size_override("font_size", 24)
-	title.add_theme_color_override("font_color", PHOSPHOR)
-	body.add_child(title)
+	pip_boy_title = Label.new()
+	pip_boy_title.text = "PIP-BOY 3000  |  INV   DATA   MAP   RADIO"
+	pip_boy_title.add_theme_font_size_override("font_size", 24)
+	pip_boy_title.add_theme_color_override("font_color", PHOSPHOR)
+	body.add_child(pip_boy_title)
 	var line := HSeparator.new()
 	body.add_child(line)
-	var inventory := RichTextLabel.new()
-	inventory.fit_content = false
-	inventory.custom_minimum_size = Vector2(850, 450)
-	inventory.bbcode_enabled = true
-	inventory.add_theme_color_override("default_color", PHOSPHOR)
+	pip_boy_inventory = RichTextLabel.new()
+	pip_boy_inventory.fit_content = false
+	pip_boy_inventory.custom_minimum_size = Vector2(850, 450)
+	pip_boy_inventory.bbcode_enabled = true
+	pip_boy_inventory.add_theme_color_override("default_color", PHOSPHOR)
 	var rows: Array = manifest.get("inventory", [])
-	var text := "[font_size=19]REAL SAVE INVENTORY[/font_size]\n\n"
-	for row in rows.slice(0, mini(rows.size(), 22)):
-		text += "%s   x%s\n" % [str(row.get("form_id", "")), str(row.get("count", 0))]
-	inventory.text = text
-	body.add_child(inventory)
+	for row_value in rows:
+		var row := row_value as Dictionary
+		var item_id := str(row.get("form_id", "")).to_lower()
+		player_inventory_counts[item_id] = int(player_inventory_counts.get(item_id, 0)) + int(row.get("count", 0))
+	_render_player_inventory()
+	body.add_child(pip_boy_inventory)
+
+
+func _render_player_inventory() -> void:
+	if pip_boy_inventory == null:
+		return
+	pip_boy_title.text = "PIP-BOY 3000  |  INV   DATA   MAP   RADIO"
+	var text := "[font_size=19]SAVE INVENTORY[/font_size]\n\n"
+	var ids := player_inventory_counts.keys()
+	ids.sort()
+	for item_id_value in ids.slice(0, mini(ids.size(), 22)):
+		var item_id := str(item_id_value)
+		text += "%s   x%d\n" % [item_id, int(player_inventory_counts[item_id])]
+	pip_boy_inventory.text = text
+
+
+func _on_container_activated(container: Node, _actor: Node, _contents: Array) -> void:
+	active_container = container
+	_render_active_container()
+	pip_boy.visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	mouse_look = false
+
+
+func _render_active_container() -> void:
+	if active_container == null or not is_instance_valid(active_container) or pip_boy_inventory == null:
+		return
+	pip_boy_title.text = "CONTAINER  |  %s" % active_container.name
+	var text := "[font_size=19]CONTENTS[/font_size]\n\n"
+	var contents := active_container.get("contents") as Array
+	if contents.is_empty():
+		text += "EMPTY\n"
+	else:
+		for entry_value in contents:
+			var entry := entry_value as Dictionary
+			text += "%s   x%d\n" % [str(entry.get("item", "")), int(entry.get("count", 0))]
+	text += "\n[E] TAKE ALL     [TAB] CLOSE"
+	pip_boy_inventory.text = text
+
+
+func _take_all_from_container() -> void:
+	if active_container == null or not is_instance_valid(active_container):
+		return
+	for entry_value in active_container.call("take_all") as Array:
+		var entry := entry_value as Dictionary
+		var item_id := str(entry.get("item", "")).to_lower()
+		player_inventory_counts[item_id] = int(player_inventory_counts.get(item_id, 0)) + int(entry.get("count", 0))
+	_render_active_container()
 
 func _physics_process(delta: float) -> void:
 	if not world_playable or player == null or not is_instance_valid(player) or (pip_boy != null and pip_boy.visible):
 		return
 	if cell_streamer != null and cell_streamer.has_method("update_focus"):
 		cell_streamer.call("update_focus", player.global_position)
+	if cell_streamer != null and cell_streamer.has_method("advance_game_time"):
+		cell_streamer.call("advance_game_time", delta)
+	if perf_soak_active:
+		# The streaming rail owns the transform during this diagnostic. Do not let
+		# gravity/fall recovery teleport it back to the save origin and fabricate a
+		# huge multi-cell crossing workload.
+		player.velocity = Vector3.ZERO
+		return
 	if cinematic_active:
 		_physics_process_cinematic(delta)
 		_update_ambient_audio(delta)
@@ -1400,6 +1497,235 @@ func _physics_process(delta: float) -> void:
 			_try_activate_from(right_controller.global_position, -right_controller.global_basis.z)
 		xr_trigger_was_pressed = trigger_pressed
 
+
+func _process(delta: float) -> void:
+	if not perf_soak_active:
+		return
+	perf_soak_elapsed += delta
+	if not perf_soak_draining:
+		_drive_perf_soak(delta)
+	if perf_soak_elapsed >= perf_soak_warmup:
+		perf_frame_msec.append(delta * 1000.0)
+		perf_sampled_seconds += delta
+		var grid_value: Variant = cell_streamer.get("last_focus_grid") if cell_streamer != null else null
+		if grid_value is Vector2i and grid_value != perf_last_grid:
+			if perf_last_grid.x != 2147483647:
+				perf_crossing_msec.append(delta * 1000.0)
+			perf_last_grid = grid_value as Vector2i
+		var live_stats := cell_streamer.call("runtime_stats") as Dictionary
+		perf_min_resident_instances = mini(perf_min_resident_instances, int(live_stats.get("resident_instances", 0)))
+		perf_max_resident_instances = maxi(perf_max_resident_instances, int(live_stats.get("resident_instances", 0)))
+		perf_min_exact_actors = mini(perf_min_exact_actors, int(live_stats.get("actor_visual_exact", 0)))
+		perf_max_missing_actors = maxi(perf_max_missing_actors, int(live_stats.get("actor_visual_missing", 0)))
+		var pending_meshes := int(live_stats.get("pending_meshes", 0))
+		var pending_actors := int(live_stats.get("pending_skeletal_actors", 0))
+		perf_max_pending_meshes = maxi(perf_max_pending_meshes, pending_meshes)
+		perf_max_pending_actors = maxi(perf_max_pending_actors, pending_actors)
+		perf_sample_accumulator += delta
+		if perf_sample_accumulator >= 1.0:
+			perf_sample_accumulator = fmod(perf_sample_accumulator, 1.0)
+			perf_memory_samples.append(OS.get_static_memory_usage())
+	if not perf_soak_draining and perf_soak_elapsed >= perf_soak_duration + perf_soak_warmup:
+		perf_soak_draining = true
+		perf_soak_drain_elapsed = 0.0
+	if perf_soak_draining:
+		perf_soak_drain_elapsed += delta
+		var drain_stats := cell_streamer.call("runtime_stats") as Dictionary
+		if _perf_streaming_queues_drained(drain_stats) or perf_soak_drain_elapsed >= 5.0:
+			_finish_perf_soak()
+
+
+func _begin_perf_soak() -> void:
+	if perf_soak_active:
+		return
+	var duration_text := OS.get_environment("FNV_GODOT_PERF_SECONDS")
+	if duration_text.is_valid_float():
+		perf_soak_duration = maxf(5.0, float(duration_text))
+	var speed_text := OS.get_environment("FNV_GODOT_PERF_SPEED")
+	if speed_text.is_valid_float():
+		perf_soak_speed = maxf(7.0, float(speed_text))
+	if not _load_perf_route(AUTHORED_ROAD_ROUTE):
+		push_error("OPENNV_PERF_SOAK_FAIL authored route unavailable")
+		get_tree().quit(13)
+		return
+	player.global_position = perf_soak_route[0] + Vector3.UP * 0.2
+	player.velocity = Vector3.ZERO
+	cell_streamer.call("update_focus", player.global_position)
+	cell_streamer.call("reset_performance_stats")
+	perf_last_grid = cell_streamer.get("last_focus_grid") as Vector2i
+	perf_soak_route_index = 1
+	perf_wall_start_usec = Time.get_ticks_usec()
+	perf_soak_draining = false
+	perf_soak_drain_elapsed = 0.0
+	perf_last_reversal_elapsed = 0.0
+	perf_soak_active = true
+	print("OPENNV_PERF_SOAK_BEGIN seconds=%.1f speed=%.1f route_points=%d" % [
+		perf_soak_duration, perf_soak_speed, perf_soak_route.size()])
+
+
+func _load_perf_route(path: String) -> bool:
+	if not FileAccess.file_exists(path):
+		return false
+	var document: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not document is Dictionary or str(document.get("status", "")) != "pass":
+		return false
+	perf_soak_route.clear()
+	var previous := player.global_position
+	for item_value in document.get("waypoints", []):
+		var item := item_value as Dictionary
+		var values := item.get("position", []) as Array
+		if values.size() < 3:
+			return false
+		var target := _atlas_position_to_world(Vector3(float(values[0]), float(values[1]), float(values[2])))
+		var distance := previous.distance_to(target)
+		var segments := maxi(1, ceili(distance / 10.0))
+		for index in range(1, segments + 1):
+			perf_soak_route.append(previous.lerp(target, float(index) / float(segments)))
+		previous = target
+	return perf_soak_route.size() >= 2
+
+
+func _drive_perf_soak(delta: float) -> void:
+	if perf_soak_route.is_empty():
+		return
+	# Reverse repeatedly under load, rather than waiting to reach a multi-kilometre
+	# route endpoint. This exercises request cancellation and cache reuse.
+	if perf_soak_elapsed - perf_last_reversal_elapsed >= 5.0:
+		perf_soak_direction *= -1
+		perf_soak_reversals += 1
+		perf_last_reversal_elapsed = perf_soak_elapsed
+		perf_soak_route_index = clampi(perf_soak_route_index + perf_soak_direction, 0, perf_soak_route.size() - 1)
+	var remaining := perf_soak_speed * delta
+	var start_position := player.global_position
+	while remaining > 0.0:
+		var target := perf_soak_route[perf_soak_route_index]
+		var offset := target - player.global_position
+		var distance := offset.length()
+		if distance > remaining and distance > 0.0001:
+			player.global_position += offset / distance * remaining
+			remaining = 0.0
+		else:
+			player.global_position = target
+			remaining -= distance
+			perf_soak_route_index += perf_soak_direction
+			if perf_soak_route_index >= perf_soak_route.size() or perf_soak_route_index < 0:
+				perf_soak_direction *= -1
+				perf_soak_reversals += 1
+				perf_soak_route_index = clampi(perf_soak_route_index, 0, perf_soak_route.size() - 1)
+	player.velocity = Vector3.ZERO
+	perf_distance_meters += start_position.distance_to(player.global_position)
+
+
+func _finish_perf_soak() -> void:
+	perf_soak_active = false
+	var sorted_frames := perf_frame_msec.duplicate()
+	sorted_frames.sort()
+	var sorted_crossings := perf_crossing_msec.duplicate()
+	sorted_crossings.sort()
+	var frame_p95 := _percentile(sorted_frames, 0.95)
+	var frame_p99 := _percentile(sorted_frames, 0.99)
+	var frame_max: float = sorted_frames[-1] if not sorted_frames.is_empty() else INF
+	var crossing_p99 := _percentile(sorted_crossings, 0.99)
+	var crossing_max: float = sorted_crossings[-1] if not sorted_crossings.is_empty() else INF
+	var over_50 := perf_frame_msec.filter(func(value): return value > 50.0).size()
+	var memory_baseline := perf_memory_samples[0] if not perf_memory_samples.is_empty() else 0
+	var memory_final := perf_memory_samples[-1] if not perf_memory_samples.is_empty() else memory_baseline
+	var memory_peak: int = perf_memory_samples.max() if not perf_memory_samples.is_empty() else memory_baseline
+	var memory_drift := (float(memory_final - memory_baseline) / float(maxi(1, memory_baseline))) * 100.0
+	var stream_stats := cell_streamer.call("runtime_stats") as Dictionary
+	var wall_seconds := float(Time.get_ticks_usec() - perf_wall_start_usec) / 1000000.0
+	var is_headless := OS.get_environment("FNV_GODOT_PERF_HEADLESS") == "1" \
+		or DisplayServer.get_name() == "headless"
+	var rendering_method := RenderingServer.get_current_rendering_method()
+	var rendering_driver := RenderingServer.get_current_rendering_driver_name()
+	var expected_renderer := not is_headless and rendering_method == "mobile" \
+		and rendering_driver == "vulkan" and not RenderingServer.get_video_adapter_name().is_empty()
+	var minimum_crossings_text := OS.get_environment("FNV_GODOT_PERF_MIN_CROSSINGS")
+	var minimum_crossings := minimum_crossings_text.to_int() if minimum_crossings_text.is_valid_int() else 8
+	var workload_valid: bool = perf_distance_meters >= perf_soak_speed * perf_soak_duration * 0.80 \
+		and perf_soak_reversals >= 1 and perf_min_resident_instances >= 1000 \
+		and perf_min_exact_actors > 0 and perf_max_missing_actors == 0 \
+		and int(stream_stats.get("actor_lifecycle_invariant_violations", 0)) == 0 \
+		and int(stream_stats.get("actor_load_quarantined", 0)) == 0 \
+		and int(stream_stats.get("unsupported_model_instances", 0)) == 0 \
+		and int(stream_stats.get("mesh_load_failures", 0)) == 0 \
+		and int(stream_stats.get("skeletal_cache_failures", 0)) == 0 \
+		and bool(stream_stats.get("world_mesh_cache_contract_valid", false)) \
+		and int(stream_stats.get("world_mesh_cache_fallback_paths", 0)) == 0 \
+		and bool(stream_stats.get("terrain_mesh_cache_contract_valid", false)) \
+		and int(stream_stats.get("terrain_mesh_cache_fallback_paths", 0)) == 0 \
+		and int(stream_stats.get("pending_meshes", 0)) == 0 \
+		and int(stream_stats.get("waiting_mesh_paths", 0)) == 0 \
+		and int(stream_stats.get("ready_mesh_paths", 0)) == 0 \
+		and int(stream_stats.get("pending_skeletal_actors", 0)) == 0 \
+		and int(stream_stats.get("pending_exterior_cell_jobs", 0)) == 0 \
+		and int(stream_stats.get("pending_interior_stage_jobs", 0)) == 0 \
+		and int(stream_stats.get("pending_exterior_retire_jobs", 0)) == 0 \
+		and int(stream_stats.get("pending_focus_scan", 0)) == 0 \
+		and int(stream_stats.get("pending_navmesh_cell_jobs", 0)) == 0
+	var timing_passed: bool = perf_frame_msec.size() >= int(perf_soak_duration * 55.0) \
+		and perf_sampled_seconds >= perf_soak_duration * 0.98 \
+		and perf_crossing_msec.size() >= minimum_crossings \
+		and frame_p99 <= 16.7 and frame_max <= 33.3 and crossing_max <= 33.3 and over_50 == 0 \
+		and int(stream_stats.get("max_stream_commit_usec", 0)) <= 2000 \
+		and int(stream_stats.get("max_focus_update_usec", 0)) <= 2000 \
+		and memory_drift <= 10.0
+	var passed: bool = workload_valid and timing_passed and expected_renderer
+	var report := {
+		"schema": "opennv-godot-streaming-soak/v2", "status": "pass" if passed else ("diagnostic-pass" if workload_valid and timing_passed else "fail"),
+		"headless": is_headless, "displayServer": DisplayServer.get_name(),
+		"renderingMethod": rendering_method, "renderingDriver": rendering_driver,
+		"expectedRenderer": expected_renderer,
+		"videoAdapter": RenderingServer.get_video_adapter_name(),
+		"configuredDurationSeconds": perf_soak_duration, "sampledSeconds": perf_sampled_seconds,
+		"drainSeconds": perf_soak_drain_elapsed,
+		"wallSeconds": wall_seconds,
+		"speedMetersPerSecond": perf_soak_speed, "frames": perf_frame_msec.size(),
+		"crossings": perf_crossing_msec.size(), "reversals": perf_soak_reversals,
+		"distanceMeters": perf_distance_meters, "workloadValid": workload_valid,
+		"frameMsec": {"p95": frame_p95, "p99": frame_p99, "max": frame_max, "over50": over_50},
+		"crossingFrameMsec": {"p99": crossing_p99, "max": crossing_max},
+		"streaming": stream_stats, "maxPendingMeshes": perf_max_pending_meshes,
+		"maxPendingActors": perf_max_pending_actors, "memoryBaselineBytes": memory_baseline,
+		"memoryFinalBytes": memory_final, "memoryPeakBytes": memory_peak,
+		"memoryDriftPercent": memory_drift, "minResidentInstances": perf_min_resident_instances,
+		"maxResidentInstances": perf_max_resident_instances, "minExactActors": perf_min_exact_actors,
+		"maxMissingActors": perf_max_missing_actors,
+		"thresholds": {"frameP99Msec": 16.7, "crossingMaxMsec": 33.3,
+			"maxStreamCommitUsec": 2000, "maxFocusUpdateUsec": 2000,
+			"maxMemoryDriftPercent": 10.0,
+			"minimumCrossings": minimum_crossings},
+	}
+	var report_path := OS.get_environment("FNV_GODOT_PERF_REPORT")
+	if not report_path.is_empty():
+		var file := FileAccess.open(report_path, FileAccess.WRITE)
+		if file != null:
+			file.store_string(JSON.stringify(report, "  "))
+	print("OPENNV_PERF_SOAK_%s frames=%d crossings=%d p99=%.3f crossing_max=%.3f commit_max_usec=%d memory_drift=%.2f%%" % [
+		"PASS" if passed else "FAIL", perf_frame_msec.size(), perf_crossing_msec.size(), frame_p99,
+		crossing_max, int(stream_stats.get("max_stream_commit_usec", 0)), memory_drift])
+	get_tree().quit(0 if passed else 13)
+
+
+func _perf_streaming_queues_drained(stats: Dictionary) -> bool:
+	return int(stats.get("pending_meshes", 0)) == 0 \
+		and int(stats.get("waiting_mesh_paths", 0)) == 0 \
+		and int(stats.get("ready_mesh_paths", 0)) == 0 \
+		and int(stats.get("pending_skeletal_actors", 0)) == 0 \
+		and int(stats.get("pending_exterior_cell_jobs", 0)) == 0 \
+		and int(stats.get("pending_interior_stage_jobs", 0)) == 0 \
+		and int(stats.get("pending_exterior_retire_jobs", 0)) == 0 \
+		and int(stats.get("pending_focus_scan", 0)) == 0 \
+		and int(stats.get("pending_navmesh_cell_jobs", 0)) == 0 \
+		and int(stats.get("pending_actor_cell_promotions", 0)) == 0
+
+
+func _percentile(sorted_values: Array[float], fraction: float) -> float:
+	if sorted_values.is_empty():
+		return INF
+	var index := clampi(ceili(fraction * sorted_values.size()) - 1, 0, sorted_values.size() - 1)
+	return sorted_values[index]
+
 func _update_ambient_audio(delta: float) -> void:
 	if ambient_one_shot == null or not is_instance_valid(ambient_one_shot):
 		return
@@ -1448,11 +1774,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("pip_boy") and pip_boy != null and world_playable:
 		pip_boy.visible = not pip_boy.visible
+		if not pip_boy.visible:
+			active_container = null
+		else:
+			_render_player_inventory()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if pip_boy.visible else Input.MOUSE_MODE_CAPTURED
 		mouse_look = not pip_boy.visible
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("activate") and world_playable:
-		_try_activate()
+		if pip_boy != null and pip_boy.visible and active_container != null:
+			_take_all_from_container()
+		else:
+			_try_activate()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("pause") and world_root != null and world_playable:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

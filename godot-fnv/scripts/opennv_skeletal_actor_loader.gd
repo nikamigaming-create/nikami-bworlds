@@ -3,9 +3,11 @@ extends RefCounted
 
 const MAGIC_V1 := "ONVSKEL1"
 const MAGIC_V2 := "ONVSKEL2"
+const MAGIC_V3 := "ONVSKEL3"
 const UNITS_PER_METER := 70.0
 const MAX_SURFACES := 100000
 const MAX_ELEMENTS := 10000000
+const MATRIX_RECONSTRUCTION_TOLERANCE := 0.001
 
 
 static func load_scene(path: String) -> Node3D:
@@ -14,16 +16,18 @@ static func load_scene(path: String) -> Node3D:
 		push_error("OPENNV_SKELETAL_OPEN_FAILED path=%s" % path)
 		return null
 	var magic := file.get_buffer(8).get_string_from_ascii()
-	if magic not in [MAGIC_V1, MAGIC_V2]:
+	if magic not in [MAGIC_V1, MAGIC_V2, MAGIC_V3]:
 		push_error("OPENNV_SKELETAL_BAD_MAGIC path=%s" % path)
 		return null
 	var version := file.get_32()
 	var surface_count := file.get_32()
-	if (magic == MAGIC_V1 and version != 1) or (magic == MAGIC_V2 and version != 2) or surface_count > MAX_SURFACES:
+	if (magic == MAGIC_V1 and version != 1) or (magic == MAGIC_V2 and version != 2) \
+			or (magic == MAGIC_V3 and version != 3) or surface_count > MAX_SURFACES:
 		push_error("OPENNV_SKELETAL_BAD_HEADER path=%s version=%d surfaces=%d" % [path, version, surface_count])
 		return null
 
 	var declared_bones: Array[Dictionary] = []
+	var auxiliary_records: Array[Dictionary] = []
 	if version >= 2:
 		var declared_bone_count := file.get_32()
 		if declared_bone_count > MAX_ELEMENTS:
@@ -33,15 +37,45 @@ static func load_scene(path: String) -> Node3D:
 			var bone_name := _read_string(file)
 			var parent_raw := file.get_32()
 			var parent := int(parent_raw) if parent_raw <= 0x7fffffff else int(parent_raw - 0x100000000)
-			if bone_name.is_empty() or parent < -1 or parent >= bone_index:
+			var local := _read_matrix(file)
+			var skeleton_space := _read_matrix(file)
+			if bone_name.is_empty() or parent < -1 or parent >= bone_index \
+					or local.size() != 16 or skeleton_space.size() != 16:
 				push_error("OPENNV_SKELETAL_BAD_CANONICAL_BONE path=%s bone=%d parent=%d" % [path, bone_index, parent])
 				return null
 			declared_bones.append({
 				"name": bone_name,
 				"parent": parent,
-				"local": _read_matrix(file),
-				"skeleton": _read_matrix(file),
+				"local": local,
+				"skeleton": skeleton_space,
 			})
+	if version >= 3:
+		var auxiliary_count := file.get_32()
+		if auxiliary_count > MAX_ELEMENTS:
+			push_error("OPENNV_SKELETAL_BAD_AUXILIARY_COUNT path=%s nodes=%d" % [path, auxiliary_count])
+			return null
+		var known_names: Dictionary = {}
+		for bone in declared_bones:
+			known_names[str(bone.name).to_lower()] = true
+		for auxiliary_index in range(auxiliary_count):
+			var auxiliary_name := _read_string(file)
+			var parent_name := _read_string(file)
+			var local := _read_matrix(file)
+			var actor_space := _read_matrix(file)
+			var key := auxiliary_name.to_lower()
+			if auxiliary_name.is_empty() or known_names.has(key) \
+					or (not parent_name.is_empty() and not known_names.has(parent_name.to_lower())) \
+					or local.size() != 16 or actor_space.size() != 16:
+				push_error("OPENNV_SKELETAL_BAD_AUXILIARY_NODE path=%s node=%d name=%s parent=%s" % [
+					path, auxiliary_index, auxiliary_name, parent_name])
+				return null
+			auxiliary_records.append({
+				"name": auxiliary_name,
+				"parent": parent_name,
+				"local": local,
+				"actor": actor_space,
+			})
+			known_names[key] = true
 
 	var root := Node3D.new()
 	root.name = "OpenNVSkeletalActor"
@@ -60,17 +94,28 @@ static func load_scene(path: String) -> Node3D:
 		if not declared_bones.is_empty() else _build_canonical_skeleton(surfaces))
 	var skeleton := canonical.get("skeleton") as Skeleton3D
 	var bone_indices := canonical.get("bone_indices", {}) as Dictionary
+	if not declared_bones.is_empty() and skeleton == null:
+		root.queue_free()
+		return null
 	if skeleton != null:
 		root.add_child(skeleton)
+	var auxiliary_nodes := _build_auxiliary_nodes(root, skeleton, bone_indices, auxiliary_records)
+	if auxiliary_nodes.size() != auxiliary_records.size():
+		root.queue_free()
+		return null
 	for surface_index in range(surfaces.size()):
-		var surface_node := _build_surface(surfaces[surface_index], surface_index, skeleton, bone_indices)
+		var surface_node := _build_surface(
+			surfaces[surface_index], surface_index, skeleton, bone_indices, auxiliary_nodes)
 		if surface_node is BoneAttachment3D and skeleton != null:
 			skeleton.add_child(surface_node)
+		elif auxiliary_nodes.has(str((surfaces[surface_index] as Dictionary).root_bone).to_lower()):
+			(auxiliary_nodes[str((surfaces[surface_index] as Dictionary).root_bone).to_lower()] as Node3D).add_child(surface_node)
 		else:
 			root.add_child(surface_node)
 	root.set_meta("opennv_skeletal_surface_count", surface_count)
 	root.set_meta("opennv_canonical_skeleton_count", 1 if skeleton != null else 0)
 	root.set_meta("opennv_canonical_bone_count", skeleton.get_bone_count() if skeleton != null else 0)
+	root.set_meta("opennv_auxiliary_node_count", auxiliary_nodes.size())
 	root.set_meta("opennv_skeletal_format_version", version)
 	root.set_meta("opennv_skeletal_source", path)
 	return root
@@ -88,6 +133,9 @@ static func _read_surface(file: FileAccess, surface_index: int) -> Dictionary:
 		return {}
 	var transform := _read_matrix(file)
 	var skin_to_skeleton := _read_matrix(file)
+	if transform.size() != 16 or skin_to_skeleton.size() != 16:
+		push_error("OPENNV_SKELETAL_NONFINITE_SURFACE_MATRIX surface=%d" % surface_index)
+		return {}
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
@@ -111,15 +159,19 @@ static func _read_surface(file: FileAccess, surface_index: int) -> Dictionary:
 		var bone_name := _read_string(file)
 		var parent_raw := file.get_32()
 		var parent := int(parent_raw) if parent_raw <= 0x7fffffff else int(parent_raw - 0x100000000)
-		if parent < -1 or parent >= bone_count or parent == bone_index:
+		var inverse_bind := _read_matrix(file)
+		var local := _read_matrix(file)
+		var skeleton_space := _read_matrix(file)
+		if parent < -1 or parent >= bone_count or parent == bone_index \
+				or inverse_bind.size() != 16 or local.size() != 16 or skeleton_space.size() != 16:
 			push_error("OPENNV_SKELETAL_BAD_PARENT surface=%d bone=%d parent=%d" % [surface_index, bone_index, parent])
 			return {}
 		bones.append({
 			"name": bone_name,
 			"parent": parent,
-			"inverse_bind": _read_matrix(file),
-			"local": _read_matrix(file),
-			"skeleton": _read_matrix(file),
+			"inverse_bind": inverse_bind,
+			"local": local,
+			"skeleton": skeleton_space,
 		})
 
 	var packed_bones := PackedInt32Array()
@@ -272,6 +324,57 @@ static func _safe_bone_name(source: String, bone_index: int) -> String:
 	return result
 
 
+static func _build_auxiliary_nodes(root: Node3D, skeleton: Skeleton3D, bone_indices: Dictionary,
+		records: Array[Dictionary]) -> Dictionary:
+	var result: Dictionary = {}
+	var actor_transforms: Dictionary = {}
+	for node_index in range(records.size()):
+		var record := records[node_index] as Dictionary
+		var source_name := str(record.name)
+		var parent_name := str(record.parent)
+		var parent_key := parent_name.to_lower()
+		var local := _source_transform(record.local as PackedFloat32Array)
+		var declared_actor := _source_transform(record.actor as PackedFloat32Array)
+		var parent_actor := Transform3D.IDENTITY
+		if result.has(parent_key):
+			parent_actor = actor_transforms[parent_key] as Transform3D
+		elif skeleton != null and bone_indices.has(parent_key):
+			parent_actor = skeleton.get_bone_global_rest(int(bone_indices[parent_key]))
+		elif not parent_name.is_empty():
+			push_error("OPENNV_SKELETAL_AUXILIARY_PARENT_MISSING node=%s parent=%s" % [source_name, parent_name])
+			return {}
+		if _transform_max_residual(parent_actor * local, declared_actor) > MATRIX_RECONSTRUCTION_TOLERANCE:
+			push_error("OPENNV_SKELETAL_AUXILIARY_RECONSTRUCTION node=%s parent=%s" % [source_name, parent_name])
+			return {}
+		var node := Node3D.new()
+		node.name = "Aux_%03d_%s" % [node_index, source_name.validate_node_name()]
+		node.transform = local
+		node.set_meta("opennv_source_auxiliary_name", source_name)
+		if parent_name.is_empty():
+			root.add_child(node)
+		elif result.has(parent_key):
+			(result[parent_key] as Node3D).add_child(node)
+		elif skeleton != null and bone_indices.has(parent_key):
+			var attachment := BoneAttachment3D.new()
+			attachment.name = "AuxBone_%03d" % node_index
+			attachment.bone_name = skeleton.get_bone_name(int(bone_indices[parent_key]))
+			skeleton.add_child(attachment)
+			attachment.add_child(node)
+		result[source_name.to_lower()] = node
+		actor_transforms[source_name.to_lower()] = declared_actor
+	return result
+
+
+static func _transform_max_residual(left: Transform3D, right: Transform3D) -> float:
+	var residual := 0.0
+	for column in range(3):
+		for row in range(3):
+			residual = maxf(residual, absf(left.basis[column][row] - right.basis[column][row]))
+	for axis in range(3):
+		residual = maxf(residual, absf(left.origin[axis] - right.origin[axis]))
+	return residual
+
+
 static func _graph_depth(key: String, parents: Dictionary, cache: Dictionary, visiting: Dictionary) -> int:
 	if cache.has(key):
 		return int(cache[key])
@@ -288,10 +391,11 @@ static func _graph_depth(key: String, parents: Dictionary, cache: Dictionary, vi
 
 
 static func _build_surface(surface: Dictionary, surface_index: int, skeleton: Skeleton3D,
-		bone_indices: Dictionary) -> Node3D:
+		bone_indices: Dictionary, auxiliary_nodes: Dictionary = {}) -> Node3D:
 	var bones := surface.bones as Array[Dictionary]
 	var holder: Node3D
-	if bones.is_empty() and not str(surface.root_bone).is_empty() and skeleton != null:
+	if bones.is_empty() and not str(surface.root_bone).is_empty() and skeleton != null \
+			and bone_indices.has(str(surface.root_bone).to_lower()):
 		var attachment := BoneAttachment3D.new()
 		var attachment_index := int(bone_indices.get(str(surface.root_bone).to_lower(), -1))
 		if attachment_index < 0:
@@ -385,6 +489,9 @@ static func _read_matrix(file: FileAccess) -> PackedFloat32Array:
 	values.resize(16)
 	for index in range(16):
 		values[index] = file.get_float()
+		if not is_finite(values[index]):
+			push_error("OPENNV_SKELETAL_NONFINITE_MATRIX offset=%d" % file.get_position())
+			return PackedFloat32Array()
 	return values
 
 

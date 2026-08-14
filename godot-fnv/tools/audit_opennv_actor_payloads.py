@@ -7,7 +7,8 @@ import argparse
 import hashlib
 import json
 import struct
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from pathlib import Path
 
 from decode_opennv_skeletal_actor import DecodeError, decode_bytes
@@ -78,10 +79,14 @@ def main() -> int:
         if animation:
             animations[animation] = str(actor.get("animation_idle_sha256", "")).strip().lower()
     rows = sorted(payloads.items())
-    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as executor:
-        failures = [result for result in executor.map(lambda row: validate(row, project_root), rows) if result]
+    # Payload decoding is CPU-bound Python work. Threads serialize on the GIL
+    # and made a full 5k-actor census effectively single-core; process workers
+    # retain deterministic map order while using the requested machine budget.
+    with ProcessPoolExecutor(max_workers=max(1, args.workers)) as executor:
+        failures = [result for result in executor.map(
+            partial(validate, project_root=project_root), rows) if result]
         failures.extend(result for result in executor.map(
-            lambda row: validate_animation(row, project_root), sorted(animations.items())) if result)
+            partial(validate_animation, project_root=project_root), sorted(animations.items())) if result)
     failures.extend({"path": path, "reason": "conflicting-manifest-hash"} for path in sorted(set(conflicting_hashes)))
     report = {
         "schema": "opennv-actor-payload-audit/v2",
