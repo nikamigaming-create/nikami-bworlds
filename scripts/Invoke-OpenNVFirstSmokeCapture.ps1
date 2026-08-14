@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$WorldsRoot = "D:\code\nikami-worlds",
+    [string]$WorldsRoot = "",
     [string]$BinaryRoot = "",
     [string]$SavePath = "",
     [string]$OutputRoot = "",
@@ -12,6 +12,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+if ([string]::IsNullOrWhiteSpace($WorldsRoot)) {
+    $WorldsRoot = Split-Path -Parent $PSScriptRoot
+}
+$WorldsRoot = [IO.Path]::GetFullPath($WorldsRoot)
 
 function Quote-ProcessArgument([string]$Value) {
     if ($Value -notmatch '[\s"]') { return $Value }

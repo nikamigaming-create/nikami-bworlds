@@ -8,18 +8,16 @@ param(
     [string]$OpeningCampaign = "TTW",
     [switch]$RuntimeReady,
     [switch]$RequireIdle,
-    [string]$WorldsRoot = "D:\code\nikami-worlds",
-    [string]$ParityRoot = "D:\code\nikami-worlds-fnv-parity",
-    [string]$EngineRoot = "D:\code\nikami-openmw-save330-integrated",
-    [string]$RetailShadowRoot =
-        "D:\code\nikami-worlds\run\jam-retail-side-video-20260724-191235\retail-game",
-    [string]$JamRoot = "D:\code\nikami-worlds\local\mods\jam-4.6-original",
-    [string]$JamArchive =
-        "D:\code\nikami-worlds\local\mod-depot\archives\jam\Just Assorted Mods-66666-4-6-1717763151.7z",
+    [string]$WorldsRoot = "",
+    [string]$ParityRoot = "",
+    [string]$EngineRoot = "",
+    [string]$RetailShadowRoot = "",
+    [string]$JamRoot = "",
+    [string]$JamArchive = "",
     [string]$OpeningRuntimeRoot = "",
-    [string]$OpeningTtwRoot = "D:\Modlists\fnv\mods\Tale of Two Wastelands - OpenMW",
-    [string]$OpeningNewVegasData = "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data",
-    [string]$OpeningAudioDevice = "Stereo Mix (Realtek(R) Audio)",
+    [string]$OpeningTtwRoot = "",
+    [string]$OpeningNewVegasData = "",
+    [string]$OpeningAudioDevice = "",
     [string]$SavePath = "",
     [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")]
     [string]$RealSaveRouteId = "save330-cold-load-settle-v1",
@@ -34,6 +32,11 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+if ([string]::IsNullOrWhiteSpace($WorldsRoot)) {
+    $WorldsRoot = Split-Path -Parent $PSScriptRoot
+}
+$WorldsRoot = [IO.Path]::GetFullPath($WorldsRoot)
+
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
@@ -42,9 +45,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     elseif ($Scenario -eq "FirstSmoke") {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
-    else {
-        "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos"
-    }
+    else { "" }
 }
 if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
@@ -135,12 +136,15 @@ $retailPipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailPipBoyS
 $realSaveRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRealSaveCapture.ps1"
 $ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
 $newVegasInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-OpenNVBaseProfile.ps1"
-$oracleSourcePath =
+$oracleSourcePath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $null } else {
     Join-Path $ParityRoot "oracles\xnvse\nvse_retail_oracle\main.cpp"
-$oracleRuntimeManifestPath =
+}
+$oracleRuntimeManifestPath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $null } else {
     Join-Path $ParityRoot "local\xnvse-retail-oracle\oracle-runtime-manifest.json"
-$oracleDllPath =
+}
+$oracleDllPath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $null } else {
     Join-Path $ParityRoot "local\xnvse-retail-oracle\plugins\nvse_retail_oracle.dll"
+}
 
 if ($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) {
 	$isCinematic = $Scenario -eq "GodotCinematics"
@@ -559,7 +563,7 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
                 $entryText -match '\$Scenario\s+-eq\s+"Canyon"') `
             $entryPointPath
     }
-    else {
+    elseif ($Scenario -eq "TestMap") {
         Add-Check "TestMap invocation routes to the declared diagnostic runner" `
             ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVTestMapDiagnostic') `
             $entryPointPath
@@ -1180,7 +1184,7 @@ if ($RuntimeReady) {
                 (-not (Test-Path -LiteralPath $OutputRoot)) $OutputRoot
         }
     }
-    else {
+    elseif ($Scenario -eq "TestMap") {
         # TestMap01 is a standalone FNV renderer diagnostic. It does not pull
         # TTW, retail, or Morrowind assets into the profile.
         [void](Test-File "Deployed OpenNV TestMap binary exists" `

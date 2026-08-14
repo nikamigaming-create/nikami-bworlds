@@ -75,17 +75,22 @@ param(
     # accompany an OpenMW opening capture.  It is not accepted for retail,
     # where the retail oracle owns its own in-process schedule.
     [string]$OpeningAuthoredRoutePath = "",
-    [string]$OpeningAudioDevice = "Stereo Mix (Realtek(R) Audio)",
+    [string]$OpeningAudioDevice = "",
     # Opening captures may target an isolated runtime built under local/labs.
     # Leave empty to preserve the release runtime default used by existing
     # recipes and launcher invocations.
     [string]$OpeningRuntimeRoot = "",
     [int]$TimeoutSeconds = 240,
-    [string]$WorldsRoot = "D:\code\nikami-worlds"
+    [string]$WorldsRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+if ([string]::IsNullOrWhiteSpace($WorldsRoot)) {
+    $WorldsRoot = Split-Path -Parent $PSScriptRoot
+}
+$WorldsRoot = [IO.Path]::GetFullPath($WorldsRoot)
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 $preflight = Join-Path $PSScriptRoot "Test-FNVJamBackgroundCapture.ps1"
@@ -111,9 +116,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     elseif ($Scenario -eq "FirstSmoke") {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
-    else {
-        "C:\Users\nbrys\OneDrive\Documents\My Games\FalloutNV\Saves\NikamiCleanPipBoyOracle-20260802.fos"
-    }
+    else { "" }
 }
 if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"

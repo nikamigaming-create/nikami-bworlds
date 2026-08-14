@@ -5,9 +5,10 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[0-9a-zA-Z._-]+$')]
     [string]$CandidateLabel,
-    [string]$BuildRoot = "D:\code\nikami-worlds\local\build\fnv-playability-recovery-20260807",
-    [string]$RuntimeRoot = "D:\code\nikami-worlds\local\labs\fnv-playability-recovery-runtime-20260807",
-    [string]$VcpkgRoot = "D:\code\nikami-openmw-lab\deps\vcpkg-x64-2022-m1.0",
+    [string]$BuildRoot = "",
+    [string]$RuntimeRoot = "",
+    [Parameter(Mandatory = $true)]
+    [string]$VcpkgRoot,
     [string]$RelWithDebInfoExeLinkerFlags = "",
     [switch]$ResumeExistingBuild,
     [ValidateRange(1, 16)]
@@ -16,6 +17,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+$repoRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+if ([string]::IsNullOrWhiteSpace($BuildRoot)) {
+    $BuildRoot = Join-Path $repoRoot "local\build\fnv-playability-recovery"
+}
+if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) {
+    $RuntimeRoot = Join-Path $repoRoot "local\labs\fnv-playability-recovery-runtime"
+}
 
 function Assert-UnusedPath {
     param([Parameter(Mandatory = $true)][string]$Path)
