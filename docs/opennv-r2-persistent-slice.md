@@ -57,6 +57,16 @@ barter path. Record item identity, stack/caps deltas, and the resulting UI
 state. Any unavailable candidate is a route failure, not permission to seed
 inventory.
 
+R2.2 is implemented and passed in the retained
+`opennv-r2-transaction-20260814-004` proof directory. The cash register again
+transferred `FormId:0x1034067` normally (player 0→1, container 3→2), then
+Chet's authored barter bought one live `FormId:0x108ed02` stack item for two
+caps through the production offer path. The verified final deltas were player
+item 0→1, merchant item 9→8, player caps 300→298, and merchant caps 42→44.
+Six native frames, exact-title video, clean exit, and false host-control flags
+are retained. This is a completed merchant transaction, not yet a save/reload
+persistence claim.
+
 ### R2.3 — Native persistence
 
 Request an OpenMW-native save through the production state manager, exit

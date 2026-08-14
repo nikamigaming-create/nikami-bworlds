@@ -208,6 +208,32 @@ Success retains six native frames and
 no-delta barter-cancellation assertions. The next slice is one affordable,
 observed merchant purchase followed by a native save and cold reload.
 
+## OpenNV R2 authored Chet transaction
+
+The `ChetTransaction` route is the compact merchant-purchase follow-up. It
+uses the same authored door, cash-register container, Chet dialogue, and
+production barter UI, then completes one affordable live merchant item through
+TradeWindow's normal offer path. It verifies the exact player and merchant
+item and Caps deltas after the UI closes.
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario ChetTransaction `
+  -OpeningRuntimeRoot <staged-runtime> `
+  -SavePath <goodsprings-save> -RuntimeReady -RequireIdle
+
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario ChetTransaction `
+  -OpeningRuntimeRoot <staged-runtime> `
+  -SavePath <goodsprings-save> `
+  -OutputRoot .\run\opennv-r2-transaction-<unique>
+```
+
+Success retains six native frames, an exact-title video, and
+`r2-goodsprings-transaction-report.json`, including the ordinary container
+transfer and authored merchant-transaction assertions. It is R2.2 evidence;
+native save, clean exit, and cold reload remain R2.3.
+
 ## Authored opening comparison route
 
 ## TestMap01 renderer diagnostic

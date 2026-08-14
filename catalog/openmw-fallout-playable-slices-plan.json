@@ -145,6 +145,11 @@
         "routeId": "goodsprings-persistent-barter-save-reload-v1",
         "driverPolicy": "engine-owned ordinary activation and production UI/state paths; no host input, proof inventory, or direct state mutation",
         "firstImplementationSlice": "R2.0-observe-Chet-live-inventory",
+        "completedSubSlices": [
+          "R2.0-observe-Chet-live-inventory",
+          "R2.1-container-transfer-and-no-delta-barter-cancel",
+          "R2.2-one-live-merchant-transaction"
+        ],
         "followUpSlices": [
           "R2.1-container-transfer-and-no-delta-barter-cancel",
           "R2.2-one-live-merchant-transaction",
@@ -162,7 +167,27 @@
         "retained hash-verifiable evidence",
         "manual ordinary-play acceptance"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "kind": "r2.2-authored-chet-transaction",
+          "path": "run/opennv-r2-transaction-20260814-004/openmw/r2-goodsprings-transaction-report.json",
+          "sha256": "c14853977d91bedcf4482778a381f96be17caf7fec6822a7a289a67e3af2634a",
+          "result": "pass",
+          "runtimeCommit": "b996cb3c7b5660752bc5efe1b5f0ca1085c049f7",
+          "assertions": [
+            "ordinary container transfer",
+            "authored Chet dialogue and barter",
+            "one live merchant item transaction",
+            "verified item and Caps deltas",
+            "six native frames and no host control"
+          ]
+        },
+        {
+          "kind": "r2.2-canonical-capture-summary",
+          "path": "run/opennv-r2-transaction-20260814-004/background-capture-summary.json",
+          "sha256": "3a8b87de1a546395bc2814eed84e39a00aaca69fe9d2fe5a3f96dc4f510a692a"
+        }
+      ]
     },
     {
       "id": "R3-combat-loot",
