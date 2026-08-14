@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -113,7 +113,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
         $canonicalSave330Path
     }
-    elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction")) {
+    elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence")) {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
     else { "" }
@@ -149,7 +149,7 @@ if ($Scenario -eq "Opening" -and $OpeningCampaign -eq "NewVegas" -and $Target -n
 if ($Scenario -eq "TestMap" -and $Target -ne "OpenMW") {
     throw "TestMap01 is an OpenMW-only renderer diagnostic. Use -Target OpenMW."
 }
-if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction") -and $Target -ne "OpenMW") {
+if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence") -and $Target -ne "OpenMW") {
     throw "The FNV FirstSmoke and Chet persistent routes are OpenMW-only. Use -Target OpenMW."
 }
 if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
@@ -328,6 +328,67 @@ if ($Scenario -eq "ChetTransaction") {
         throw "Canonical OpenMW ChetTransaction did not pass the container, merchant-transaction, native-evidence, or no-control gates."
     }
     $openMwResult = $chetTransactionResult
+}
+
+if ($Scenario -eq "ChetPersistence") {
+    $persistenceOutput = Join-Path $OutputRoot "openmw"
+    $saveOutput = Join-Path $persistenceOutput "save"
+    & $firstSmokeRunner `
+        -Route ChetPersistenceSave `
+        -WorldsRoot $WorldsRoot `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -SavePath $SavePath `
+        -OutputRoot $saveOutput `
+        -CaptureSeconds $FirstSmokeCaptureSeconds `
+        -TimeoutSeconds $TimeoutSeconds
+    $saveResult = Get-Content -Raw -LiteralPath (Join-Path $saveOutput "r2-goodsprings-persistence-save-report.json") |
+        ConvertFrom-Json
+    if ($saveResult.status -ne "pass" -or -not [bool]$saveResult.assertions.nativeProductionSave -or
+        [string]::IsNullOrWhiteSpace([string]$saveResult.source.generatedSavePath)) {
+        throw "Canonical OpenMW ChetPersistence save phase did not retain a production save."
+    }
+    $saveLog = Get-Content -Raw -LiteralPath $saveResult.telemetry.log
+    $stateMatch = [regex]::Match($saveLog,
+        'FNV R2 persistence save: state=before-write transferItem=(?<transferItem>FormId:0x[0-9a-fA-F]+) transferPlayer=(?<transferPlayer>\d+) transferContainer=(?<transferContainer>\d+) purchaseItem=(?<purchaseItem>FormId:0x[0-9a-fA-F]+) purchasePlayer=(?<purchasePlayer>\d+) purchaseMerchant=(?<purchaseMerchant>\d+) playerCaps=(?<playerCaps>\d+) merchantCaps=(?<merchantCaps>\d+)')
+    if (-not $stateMatch.Success) {
+        throw "ChetPersistence save phase omitted its exact post-transaction state telemetry."
+    }
+    $reloadOutput = Join-Path $persistenceOutput "reload"
+    & $firstSmokeRunner `
+        -Route ChetPersistenceReload `
+        -WorldsRoot $WorldsRoot `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -SavePath ([string]$saveResult.source.generatedSavePath) `
+        -OutputRoot $reloadOutput `
+        -CaptureSeconds $FirstSmokeCaptureSeconds `
+        -TimeoutSeconds $TimeoutSeconds `
+        -ReloadTransferItem $stateMatch.Groups['transferItem'].Value `
+        -ReloadTransferPlayerCount ([int]$stateMatch.Groups['transferPlayer'].Value) `
+        -ReloadTransferContainerCount ([int]$stateMatch.Groups['transferContainer'].Value) `
+        -ReloadPurchaseItem $stateMatch.Groups['purchaseItem'].Value `
+        -ReloadPurchasePlayerCount ([int]$stateMatch.Groups['purchasePlayer'].Value) `
+        -ReloadPurchaseMerchantCount ([int]$stateMatch.Groups['purchaseMerchant'].Value) `
+        -ReloadPlayerCaps ([int]$stateMatch.Groups['playerCaps'].Value) `
+        -ReloadMerchantCaps ([int]$stateMatch.Groups['merchantCaps'].Value)
+    $reloadResult = Get-Content -Raw -LiteralPath (Join-Path $reloadOutput "r2-goodsprings-persistence-reload-report.json") |
+        ConvertFrom-Json
+    if ($reloadResult.status -ne "pass" -or -not [bool]$reloadResult.assertions.coldReloadStateRetained -or
+        -not [bool]$reloadResult.assertions.ordinaryReloadContainerOpened) {
+        throw "Canonical OpenMW ChetPersistence cold reload did not retain state and open an ordinary container."
+    }
+    $persistenceArtifacts = @($saveResult.artifacts) + @($reloadResult.artifacts)
+    $chetPersistenceResult = [pscustomobject][ordered]@{
+        schema = "nikami-openmw-fnv-r2-goodsprings-persistence/v1"
+        status = "pass"
+        source = [ordered]@{ saveFixture = $SavePath; generatedSavePath = $saveResult.source.generatedSavePath }
+        capture = [ordered]@{ selfDriven = $true; windowsAppControlUsed = $false; foregroundActivationUsed = $false; foregroundInputInjected = $false; proofStateMutationUsed = $false; cameraDrivingUsed = $false; capturesRanSequentially = $true }
+        assertions = [ordered]@{ nativeProductionSave = $true; cleanExitAfterSave = [int]$saveResult.launch.exitCode -eq 0; coldReloadStateRetained = $true; ordinaryReloadContainerOpened = $true }
+        telemetry = [ordered]@{ savedState = $stateMatch.Value; saveLog = $saveResult.telemetry.log; reloadLog = $reloadResult.telemetry.log }
+        artifacts = $persistenceArtifacts
+    }
+    [IO.File]::WriteAllText((Join-Path $persistenceOutput "r2-goodsprings-persistence-report.json"),
+        ($chetPersistenceResult | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
+    $openMwResult = $chetPersistenceResult
 }
 
 if ($Scenario -eq "Canyon") {
@@ -715,6 +776,14 @@ if ($Scenario -eq "ChetTransaction" -and $null -ne $chetTransactionResult) {
             $artifactPaths.Add([string]$artifact.path)
         }
     }
+}
+if ($Scenario -eq "ChetPersistence" -and $null -ne $chetPersistenceResult) {
+    foreach ($artifact in @($chetPersistenceResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+    $artifactPaths.Add((Join-Path $OutputRoot "openmw\r2-goodsprings-persistence-report.json"))
 }
 if ($Scenario -eq "Canyon" -and $null -ne $canyonResult) {
     foreach ($artifact in @($canyonResult.artifacts)) {

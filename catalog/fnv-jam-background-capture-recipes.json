@@ -192,6 +192,31 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetTransaction -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -OutputRoot .\\run\\opennv-r2-transaction-<unique>"
     }
   ],
+  "r2PersistenceRecipes": [
+    {
+      "id": "opennv-goodsprings-native-save-cold-reload-v1",
+      "target": "OpenMW",
+      "runner": "scripts/Invoke-OpenNVFirstSmokeCapture.ps1",
+      "captureMethod": "Two sequential OpenMW processes retain native frames and exact-title video for the authored transaction/save and cold-reload/container phases",
+      "driverMethod": "The first process completes the normal Goodsprings container and Chet trade, calls production StateManager quickSave, and exits; the second cold-loads that emitted save and verifies its retained counts before opening the same unlocked cash register normally",
+      "backgroundInputMethod": "engine-owned production world-action, container, dialogue, trade, and state-manager paths; no host keyboard or mouse input is sent",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "openmw/{save,reload}/user-data/screenshots/*.png",
+      "telemetryPattern": "openmw/{save,reload}/session-config/openmw.log",
+      "manifestPattern": "openmw/r2-goodsprings-persistence-report.json",
+      "requiredTelemetry": [
+        "authored container transfer and merchant transaction completed before production StateManager quick-save",
+        "generated .omwsave retained with hash",
+        "second process cold-loaded the generated save",
+        "saved player, merchant, container, and Caps counts verified",
+        "ordinary cash-register interaction reopened after reload",
+        "all Windows app-control and foreground-input flags false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetPersistence -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetPersistence -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -OutputRoot .\\run\\opennv-r2-persistence-<unique>"
+    }
+  ],
   "canyonRecipes": [
     {
       "id": "opennv-honest-hearts-zion-joshua-camp-slow-crawl-v1",

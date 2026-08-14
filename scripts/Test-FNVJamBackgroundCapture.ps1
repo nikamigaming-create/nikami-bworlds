@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -42,7 +42,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
         Join-Path $WorldsRoot "local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos"
     }
-    elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction")) {
+    elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence")) {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
     else { "" }
@@ -70,7 +70,7 @@ if ($Scenario -eq "RealSave" -and $Target -eq "All") {
 if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
     throw "Terminal interaction is an OpenMW-only lane. Use -Target OpenMW."
 }
-if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction") -and $Target -ne "OpenMW") {
+if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence") -and $Target -ne "OpenMW") {
     throw "FirstSmoke and Chet persistent routes are OpenMW-only lanes. Use -Target OpenMW."
 }
 if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
@@ -284,6 +284,9 @@ elseif ($Scenario -eq "ChetObservation") {
 elseif ($Scenario -eq "ChetPersistent") {
     $canonicalFiles.Add($firstSmokeRunnerPath)
 }
+elseif ($Scenario -eq "ChetPersistence") {
+    $canonicalFiles.Add($firstSmokeRunnerPath)
+}
 elseif ($Scenario -eq "Canyon") {
     $canonicalFiles.Add($canyonRunnerPath)
 }
@@ -381,6 +384,20 @@ if ($null -ne $catalog) {
                 $chetTransactionRunnerText -match 'windowsAppControlUsed = \$false' -and
                 $chetTransactionRunnerText -match 'foregroundInputInjected = \$false') $firstSmokeRunnerPath
     }
+    if ($Scenario -eq "ChetPersistence") {
+        Add-Check "ChetPersistence is restricted to OpenMW" ($Target -eq "OpenMW") "target=$Target"
+        [void](Test-File "ChetPersistence native save exists" $SavePath)
+        [void](Test-File "ChetPersistence candidate runtime manifest exists" (Join-Path $OpeningRuntimeRoot "candidate-runtime-manifest.json"))
+        $chetPersistenceRunnerText = Get-Content -Raw -LiteralPath $firstSmokeRunnerPath -ErrorAction SilentlyContinue
+        foreach ($forbidden in @("AppActivate", "SetForegroundWindow", "BringWindowToTop", "SetFocus", "SendInput")) {
+            Add-Check "ChetPersistence runner excludes $forbidden" `
+                ($chetPersistenceRunnerText -notmatch [regex]::Escape($forbidden)) $firstSmokeRunnerPath
+        }
+        Add-Check "ChetPersistence runner declares production save and cold reload" `
+            ($chetPersistenceRunnerText -match 'OPENMW_FNV_R2_GOODSPRINGS_PERSISTENCE_SAVE' -and
+                $chetPersistenceRunnerText -match 'OPENMW_FNV_R2_GOODSPRINGS_PERSISTENCE_RELOAD' -and
+                $chetPersistenceRunnerText -match 'windowsAppControlUsed = \$false') $firstSmokeRunnerPath
+    }
     if ($Scenario -eq "Canyon") {
         Add-Check "Canyon is restricted to OpenMW" ($Target -eq "OpenMW") "target=$Target"
         [void](Test-File "Canyon runtime manifest exists" (Join-Path $OpeningRuntimeRoot "runtime-manifest.json"))
@@ -421,6 +438,8 @@ if ($null -ne $catalog) {
         @($catalog.r2PersistentRecipes | Where-Object { $_.target -eq $Target })
     } elseif ($Scenario -eq "ChetTransaction") {
         @($catalog.r2TransactionRecipes | Where-Object { $_.target -eq $Target })
+    } elseif ($Scenario -eq "ChetPersistence") {
+        @($catalog.r2PersistenceRecipes | Where-Object { $_.target -eq $Target })
     } elseif ($Scenario -eq "Canyon") {
         @($catalog.canyonRecipes | Where-Object { $_.target -eq $Target })
     } else {
@@ -453,6 +472,9 @@ if ($null -ne $catalog) {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
     }
     elseif ($Scenario -eq "ChetTransaction") {
+        if ($Target -eq "OpenMW") { 1 } else { 0 }
+    }
+    elseif ($Scenario -eq "ChetPersistence") {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
     }
     elseif ($Scenario -eq "Canyon") {
@@ -559,6 +581,9 @@ elseif ($Scenario -eq "ChetPersistent") {
 elseif ($Scenario -eq "ChetTransaction") {
     $scriptsToParse.Add($firstSmokeRunnerPath)
 }
+elseif ($Scenario -eq "ChetPersistence") {
+    $scriptsToParse.Add($firstSmokeRunnerPath)
+}
 elseif ($Scenario -eq "Canyon") {
     $scriptsToParse.Add($canyonRunnerPath)
 }
@@ -645,6 +670,13 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
             ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVFirstSmokeCapture' -and
                 $entryText -match '\$Scenario\s+-eq\s+"ChetTransaction"' -and
                 $entryText -match 'Route ChetTransaction') `
+            $entryPointPath
+    }
+    elseif ($Scenario -eq "ChetPersistence") {
+        Add-Check "ChetPersistence invocation runs save and reload through the declared OpenMW runner" `
+            ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVFirstSmokeCapture' -and
+                $entryText -match '\$Scenario\s+-eq\s+"ChetPersistence"' -and
+                $entryText -match 'Route ChetPersistenceSave' -and $entryText -match 'Route ChetPersistenceReload') `
             $entryPointPath
     }
     elseif ($Scenario -eq "Canyon") {
