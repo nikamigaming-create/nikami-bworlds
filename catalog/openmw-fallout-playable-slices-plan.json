@@ -1,9 +1,9 @@
 {
   "schema": "nikami-openmw-fallout-playable-slices-plan/v2",
-  "asOf": "2026-08-11",
+  "asOf": "2026-08-14",
   "status": "active",
   "truthSource": "docs/openmw-fallout-playable-slices-audit-20260811.md",
-  "currentClaim": "No Fallout target currently has a retained provenance-complete accepted playable slice.",
+  "currentClaim": "The Fallout: New Vegas R2 Goodsprings persistent slice has retained, provenance-complete engine-owned evidence; later gameplay gates remain pending.",
   "operatingMode": "results-first",
   "audit": {
     "completedLeadReviews": 4,
@@ -139,7 +139,7 @@
     {
       "id": "R2-first-persistent-slice",
       "title": "Add barter and native save-process-reload to the working smoke",
-      "status": "pending",
+      "status": "passed",
       "dependsOn": ["R1-first-smoke"],
       "execution": {
         "routeId": "goodsprings-persistent-barter-save-reload-v1",
@@ -148,14 +148,15 @@
         "completedSubSlices": [
           "R2.0-observe-Chet-live-inventory",
           "R2.1-container-transfer-and-no-delta-barter-cancel",
-          "R2.2-one-live-merchant-transaction"
+          "R2.2-one-live-merchant-transaction",
+          "R2.3-native-save-clean-exit-cold-reload"
         ],
         "followUpSlices": [
           "R2.1-container-transfer-and-no-delta-barter-cancel",
           "R2.2-one-live-merchant-transaction",
           "R2.3-native-save-clean-exit-cold-reload"
         ],
-        "promotionRule": "R2 remains pending until all sub-slices run on one manifested runtime and the final report retains hash-verifiable evidence."
+        "promotionRule": "R2 passes when all sub-slices run on one manifested runtime and the final report retains hash-verifiable evidence."
       },
       "requires": [
         "container transfer",
@@ -165,27 +166,63 @@
         "post-reload mutation assertions and repeated interaction",
         "full relevant component suite",
         "retained hash-verifiable evidence",
-        "manual ordinary-play acceptance"
+        "engine-owned ordinary-play acceptance without host input or Windows app control"
       ],
       "evidence": [
         {
-          "kind": "r2.2-authored-chet-transaction",
-          "path": "run/opennv-r2-transaction-20260814-004/openmw/r2-goodsprings-transaction-report.json",
-          "sha256": "c14853977d91bedcf4482778a381f96be17caf7fec6822a7a289a67e3af2634a",
+          "kind": "r2.0-chet-observation-current-manifest",
+          "path": "run/opennv-r2-chet-20260814-006/openmw/r2-chet-observation-report.json",
+          "sha256": "ea6bb6ff869f3dd8b35c1771f6bb8a95b3e0504e255f619f10afe2f7df203943",
           "result": "pass",
-          "runtimeCommit": "b996cb3c7b5660752bc5efe1b5f0ca1085c049f7",
+          "runtimeCommit": "0786bd752d1b67205e87ea4b473c7f2e27cc42d0",
+          "assertions": [
+            "authored door, dialogue, and live merchant inventory observation",
+            "three native frames and no host control"
+          ]
+        },
+        {
+          "kind": "r2.1-container-transfer-barter-cancel-current-manifest",
+          "path": "run/opennv-r2-persistent-20260814-002/openmw/r2-goodsprings-persistent-report.json",
+          "sha256": "157799a8b8d3c6416144a122c683b72337417782f6caab76e3df684a88243e0b",
+          "result": "pass",
+          "runtimeCommit": "0786bd752d1b67205e87ea4b473c7f2e27cc42d0",
           "assertions": [
             "ordinary container transfer",
-            "authored Chet dialogue and barter",
-            "one live merchant item transaction",
-            "verified item and Caps deltas",
+            "authored barter cancellation with no transaction delta",
             "six native frames and no host control"
           ]
         },
         {
-          "kind": "r2.2-canonical-capture-summary",
-          "path": "run/opennv-r2-transaction-20260814-004/background-capture-summary.json",
-          "sha256": "3a8b87de1a546395bc2814eed84e39a00aaca69fe9d2fe5a3f96dc4f510a692a"
+          "kind": "r2.2-authored-chet-transaction-current-manifest",
+          "path": "run/opennv-r2-transaction-20260814-005/openmw/r2-goodsprings-transaction-report.json",
+          "sha256": "5239a4f128f6a1ebcbd7b10242bcbb31c9fa08a9ac10911ac384837bd183aa37",
+          "result": "pass",
+          "runtimeCommit": "0786bd752d1b67205e87ea4b473c7f2e27cc42d0",
+          "assertions": [
+            "ordinary container transfer",
+            "authored Chet dialogue and committed live merchant transaction",
+            "verified item and Caps deltas, six native frames, and no host control"
+          ]
+        },
+        {
+          "kind": "r2.3-native-save-clean-exit-cold-reload",
+          "path": "run/opennv-r2-persistence-20260814-004/openmw/r2-goodsprings-persistence-report.json",
+          "sha256": "682c44f9a9f7007e44259d1d4c368a41142370b937e3612a9feaec25c0e06889",
+          "result": "pass",
+          "runtimeCommit": "0786bd752d1b67205e87ea4b473c7f2e27cc42d0",
+          "generatedSaveSha256": "841770e72f3c4eafbb45340686abf4e2ad927390146ba4f85242497a8f8bcbab",
+          "assertions": [
+            "production state-manager save and clean exit",
+            "cold reload retained inventory and Caps deltas",
+            "ordinary cash-register interaction reopened",
+            "nine native frames across sequential save and reload runs with no host control"
+          ]
+        },
+        {
+          "kind": "r2.3-canonical-capture-summary",
+          "path": "run/opennv-r2-persistence-20260814-004/background-capture-summary.json",
+          "sha256": "0a8d90a50b92de528fb306b868ed0fed45c513fe2ea4f228c7dcdc116e98472a",
+          "componentSuite": "components-tests.exe --report_level=short --log_level=warning (exit 0)"
         }
       ]
     },

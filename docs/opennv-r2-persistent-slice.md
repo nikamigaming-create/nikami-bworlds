@@ -73,10 +73,22 @@ Request an OpenMW-native save through the production state manager, exit
 normally, and cold-load that new save in a second process. Assert the container
 transfer and merchant transaction remain, then repeat one ordinary interaction.
 
+R2.3 is implemented and passed in the retained
+`opennv-r2-persistence-20260814-004` proof directory. After the ordinary
+cash-register transfer and Chet purchase, the production state manager wrote
+`R2-Goodsprings-Persistence.omwsave` (SHA-256
+`841770e72f3c4eafbb45340686abf4e2ad927390146ba4f85242497a8f8bcbab`),
+then the first process exited cleanly. A second OpenMW process cold-loaded that
+exact file and verified the retained transfer (player 1, container 1), purchase
+(player 1, merchant 6), and Caps totals (player 298, merchant 39), before
+reopening the cash register through the normal container path. The save and
+reload runs retain seven and two native frames respectively, exact-title video,
+telemetry, and false host-control flags.
+
 ## Acceptance
 
-Only R2.3 can promote R2. The report must state the capture method; state that
-Windows app control and foreground input were unused; retain native source
-frames and telemetry; and pass the relevant validator. Update
-`catalog/openmw-fallout-playable-slices-plan.json` only after the retained
-artifacts and hashes have been checked.
+R2.3 promotes R2 when the report states the capture method, confirms Windows
+app control and foreground input were unused, retains native source frames and
+telemetry, and passes the relevant validator. Those conditions are met by the
+R2.3 proof above; the catalog records the hash-verifiable current-manifest
+evidence.

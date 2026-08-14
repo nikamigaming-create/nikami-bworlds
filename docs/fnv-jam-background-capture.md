@@ -234,6 +234,33 @@ Success retains six native frames, an exact-title video, and
 transfer and authored merchant-transaction assertions. It is R2.2 evidence;
 native save, clean exit, and cold reload remain R2.3.
 
+## OpenNV R2 native persistence
+
+The `ChetPersistence` route runs the completed cash-register transfer and Chet
+merchant purchase, requests the production state-manager save, and exits
+normally. It then starts a second OpenMW process that cold-loads the generated
+save, verifies the retained inventory and Caps deltas, and opens the same
+ordinary cash register through `ContainerWindow`.
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario ChetPersistence `
+  -OpeningRuntimeRoot <staged-runtime> `
+  -SavePath <goodsprings-save> -RuntimeReady -RequireIdle
+
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario ChetPersistence `
+  -OpeningRuntimeRoot <staged-runtime> `
+  -SavePath <goodsprings-save> `
+  -OutputRoot .\run\opennv-r2-persistence-<unique>
+```
+
+Acceptance requires the generated `.omwsave`, clean exits from both processes,
+seven save-side and two reload-side native frames, exact-title video, retained
+telemetry, and false Windows app-control/foreground-input flags. The route is
+fully checkout-relative: supply the staged runtime, starting native save, and a
+unique output directory for the current machine.
+
 ## Authored opening comparison route
 
 ## TestMap01 renderer diagnostic
