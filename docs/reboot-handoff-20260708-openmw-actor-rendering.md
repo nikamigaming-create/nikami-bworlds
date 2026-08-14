@@ -1,5 +1,9 @@
 # Reboot Handoff: OpenMW ESM4 Actor Rendering Proof
 
+> Historical record only. Machine-specific checkout, build, runtime, and proof
+> paths below preserve provenance but are not current instructions. Use the two
+> canonical repositories identified in the root README for new work.
+
 Date: 2026-07-08
 Workspace: `D:\code\nikami-worlds`
 External OpenMW source: `D:\Modlists\fnv\openmw-source`

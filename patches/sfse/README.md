@@ -7,9 +7,11 @@ Starfield telemetry plugin used by `scripts/Invoke-StarfieldRetailOracle.ps1`.
 Apply it to a clean SFSE checkout from the checkout root:
 
 ```powershell
-Get-Content D:\path\to\nikami-worlds\patches\sfse\series | ForEach-Object {
-  git apply --check (Join-Path D:\path\to\nikami-worlds\patches\sfse $_)
-  git apply (Join-Path D:\path\to\nikami-worlds\patches\sfse $_)
+$nikamiWorlds = Resolve-Path '<path-to-nikami-worlds-checkout>'
+$patchRoot = Join-Path $nikamiWorlds 'patches/sfse'
+Get-Content (Join-Path $patchRoot 'series') | ForEach-Object {
+  git apply --check (Join-Path $patchRoot $_)
+  git apply (Join-Path $patchRoot $_)
 }
 ```
 

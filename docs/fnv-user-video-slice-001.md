@@ -1,5 +1,9 @@
 # FNV User Video Slice 001
 
+> Historical record only. Any machine-specific checkout or runtime path below
+> is not a current instruction; use the two canonical repositories identified
+> in the root README for new work.
+
 Status: ready for user capture with the locally stamped build below
 
 This protocol records a natural, user-controlled flat-screen observation. It is

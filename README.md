@@ -17,12 +17,20 @@ few complete upstream files changed for isolated loading live under
 `upstream-overrides/`. Pinned patches remain under `patches/` as review and
 exact-replay artifacts. The complete compile-ready OpenMW implementation is
 published separately in `nikami-openmw-lab`. There are exactly two canonical
-source workspaces:
+source repositories:
 
-- `D:\code\nikami-worlds` (`nikami-bworlds`, `main`) owns worlds, profiles,
-  contracts, capture recipes, Godot code, and build/test tooling.
-- `D:\code\nikami-openmw-lab` (`nikami-openmw-lab`, `main`) owns the actual
+- This checkout (`nikami-bworlds`, `main`) owns worlds, profiles, contracts,
+  capture recipes, Godot code, and build/test tooling.
+- A separate checkout of `nikami-openmw-lab` (`main`) owns the actual
   OpenMW/OpenNV C++ implementation.
+
+This is a source-repository boundary, not a claim that either checkout contains
+only two directories. The tracked and ignored subdirectories inside each
+repository have the ownership described above. Machine-specific paths and
+retired checkout names in historical proof notes are archival evidence only;
+do not treat them as current source repositories or use them for new work. Use
+these two repositories, on their `main` branches, as the current source of
+truth.
 
 Built binaries are artifacts, not a third source workspace. Ordinary launches
 resolve one stable repo-local deployment at `local/openmw-current`; its runtime
@@ -60,9 +68,8 @@ Then edit `local/paths.json`, or set the equivalent environment variables:
 
 ### Install the current Windows runtime
 
-Build the clean `main` checkout in `D:\code\nikami-openmw-lab`, validate the
-candidate, and promote that candidate into this repository's stable runtime
-directory:
+Build the clean `main` checkout of `nikami-openmw-lab`, validate the candidate,
+and promote that candidate into this repository's stable runtime directory:
 
 ```text
 local\openmw-current
@@ -128,7 +135,7 @@ Load one exact retail save, start at the menu, or validate the complete command
 without opening OpenMW:
 
 ```powershell
-.\scripts\Start-FNVFlatExisting.ps1 -LoadSavegame "C:\Users\you\Documents\My Games\FalloutNV\Saves\Save 330.fos"
+.\scripts\Start-FNVFlatExisting.ps1 -LoadSavegame "<path-to-save.fos>"
 .\scripts\Start-FNVFlatExisting.ps1 -Menu
 .\scripts\Start-FNVFlatExisting.ps1 -DryRun
 ```
@@ -150,7 +157,7 @@ use the calibrated launcher:
 
 ```powershell
 .\scripts\Start-FNVParityVRExisting.ps1
-.\scripts\Start-FNVParityVRExisting.ps1 -LoadSavegame "C:\path\to\save.fos"
+.\scripts\Start-FNVParityVRExisting.ps1 -LoadSavegame "<path-to-save.fos>"
 ```
 
 Add `-DryRun` to either FNV launcher to print and validate the complete command

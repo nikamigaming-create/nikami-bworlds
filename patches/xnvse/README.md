@@ -10,17 +10,20 @@ The patch was exported against xNVSE commit `175bb28`. Apply it to a clean xNVSE
 checkout from the checkout root:
 
 ```powershell
-Get-Content D:\path\to\nikami-worlds\patches\xnvse\series | ForEach-Object {
-  git apply --check (Join-Path D:\path\to\nikami-worlds\patches\xnvse $_)
-  git apply (Join-Path D:\path\to\nikami-worlds\patches\xnvse $_)
+$nikamiWorlds = Resolve-Path '<path-to-nikami-worlds-checkout>'
+$patchRoot = Join-Path $nikamiWorlds 'patches/xnvse'
+Get-Content (Join-Path $patchRoot 'series') | ForEach-Object {
+  git apply --check (Join-Path $patchRoot $_)
+  git apply (Join-Path $patchRoot $_)
 }
 ```
 
-Build the Win32 Release plugin:
+Build the Win32 Release plugin from a Visual Studio Developer PowerShell (or
+another shell where `msbuild` is on `PATH`):
 
 ```powershell
-& 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe' `
-  .\nvse_retail_oracle\nvse_retail_oracle.vcxproj /p:Configuration=Release /p:Platform=Win32 /m
+msbuild .\nvse_retail_oracle\nvse_retail_oracle.vcxproj `
+  /p:Configuration=Release /p:Platform=Win32 /m
 ```
 
 Use `scripts/Invoke-FNVRetailOracle.ps1` with a repo-local isolated runtime

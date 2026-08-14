@@ -8,9 +8,11 @@ handling required by `scripts/Invoke-OblivionRetailOracle.ps1`.
 Apply it to a clean xOBSE checkout from the checkout root:
 
 ```powershell
-Get-Content D:\path\to\nikami-worlds\patches\xobse\series | ForEach-Object {
-  git apply --check (Join-Path D:\path\to\nikami-worlds\patches\xobse $_)
-  git apply (Join-Path D:\path\to\nikami-worlds\patches\xobse $_)
+$nikamiWorlds = Resolve-Path '<path-to-nikami-worlds-checkout>'
+$patchRoot = Join-Path $nikamiWorlds 'patches/xobse'
+Get-Content (Join-Path $patchRoot 'series') | ForEach-Object {
+  git apply --check (Join-Path $patchRoot $_)
+  git apply (Join-Path $patchRoot $_)
 }
 ```
 
