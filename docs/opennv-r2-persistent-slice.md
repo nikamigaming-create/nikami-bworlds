@@ -39,6 +39,16 @@ through the normal container UI model. Open Chet's barter through the authored
 dialogue result, then cancel. Assert that the proposed transaction made no
 merchant, player, or caps delta.
 
+R2.1 is implemented and passed in the retained
+`opennv-r2-persistent-20260814-001` proof directory. The normal cash-register
+container model transferred one `FormId:0x1034067` item from a two-item stack
+to the player (0→1, container 2→1). Chet barter then opened with six live
+merchant stacks / 55 items; cancelling through the production trade window
+left player items 777, merchant items 55, player caps 300, and merchant caps
+37 unchanged. Six native frames, exact-title video, clean exit, and false
+host-control flags are retained. This establishes the cancellation invariant;
+it does not yet commit a sale or establish reload persistence.
+
 ### R2.2 — One live merchant transaction
 
 Reopen barter and select one observed, eligible live item whose cost and caps

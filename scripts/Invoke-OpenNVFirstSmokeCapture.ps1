@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("FirstSmoke", "ChetObservation")]
+    [ValidateSet("FirstSmoke", "ChetObservation", "ChetPersistent")]
     [string]$Route = "FirstSmoke",
     [string]$WorldsRoot = "",
     [string]$BinaryRoot = "",
@@ -113,8 +113,16 @@ $argumentLine = ($arguments | ForEach-Object { Quote-ProcessArgument ([string]$_
 $stdout = Join-Path $OutputRoot "stdout.log"
 $stderr = Join-Path $OutputRoot "stderr.log"
 $openmwLog = Join-Path $sessionConfig "openmw.log"
-$routeSlug = if ($Route -eq "ChetObservation") { "r2-chet-observation" } else { "first-smoke" }
-$resultReportName = if ($Route -eq "ChetObservation") { "r2-chet-observation-report.json" } else { "first-smoke-report.json" }
+$routeSlug = switch ($Route) {
+    "ChetObservation" { "r2-chet-observation" }
+    "ChetPersistent" { "r2-goodsprings-persistent" }
+    default { "first-smoke" }
+}
+$resultReportName = switch ($Route) {
+    "ChetObservation" { "r2-chet-observation-report.json" }
+    "ChetPersistent" { "r2-goodsprings-persistent-report.json" }
+    default { "first-smoke-report.json" }
+}
 $video = Join-Path $OutputRoot ("OpenMW-FNV-{0}-exact-title.mp4" -f $routeSlug)
 $ffmpegLog = Join-Path $OutputRoot "ffmpeg.log"
 $startedAt = [DateTime]::UtcNow
@@ -123,7 +131,11 @@ $gameExitCode = $null
 $ffmpeg = $null
 $timedOut = $false
 $titleObserved = $false
-$driverEnvironmentName = if ($Route -eq "ChetObservation") { "OPENMW_FNV_R2_CHET_OBSERVATION" } else { "OPENMW_FNV_FIRST_SMOKE" }
+$driverEnvironmentName = switch ($Route) {
+    "ChetObservation" { "OPENMW_FNV_R2_CHET_OBSERVATION" }
+    "ChetPersistent" { "OPENMW_FNV_R2_GOODSPRINGS_PERSISTENT" }
+    default { "OPENMW_FNV_FIRST_SMOKE" }
+}
 $previousDriver = [Environment]::GetEnvironmentVariable($driverEnvironmentName, "Process")
 $previousDebug = $env:OPENMW_DEBUG_LEVEL
 $previousCrashCatcher = $env:OPENMW_DISABLE_CRASH_CATCHER
@@ -194,7 +206,10 @@ finally {
 }
 
 $logText = if (Test-Path -LiteralPath $openmwLog) { Get-Content -Raw -LiteralPath $openmwLog } else { "" }
-$resultPattern = if ($Route -eq "ChetObservation") {
+$resultPattern = if ($Route -eq "ChetPersistent") {
+    'FNV R2 Chet: result=(?<result>pass|fail) reason="(?<reason>[^"]*)" door=(?<door>[01]) dialogue=(?<dialogue>[01]) barter=(?<barter>[01]) containerTransfer=(?<containerTransfer>[01]) barterCancel=(?<barterCancel>[01])'
+}
+elseif ($Route -eq "ChetObservation") {
     'FNV R2 Chet: result=(?<result>pass|fail) reason="(?<reason>[^"]*)" door=(?<door>[01]) dialogue=(?<dialogue>[01]) barter=(?<barter>[01])'
 }
 else {
@@ -217,12 +232,15 @@ foreach ($path in @($video, $stdout, $stderr, $openmwLog, $ffmpegLog, $runtimeMa
 $movement = $Route -eq "FirstSmoke" -and $null -ne $resultMatch -and $resultMatch.Groups['movement'].Value -eq '1'
 $door = $null -ne $resultMatch -and $resultMatch.Groups['door'].Value -eq '1'
 $container = $Route -eq "FirstSmoke" -and $null -ne $resultMatch -and $resultMatch.Groups['container'].Value -eq '1'
-$dialogue = $Route -eq "ChetObservation" -and $null -ne $resultMatch -and $resultMatch.Groups['dialogue'].Value -eq '1'
-$barter = $Route -eq "ChetObservation" -and $null -ne $resultMatch -and $resultMatch.Groups['barter'].Value -eq '1'
+$chetRoute = $Route -in @("ChetObservation", "ChetPersistent")
+$dialogue = $chetRoute -and $null -ne $resultMatch -and $resultMatch.Groups['dialogue'].Value -eq '1'
+$barter = $chetRoute -and $null -ne $resultMatch -and $resultMatch.Groups['barter'].Value -eq '1'
+$containerTransfer = $Route -eq "ChetPersistent" -and $null -ne $resultMatch -and $resultMatch.Groups['containerTransfer'].Value -eq '1'
+$barterCancel = $Route -eq "ChetPersistent" -and $null -ne $resultMatch -and $resultMatch.Groups['barterCancel'].Value -eq '1'
 $peacefulExitLogged = $logText -match '(?m)^\[[^\]]+\] Quitting peacefully\.\s*$'
 $videoRetained = (Test-Path -LiteralPath $video -PathType Leaf) -and (Get-Item -LiteralPath $video).Length -gt 0
-$minimumNativeFrames = if ($Route -eq "ChetObservation") { 3 } else { 4 }
-$routeAssertionsPassed = if ($Route -eq "ChetObservation") { $door -and $dialogue -and $barter } else { $movement -and $door -and $container }
+$minimumNativeFrames = if ($Route -eq "ChetPersistent") { 6 } elseif ($Route -eq "ChetObservation") { 3 } else { 4 }
+$routeAssertionsPassed = if ($Route -eq "ChetPersistent") { $door -and $dialogue -and $barter -and $containerTransfer -and $barterCancel } elseif ($Route -eq "ChetObservation") { $door -and $dialogue -and $barter } else { $movement -and $door -and $container }
 $passed = $null -ne $resultMatch -and $resultMatch.Groups['result'].Value -eq 'pass' -and
     $routeAssertionsPassed -and $nativeFrames.Count -ge $minimumNativeFrames -and $videoRetained -and
     $titleObserved -and -not $timedOut -and ($gameExitCode -eq 0 -or $peacefulExitLogged)
@@ -270,6 +288,8 @@ $report = [ordered]@{
         unlockedContainerOpened = $container
         chetDialogueOpened = $dialogue
         authoredBarterOpened = $barter
+        ordinaryContainerTransfer = $containerTransfer
+        authoredBarterCancellationNoDelta = $barterCancel
         nativeFramesRetained = $nativeFrames.Count -ge $minimumNativeFrames
         exactTitleVideoRetained = $videoRetained
     }

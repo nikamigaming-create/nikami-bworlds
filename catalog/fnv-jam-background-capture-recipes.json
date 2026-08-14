@@ -138,6 +138,33 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetObservation -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -OutputRoot .\\run\\opennv-r2-chet-<unique>"
     }
   ],
+  "r2PersistentRecipes": [
+    {
+      "id": "opennv-goodsprings-container-barter-cancel-v1",
+      "target": "OpenMW",
+      "runner": "scripts/Invoke-OpenNVFirstSmokeCapture.ps1",
+      "captureMethod": "OpenMW native ScreenCaptureHandler retains General Store door, container, Chet, barter, and cancellation frames while ffmpeg passively records the exact OpenMW window title",
+      "driverMethod": "OPENMW_FNV_R2_GOODSPRINGS_PERSISTENT activates the authored General Store door and an unlocked cash register, transfers one live item through ContainerWindow, then opens and cancels Chet's authored barter through TradeWindow",
+      "backgroundInputMethod": "engine-owned production world-action, container, dialogue, and trade paths; no host keyboard or mouse input is sent",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "openmw/user-data/screenshots/*.png",
+      "telemetryPattern": "openmw/session-config/openmw.log",
+      "manifestPattern": "openmw/r2-goodsprings-persistent-report.json",
+      "videoPattern": "openmw/OpenMW-FNV-r2-goodsprings-persistent-exact-title.mp4",
+      "requiredTelemetry": [
+        "authored Goodsprings General Store door transition completed",
+        "unlocked General Store container transferred one ordinary item through the production container model",
+        "placed Chet dialogue and authored ShowBarterMenu result opened live barter",
+        "production barter cancellation preserved player, merchant, and caps counts",
+        "capture.selfDriven=true",
+        "all Windows app-control and foreground-input flags false",
+        "proof-state mutation and camera-driving flags false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetPersistent -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario ChetPersistent -OpeningRuntimeRoot '<staged runtime>' -SavePath '<native Goodsprings save>' -OutputRoot .\\run\\opennv-r2-persistent-<unique>"
+    }
+  ],
   "canyonRecipes": [
     {
       "id": "opennv-honest-hearts-zion-joshua-camp-slow-crawl-v1",

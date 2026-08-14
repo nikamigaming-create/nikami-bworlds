@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -113,7 +113,7 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     $SavePath = if ($Scenario -eq "RealSave") {
         $canonicalSave330Path
     }
-    elseif ($Scenario -in @("FirstSmoke", "ChetObservation")) {
+    elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent")) {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
     else { "" }
@@ -149,8 +149,8 @@ if ($Scenario -eq "Opening" -and $OpeningCampaign -eq "NewVegas" -and $Target -n
 if ($Scenario -eq "TestMap" -and $Target -ne "OpenMW") {
     throw "TestMap01 is an OpenMW-only renderer diagnostic. Use -Target OpenMW."
 }
-if ($Scenario -in @("FirstSmoke", "ChetObservation") -and $Target -ne "OpenMW") {
-    throw "The FNV FirstSmoke and ChetObservation routes are OpenMW-only. Use -Target OpenMW."
+if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent") -and $Target -ne "OpenMW") {
+    throw "The FNV FirstSmoke and Chet persistent routes are OpenMW-only. Use -Target OpenMW."
 }
 if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
     throw "The Honest Hearts canyon crawl is OpenMW-only. Use -Target OpenMW."
@@ -216,6 +216,7 @@ $realSaveResult = $null
 $godotRouteResult = $null
 $firstSmokeResult = $null
 $chetObservationResult = $null
+$chetPersistentResult = $null
 $canyonResult = $null
 
 if ($Scenario -eq "FirstSmoke") {
@@ -269,6 +270,35 @@ if ($Scenario -eq "ChetObservation") {
         throw "Canonical OpenMW ChetObservation did not pass the authored door, dialogue, barter, native-evidence, or no-control gates."
     }
     $openMwResult = $chetObservationResult
+}
+
+if ($Scenario -eq "ChetPersistent") {
+    $chetPersistentOutput = Join-Path $OutputRoot "openmw"
+    & $firstSmokeRunner `
+        -Route ChetPersistent `
+        -WorldsRoot $WorldsRoot `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -SavePath $SavePath `
+        -OutputRoot $chetPersistentOutput `
+        -CaptureSeconds $FirstSmokeCaptureSeconds `
+        -TimeoutSeconds $TimeoutSeconds
+    $chetPersistentResult = Get-Content -Raw -LiteralPath (Join-Path $chetPersistentOutput "r2-goodsprings-persistent-report.json") |
+        ConvertFrom-Json
+    if ($chetPersistentResult.status -ne "pass" -or
+        -not [bool]$chetPersistentResult.capture.selfDriven -or
+        [bool]$chetPersistentResult.capture.windowsAppControlUsed -or
+        [bool]$chetPersistentResult.capture.foregroundActivationUsed -or
+        [bool]$chetPersistentResult.capture.foregroundInputInjected -or
+        [bool]$chetPersistentResult.capture.proofStateMutationUsed -or
+        [bool]$chetPersistentResult.capture.cameraDrivingUsed -or
+        -not [bool]$chetPersistentResult.assertions.authoredDoorTransition -or
+        -not [bool]$chetPersistentResult.assertions.ordinaryContainerTransfer -or
+        -not [bool]$chetPersistentResult.assertions.chetDialogueOpened -or
+        -not [bool]$chetPersistentResult.assertions.authoredBarterOpened -or
+        -not [bool]$chetPersistentResult.assertions.authoredBarterCancellationNoDelta) {
+        throw "Canonical OpenMW ChetPersistent did not pass the container, barter-cancel, native-evidence, or no-control gates."
+    }
+    $openMwResult = $chetPersistentResult
 }
 
 if ($Scenario -eq "Canyon") {
@@ -643,6 +673,13 @@ if ($Scenario -eq "ChetObservation" -and $null -ne $chetObservationResult) {
         }
     }
 }
+if ($Scenario -eq "ChetPersistent" -and $null -ne $chetPersistentResult) {
+    foreach ($artifact in @($chetPersistentResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
 if ($Scenario -eq "Canyon" -and $null -ne $canyonResult) {
     foreach ($artifact in @($canyonResult.artifacts)) {
         if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
@@ -710,6 +747,7 @@ $summary = [ordered]@{
     terminalCapture = $terminalResult
     realSave = $realSaveResult
     firstSmoke = $firstSmokeResult
+    chetPersistent = $chetPersistentResult
     canyonCrawl = $canyonResult
     godotRoute = $godotRouteResult
     artifacts = @($artifacts)

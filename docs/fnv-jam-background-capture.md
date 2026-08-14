@@ -182,6 +182,32 @@ video, and `r2-chet-observation-report.json` with all host-control flags
 false. This is R2.0 only; the following slice performs an ordinary container
 transfer and proves that cancelling barter makes no delta.
 
+## OpenNV R2 persistent container and barter cancellation
+
+The `ChetPersistent` route is the compact gameplay follow-up. It transfers one
+live item from the unlocked General Store cash register through
+`ContainerWindow`, enters Chet's authored barter normally, and invokes the
+production cancellation path. It records the actual item/caps totals before
+and after cancellation; only the container transfer may change inventory.
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario ChetPersistent `
+  -OpeningRuntimeRoot <staged-runtime> `
+  -SavePath <goodsprings-save> -RuntimeReady -RequireIdle
+
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario ChetPersistent `
+  -OpeningRuntimeRoot <staged-runtime> `
+  -SavePath <goodsprings-save> `
+  -OutputRoot .\run\opennv-r2-persistent-<unique>
+```
+
+Success retains six native frames and
+`r2-goodsprings-persistent-report.json`, including the container-transfer and
+no-delta barter-cancellation assertions. The next slice is one affordable,
+observed merchant purchase followed by a native save and cold reload.
+
 ## Authored opening comparison route
 
 ## TestMap01 renderer diagnostic
