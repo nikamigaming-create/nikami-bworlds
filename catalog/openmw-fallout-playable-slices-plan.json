@@ -3,7 +3,7 @@
   "asOf": "2026-08-14",
   "status": "active",
   "truthSource": "docs/openmw-fallout-playable-slices-audit-20260811.md",
-  "currentClaim": "The Fallout: New Vegas R2 Goodsprings persistent slice has retained, provenance-complete engine-owned evidence; later gameplay gates remain pending.",
+  "currentClaim": "The Fallout: New Vegas R2 Goodsprings persistent slice has retained flat-screen engine-owned evidence; its matching VR validation is pending from the identical source commit.",
   "operatingMode": "results-first",
   "audit": {
     "completedLeadReviews": 4,
@@ -24,6 +24,7 @@
     "generalHarnessBeforeFirstObservation": false,
     "maximumConsecutiveHarnessOrDocumentationChangesBeforeEngineReturn": 1,
     "testPolicy": "smallest-relevant-tests-during-iteration-full-suite-at-promotion",
+    "vrParityPolicy": "Every slice that passes flat must receive a matching-commit VR build and a bounded VR launch/replay before it is fully promoted; flat and VR evidence must name the same source commit and tree.",
     "visualPolicy": "log-nonblocking-defects; block only when navigation or interaction is prevented",
     "failedRunPolicy": "retain native evidence and record the first blocker",
     "captureEntryPoint": "scripts/Invoke-FNVJamBackgroundCapture.ps1",
@@ -54,7 +55,7 @@
     {
       "id": "R0-bootstrap",
       "title": "Bootstrap the fastest runnable OpenMW 0.51 FNV candidate",
-      "status": "passed",
+      "status": "active",
       "requires": [
         "inspect existing 0.51 candidates and choose one; do not perform exhaustive branch archaeology",
         "record exact source commit tree and dirty state",
@@ -156,7 +157,9 @@
           "R2.2-one-live-merchant-transaction",
           "R2.3-native-save-clean-exit-cold-reload"
         ],
-        "promotionRule": "R2 passes when all sub-slices run on one manifested runtime and the final report retains hash-verifiable evidence."
+        "promotionRule": "R2 passes when all sub-slices run on one manifested runtime and the final report retains hash-verifiable evidence.",
+        "flatStatus": "passed",
+        "vrStatus": "building-matching-commit"
       },
       "requires": [
         "container transfer",
@@ -166,7 +169,8 @@
         "post-reload mutation assertions and repeated interaction",
         "full relevant component suite",
         "retained hash-verifiable evidence",
-        "engine-owned ordinary-play acceptance without host input or Windows app control"
+        "engine-owned ordinary-play acceptance without host input or Windows app control",
+        "matching-commit VR build and bounded headset replay"
       ],
       "evidence": [
         {

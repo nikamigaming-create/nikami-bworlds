@@ -10,6 +10,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$VcpkgRoot,
     [string]$RelWithDebInfoExeLinkerFlags = "",
+    [switch]$EnableVr,
     [switch]$ResumeExistingBuild,
     [ValidateRange(1, 16)]
     [int]$BuildJobs = 4
@@ -41,6 +42,7 @@ $installedRoot = Join-Path $VcpkgRoot "installed\x64-windows"
 $luaLibrary = Join-Path $installedRoot "lib\lua51.lib"
 $myGuiDll = Join-Path $VcpkgRoot "packages\mygui_x64-windows\bin\Release\MyGUIEngine.dll"
 $osgPluginRoot = Join-Path $VcpkgRoot "packages\osg_x64-windows\plugins\osgPlugins-3.6.5"
+$openXrLoaderDll = Join-Path $installedRoot "bin\openxr_loader.dll"
 
 foreach ($path in @($SourceRoot, $toolchain, $luaLibrary, $myGuiDll, $osgPluginRoot)) {
     if (-not (Test-Path -LiteralPath $path)) {
@@ -78,6 +80,7 @@ $glCompatibilityDefinitions = @(
     "/DGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT=0x8C4F"
 )
 $cxxFlags = "/DWIN32 /D_WINDOWS /GR /EHsc " + ($glCompatibilityDefinitions -join " ")
+$buildOpenMwVr = if ($EnableVr) { "ON" } else { "OFF" }
 
 if (-not $ResumeExistingBuild) {
     cmake -S $SourceRoot -B $candidateBuildRoot -G "Visual Studio 17 2022" -A x64 `
@@ -87,7 +90,7 @@ if (-not $ResumeExistingBuild) {
         "-DCMAKE_CXX_FLAGS=$cxxFlags" `
         "-DCMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO=$RelWithDebInfoExeLinkerFlags" `
         -DBUILD_OPENMW=ON `
-        -DBUILD_OPENMW_VR=OFF `
+        "-DBUILD_OPENMW_VR=$buildOpenMwVr" `
         -DBUILD_OPENMW_TESTS=ON `
         -DBUILD_COMPONENTS_TESTS=ON `
         -DBUILD_LAUNCHER=OFF `
@@ -101,6 +104,9 @@ $targets = @(
     "openmw", "components-tests", "bsatool", "esmtool", "openmw-iniimporter",
     "openmw-essimporter", "niftest", "openmw-navmeshtool", "openmw-bulletobjecttool"
 )
+if ($EnableVr) {
+    $targets += "openmw_vr"
+}
 cmake --build $candidateBuildRoot --config RelWithDebInfo --target $targets -- "/m:$BuildJobs"
 if ($LASTEXITCODE -ne 0) { throw "Candidate build failed for $CandidateLabel" }
 
@@ -110,6 +116,12 @@ if ($LASTEXITCODE -ne 0) { throw "Candidate install failed for $CandidateLabel" 
 # CMake's install set omits these linked runtime assets. They are staged from
 # the exact vcpkg tree used at link time, never borrowed from another runtime.
 Copy-Item -LiteralPath $myGuiDll -Destination (Join-Path $candidateRuntimeRoot "MyGUIEngine.dll")
+if ($EnableVr) {
+    if (-not (Test-Path -LiteralPath $openXrLoaderDll)) {
+        throw "Missing OpenXR runtime dependency for VR candidate: $openXrLoaderDll"
+    }
+    Copy-Item -LiteralPath $openXrLoaderDll -Destination (Join-Path $candidateRuntimeRoot "openxr_loader.dll")
+}
 $runtimePluginRoot = Join-Path $candidateRuntimeRoot "osgPlugins-3.6.5"
 [void](New-Item -ItemType Directory -Path $runtimePluginRoot)
 Get-ChildItem -LiteralPath $osgPluginRoot -File | Copy-Item -Destination $runtimePluginRoot
@@ -138,16 +150,23 @@ $manifest = [ordered]@{
         compatibilityDefinitions = $glCompatibilityDefinitions
         compatibilityScope = "compiler-only GL header compatibility; no source or gameplay behavior change"
         executableLinkerFlags = $RelWithDebInfoExeLinkerFlags
+        vrEnabled = [bool]$EnableVr
         targets = $targets
     }
     runtime = [ordered]@{
         root = $candidateRuntimeRoot
         openmwSha256 = (Get-FileHash -LiteralPath $openmwPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        openmwVrSha256 = if ($EnableVr) {
+            (Get-FileHash -LiteralPath (Join-Path $candidateRuntimeRoot "openmw_vr.exe")).Hash.ToLowerInvariant()
+        } else { $null }
+        openXrLoaderSha256 = if ($EnableVr) {
+            (Get-FileHash -LiteralPath (Join-Path $candidateRuntimeRoot "openxr_loader.dll")).Hash.ToLowerInvariant()
+        } else { $null }
         resourceFileCount = $resourceFiles.Count
         resourceBytes = ($resourceFiles | Measure-Object Length -Sum).Sum
         osgPluginCount = $pluginFiles.Count
         osgPluginBytes = ($pluginFiles | Measure-Object Length -Sum).Sum
-        supplementalDependencySources = @($myGuiDll, $osgPluginRoot)
+        supplementalDependencySources = @($myGuiDll, $osgPluginRoot) + $(if ($EnableVr) { @($openXrLoaderDll) } else { @() })
     }
     verification = [ordered]@{
         componentTestsPassed = $false

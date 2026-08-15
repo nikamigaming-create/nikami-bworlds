@@ -92,3 +92,11 @@ app control and foreground input were unused, retains native source frames and
 telemetry, and passes the relevant validator. Those conditions are met by the
 R2.3 proof above; the catalog records the hash-verifiable current-manifest
 evidence.
+
+## Paired VR follow-through
+
+Flat OpenMW is the rapid feature gate, not the final destination. Every flat
+slice promoted here must receive a separately manifested `openmw_vr.exe` built
+from the exact same source commit and tree, followed by a bounded headset launch
+and replay of the same ordinary interaction. Flat evidence remains valid, but a
+slice is not fully promoted while its matching-commit VR result is pending.
