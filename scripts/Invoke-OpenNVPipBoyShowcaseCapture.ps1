@@ -309,7 +309,7 @@ $panelNames = if ($MiscOnly) { @(
     "ITEMS-APP-SUIT", "WORLD-APP-SUIT-OFF", "ITEMS-AID-STIMPAK",
     "ITEMS-MISC-CAPS", "ITEMS-AMMO-9MM", "ITEMS-AMMO-556", "DATA-QUESTS", "DATA-QUESTS-SCROLL", "DATA-NOTES",
     "DATA-RADIO", "MAP-WORLD", "MAP-WORLD-ZOOM-PAN", "MAP-LOCAL", "MAP-LOCAL-ZOOM-PAN", "WORLD-VARMINT-EQUIPPED",
-    "ITEMS-WEAP-VARMINT-REOPEN"
+    "ITEMS-WEAP-VARMINT-REOPEN", "WORLD-AID-STIMPAK-USED", "WORLD-AMMO-SELECTION", "WORLD-MISC-INSPECTED"
 ) }
 $expectedNativeStateCount = $panelNames.Count
 $nativeFramePaths = @($panelNames | ForEach-Object { Join-Path $OutputRoot ("PipBoy-$($_)-native.png") })
