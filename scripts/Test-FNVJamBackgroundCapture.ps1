@@ -60,6 +60,37 @@ if ($Target -ne "Godot") {
     $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 }
 
+# Pip-Boy and opening checks need the installed FNV Data root. Resolve it
+# from an explicit parameter/env/local config first; otherwise inspect the
+# configured FNV OpenMW profile rather than assuming a particular drive.
+if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningNewVegasData)) {
+    $OpeningNewVegasData = Resolve-NikamiPath `
+        -EnvName "NIKAMI_FALLOUT_NEW_VEGAS_DATA" `
+        -ConfigName "falloutNewVegasData" `
+        -Description "Fallout: New Vegas Data directory"
+
+    if ([string]::IsNullOrWhiteSpace($OpeningNewVegasData)) {
+        $fnvRoot = Resolve-NikamiPath -EnvName "NIKAMI_FNV_ROOT" -ConfigName "fnvRoot"
+        $profileConfig = if ([string]::IsNullOrWhiteSpace($fnvRoot)) { "" } else {
+            Join-Path $fnvRoot "openmw-config\\openmw.cfg"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($profileConfig) -and
+            (Test-Path -LiteralPath $profileConfig -PathType Leaf)) {
+            foreach ($line in Get-Content -LiteralPath $profileConfig) {
+                if ($line -notmatch '^\s*data\s*=\s*(?<path>.+?)\s*$') { continue }
+                $candidate = $Matches.path.Trim().Trim('"')
+                if (Test-Path -LiteralPath (Join-Path $candidate "FalloutNV.esm") -PathType Leaf) {
+                    $OpeningNewVegasData = $candidate
+                    break
+                }
+            }
+        }
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($OpeningNewVegasData)) {
+    $OpeningNewVegasData = [IO.Path]::GetFullPath($OpeningNewVegasData)
+}
+
 if (($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
     throw "GodotRoute and GodotCinematics are dedicated Godot lanes. Use -Target Godot."
 }
@@ -93,14 +124,16 @@ function Add-Check([string]$Name, [bool]$Passed, [string]$Detail) {
 }
 
 function Test-File([string]$Name, [string]$Path) {
-    $exists = Test-Path -LiteralPath $Path -PathType Leaf
-    Add-Check $Name $exists $Path
+    $exists = -not [string]::IsNullOrWhiteSpace($Path) -and
+        (Test-Path -LiteralPath $Path -PathType Leaf)
+    Add-Check $Name $exists $(if ($exists -or -not [string]::IsNullOrWhiteSpace($Path)) { $Path } else { "not configured" })
     return $exists
 }
 
 function Test-Directory([string]$Name, [string]$Path) {
-    $exists = Test-Path -LiteralPath $Path -PathType Container
-    Add-Check $Name $exists $Path
+    $exists = -not [string]::IsNullOrWhiteSpace($Path) -and
+        (Test-Path -LiteralPath $Path -PathType Container)
+    Add-Check $Name $exists $(if ($exists -or -not [string]::IsNullOrWhiteSpace($Path)) { $Path } else { "not configured" })
     return $exists
 }
 

@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$WorldsRoot = "D:\code\nikami-worlds",
+    [string]$WorldsRoot = "",
     [string]$BinaryRoot = "",
-    [string]$FalloutNewVegasData = "D:\SteamLibrary\steamapps\common\Fallout New Vegas\Data",
+    [string]$FalloutNewVegasData = "",
     [string]$OutputRoot = "",
     [ValidateRange(15, 90)]
     [int]$CaptureSeconds = 80,
@@ -219,11 +219,44 @@ function New-PipBoyPanelCollage {
     }
 }
 
+if ([string]::IsNullOrWhiteSpace($WorldsRoot)) {
+    $WorldsRoot = Split-Path -Parent $PSScriptRoot
+}
 $WorldsRoot = [IO.Path]::GetFullPath($WorldsRoot)
+. (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 if ([string]::IsNullOrWhiteSpace($BinaryRoot)) {
-    $BinaryRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
+    $BinaryRoot = Resolve-NikamiOpenMWRuntimeRoot
 }
 $BinaryRoot = [IO.Path]::GetFullPath($BinaryRoot)
+
+# Prefer explicit configuration, but discover the FNV Data root from the
+# configured OpenMW profile when this is run checkout-relatively.
+if ([string]::IsNullOrWhiteSpace($FalloutNewVegasData)) {
+    $FalloutNewVegasData = Resolve-NikamiPath `
+        -EnvName "NIKAMI_FALLOUT_NEW_VEGAS_DATA" `
+        -ConfigName "falloutNewVegasData" `
+        -Description "Fallout: New Vegas Data directory"
+    if ([string]::IsNullOrWhiteSpace($FalloutNewVegasData)) {
+        $fnvRoot = Resolve-NikamiPath -EnvName "NIKAMI_FNV_ROOT" -ConfigName "fnvRoot"
+        $profileConfig = if ([string]::IsNullOrWhiteSpace($fnvRoot)) { "" } else {
+            Join-Path $fnvRoot "openmw-config\openmw.cfg"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($profileConfig) -and
+            (Test-Path -LiteralPath $profileConfig -PathType Leaf)) {
+            foreach ($line in Get-Content -LiteralPath $profileConfig) {
+                if ($line -notmatch '^\s*data\s*=\s*(?<path>.+?)\s*$') { continue }
+                $candidate = $Matches.path.Trim().Trim('"')
+                if (Test-Path -LiteralPath (Join-Path $candidate "FalloutNV.esm") -PathType Leaf) {
+                    $FalloutNewVegasData = $candidate
+                    break
+                }
+            }
+        }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($FalloutNewVegasData)) {
+    throw "Missing Fallout: New Vegas Data directory. Set -FalloutNewVegasData, NIKAMI_FALLOUT_NEW_VEGAS_DATA, or local/paths.json:falloutNewVegasData."
+}
 $FalloutNewVegasData = [IO.Path]::GetFullPath($FalloutNewVegasData)
 $binary = Join-Path $BinaryRoot "openmw.exe"
 $resources = Join-Path $BinaryRoot "resources"
