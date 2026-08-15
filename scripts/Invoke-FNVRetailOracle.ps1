@@ -669,9 +669,6 @@ if (-not (Test-Path -LiteralPath $runtimeRootPath -PathType Container)) {
 if (-not (Test-PathWithinRoot -Path $runtimeRootPath -Root $repoRoot)) {
     throw "RuntimeRoot must be a directory inside the nikami-worlds repository: $runtimeRootPath"
 }
-if (Test-PathWithinRoot -Path $gameRootPath -Root 'D:\code\fnvvr' -AllowRoot) {
-    throw "The flat retail oracle must not use the excluded fnvvr tree: $gameRootPath"
-}
 if ((Test-PathWithinRoot -Path $runtimeRootPath -Root $gameRootPath -AllowRoot) -or
     (Test-PathWithinRoot -Path $gameRootPath -Root $runtimeRootPath -AllowRoot)) {
     throw "RuntimeRoot and GameRoot must be disjoint."

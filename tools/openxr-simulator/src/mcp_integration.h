@@ -1,0 +1,1044 @@
+// MCP Integration - Screenshot capture and status reporting for OpenXR Simulator
+#pragma once
+
+#include <windows.h>
+#include <d3d11.h>
+#include <dxgi1_4.h>
+#include <wrl/client.h>
+#include <string>
+#include <string_view>
+#include <vector>
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <cstdarg>
+#include <cwctype>
+#include <atomic>
+
+#include "json.h"
+
+namespace mcp {
+
+using Microsoft::WRL::ComPtr;
+
+// MCP-specific logging
+inline void McpLog(const char* msg) {
+    OutputDebugStringA("[SimXR-MCP] ");
+    OutputDebugStringA(msg);
+    OutputDebugStringA("\n");
+}
+inline void McpLogf(const char* fmt, ...) {
+    char buf[2048];
+    va_list ap; va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    McpLog(buf);
+}
+
+inline const std::string& GetSimulatorDataPath() {
+    static const std::string path = []() -> std::string {
+        // Keep unattended runs self-contained.  A caller can point the simulator
+        // at a per-run directory without depending on a machine-specific profile.
+        char configured[MAX_PATH]{};
+        DWORD configuredLen = GetEnvironmentVariableA(
+            "OPENXR_SIMULATOR_DATA_DIR", configured, (DWORD)sizeof(configured));
+        if (configuredLen > 0 && configuredLen < sizeof(configured)) {
+            return configured;
+        }
+        char base[MAX_PATH]{};
+        DWORD len = GetEnvironmentVariableA("LOCALAPPDATA", base, (DWORD)sizeof(base));
+        if (len > 0 && len < sizeof(base)) {
+            return std::string(base) + "\\OpenXR-Simulator";
+        }
+        return ".";
+    }();
+    return path;
+}
+
+// The Check*Command functions below each open a file that is almost never there, and
+// there are ten of them on the frame path. A failed CreateFile is not free once a
+// real-time AV filter sits on %LOCALAPPDATA%, and ten of them per frame is milliseconds.
+//
+// The commands come from the MCP server, driven by an agent or a human, so they arrive
+// thousands of frames apart. Watch the directory, but filter by FILENAME: the runtime
+// itself writes status JSONs and logs into this same folder several times a second, and
+// an unfiltered change notification re-armed the polls on every one of those writes,
+// defeating the point of watching. Only a name matching a command/request file counts.
+// The 500ms backstop covers what the watch cannot: an overflowed notification buffer,
+// and the handle going stale if the folder is deleted and recreated underneath us.
+inline bool g_commandsDue = true;   // poll once on the first frame to drain anything stale
+
+inline bool IsCommandFileName(const wchar_t* name, size_t chars) {
+    wchar_t lowered[96];
+    if (chars == 0 || chars >= sizeof(lowered) / sizeof(lowered[0])) return false;
+    for (size_t i = 0; i < chars; ++i) {
+        lowered[i] = (wchar_t)towlower(name[i]);
+    }
+    lowered[chars] = 0;
+    const std::wstring_view view(lowered, chars);
+    constexpr std::wstring_view commandSuffix = L"_command.json";
+    if (view.size() >= commandSuffix.size() &&
+        view.compare(view.size() - commandSuffix.size(), commandSuffix.size(), commandSuffix) == 0) {
+        return true;
+    }
+    return view.find(L"_request") != std::wstring_view::npos;
+}
+
+inline void RefreshCommandsDue() {
+    static HANDLE directory = INVALID_HANDLE_VALUE;
+    static HANDLE event = nullptr;
+    static OVERLAPPED overlapped = {};
+    alignas(DWORD) static char buffer[4096];
+    static bool pending = false;
+    static ULONGLONG lastPoll = 0;
+    static bool init = false;
+
+    const auto rearm = []() {
+        ResetEvent(event);
+        pending = ReadDirectoryChangesW(directory, buffer, sizeof(buffer), FALSE,
+                                        FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE,
+                                        nullptr, &overlapped, nullptr) != 0;
+    };
+
+    if (!init) {
+        init = true;
+        CreateDirectoryA(GetSimulatorDataPath().c_str(), nullptr);
+        directory = CreateFileA(GetSimulatorDataPath().c_str(), FILE_LIST_DIRECTORY,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+                                nullptr);
+        event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        overlapped.hEvent = event;
+        if (directory != INVALID_HANDLE_VALUE && event) rearm();
+    }
+
+    if (pending && WaitForSingleObject(event, 0) == WAIT_OBJECT_0) {
+        DWORD bytes = 0;
+        bool commandTouched = false;
+        if (GetOverlappedResult(directory, &overlapped, &bytes, FALSE) && bytes > 0) {
+            const char* record = buffer;
+            for (;;) {
+                const FILE_NOTIFY_INFORMATION* info =
+                    reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(record);
+                if (IsCommandFileName(info->FileName, info->FileNameLength / sizeof(wchar_t))) {
+                    commandTouched = true;
+                    break;
+                }
+                if (!info->NextEntryOffset) break;
+                record += info->NextEntryOffset;
+            }
+        } else {
+            // Zero bytes means the buffer overflowed: too many changes to name
+            // them, so assume a command may be among them.
+            commandTouched = true;
+        }
+        rearm();
+        if (commandTouched) g_commandsDue = true;
+    }
+    const ULONGLONG now = GetTickCount64();
+    if (now - lastPoll >= 500) {
+        lastPoll = now;
+        g_commandsDue = true;
+    }
+}
+
+inline bool g_screenshotRequested = false;
+inline std::string g_screenshotEye = "both";
+inline std::string g_screenshotLayer = "projection";  // "projection", "quad", or "all"
+inline std::atomic_uint64_t g_runtimeFrameCount{};
+inline uint64_t g_screenshotRequestFrame = 0;
+
+inline void WriteScreenshotStatus(const char* layer, uint32_t width, uint32_t height,
+                                  uint64_t capturedFrame = 0) {
+    std::string path = GetSimulatorDataPath() + "\\screenshot_status.json";
+    std::string temporary = path + ".tmp";
+    FILE* file = nullptr;
+    if (fopen_s(&file, temporary.c_str(), "w") != 0 || !file) return;
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    fprintf(file, "{\n");
+    fprintf(file, "  \"timestamp\": \"%04d-%02d-%02dT%02d:%02d:%02d.%03d\",\n",
+            st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    fprintf(file, "  \"requestFrame\": %llu,\n", (unsigned long long)g_screenshotRequestFrame);
+    fprintf(file, "  \"capturedFrame\": %llu,\n",
+            (unsigned long long)(capturedFrame != 0
+                ? capturedFrame
+                : g_runtimeFrameCount.load(std::memory_order_acquire)));
+    fprintf(file, "  \"layer\": \"%s\",\n", layer ? layer : "unknown");
+    fprintf(file, "  \"eye\": \"%s\",\n", g_screenshotEye.c_str());
+    fprintf(file, "  \"width\": %u,\n", width);
+    fprintf(file, "  \"height\": %u\n", height);
+    fprintf(file, "}\n");
+    fclose(file);
+    MoveFileExA(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+}
+
+// Storage for quad layer pixels (set by renderQuadLayer)
+inline std::vector<uint8_t> g_quadLayerPixels;
+inline uint32_t g_quadLayerWidth = 0;
+inline uint32_t g_quadLayerHeight = 0;
+inline bool g_quadLayerCaptured = false;
+
+// Check if MCP has requested a screenshot
+inline void CheckScreenshotRequest() {
+    std::string reqPath = GetSimulatorDataPath() + "\\screenshot_request.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, reqPath.c_str(), "r") == 0 && f) {
+        char buf[512];
+        size_t n = fread(buf, 1, sizeof(buf)-1, f);
+        buf[n] = 0;
+        fclose(f);
+
+        json::Object o(buf);
+        g_screenshotRequested = true;
+        g_screenshotRequestFrame = g_runtimeFrameCount.load(std::memory_order_acquire);
+        g_screenshotEye = o.string("eye", "both");
+        g_screenshotLayer = o.string("layer", "projection");
+
+        DeleteFileA(reqPath.c_str());
+        McpLogf("Screenshot request detected: layer=%s, eye=%s", g_screenshotLayer.c_str(), g_screenshotEye.c_str());
+    }
+}
+
+// Store quad layer pixels for screenshot capture
+inline void StoreQuadLayerPixels(const uint8_t* pixels, uint32_t width, uint32_t height) {
+    if (!pixels || width == 0 || height == 0) return;
+    g_quadLayerWidth = width;
+    g_quadLayerHeight = height;
+    g_quadLayerPixels.resize(width * height * 4);
+    memcpy(g_quadLayerPixels.data(), pixels, width * height * 4);
+    g_quadLayerCaptured = true;
+}
+
+// Forward declaration - CaptureQuadScreenshot is defined after SavePixelsToBMP
+inline void CaptureQuadScreenshot();
+
+// Save a D3D11 texture to BMP file
+inline bool SaveTextureToBMP(ID3D11Device* device, ID3D11DeviceContext* ctx,
+                              ID3D11Texture2D* texture, const char* filename) {
+    if (!device || !ctx || !texture) return false;
+
+    D3D11_TEXTURE2D_DESC desc;
+    texture->GetDesc(&desc);
+
+    // Create staging texture for CPU read
+    D3D11_TEXTURE2D_DESC stagingDesc = desc;
+    stagingDesc.Usage = D3D11_USAGE_STAGING;
+    stagingDesc.BindFlags = 0;
+    stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    stagingDesc.MiscFlags = 0;
+
+    ComPtr<ID3D11Texture2D> staging;
+    HRESULT hr = device->CreateTexture2D(&stagingDesc, nullptr, staging.GetAddressOf());
+    if (FAILED(hr)) {
+        McpLogf("Failed to create staging texture: 0x%08X", hr);
+        return false;
+    }
+
+    // Copy to staging
+    ctx->CopyResource(staging.Get(), texture);
+
+    // Map and read pixels
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    hr = ctx->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) {
+        McpLogf("Failed to map staging texture: 0x%08X", hr);
+        return false;
+    }
+
+    // Write BMP file
+    FILE* file = nullptr;
+    if (fopen_s(&file, filename, "wb") != 0 || !file) {
+        ctx->Unmap(staging.Get(), 0);
+        return false;
+    }
+
+    uint32_t w = desc.Width;
+    uint32_t h = desc.Height;
+    uint32_t rowSize = w * 3;
+    uint32_t rowPadding = (4 - (rowSize % 4)) % 4;
+    uint32_t rowStride = rowSize + rowPadding;
+    uint32_t imageSize = rowStride * h;
+
+    // BMP Header (54 bytes)
+    uint8_t bmpHeader[54] = {
+        'B', 'M',           // Signature
+        0, 0, 0, 0,         // File size
+        0, 0, 0, 0,         // Reserved
+        54, 0, 0, 0,        // Data offset
+        40, 0, 0, 0,        // DIB header size
+        0, 0, 0, 0,         // Width
+        0, 0, 0, 0,         // Height
+        1, 0,               // Planes
+        24, 0,              // Bits per pixel
+        0, 0, 0, 0,         // Compression
+        0, 0, 0, 0,         // Image size
+        0, 0, 0, 0,         // X pixels/meter
+        0, 0, 0, 0,         // Y pixels/meter
+        0, 0, 0, 0,         // Colors in table
+        0, 0, 0, 0          // Important colors
+    };
+
+    uint32_t fileSize = 54 + imageSize;
+    memcpy(bmpHeader + 2, &fileSize, 4);
+    memcpy(bmpHeader + 18, &w, 4);
+    memcpy(bmpHeader + 22, &h, 4);
+    memcpy(bmpHeader + 34, &imageSize, 4);
+
+    fwrite(bmpHeader, 1, 54, file);
+
+    // Write pixel data (BMP is bottom-up, BGR)
+    std::vector<uint8_t> row(rowStride, 0);
+    uint8_t* src = (uint8_t*)mapped.pData;
+
+    for (int y = h - 1; y >= 0; y--) {
+        uint8_t* srcRow = src + y * mapped.RowPitch;
+        for (uint32_t x = 0; x < w; x++) {
+            // Handle different DXGI formats
+            if (desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM ||
+                desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
+                row[x*3 + 0] = srcRow[x*4 + 2]; // B
+                row[x*3 + 1] = srcRow[x*4 + 1]; // G
+                row[x*3 + 2] = srcRow[x*4 + 0]; // R
+            } else if (desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM ||
+                       desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB) {
+                row[x*3 + 0] = srcRow[x*4 + 0]; // B
+                row[x*3 + 1] = srcRow[x*4 + 1]; // G
+                row[x*3 + 2] = srcRow[x*4 + 2]; // R
+            } else {
+                // Fallback - assume RGBA
+                row[x*3 + 0] = srcRow[x*4 + 2];
+                row[x*3 + 1] = srcRow[x*4 + 1];
+                row[x*3 + 2] = srcRow[x*4 + 0];
+            }
+        }
+        fwrite(row.data(), 1, rowStride, file);
+    }
+
+    fclose(file);
+    ctx->Unmap(staging.Get(), 0);
+
+    McpLogf("Screenshot saved: %s (%ux%u)", filename, w, h);
+    return true;
+}
+
+// Capture screenshot from preview swapchain (D3D11 path)
+inline void CaptureScreenshot(ID3D11Device* device, ID3D11DeviceContext* ctx,
+                               IDXGISwapChain1* swapchain) {
+    if (!swapchain) return;
+
+    ComPtr<ID3D11Texture2D> backbuffer;
+    if (FAILED(swapchain->GetBuffer(0, IID_PPV_ARGS(backbuffer.GetAddressOf())))) {
+        McpLog("Failed to get backbuffer for screenshot");
+        return;
+    }
+
+    std::string outPath = GetSimulatorDataPath() + "\\screenshot.bmp";
+    if (SaveTextureToBMP(device, ctx, backbuffer.Get(), outPath.c_str())) {
+        D3D11_TEXTURE2D_DESC desc{};
+        backbuffer->GetDesc(&desc);
+        WriteScreenshotStatus(g_screenshotLayer.c_str(), desc.Width, desc.Height);
+    }
+
+    g_screenshotRequested = false;
+}
+
+// Save raw RGBA pixel data to BMP (for OpenGL path)
+// Set bgra for sources already in GDI's byte order, such as the preview back buffer's DIB.
+inline bool SavePixelsToBMP(const uint8_t* pixels, uint32_t width, uint32_t height,
+                             const char* filename, int srcStride = 0, bool bgra = false) {
+    if (!pixels || width == 0 || height == 0) return false;
+    if (srcStride <= 0) srcStride = (int)width * 4;
+
+    FILE* file = nullptr;
+    if (fopen_s(&file, filename, "wb") != 0 || !file) {
+        McpLogf("Failed to open file for writing: %s", filename);
+        return false;
+    }
+
+    uint32_t rowSize = width * 3;
+    uint32_t rowPadding = (4 - (rowSize % 4)) % 4;
+    uint32_t rowStride = rowSize + rowPadding;
+    uint32_t imageSize = rowStride * height;
+
+    // BMP Header (54 bytes)
+    uint8_t bmpHeader[54] = {
+        'B', 'M',           // Signature
+        0, 0, 0, 0,         // File size
+        0, 0, 0, 0,         // Reserved
+        54, 0, 0, 0,        // Data offset
+        40, 0, 0, 0,        // DIB header size
+        0, 0, 0, 0,         // Width
+        0, 0, 0, 0,         // Height
+        1, 0,               // Planes
+        24, 0,              // Bits per pixel
+        0, 0, 0, 0,         // Compression
+        0, 0, 0, 0,         // Image size
+        0, 0, 0, 0,         // X pixels/meter
+        0, 0, 0, 0,         // Y pixels/meter
+        0, 0, 0, 0,         // Colors in table
+        0, 0, 0, 0          // Important colors
+    };
+
+    uint32_t fileSize = 54 + imageSize;
+    memcpy(bmpHeader + 2, &fileSize, 4);
+    memcpy(bmpHeader + 18, &width, 4);
+    memcpy(bmpHeader + 22, &height, 4);
+    memcpy(bmpHeader + 34, &imageSize, 4);
+
+    fwrite(bmpHeader, 1, 54, file);
+
+    // Write pixel data (BMP is bottom-up, BGR)
+    std::vector<uint8_t> row(rowStride, 0);
+
+    const int rIdx = bgra ? 2 : 0;
+    const int bIdx = bgra ? 0 : 2;
+    for (int y = (int)height - 1; y >= 0; y--) {
+        const uint8_t* srcRow = pixels + (size_t)y * srcStride;
+        for (uint32_t x = 0; x < width; x++) {
+            row[x*3 + 0] = srcRow[x*4 + bIdx]; // B
+            row[x*3 + 1] = srcRow[x*4 + 1];    // G
+            row[x*3 + 2] = srcRow[x*4 + rIdx]; // R
+        }
+        fwrite(row.data(), 1, rowStride, file);
+    }
+
+    fclose(file);
+    McpLogf("Screenshot saved (pixels): %s (%ux%u)", filename, width, height);
+    return true;
+}
+
+// Capture quad layer screenshot (implementation - forward declared above)
+inline void CaptureQuadScreenshot() {
+    if (!g_quadLayerCaptured || g_quadLayerPixels.empty()) {
+        McpLog("No quad layer pixels available for screenshot");
+        g_screenshotRequested = false;
+        return;
+    }
+
+    std::string outPath = GetSimulatorDataPath() + "\\screenshot_quad.bmp";
+    SavePixelsToBMP(g_quadLayerPixels.data(), g_quadLayerWidth, g_quadLayerHeight, outPath.c_str());
+    WriteScreenshotStatus("quad", g_quadLayerWidth, g_quadLayerHeight);
+    McpLogf("Quad layer screenshot saved: %s (%ux%u)", outPath.c_str(), g_quadLayerWidth, g_quadLayerHeight);
+    g_screenshotRequested = false;
+}
+
+// Capture screenshot from OpenGL pixel data (side-by-side left+right eyes)
+inline void CaptureScreenshotGL(const uint8_t* leftPixels, const uint8_t* rightPixels,
+                                 uint32_t width, uint32_t height) {
+    if (!leftPixels && !rightPixels) {
+        McpLog("No pixel data for GL screenshot");
+        g_screenshotRequested = false;
+        return;
+    }
+
+    // Create side-by-side image
+    uint32_t totalWidth = (leftPixels && rightPixels) ? width * 2 : width;
+    std::vector<uint8_t> combined(totalWidth * height * 4, 0);
+
+    if (leftPixels && rightPixels) {
+        // Side by side: left eye on left, right eye on right
+        for (uint32_t y = 0; y < height; y++) {
+            // Copy left eye
+            memcpy(combined.data() + y * totalWidth * 4,
+                   leftPixels + y * width * 4,
+                   width * 4);
+            // Copy right eye
+            memcpy(combined.data() + y * totalWidth * 4 + width * 4,
+                   rightPixels + y * width * 4,
+                   width * 4);
+        }
+    } else if (leftPixels) {
+        memcpy(combined.data(), leftPixels, width * height * 4);
+    } else {
+        memcpy(combined.data(), rightPixels, width * height * 4);
+    }
+
+    std::string outPath = GetSimulatorDataPath() + "\\screenshot.bmp";
+    SavePixelsToBMP(combined.data(), totalWidth, height, outPath.c_str());
+    WriteScreenshotStatus(g_screenshotLayer.c_str(), totalWidth, height);
+
+    g_screenshotRequested = false;
+}
+
+// Write frame status JSON for MCP
+inline void WriteFrameStatus(uint32_t frameCount, uint32_t width, uint32_t height,
+                              const char* format, const char* sessionState,
+                              float headYaw = 0, float headPitch = 0, float headRoll = 0,
+                              float headX = 0, float headY = 1.7f, float headZ = 0) {
+    // Rate-limited by wall clock, not by frame count: this is a status file an MCP client
+    // polls, so twice a second is as useful as ninety times a second, and each write is a
+    // create/format/flush that also trips the directory watch RefreshCommandsDue uses.
+    static ULONGLONG lastWriteMs = 0;
+    const ULONGLONG nowMs = GetTickCount64();
+    if (lastWriteMs != 0 && nowMs - lastWriteMs < 500) return;
+    lastWriteMs = nowMs;
+
+    std::string path = GetSimulatorDataPath() + "\\runtime_status.json";
+    FILE* file = nullptr;
+    if (fopen_s(&file, path.c_str(), "w") != 0 || !file) return;
+
+    // Get current timestamp
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+
+    fprintf(file, "{\n");
+    fprintf(file, "  \"timestamp\": \"%04d-%02d-%02dT%02d:%02d:%02d\",\n",
+            st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    fprintf(file, "  \"frame_count\": %u,\n", frameCount);
+    fprintf(file, "  \"preview_width\": %u,\n", width);
+    fprintf(file, "  \"preview_height\": %u,\n", height);
+    fprintf(file, "  \"format\": \"%s\",\n", format ? format : "unknown");
+    fprintf(file, "  \"session_state\": \"%s\",\n", sessionState ? sessionState : "unknown");
+    fprintf(file, "  \"target_fps\": 90,\n");
+    fprintf(file, "  \"frame_time_ms\": 11.1,\n");
+    fprintf(file, "  \"head_tracking\": {\n");
+    fprintf(file, "    \"position\": {\"x\": %.3f, \"y\": %.3f, \"z\": %.3f},\n", headX, headY, headZ);
+    fprintf(file, "    \"yaw\": %.3f,\n", headYaw);
+    fprintf(file, "    \"pitch\": %.3f,\n", headPitch);
+    fprintf(file, "    \"roll\": %.3f\n", headRoll);
+    fprintf(file, "  }\n");
+    fprintf(file, "}\n");
+    fclose(file);
+}
+
+// Get session state name
+inline const char* GetSessionStateName(int state) {
+    switch (state) {
+        case 0: return "UNKNOWN";
+        case 1: return "IDLE";
+        case 2: return "READY";
+        case 3: return "SYNCHRONIZED";
+        case 4: return "VISIBLE";
+        case 5: return "FOCUSED";
+        case 6: return "STOPPING";
+        case 7: return "LOSS_PENDING";
+        case 8: return "EXITING";
+        default: return "UNKNOWN";
+    }
+}
+
+// Head pose control structure for MCP
+struct HeadPoseCommand {
+    bool valid = false;
+    float x = 0.0f;
+    float y = 1.7f;
+    float z = 0.0f;
+    float yaw = 0.0f;
+    float pitch = 0.0f;
+    float roll = 0.0f;
+    bool  hasRoll = false;     // false = leave g_headRoll alone (back-compat)
+};
+
+// Check for head pose command from MCP
+// File format: {"x": 0, "y": 1.7, "z": 0, "yaw": 0, "pitch": 0, "roll": 0}
+// "roll" is optional — omit to keep the simulator's current roll value.
+inline HeadPoseCommand CheckHeadPoseCommand() {
+    HeadPoseCommand cmd;
+    std::string cmdPath = GetSimulatorDataPath() + "\\head_pose_command.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, cmdPath.c_str(), "r") == 0 && f) {
+        char buf[512];
+        size_t n = fread(buf, 1, sizeof(buf)-1, f);
+        buf[n] = 0;
+        fclose(f);
+
+        // Delete the file after reading (one-shot command)
+        DeleteFileA(cmdPath.c_str());
+
+        json::Object o(buf);
+        if (!o.valid()) return cmd;
+
+        cmd.valid = true;
+        cmd.x = o.number("x", 0.0f);
+        cmd.y = o.number("y", 1.7f);
+        cmd.z = o.number("z", 0.0f);
+        cmd.yaw = o.number("yaw", 0.0f);
+        cmd.pitch = o.number("pitch", 0.0f);
+        cmd.hasRoll = o.has("roll");
+        if (cmd.hasRoll) cmd.roll = o.number("roll", 0.0f);
+
+        McpLogf("Head pose command: pos(%.2f, %.2f, %.2f) yaw=%.2f pitch=%.2f roll=%.2f",
+                cmd.x, cmd.y, cmd.z, cmd.yaw, cmd.pitch,
+                cmd.hasRoll ? cmd.roll : NAN);
+    }
+    return cmd;
+}
+
+// ---------- FOV / IPD / Headset-profile commands ----------
+//
+// These let MCP override the simulator's symmetric-FOV / hardcoded-IPD
+// defaults so projection-matrix bugs and per-eye-IPD bugs that only
+// show up against a real headset's profile are reproducible in the
+// simulator. Set values are sticky until cleared or a new profile is
+// applied.
+
+struct FovCommand {
+    bool valid = false;
+    bool clear = false;  // {"clear": true} reverts to the symmetric UI default
+    float angleLeft[2]  = { 0, 0 };  // radians, < 0
+    float angleRight[2] = { 0, 0 };  // radians, > 0
+    float angleUp[2]    = { 0, 0 };  // radians, > 0
+    float angleDown[2]  = { 0, 0 };  // radians, < 0
+};
+
+// File format (radians):
+//   {"left":  {"aL": -0.95, "aR": 0.78, "aU": 0.85, "aD": -0.95},
+//    "right": {"aL": -0.78, "aR": 0.95, "aU": 0.85, "aD": -0.95}}
+// Or for clear: {"clear": true}
+inline FovCommand CheckFovCommand() {
+    FovCommand cmd;
+    std::string p = GetSimulatorDataPath() + "\\fov_command.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, p.c_str(), "r") != 0 || !f) return cmd;
+    char buf[1024];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    buf[n] = 0;
+    fclose(f);
+    DeleteFileA(p.c_str());
+
+    json::Object o(buf);
+    if (!o.valid()) return cmd;
+
+    cmd.valid = true;
+    if (o.has("clear")) {
+        cmd.clear = true;
+        McpLog("FOV command: clear (revert to symmetric default)");
+        return cmd;
+    }
+    auto parseEye = [&](const char* eyeKey, int idx) {
+        json::Object eye = o.object(eyeKey);
+        if (!eye.valid()) return;
+        cmd.angleLeft[idx]  = eye.number("aL", -1.0f);
+        cmd.angleRight[idx] = eye.number("aR",  1.0f);
+        cmd.angleUp[idx]    = eye.number("aU",  1.0f);
+        cmd.angleDown[idx]  = eye.number("aD", -1.0f);
+    };
+    parseEye("left",  0);
+    parseEye("right", 1);
+    McpLogf("FOV command: L=[%.2f,%.2f,%.2f,%.2f]rad  R=[%.2f,%.2f,%.2f,%.2f]rad",
+            cmd.angleLeft[0], cmd.angleRight[0], cmd.angleUp[0], cmd.angleDown[0],
+            cmd.angleLeft[1], cmd.angleRight[1], cmd.angleUp[1], cmd.angleDown[1]);
+    return cmd;
+}
+
+struct IpdCommand {
+    bool valid = false;
+    bool clear = false;
+    float ipdMeters = 0.064f;
+};
+
+// File format: {"ipd_mm": 64} or {"clear": true}
+inline IpdCommand CheckIpdCommand() {
+    IpdCommand cmd;
+    std::string p = GetSimulatorDataPath() + "\\ipd_command.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, p.c_str(), "r") != 0 || !f) return cmd;
+    char buf[256];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    buf[n] = 0;
+    fclose(f);
+    DeleteFileA(p.c_str());
+
+    json::Object o(buf);
+    if (!o.valid()) return cmd;
+
+    cmd.valid = true;
+    if (o.has("clear")) {
+        cmd.clear = true;
+        McpLog("IPD command: clear (revert to 64mm default)");
+        return cmd;
+    }
+    float mm = o.number("ipd_mm", 64.0f);
+    cmd.ipdMeters = mm * 0.001f;
+    McpLogf("IPD command: %.1f mm", mm);
+    return cmd;
+}
+
+// Headset profile: a named preset that applies both FOV and IPD at once.
+// Profiles are decoded inside the runtime — this struct just carries the name.
+struct HeadsetProfileCommand {
+    bool valid = false;
+    char name[32] = {};
+};
+
+inline HeadsetProfileCommand CheckHeadsetProfileCommand() {
+    HeadsetProfileCommand cmd;
+    std::string p = GetSimulatorDataPath() + "\\headset_profile_command.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, p.c_str(), "r") != 0 || !f) return cmd;
+    char buf[256];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    buf[n] = 0;
+    fclose(f);
+    DeleteFileA(p.c_str());
+
+    std::string name = json::Object(buf).string("name");
+    if (name.empty()) return cmd;
+    size_t L = (std::min)(name.size(), sizeof(cmd.name) - 1);
+    memcpy(cmd.name, name.data(), L);
+    cmd.name[L] = 0;
+    cmd.valid = true;
+    McpLogf("Headset profile command: %s", cmd.name);
+    return cmd;
+}
+
+struct PoseSweepCommand {
+    bool  valid     = false;
+    bool  enabled   = false;
+    float yawAmpDeg   = 30.0f;
+    float pitchAmpDeg = 15.0f;
+    float rollAmpDeg  = 15.0f;
+    float freqHz      = 0.25f;
+};
+
+inline PoseSweepCommand CheckPoseSweepCommand() {
+    PoseSweepCommand cmd;
+    std::string p = GetSimulatorDataPath() + "\\pose_sweep_command.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, p.c_str(), "r") != 0 || !f) return cmd;
+    char buf[256];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    buf[n] = 0;
+    fclose(f);
+    DeleteFileA(p.c_str());
+
+    json::Object o(buf);
+    if (!o.valid()) return cmd;
+
+    cmd.valid = true;
+    cmd.enabled       = o.boolean("enabled", false);
+    cmd.yawAmpDeg     = o.number("yaw_amp_deg",   30.0f);
+    cmd.pitchAmpDeg   = o.number("pitch_amp_deg", 15.0f);
+    cmd.rollAmpDeg    = o.number("roll_amp_deg",  15.0f);
+    cmd.freqHz        = o.number("freq_hz",        0.25f);
+    McpLogf("Pose sweep command: enabled=%d yawAmp=%.1f pitchAmp=%.1f rollAmp=%.1f freq=%.2fHz",
+            cmd.enabled, cmd.yawAmpDeg, cmd.pitchAmpDeg, cmd.rollAmpDeg, cmd.freqHz);
+    return cmd;
+}
+
+struct AnaglyphCommand {
+    bool valid = false;
+    bool enabled = false;
+};
+
+// File format: {"enabled": true} or {"enabled": false}
+inline AnaglyphCommand CheckAnaglyphCommand() {
+    AnaglyphCommand cmd;
+    std::string p = GetSimulatorDataPath() + "\\anaglyph_command.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, p.c_str(), "r") != 0 || !f) return cmd;
+    char buf[256];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    buf[n] = 0;
+    fclose(f);
+    DeleteFileA(p.c_str());
+
+    json::Object o(buf);
+    if (!o.valid()) return cmd;
+
+    cmd.valid = true;
+    cmd.enabled = o.boolean("enabled", false);
+    McpLogf("Anaglyph command: enabled=%d", cmd.enabled ? 1 : 0);
+    return cmd;
+}
+
+// ---------- Projection log ----------
+//
+// Captures the FOV and pose the app embedded in each xrEndFrame projection
+// layer. The MCP can fetch the recent N frames via get_projection_log to
+// diagnose: was the app's projection symmetric while the simulator was
+// configured asymmetric? Did the rendered pose drift relative to the
+// located pose?
+struct ProjLogEntry {
+    uint32_t frame = 0;
+    // Pose embedded in projection-layer view 0 (left eye).
+    float poseQx = 0, poseQy = 0, poseQz = 0, poseQw = 1;
+    float posX = 0, posY = 0, posZ = 0;
+    // FOV per eye (radians, OpenXR convention)
+    float aL[2] = {0,0}, aR[2] = {0,0}, aU[2] = {0,0}, aD[2] = {0,0};
+    // Image sub-rect per eye (left/right): offset_x, offset_y, extent_w, extent_h
+    int32_t rectX[2] = {0,0}, rectY[2] = {0,0}, rectW[2] = {0,0}, rectH[2] = {0,0};
+};
+constexpr size_t PROJ_LOG_CAPACITY = 64;
+inline ProjLogEntry  g_projLog[PROJ_LOG_CAPACITY];
+inline size_t        g_projLogHead = 0;     // index of next slot to write
+inline size_t        g_projLogCount = 0;    // number of valid entries (capped at capacity)
+
+// Writes the current ring buffer to a JSON file the MCP server reads.
+inline void DumpProjectionLog() {
+    std::string p = GetSimulatorDataPath() + "\\projection_log.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, p.c_str(), "w") != 0 || !f) return;
+    fprintf(f, "{\n  \"entries\": [\n");
+    size_t n = g_projLogCount;
+    // Walk oldest -> newest.
+    size_t start = (g_projLogHead + PROJ_LOG_CAPACITY - n) % PROJ_LOG_CAPACITY;
+    for (size_t i = 0; i < n; ++i) {
+        const ProjLogEntry& e = g_projLog[(start + i) % PROJ_LOG_CAPACITY];
+        fprintf(f, "    {\"frame\": %u, "
+                "\"pose\": {\"x\": %.6f, \"y\": %.6f, \"z\": %.6f, "
+                "\"qx\": %.6f, \"qy\": %.6f, \"qz\": %.6f, \"qw\": %.6f}, "
+                "\"left_fov\":  {\"aL\": %.6f, \"aR\": %.6f, \"aU\": %.6f, \"aD\": %.6f}, "
+                "\"right_fov\": {\"aL\": %.6f, \"aR\": %.6f, \"aU\": %.6f, \"aD\": %.6f}, "
+                "\"left_rect\":  [%d, %d, %d, %d], "
+                "\"right_rect\": [%d, %d, %d, %d]}%s\n",
+                e.frame, e.posX, e.posY, e.posZ,
+                e.poseQx, e.poseQy, e.poseQz, e.poseQw,
+                e.aL[0], e.aR[0], e.aU[0], e.aD[0],
+                e.aL[1], e.aR[1], e.aU[1], e.aD[1],
+                e.rectX[0], e.rectY[0], e.rectW[0], e.rectH[0],
+                e.rectX[1], e.rectY[1], e.rectW[1], e.rectH[1],
+                (i + 1 < n) ? "," : "");
+    }
+    fprintf(f, "  ]\n}\n");
+    fclose(f);
+}
+
+// MCP polls a ".dump_request" file to ask us to write the log.
+inline bool CheckProjLogDumpRequest() {
+    std::string p = GetSimulatorDataPath() + "\\projection_log_dump_request";
+    if (GetFileAttributesA(p.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
+    DeleteFileA(p.c_str());
+    return true;
+}
+
+// ---------- Frame-burst capture ----------
+//
+// Records N consecutive composited preview frames into RAM and flushes them as
+// burst_NNN.bmp plus burst_manifest.json when the burst completes. The manifest
+// carries, per frame, the simulator head pose that was active AND the pose the
+// app embedded in its projection layer that frame — so a caller can see exactly
+// which frame the app's render pose picked up a commanded step, and compare
+// that against what the pixels show. Built for chasing multi-frame settling
+// artifacts (shadows lagging a head-pose whip) that a one-shot screenshot
+// round-trip is far too slow to catch.
+//
+// D3D12 and Vulkan sessions only: BurstOnFrame records the preview's DIB back
+// buffer, which is the one place a composited frame exists in CPU memory. A
+// D3D11 or OpenGL session acks the command as failed rather than recording it.
+//
+// Drive it by writing burst_command.json:
+//   {"frames": 32, "pose": {"yaw": 25, "pitch": 0, "x": 0, "y": 1.7, "z": 0}}
+// "pose" is optional (omit to just record), "roll" inside it is optional.
+// The pose step is applied at the same frame boundary the burst starts on, and
+// the first captured frame is the frame submitted THAT boundary — i.e. still
+// rendered with the old pose, giving a baseline. Poll burst_done.json.
+
+struct BurstCommand {
+    bool valid = false;
+    int  frames = 16;
+    HeadPoseCommand pose;   // pose.valid == step the head pose at burst start
+};
+
+inline BurstCommand CheckBurstCommand() {
+    BurstCommand cmd;
+    std::string p = GetSimulatorDataPath() + "\\burst_command.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, p.c_str(), "r") != 0 || !f) return cmd;
+    char buf[512];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    buf[n] = 0;
+    fclose(f);
+    DeleteFileA(p.c_str());
+
+    json::Object o(buf);
+    if (!o.valid()) return cmd;
+    cmd.valid = true;
+    cmd.frames = (int)o.number("frames", 16.0f);
+    if (cmd.frames < 1) cmd.frames = 1;
+    if (cmd.frames > 64) cmd.frames = 64;
+    json::Object pose = o.object("pose");
+    if (pose.valid()) {
+        cmd.pose.valid = true;
+        cmd.pose.x = pose.number("x", 0.0f);
+        cmd.pose.y = pose.number("y", 1.7f);
+        cmd.pose.z = pose.number("z", 0.0f);
+        cmd.pose.yaw = pose.number("yaw", 0.0f);
+        cmd.pose.pitch = pose.number("pitch", 0.0f);
+        cmd.pose.hasRoll = pose.has("roll");
+        if (cmd.pose.hasRoll) cmd.pose.roll = pose.number("roll", 0.0f);
+    }
+    McpLogf("Burst command: frames=%d stepPose=%d", cmd.frames, cmd.pose.valid ? 1 : 0);
+    return cmd;
+}
+
+struct BurstFrameMeta {
+    uint32_t frame = 0;
+    float headYaw = 0, headPitch = 0, headRoll = 0;
+    float headX = 0, headY = 0, headZ = 0;
+    ProjLogEntry proj;      // app-submitted pose/FOV for this frame
+    double tMs = 0;
+};
+
+inline bool g_burstActive = false;
+inline int  g_burstTotal = 0;
+inline uint32_t g_burstW = 0, g_burstH = 0;
+inline std::vector<std::vector<uint8_t>> g_burstPixels;   // tight BGRX rows
+inline std::vector<BurstFrameMeta> g_burstMeta;
+inline ProjLogEntry g_lastProjEntry;   // most recent projection-layer submit
+
+inline void BurstStart(int frames) {
+    // Clear the previous burst's outputs so a poller can't mix runs.
+    std::string dataPath = GetSimulatorDataPath();
+    DeleteFileA((dataPath + "\\burst_done.json").c_str());
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA((dataPath + "\\burst_*.bmp").c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do { DeleteFileA((dataPath + "\\" + fd.cFileName).c_str()); } while (FindNextFileA(h, &fd));
+        FindClose(h);
+    }
+    DeleteFileA((dataPath + "\\burst_manifest.json").c_str());
+
+    g_burstPixels.clear();
+    g_burstMeta.clear();
+    g_burstPixels.reserve(frames);
+    g_burstMeta.reserve(frames);
+    g_burstTotal = frames;
+    g_burstW = 0;
+    g_burstH = 0;
+    g_burstActive = true;
+    McpLogf("Burst started: %d frames", frames);
+}
+
+inline void BurstFlush() {
+    g_burstActive = false;
+    std::string dataPath = GetSimulatorDataPath();
+    size_t n = g_burstMeta.size();
+    for (size_t i = 0; i < n; ++i) {
+        char name[64];
+        snprintf(name, sizeof(name), "burst_%03u.bmp", (unsigned)i);
+        SavePixelsToBMP(g_burstPixels[i].data(), g_burstW, g_burstH,
+                        (dataPath + "\\" + name).c_str(), (int)g_burstW * 4, true);
+    }
+
+    FILE* f = nullptr;
+    if (fopen_s(&f, (dataPath + "\\burst_manifest.json").c_str(), "w") == 0 && f) {
+        fprintf(f, "{\n  \"width\": %u,\n  \"height\": %u,\n  \"count\": %u,\n  \"frames\": [\n",
+                g_burstW, g_burstH, (unsigned)n);
+        for (size_t i = 0; i < n; ++i) {
+            const BurstFrameMeta& m = g_burstMeta[i];
+            fprintf(f, "    {\"i\": %u, \"file\": \"burst_%03u.bmp\", \"frame\": %u, \"t_ms\": %.2f, "
+                    "\"head\": {\"yaw\": %.4f, \"pitch\": %.4f, \"roll\": %.4f, \"x\": %.4f, \"y\": %.4f, \"z\": %.4f}, "
+                    "\"submitted\": {\"frame\": %u, \"qx\": %.6f, \"qy\": %.6f, \"qz\": %.6f, \"qw\": %.6f, "
+                    "\"x\": %.4f, \"y\": %.4f, \"z\": %.4f}}%s\n",
+                    (unsigned)i, (unsigned)i, m.frame, m.tMs,
+                    m.headYaw, m.headPitch, m.headRoll, m.headX, m.headY, m.headZ,
+                    m.proj.frame, m.proj.poseQx, m.proj.poseQy, m.proj.poseQz, m.proj.poseQw,
+                    m.proj.posX, m.proj.posY, m.proj.posZ,
+                    (i + 1 < n) ? "," : "");
+        }
+        fprintf(f, "  ]\n}\n");
+        fclose(f);
+    }
+
+    if (fopen_s(&f, (dataPath + "\\burst_done.json").c_str(), "w") == 0 && f) {
+        fprintf(f, "{\"count\": %u, \"width\": %u, \"height\": %u}\n", (unsigned)n, g_burstW, g_burstH);
+        fclose(f);
+    }
+
+    g_burstPixels.clear();
+    McpLogf("Burst flushed: %u frames (%ux%u)", (unsigned)n, g_burstW, g_burstH);
+}
+
+inline void BurstOnFrame(const uint8_t* bits, int w, int h, int stride, uint32_t frameCount,
+                         float headYaw, float headPitch, float headRoll,
+                         float headX, float headY, float headZ) {
+    if (!g_burstActive || !bits || w <= 0 || h <= 0) return;
+    if (g_burstW == 0) {
+        g_burstW = (uint32_t)w;
+        g_burstH = (uint32_t)h;
+    } else if (g_burstW != (uint32_t)w || g_burstH != (uint32_t)h) {
+        // Window resized mid-burst: flush what we have rather than mixing sizes.
+        BurstFlush();
+        return;
+    }
+
+    std::vector<uint8_t> frame((size_t)w * h * 4);
+    for (int y = 0; y < h; ++y) {
+        memcpy(frame.data() + (size_t)y * w * 4, bits + (size_t)y * stride, (size_t)w * 4);
+    }
+    g_burstPixels.push_back(std::move(frame));
+
+    BurstFrameMeta m;
+    m.frame = frameCount;
+    m.headYaw = headYaw; m.headPitch = headPitch; m.headRoll = headRoll;
+    m.headX = headX; m.headY = headY; m.headZ = headZ;
+    m.proj = g_lastProjEntry;
+    m.tMs = (double)GetTickCount64();
+    g_burstMeta.push_back(m);
+
+    if ((int)g_burstMeta.size() >= g_burstTotal) {
+        BurstFlush();
+    }
+}
+
+// Controller pose control structure for MCP
+// Allows setting right or left controller position/orientation and trigger
+struct ControllerPoseCommand {
+    bool valid = false;
+    int hand = 1;           // 0=left, 1=right
+    float posX = 0.2f;     // Position offset from head (head-local space)
+    float posY = -0.3f;
+    float posZ = -0.4f;
+    float yaw = 0.0f;      // Yaw offset relative to head
+    float pitch = -0.3f;   // Pitch offset relative to head
+    float trigger = 0.0f;  // 0.0-1.0 trigger value
+    bool triggerSet = false;
+    int  buttonA = -1;     // -1=unchanged, 0=released, 1=pressed
+};
+
+// Check for controller pose command from MCP
+// File format: {"hand": 1, "posX": 0.2, "posY": -0.3, "posZ": -0.4, "yaw": 0, "pitch": -0.3, "trigger": 0.0}
+inline ControllerPoseCommand CheckControllerPoseCommand() {
+    ControllerPoseCommand cmd;
+    std::string cmdPath = GetSimulatorDataPath() + "\\controller_pose_command.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, cmdPath.c_str(), "r") == 0 && f) {
+        char buf[512];
+        size_t n = fread(buf, 1, sizeof(buf)-1, f);
+        buf[n] = 0;
+        fclose(f);
+
+        // Delete the file after reading (one-shot command)
+        DeleteFileA(cmdPath.c_str());
+
+        json::Object o(buf);
+        if (!o.valid()) return cmd;
+
+        cmd.valid = true;
+        cmd.hand = o.number("hand", 1);
+        cmd.posX = o.number("posX", 0.2f);
+        cmd.posY = o.number("posY", -0.3f);
+        cmd.posZ = o.number("posZ", -0.4f);
+        cmd.yaw = o.number("yaw", 0.0f);
+        cmd.pitch = o.number("pitch", -0.3f);
+        cmd.trigger = o.number("trigger", -1.0f);
+        cmd.triggerSet = (cmd.trigger >= 0.0f);
+        if (!cmd.triggerSet) cmd.trigger = 0.0f;
+        cmd.buttonA = o.number("buttonA", -1);
+
+        McpLogf("Controller pose command: hand=%d pos(%.2f, %.2f, %.2f) yaw=%.2f pitch=%.2f trigger=%.1f",
+                cmd.hand, cmd.posX, cmd.posY, cmd.posZ, cmd.yaw, cmd.pitch, cmd.trigger);
+    }
+    return cmd;
+}
+
+// Write acknowledgment that command was processed
+inline void WriteCommandAck(const char* cmdType, bool success) {
+    std::string ackPath = GetSimulatorDataPath() + "\\command_ack.json";
+    FILE* f = nullptr;
+    if (fopen_s(&f, ackPath.c_str(), "w") == 0 && f) {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        fprintf(f, "{\n");
+        fprintf(f, "  \"timestamp\": \"%04d-%02d-%02dT%02d:%02d:%02d.%03d\",\n",
+                st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+        fprintf(f, "  \"command\": \"%s\",\n", cmdType);
+        fprintf(f, "  \"success\": %s\n", success ? "true" : "false");
+        fprintf(f, "}\n");
+        fclose(f);
+    }
+}
+
+} // namespace mcp

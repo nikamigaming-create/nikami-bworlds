@@ -6,3 +6,8 @@
 *.py text eol=lf
 *.patch text eol=lf -whitespace
 *.diff text eol=lf
+
+# Retain the upstream OpenXR Simulator snapshot byte-for-byte apart from the
+# documented portability hook; upstream contains intentional/legacy trailing
+# whitespace, so it is not a local whitespace-policy violation.
+tools/openxr-simulator/** -whitespace
