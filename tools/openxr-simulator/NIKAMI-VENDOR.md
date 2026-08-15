@@ -16,6 +16,12 @@ upstream `%LOCALAPPDATA%\\OpenXR-Simulator` data location.  When omitted, the
 upstream default remains unchanged.  This keeps unattended per-run status,
 commands, and native screenshots out of a machine-specific path.
 
+`OPENXR_SIMULATOR_SKIP_MIRROR=1` keeps normal diagnostic frames out of the
+desktop compositor while retaining OpenXR stereo submission and runtime status.
+An explicit screenshot or burst request still renders its requested frame.  It
+exists to isolate an application's compositor startup incompatibility; it is
+not proof of rendered hand or Pip-Boy visuals.
+
 Build products are deliberately ignored.  Use
 `scripts/Build-OpenXRSimulator.ps1`; it writes a runtime deployment only under
 `local/openxr-simulator` and never changes Windows' active OpenXR runtime.

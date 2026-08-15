@@ -146,6 +146,18 @@ static const bool g_logVerbose = []() {
     return n > 0 && n < sizeof(v) && v[0] != '0';
 }();
 
+// OpenMW's D3D11 startup path must be able to run without a desktop mirror.
+// This isolates runtime/session behavior from compositor work and makes a
+// headless diagnostic run safe when an application has a compositor-specific
+// startup stall. Screenshot and burst requests deliberately re-enable the
+// mirror for the requested frame.
+static const bool g_skipDesktopMirror = []() {
+    char v[16]{};
+    const DWORD n = GetEnvironmentVariableA("OPENXR_SIMULATOR_SKIP_MIRROR", v, (DWORD)sizeof(v));
+    return n > 0 && n < sizeof(v) &&
+           (_stricmp(v, "1") == 0 || _stricmp(v, "true") == 0 || _stricmp(v, "yes") == 0 || _stricmp(v, "on") == 0);
+}();
+
 static void EnsureLogFile() {
     if (g_LogFile) return;
     char base[MAX_PATH]{};
@@ -7222,7 +7234,8 @@ static XrResult XRAPI_PTR xrEndFrame_runtime(XrSession, const XrFrameEndInfo* in
     // hangs off it (see g_previewDueThisFrame). A pending screenshot or a running burst
     // overrides the cap - both asked for a particular frame, not for the next one the rate
     // happens to allow, and with the mirror off there would be no next one.
-    g_previewDueThisFrame = ui::PreviewFrameDue() || mcp::g_screenshotRequested || mcp::g_burstActive;
+    g_previewDueThisFrame = (!g_skipDesktopMirror && ui::PreviewFrameDue()) ||
+                            mcp::g_screenshotRequested || mcp::g_burstActive;
 
     // Order the app's Vulkan queue against the compositor's D3D12 queue. Skipped when the
     // mirror is not due this frame: nothing reads the app's images then.
