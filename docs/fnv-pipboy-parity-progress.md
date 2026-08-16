@@ -1,5 +1,12 @@
 # FNV Pip-Boy and Inventory Parity Progress
 
+> Historical engineering snapshot (last updated 2026-08-02). Paths, commits,
+> runtimes, and next actions below describe that captured state and must not be
+> used as current launch instructions. Current source ownership and repository
+> rules are in the root `README.md`; current unattended VR proof uses the
+> repository-relative `PipBoyVR` recipe in
+> `docs/fnv-jam-background-capture.md`.
+
 Long-running real-save/fast-travel execution queue:
 `docs/fnv-real-save-pipboy-fast-travel-luna-max-plan.md`.
 

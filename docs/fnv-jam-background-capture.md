@@ -315,6 +315,38 @@ the final TestMap01 placement did not occur, any panel is missing, a
 loadout cannot be resolved. No Windows input, focus operation, click, or
 console command reaches the game.
 
+## Live Pip-Boy VR interaction proof
+
+Run the matching VR slice immediately after the flat Pip-Boy showcase. This
+route launches `openmw_vr.exe` against the repo-local OpenXR simulator, keeps
+the Pip-Boy powered on the left wrist, and drives the production right-finger
+ray through Knife, Varmint Rifle, and 9mm Pistol selection. It then exercises
+the ordinary melee, reload, and fire paths. The firearm sockets must report a
+forward barrel convention and the knife must report its separate forward blade
+convention.
+
+Run it only through the canonical entry point and pass the staged VR runtime;
+the command is repository-relative and does not depend on a drive letter:
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario PipBoyVR `
+  -OpeningRuntimeRoot '<staged VR runtime>' `
+  -RuntimeReady -RequireIdle
+
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target OpenMW -Scenario PipBoyVR `
+  -OpeningRuntimeRoot '<staged VR runtime>' `
+  -OutputRoot .\run\opennv-vr-pipboy-weapons-<unique>
+```
+
+The runner retains every projection-eye BMP, the simulator telemetry, the
+profile-local OpenMW log, the live Pip-Boy RTT, hashes, a contact sheet, and a
+short square MP4 encoded only from those native frames. The report rejects a
+missing screen binding, wrong pointer row, failed inventory mutation, wrong
+weapon convention, failed reload/fire/melee action, incomplete source-frame
+sequence, static capture, or any Windows app control or foreground input.
+
 ## Authored opening comparison route
 
 The opening route is a separate, declared OpenMW TTW capture scenario. It is
@@ -394,8 +426,10 @@ If a run aborts, wait for the scoped game process to exit, confirm the retail
 preferences/plugin list were restored, and start again with a new directory.
 Never delete or overwrite the failed evidence while diagnosing it.
 
-Known-good anchors are recorded in the recipe catalog. They prove the workflow,
-but they do not waive preflight for a new run.
+Known-good anchors are optional entries in the recipe catalog. They may name
+only retained evidence directories that exist in this checkout; stale paths
+must be removed rather than treated as proof. Anchors never waive preflight
+for a new run.
 
 ## Validator boundary
 

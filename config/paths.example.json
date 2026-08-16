@@ -4,6 +4,7 @@
   "openmwBuild": "X:/path/to/external/openmw-source/MSVC2022_64",
   "openmwBinaryRoot": "local/openmw-pristine-mads-33568a",
   "openmwResources": "local/openmw-pristine-mads-33568a/resources",
+  "godotBinary": "X:/path/to/Godot.exe",
   "fnvRoot": "X:/path/to/fnv-modlist-or-launcher-root",
   "falloutNewVegasData": "X:/path/to/Fallout New Vegas/Data",
   "fnvDataPaths": [

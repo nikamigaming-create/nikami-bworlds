@@ -60,6 +60,7 @@ Then edit `local/paths.json`, or set the equivalent environment variables:
 - `NIKAMI_OPENMW_BUILD`
 - `NIKAMI_OPENMW_BINARY_ROOT` (legacy only; ordinary launches are locked to `local/openmw-current`)
 - `NIKAMI_OPENMW_RESOURCES` (legacy only; generated profiles are locked to `local/openmw-current/resources`)
+- `NIKAMI_GODOT_BINARY`
 - `NIKAMI_FNV_ROOT`
 - `NIKAMI_FNV_DATA_PATHS` (semicolon-separated OpenMW-ready loose mod data roots)
 - `NIKAMI_STEAM_APPS_ROOTS`
@@ -213,6 +214,18 @@ See [fnv-jam-background-capture.md](docs/fnv-jam-background-capture.md) for the
 exact capture mechanisms, invariants, recovery procedure, and failure
 signatures. The machine-readable recipes live in
 `catalog/fnv-jam-background-capture-recipes.json`.
+
+For the paired live wrist-Pip-Boy VR slice, pass any staged runtime containing
+`openmw_vr.exe`; no drive-specific path is baked into the workflow:
+
+```powershell
+$vrRuntime = (Resolve-Path '<staged-vr-runtime>').Path
+.\scripts\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW `
+  -Scenario PipBoyVR -OpeningRuntimeRoot $vrRuntime -RuntimeReady -RequireIdle
+.\scripts\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW `
+  -Scenario PipBoyVR -OpeningRuntimeRoot $vrRuntime `
+  -OutputRoot .\run\opennv-vr-pipboy-weapons-<unique>
+```
 
 ## Current Feasibility
 

@@ -6,10 +6,16 @@ param(
     [string]$BinaryRoot = "",
     [string]$BridgeRoot = "",
     [switch]$AllowCandidateRuntime,
+    [switch]$DiagnosticCandidate,
     [switch]$Background,
     [switch]$DisableNavigationMesh,
     [switch]$ForceOpenGlSwapchain,
     [switch]$UseRepoOpenXRSimulator,
+    [switch]$UseLegacyVrCalibration,
+    [switch]$StaticizedHandDiagnostics,
+    [switch]$ControllerPoseDiagnostics,
+    [switch]$InteractionProofLoadout,
+    [string]$PipBoyRttCapturePath = "",
     [string]$SimulatorDataDirectory = "",
     [ValidateSet("INFO", "VERBOSE")]
     [string]$LogLevel = "INFO",
@@ -42,18 +48,6 @@ function Assert-OrCreateJunction([string]$Path, [string]$Target) {
     New-Item -ItemType Junction -Path $Path -Target $targetPath | Out-Null
 }
 
-function Assert-OrCreateHardLink([string]$Path, [string]$Target) {
-    if (Test-Path -LiteralPath $Path) {
-        $left = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
-        $right = (Get-FileHash -Algorithm SHA256 -LiteralPath $Target).Hash
-        if ($left -cne $right) {
-            throw "VR bridge launcher differs from Mads's launcher: $Path"
-        }
-        return
-    }
-    New-Item -ItemType HardLink -Path $Path -Target $Target | Out-Null
-}
-
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $FnvRoot = Resolve-NikamiPath `
     -ParameterValue $FnvRoot `
@@ -63,6 +57,9 @@ $FnvRoot = Resolve-NikamiPath `
     -Description "Mads-calibrated FNV/OpenMW VR root"
 if ($AllowCandidateRuntime -and [string]::IsNullOrWhiteSpace($BinaryRoot)) {
     throw "Candidate runtime mode requires -BinaryRoot so the exact staged VR package is explicit."
+}
+if ($DiagnosticCandidate -and -not $AllowCandidateRuntime) {
+    throw "-DiagnosticCandidate is only valid with an explicitly selected candidate runtime."
 }
 $runtimeResolution = @{ ParameterValue = $BinaryRoot }
 if (-not $AllowCandidateRuntime) {
@@ -100,13 +97,11 @@ if ($UseRepoOpenXRSimulator) {
     }
 }
 
-$madsLauncher = Join-Path $FnvRoot "run_vr.bat"
 $madsConfig = Join-Path $FnvRoot "openmw-config"
-$madsData = Join-Path $madsConfig "data"
 $parityExe = Join-Path $BinaryRoot "openmw_vr.exe"
 $parityResources = Join-Path $BinaryRoot "resources"
 
-foreach ($required in @($madsLauncher, $madsConfig, $madsData, $parityExe, $parityResources)) {
+foreach ($required in @($madsConfig, $parityExe, $parityResources)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "Missing required FNV VR input: $required"
     }
@@ -125,6 +120,10 @@ if ($AllowCandidateRuntime) {
     if ($actualVrSha256 -ine [string]$candidateManifest.runtime.openmwVrSha256) {
         throw "Candidate OpenMW VR hash differs from its manifest: $parityExe"
     }
+    $requiredReleaseStatus = "flat-and-vr-simulator-verified"
+    if ([string]$candidateManifest.status -ine $requiredReleaseStatus -and -not $DiagnosticCandidate) {
+        throw "Candidate runtime is not release-verified (status '$($candidateManifest.status)'). Refusing a normal VR launch. Use -DiagnosticCandidate only for unattended repair work; publish paired flat and simulator-VR evidence before player testing."
+    }
 }
 if ((Get-NormalizedPath $parityResources) -ine (Get-NormalizedPath $ResourcesRoot)) {
     throw "Parity binary and resources must come from the same packaged runtime."
@@ -138,22 +137,64 @@ if ($running.Count -gt 0) {
 $bridgeBuildRoot = Join-Path $BridgeRoot "openmw-source\MSVC2022_64"
 $bridgeRelease = Join-Path $bridgeBuildRoot "Release"
 $bridgeConfig = Join-Path $BridgeRoot "openmw-config"
-$bridgeData = Join-Path $bridgeConfig "data"
-$bridgeLauncher = Join-Path $BridgeRoot "run_vr.bat"
 $bridgeSaves = Join-Path $bridgeConfig "saves\player - 1"
 $disabledStartupScript = Join-Path $bridgeConfig "natural-play-no-startup-script.txt"
 
 New-Item -ItemType Directory -Path $BridgeRoot, $bridgeBuildRoot, $bridgeConfig, $bridgeSaves -Force | Out-Null
 Assert-OrCreateJunction -Path $bridgeRelease -Target $BinaryRoot
-Assert-OrCreateJunction -Path $bridgeData -Target $madsData
-Assert-OrCreateHardLink -Path $bridgeLauncher -Target $madsLauncher
 
-foreach ($name in @("openmw.cfg", "settings.cfg", "input_v3.xml", "player_storage.bin", "global_storage.bin", "shaders.yaml")) {
-    $source = Join-Path $madsConfig $name
-    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-        throw "Missing Mads VR configuration input: $source"
+$madsOpenmwConfig = Join-Path $madsConfig "openmw.cfg"
+$madsInput = Join-Path $madsConfig "input_v3.xml"
+foreach ($requiredConfig in @($madsOpenmwConfig, $madsInput)) {
+    if (-not (Test-Path -LiteralPath $requiredConfig -PathType Leaf)) {
+        throw "Missing Mads VR configuration input: $requiredConfig"
     }
-    Copy-Item -LiteralPath $source -Destination (Join-Path $bridgeConfig $name) -Force
+}
+$sourceDataEntries = @(
+    [Text.RegularExpressions.Regex]::Matches([IO.File]::ReadAllText($madsOpenmwConfig), '(?m)^data=(.+)$') |
+        ForEach-Object { $_.Groups[1].Value.Trim() } |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_ "FalloutNV.esm") -PathType Leaf }
+)
+if ($sourceDataEntries.Count -ne 1) {
+    throw "VR launch must resolve exactly one Fallout New Vegas Data directory from its source profile; found $($sourceDataEntries.Count)."
+}
+
+# The old VR profile is a Morrowind-era working profile.  Its inherited VFS,
+# settings, and storage can replace FNV textures (including binding stars to
+# world meshes).  Generate the same isolated FNV profile used by flat proof,
+# then retain only the controller map. The legacy [VR] calibration can be
+# explicitly enabled for comparison, but is never inherited by default.
+# All generated paths are repository-relative to this launch.
+$profileKey = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($BridgeRoot))).Substring(0, 16).ToLowerInvariant()
+$generatedProfile = Join-Path $repoRoot "profiles\_verification\vr-launch-$profileKey"
+$generatedCampaign = Join-Path $repoRoot "profiles\_verification\_campaigns\vr-launch-$profileKey\userdata"
+$profileInitializer = Join-Path $PSScriptRoot "Initialize-OpenNVBaseProfile.ps1"
+$generated = & $profileInitializer `
+    -FalloutNewVegasData $sourceDataEntries[0] `
+    -ProfileDirectory $generatedProfile `
+    -CampaignUserdataDirectory $generatedCampaign `
+    -BinaryRoot $BinaryRoot `
+    -Force
+if (-not [bool]$generated.launchable) {
+    throw "Could not prepare isolated FNV VR profile: $generatedProfile"
+}
+foreach ($name in @("openmw.cfg", "settings.cfg")) {
+    Copy-Item -LiteralPath (Join-Path $generatedProfile $name) -Destination (Join-Path $bridgeConfig $name) -Force
+}
+Copy-Item -LiteralPath $madsInput -Destination (Join-Path $bridgeConfig "input_v3.xml") -Force
+if ($UseLegacyVrCalibration) {
+    $madsSettings = Join-Path $madsConfig "settings.cfg"
+    if (-not (Test-Path -LiteralPath $madsSettings -PathType Leaf)) {
+        throw "Missing optional legacy VR calibration source: $madsSettings"
+    }
+    $legacyVrSection = [Text.RegularExpressions.Regex]::Match(
+        [IO.File]::ReadAllText($madsSettings), '(?ms)^\[VR\]\s*.*?(?=^\[|\z)').Value.Trim()
+    if (-not [string]::IsNullOrWhiteSpace($legacyVrSection)) {
+        [IO.File]::AppendAllText(
+            (Join-Path $bridgeConfig "settings.cfg"),
+            [Environment]::NewLine + [Environment]::NewLine + $legacyVrSection + [Environment]::NewLine,
+            [Text.UTF8Encoding]::new($false))
+    }
 }
 
 if ($DisableNavigationMesh) {
@@ -226,6 +267,16 @@ $configText = [IO.File]::ReadAllText($bridgeOpenmwConfig)
 if ($configText -notmatch '(?m)^resources=.*$') {
     throw "Mads VR configuration has no resources entry: $bridgeOpenmwConfig"
 }
+# The generated profile has exactly one validated FNV mount.  Reject any
+# unexpected addition instead of rewriting mount order at launch time.
+$generatedDataEntries = @(
+    [Text.RegularExpressions.Regex]::Matches($configText, '(?m)^data=(.+)$') |
+        ForEach-Object { $_.Groups[1].Value.Trim() }
+)
+if ($generatedDataEntries.Count -ne 1 -or
+    -not (Test-Path -LiteralPath (Join-Path $generatedDataEntries[0] "FalloutNV.esm") -PathType Leaf)) {
+    throw "Generated VR profile must contain exactly one valid Fallout New Vegas Data mount."
+}
 $resourceValue = (Get-NormalizedPath $ResourcesRoot).Replace('\', '/')
 $configText = [Text.RegularExpressions.Regex]::Replace(
     $configText,
@@ -246,32 +297,74 @@ if (Test-Path -LiteralPath $disabledStartupScript) {
     throw "Reserved no-injection startup path unexpectedly exists: $disabledStartupScript"
 }
 
-$argsList = [Collections.Generic.List[string]]::new()
-if ($DryRun) {
-    $argsList.Add("dryrun")
-}
-$argsList.Add("nopause")
-if ($AutoCaptureFrames -gt 0) {
-    $argsList.Add("debugimage")
-}
+$openMwArguments = [Collections.Generic.List[string]]::new()
+$openMwArguments.Add("--replace")
+$openMwArguments.Add("config")
+$openMwArguments.Add("--config")
+$openMwArguments.Add($bridgeConfig)
+$openMwArguments.Add("--resources")
+$openMwArguments.Add($parityResources)
+$openMwArguments.Add("--user-data")
+$openMwArguments.Add($bridgeConfig)
+$openMwArguments.Add("--skip-menu")
 if ([string]::IsNullOrWhiteSpace($LoadSavegame)) {
-    $argsList.Add("nosave")
+    $openMwArguments.Add("--start")
+    $openMwArguments.Add("Goodsprings")
 } else {
     $savePath = Get-NormalizedPath $LoadSavegame
     if (-not (Test-Path -LiteralPath $savePath -PathType Leaf)) {
         throw "Requested FNV VR save does not exist: $savePath"
     }
-    $argsList.Add("savefile")
-    $argsList.Add($savePath)
+    $openMwArguments.Add("--load-savegame")
+    $openMwArguments.Add($savePath)
 }
 
-Write-Host "FNV VR runtime: current parity build with Mads's unchanged VR calibration"
+Write-Host "FNV VR runtime: staged executable with an isolated FNV profile"
 Write-Host "Exe:     $parityExe"
 Write-Host "Config:  $bridgeConfig"
 Write-Host "Start:   $(if ([string]::IsNullOrWhiteSpace($LoadSavegame)) { 'fresh authored Goodsprings' } else { $LoadSavegame })"
 Write-Host "Safety:  no generic main menu, no proof save, no startup script"
+if ($DiagnosticCandidate) {
+    Write-Warning "Diagnostic candidate only: this runtime is not eligible for player testing."
+}
 
+$launch = $null
 $savedEnvironment = @{}
+$vrRigDefaults = [ordered]@{
+    OPENMW_FNV_PIPBOY_ROT_X = "0"
+    OPENMW_FNV_PIPBOY_ROT_Y = "0"
+    OPENMW_FNV_PIPBOY_ROT_Z = "90"
+    OPENMW_FNV_PIPBOY_OFFSET_X = "-3"
+    OPENMW_FNV_PIPBOY_OFFSET_Y = "-13"
+    OPENMW_FNV_PIPBOY_OFFSET_Z = "-6.5"
+    OPENMW_FNV_PIPBOY_SOCKET_MODEL_X = "17.0616"
+    OPENMW_FNV_RIGHT_PIPBOY_CALIBRATION = "0"
+    OPENMW_FNV_HAND_ROT_X = "90"
+    OPENMW_FNV_HAND_ROT_Y = "0"
+    OPENMW_FNV_HAND_ROT_Z = "0"
+    OPENMW_FNV_HAND_OFFSET_X = "0"
+    OPENMW_FNV_HAND_OFFSET_Y = "0"
+    OPENMW_FNV_HAND_OFFSET_Z = "0"
+    OPENMW_FNV_LEFT_HAND_ROT_Y = "-90"
+    OPENMW_FNV_RIGHT_HAND_ROT_Y = "90"
+    OPENMW_FNV_LEFT_HAND_ROT_Z = "-25"
+    OPENMW_FNV_RIGHT_HAND_ROT_Z = "25"
+    OPENMW_FNV_LEFT_HAND_SOCKET_X = "1.5"
+    OPENMW_FNV_LEFT_HAND_SOCKET_Y = "-2"
+    OPENMW_FNV_LEFT_HAND_SOCKET_Z = "-2"
+    OPENMW_FNV_RIGHT_HAND_SOCKET_X = "1.5"
+    OPENMW_FNV_RIGHT_HAND_SOCKET_Y = "-2"
+    OPENMW_FNV_RIGHT_HAND_SOCKET_Z = "-2"
+    OPENMW_FNV_LEFT_HAND_SOLVE_ROLL = "-5"
+    OPENMW_FNV_RIGHT_HAND_SOLVE_ROLL = "-5"
+    OPENMW_FNV_VR_HAND_SKINNING_MODE = "invBindThenSkeleton"
+    OPENMW_FNV_VR_FINGER_CURL_ENABLE = "1"
+    OPENMW_FNV_VR_INDEX_CURL_DEGREES = "55"
+    OPENMW_FNV_VR_GRIP_CURL_DEGREES = "68"
+    OPENMW_FNV_VR_THUMB_CURL_DEGREES = "42"
+    OPENMW_FNV_VR_FINGER_CHAIN_POSE = "1"
+    OPENMW_FNV_VR_GRIP_FALLBACK_TO_TRIGGER = "1"
+}
 foreach ($name in @(
     "OPENMW_STARTUP_SCRIPT",
     "OPENMW_BACKGROUND_LAUNCH",
@@ -279,11 +372,32 @@ foreach ($name in @(
     "OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY",
     "OPENMW_FNVXR_RETAIL_SURFACE",
     "OPENMW_FNV_VR_DEBUG_SNAPSHOT_AUTO_FRAMES",
-    "OPENMW_BACKGROUND_LAUNCH",
+    "OPENMW_FNV_VR_STATICIZED_HANDS",
+    "OPENMW_FNV_VR_CONTROLLER_DEBUG_AXES",
+    "OPENMW_FNV_VR_HAND_TRACKING_LOG",
     "XR_RUNTIME_JSON",
-    "OPENXR_SIMULATOR_DATA_DIR"
+    "OPENXR_SIMULATOR_DATA_DIR",
+    "OPENXR_SIMULATOR_LOG_PATH",
+    "OPENXR_SIMULATOR_HEADLESS",
+    "OPENXR_SIMULATOR_DESKTOP_PREVIEW"
 )) {
     $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+}
+# A previous developer launcher can leave FNV/VR tuning in the parent shell.
+# Do not let an opaque inherited override change this reproducible profile.
+$inheritedFnvOverrides = @(Get-ChildItem Env: | Where-Object {
+    $_.Name -like "OPENMW_FNV_*" -or $_.Name -like "OPENMW_FNVXR_*"
+})
+foreach ($entry in $inheritedFnvOverrides) {
+    if (-not $savedEnvironment.ContainsKey($entry.Name)) {
+        $savedEnvironment[$entry.Name] = [string]$entry.Value
+    }
+    [Environment]::SetEnvironmentVariable($entry.Name, $null, "Process")
+}
+foreach ($name in $vrRigDefaults.Keys) {
+    if (-not $savedEnvironment.ContainsKey($name)) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+    }
 }
 
 Push-Location $BridgeRoot
@@ -294,16 +408,50 @@ try {
     $env:OPENMW_WORLD_VIEWER_ACTOR_TELEMETRY = "0"
     $env:OPENMW_FNVXR_RETAIL_SURFACE = "0"
     $env:OPENMW_FNV_VR_DEBUG_SNAPSHOT_AUTO_FRAMES = $AutoCaptureFrames.ToString([Globalization.CultureInfo]::InvariantCulture)
+    $env:OPENMW_FNV_VR_STATICIZED_HANDS = if ($StaticizedHandDiagnostics) { "1" } else { "0" }
+    $env:OPENMW_FNV_VR_CONTROLLER_DEBUG_AXES = if ($ControllerPoseDiagnostics) { "1" } else { "0" }
+    $env:OPENMW_FNV_VR_HAND_TRACKING_LOG = if ($ControllerPoseDiagnostics) { "1" } else { "0" }
+    foreach ($entry in $vrRigDefaults.GetEnumerator()) {
+        [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, "Process")
+    }
+    if ($InteractionProofLoadout) {
+        # Populate the normal player InventoryStore with named FalloutNV.esm
+        # records, without enabling the flat showcase scheduler or fake items.
+        $env:OPENMW_FNV_PIPBOY_SHOWCASE_LOADOUT = "1"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PipBoyRttCapturePath)) {
+        $resolvedRttCapturePath = [IO.Path]::GetFullPath($PipBoyRttCapturePath)
+        New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($resolvedRttCapturePath)) -Force | Out-Null
+        $env:OPENMW_FNV_PIPBOY_RTT_CAPTURE_PATH = $resolvedRttCapturePath
+    }
     $env:OPENMW_BACKGROUND_LAUNCH = if ($Background) { "1" } else { "0" }
     if ($UseRepoOpenXRSimulator) {
         New-Item -ItemType Directory -Path $SimulatorDataDirectory -Force | Out-Null
         $env:XR_RUNTIME_JSON = $repoSimulatorManifest
         $env:OPENXR_SIMULATOR_DATA_DIR = $SimulatorDataDirectory
+        $env:OPENXR_SIMULATOR_LOG_PATH = Join-Path $SimulatorDataDirectory "runtime.log"
+        $env:OPENXR_SIMULATOR_HEADLESS = "1"
+        $env:OPENXR_SIMULATOR_DESKTOP_PREVIEW = "1"
         Write-Host "OpenXR: repo-local simulator (per-process; Windows active runtime unchanged)"
         Write-Host "Simulator data: $SimulatorDataDirectory"
     }
-    & $env:ComSpec /d /c run_vr.bat @($argsList.ToArray())
-    $launcherExitCode = $LASTEXITCODE
+    if ($StaticizedHandDiagnostics) {
+        Write-Warning "Hand mesh normalization diagnostic enabled for this isolated simulator launch."
+    }
+    if ($ControllerPoseDiagnostics) {
+        Write-Warning "Controller transform diagnostic enabled for this isolated simulator launch."
+    }
+    if ($DryRun) {
+        Write-Host "Command: $parityExe $($openMwArguments -join ' ')"
+        $launcherExitCode = 0
+    } else {
+        $launch = Start-Process -FilePath $parityExe `
+            -ArgumentList @($openMwArguments.ToArray()) `
+            -WorkingDirectory $BinaryRoot `
+            -PassThru
+        $launcherExitCode = 0
+        Write-Host "Launching OpenMW VR directly (no legacy batch environment): PID $($launch.Id)."
+    }
 }
 finally {
     Pop-Location
@@ -319,19 +467,27 @@ if ($DryRun) {
     exit 0
 }
 
-$live = @(Get-CimInstance Win32_Process | Where-Object {
-    $_.Name -ieq "openmw_vr.exe" -and $_.CommandLine -notmatch '^--crash-monitor'
-})
-if ($live.Count -eq 0) {
-    throw "FNV parity VR did not remain running. See $bridgeConfig\openmw.log"
+$logPath = Join-Path $bridgeConfig "openmw.log"
+$readyDeadline = (Get-Date).AddSeconds(45)
+$rigReady = $false
+do {
+    $live = Get-Process -Id $launch.Id -ErrorAction SilentlyContinue
+    if ($null -eq $live) {
+        throw "FNV parity VR exited before its tracked rig became ready. See $logPath"
+    }
+    if ((Test-Path -LiteralPath $logPath -PathType Leaf) -and
+        (Select-String -LiteralPath $logPath -Pattern 'OpenMW VR player rig status=ready' -Quiet)) {
+        $rigReady = $true
+        break
+    }
+    Start-Sleep -Milliseconds 250
+} while ((Get-Date) -lt $readyDeadline)
+if (-not $rigReady) {
+    throw "FNV parity VR started but did not report its tracked hand/Pip-Boy rig ready within 45 seconds. See $logPath"
 }
-if ($launcherExitCode -ne 0) {
-    Write-Warning "Mads's batch monitor returned $launcherExitCode after launch, but the parity VR process is alive."
-}
-
-Write-Host "FNV parity VR is running as PID $($live[0].ProcessId)."
+Write-Host "FNV parity VR tracked rig is ready as PID $($launch.Id)."
 if ($Wait) {
-    $process = Get-Process -Id $live[0].ProcessId
+    $process = Get-Process -Id $launch.Id
     $process.WaitForExit()
     exit $process.ExitCode
 }

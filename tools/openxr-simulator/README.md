@@ -1,5 +1,12 @@
 # OpenXR Simulator
 
+> **Nikami integration:** this file retains the upstream standalone-runtime
+> documentation. Nikami does **not** register this as Windows' active OpenXR
+> runtime and does not use its mouse/keyboard preview controls for evidence.
+> Use the repo-local, per-process workflow in [NIKAMI-VENDOR.md](NIKAMI-VENDOR.md)
+> and the canonical `PipBoyVR` recipe in
+> [../../docs/fnv-jam-background-capture.md](../../docs/fnv-jam-background-capture.md).
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Windows-blue)](https://github.com)
 [![OpenXR](https://img.shields.io/badge/OpenXR-1.0-green)](https://www.khronos.org/openxr/)
@@ -32,7 +39,7 @@ A lightweight OpenXR runtime that enables VR applications to run in a desktop wi
 
 ### Installation
 
-1. Download the latest release from the [Releases](https://github.com/yourusername/OpenXR-Simulator/releases) page
+1. Download the latest release from the [Releases](https://github.com/elliotttate/OpenXR-Simulator/releases) page
 2. Extract the archive to your preferred location
 3. Run PowerShell as Administrator
 4. Navigate to the `scripts` folder
@@ -72,7 +79,7 @@ cd C:\Path\To\OpenXR-Simulator\scripts
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/OpenXR-Simulator.git
+git clone https://github.com/elliotttate/OpenXR-Simulator.git
 cd OpenXR-Simulator
 ```
 
@@ -280,9 +287,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/OpenXR-Simulator/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/OpenXR-Simulator/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/OpenXR-Simulator/wiki)
+- **Issues**: [GitHub Issues](https://github.com/elliotttate/OpenXR-Simulator/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/elliotttate/OpenXR-Simulator/discussions)
+- **Documentation**: [Wiki](https://github.com/elliotttate/OpenXR-Simulator/wiki)
 
 ## 🗺️ Roadmap
 

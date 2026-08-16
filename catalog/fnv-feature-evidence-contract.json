@@ -1,0 +1,23 @@
+{
+  "schema": "nikami-fnv-feature-evidence-contract/v1",
+  "releaseStatus": "flat-and-vr-simulator-verified",
+  "portablePathsOnly": true,
+  "requiredFeatureOrder": [
+    "world-rendering",
+    "tracked-hands",
+    "pip-boy-map-and-inventory",
+    "equipped-weapon",
+    "weapon-fire-and-reload"
+  ],
+  "requiredEvidenceForEachFeature": [
+    "flat",
+    "simulator-vr"
+  ],
+  "requiredArtifactsForEachMode": [
+    "native-source-frames",
+    "mobile-video",
+    "telemetry"
+  ],
+  "ordering": "A VR simulator proof may only be accepted after the matching flat proof for the same runtime hash and feature.",
+  "candidatePolicy": "Only a candidate whose manifest status equals releaseStatus may be launched for player testing. Pending candidates require the explicit diagnostic launch switch."
+}

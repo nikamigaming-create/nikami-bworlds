@@ -146,6 +146,21 @@ static const bool g_logVerbose = []() {
     return n > 0 && n < sizeof(v) && v[0] != '0';
 }();
 
+static bool EnvEnabled(const char* name) {
+    char value[16]{};
+    const DWORD length = GetEnvironmentVariableA(name, value, (DWORD)sizeof(value));
+    return length > 0 && length < sizeof(value) &&
+           (_stricmp(value, "1") == 0 || _stricmp(value, "true") == 0 ||
+            _stricmp(value, "yes") == 0 || _stricmp(value, "on") == 0);
+}
+
+// File-IPC runs do not need a desktop window to establish an OpenXR session.  In
+// particular, creating a DXGI preview before an OpenMW D3D11 eye swapchain makes
+// the driver serialize both allocations and can wedge startup.  A requested
+// screenshot may still create a preview later when desktop preview is enabled.
+static const bool g_headless = EnvEnabled("OPENXR_SIMULATOR_HEADLESS");
+static const bool g_desktopPreview = EnvEnabled("OPENXR_SIMULATOR_DESKTOP_PREVIEW");
+
 // OpenMW's D3D11 startup path must be able to run without a desktop mirror.
 // This isolates runtime/session behavior from compositor work and makes a
 // headless diagnostic run safe when an application has a compositor-specific
@@ -160,6 +175,19 @@ static const bool g_skipDesktopMirror = []() {
 
 static void EnsureLogFile() {
     if (g_LogFile) return;
+    // A repo-owned caller can direct diagnostics into its per-run capture directory.
+    // This avoids binding troubleshooting evidence to a particular Windows profile.
+    char configuredPath[MAX_PATH]{};
+    const DWORD configuredLen = GetEnvironmentVariableA(
+        "OPENXR_SIMULATOR_LOG_PATH", configuredPath, (DWORD)sizeof(configuredPath));
+    if (configuredLen > 0 && configuredLen < sizeof(configuredPath)) {
+        g_LogFile = _fsopen(configuredPath, "a", _SH_DENYNO);
+        if (g_LogFile) {
+            setvbuf(g_LogFile, nullptr, _IOFBF, 64 * 1024);
+            return;
+        }
+        OutputDebugStringA("[SimXR] could not open OPENXR_SIMULATOR_LOG_PATH; using fallback log path\n");
+    }
     char base[MAX_PATH]{};
     DWORD len = GetEnvironmentVariableA("LOCALAPPDATA", base, (DWORD)sizeof(base));
     char path[MAX_PATH]{};
@@ -671,6 +699,7 @@ struct ControllerState {
     XrVector3f posOffset;  // Offset from head position (in head-local space)
     float yawOffset;       // Additional yaw relative to head
     float pitchOffset;     // Additional pitch relative to head
+    float rollOffset;      // Additional roll relative to head
     bool isTracking;       // Whether controller is "tracked"
 
     // Input state for button/trigger emulation
@@ -692,13 +721,13 @@ struct ControllerState {
     float prevPitch;            // Previous pitch for angular velocity
 };
 static ControllerState g_leftController = {
-    {-0.2f, -0.3f, -0.4f}, 0.0f, -0.3f, true,  // Position/orientation
+    {-0.2f, -0.3f, -0.4f}, 0.0f, -0.3f, 0.0f, true,  // Position/orientation
     false, false, false, false, false, false,   // Button states
     0.0f, 0.0f, {0.0f, 0.0f},                   // Analog values
     {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f  // Velocity tracking
 };
 static ControllerState g_rightController = {
-    {0.2f, -0.3f, -0.4f}, 0.0f, -0.3f, true,   // Position/orientation
+    {0.2f, -0.3f, -0.4f}, 0.0f, -0.3f, 0.0f, true,   // Position/orientation
     false, false, false, false, false, false,   // Button states
     0.0f, 0.0f, {0.0f, 0.0f},                   // Analog values
     {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f  // Velocity tracking
@@ -737,7 +766,7 @@ static void GetControllerPose(const ControllerState& ctrl, XrPosef* outPose) {
     // Controller orientation = head orientation + controller offsets
     float totalYaw = g_headYaw + ctrl.yawOffset;
     float totalPitch = g_headPitch + ctrl.pitchOffset;
-    outPose->orientation = QuatFromYawPitch(totalYaw, totalPitch);
+    outPose->orientation = QuatFromYawPitchRoll(totalYaw, totalPitch, ctrl.rollOffset);
 
     // Controller position = head position + rotated offset
     // Rotate the offset by head yaw only (not pitch) for natural hand movement
@@ -4072,11 +4101,13 @@ static XrResult XRAPI_PTR xrBeginSession_runtime(XrSession s, const XrSessionBeg
     // layer. An app that boots into a 2D-only screen submits nothing but quad
     // layers, and quads cannot bootstrap the preview themselves, so the window
     // would never appear at all - and the FOCUSED check below could never fire.
-    ensurePreviewWithoutProjection(rt::g_session);
+    if (!g_headless) {
+        ensurePreviewWithoutProjection(rt::g_session);
 
-    // Pump once so the activation raised by creating the window is handled
-    // before we decide whether the session starts out focused.
-    MSG msg; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+        // Pump once so the activation raised by creating the window is handled
+        // before we decide whether the session starts out focused.
+        MSG msg; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+    }
 
     rt::PushState(s, XR_SESSION_STATE_SYNCHRONIZED); 
     rt::PushState(s, XR_SESSION_STATE_VISIBLE);
@@ -4094,7 +4125,9 @@ static XrResult XRAPI_PTR xrRequestExitSession_runtime(XrSession s) { rt::PushSt
 static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*, XrFrameState* s) {
     if (!s) return XR_ERROR_VALIDATION_FAILURE;
     // Message pump so the preview window stays responsive
-    MSG msg; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+    if (!g_headless) {
+        MSG msg; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+    }
     static LARGE_INTEGER freq = [](){ LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
     static double periodSec = 1.0 / 90.0;
     static long long periodNs = (long long)(periodSec * 1e9);
@@ -4128,7 +4161,7 @@ static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*,
             previewWindowFocused = (fgPid != 0 && fgPid == GetCurrentProcessId());
         }
     }
-    if (previewWindowFocused) {
+    if (!g_headless && previewWindowFocused) {
         // Shift is the sprint modifier; both it and the base speed are set from
         // Tools > Movement Speed. GetAsyncKeyState rather than the WM_KEYDOWN
         // path because this reads a held state, and the host window may be the
@@ -4253,6 +4286,7 @@ static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*,
             rt::g_rightController.posOffset = {0.2f, -0.3f, -0.4f};
             rt::g_rightController.yawOffset = 0.0f;
             rt::g_rightController.pitchOffset = -0.3f;
+            rt::g_rightController.rollOffset = 0.0f;
             autoMotionEnabled = false;
         }
 
@@ -4470,12 +4504,32 @@ static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*,
             ctrl.posOffset.z = ctrlCmd.posZ;
             ctrl.yawOffset = ctrlCmd.yaw;
             ctrl.pitchOffset = ctrlCmd.pitch;
+            ctrl.rollOffset = ctrlCmd.roll;
             if (ctrlCmd.triggerSet) {
                 ctrl.triggerValue = ctrlCmd.trigger;
                 ctrl.triggerPressed = (ctrlCmd.trigger >= 0.5f);
             }
+            if (ctrlCmd.gripSet) {
+                ctrl.gripValue = ctrlCmd.grip;
+                ctrl.gripPressed = (ctrlCmd.grip >= 0.5f);
+            }
             if (ctrlCmd.buttonA >= 0) {
                 ctrl.primaryPressed = (ctrlCmd.buttonA != 0);
+            }
+            if (ctrlCmd.buttonB >= 0) {
+                ctrl.secondaryPressed = (ctrlCmd.buttonB != 0);
+            }
+            if (ctrlCmd.menu >= 0) {
+                ctrl.menuPressed = (ctrlCmd.menu != 0);
+            }
+            if (ctrlCmd.thumbstickClick >= 0) {
+                ctrl.thumbstickPressed = (ctrlCmd.thumbstickClick != 0);
+            }
+            if (ctrlCmd.thumbstickX >= -1.0f && ctrlCmd.thumbstickX <= 1.0f) {
+                ctrl.thumbstick.x = ctrlCmd.thumbstickX;
+            }
+            if (ctrlCmd.thumbstickY >= -1.0f && ctrlCmd.thumbstickY <= 1.0f) {
+                ctrl.thumbstick.y = ctrlCmd.thumbstickY;
             }
             mcp::WriteCommandAck("controller_pose", true);
         }
@@ -4526,6 +4580,7 @@ static XrResult XRAPI_PTR xrBeginFrame_runtime(XrSession, const XrFrameBeginInfo
 // NOT touched on subsequent calls — once it exists, the user (or the menu
 // resize callback) owns its size.
 static void ensurePreviewWindow(rt::Session& s, UINT initialClientW, UINT initialClientH) {
+    if (g_headless && !g_desktopPreview) return;
     if (s.hwnd) return;
 
     // Register window class if not done (use global flag)
@@ -6389,6 +6444,25 @@ static void presentProjection(rt::Session& s, const XrCompositionLayerProjection
             // ===== D3D11 PATH =====
             if (!s.previewSwapchain) return;
 
+            // An unattended OpenMW capture must come from the released eye image,
+            // not from the desktop mirror.  The mirror is a second renderer and can
+            // legitimately still be black while the game's D3D11 eye target contains
+            // a completed frame.  Taking the native source here also avoids letting a
+            // screenshot request turn an otherwise headless run into a compositor test.
+            if (mcp::g_screenshotRequested && mcp::g_screenshotLayer == "projection" &&
+                leftIdx < chL.images.size() && chL.images[leftIdx]) {
+                const std::string sourcePath = mcp::GetSimulatorDataPath() + "\\screenshot.bmp";
+                if (mcp::SaveTextureToBMP(s.d3d11Device.Get(), s.d3d11Context.Get(),
+                                          chL.images[leftIdx].Get(), sourcePath.c_str())) {
+                    D3D11_TEXTURE2D_DESC sourceDesc{};
+                    chL.images[leftIdx]->GetDesc(&sourceDesc);
+                    mcp::WriteScreenshotStatus("projection-eye-source", sourceDesc.Width, sourceDesc.Height,
+                                               mcp::g_runtimeFrameCount.load(std::memory_order_acquire));
+                    mcp::g_screenshotRequested = false;
+                    ui::NotifyScreenshotSaved(std::wstring(sourcePath.begin(), sourcePath.end()));
+                }
+            }
+
             // Mirror Rate: the composite and the Present it feeds are what this skips.
             // The frame counter below stays outside it, so the rate shown in the title is
             // still the application's and not the mirror's.
@@ -7607,7 +7681,11 @@ static XrResult XRAPI_PTR xrCreateActionSpace_runtime(XrSession, const XrActionS
     static uintptr_t nextSpace = 200;
     *space = (XrSpace)(nextSpace++);
 
-    // Detect controller subaction paths and register the space
+    // Detect controller hand and register the space. OpenMW creates one pose
+    // action per hand and leaves subactionPath null, which is valid OpenXR.
+    // In that form the hand is encoded in the action name, not the space
+    // create info. Falling through made every aim/grip pose act like the
+    // head/reference space and silently removed tracked hands.
     int controllerType = 0;  // 0=none, 1=left, 2=right
     Logf("[SimXR] xrCreateActionSpace: subactionPath=%llu, g_pathStrings.size()=%zu",
          (unsigned long long)info->subactionPath, rt::g_pathStrings.size());
@@ -7629,6 +7707,20 @@ static XrResult XRAPI_PTR xrCreateActionSpace_runtime(XrSession, const XrActionS
         }
     } else {
         Log("[SimXR] xrCreateActionSpace: subactionPath is XR_NULL_PATH");
+    }
+
+    if (controllerType == 0) {
+        const auto actionName = rt::g_actionNames.find(info->action);
+        if (actionName != rt::g_actionNames.end()) {
+            const std::string& name = actionName->second;
+            if (name.find("hand_left") != std::string::npos || name.find("_left") != std::string::npos)
+                controllerType = 1;
+            else if (name.find("hand_right") != std::string::npos || name.find("_right") != std::string::npos)
+                controllerType = 2;
+            if (controllerType != 0)
+                Logf("[SimXR] xrCreateActionSpace: inferred %s controller from action '%s'",
+                    controllerType == 1 ? "LEFT" : "RIGHT", name.c_str());
+        }
     }
 
     if (controllerType > 0) {
@@ -7667,7 +7759,12 @@ static XrResult XRAPI_PTR xrCreateAction_runtime(XrActionSet, const XrActionCrea
     // Store action name for input mapping
     rt::g_actionNames[*action] = actName;
 
-    // Detect which hand this action is bound to based on subactionPaths
+    // Detect which hand this action is bound to based on subactionPaths.
+    // OpenMW creates one raw action per full input path (for example,
+    // _user_hand_left_input_y_click) and legitimately leaves subactionPaths
+    // empty.  In that form the action name is the only hand discriminator.
+    // Defaulting those actions to the right controller made right B also drive
+    // left Y, opening the VR meta menu instead of only the Pip-Boy.
     int handBinding = 0;  // 0=both/any
     if (info->countSubactionPaths > 0 && info->subactionPaths) {
         for (uint32_t i = 0; i < info->countSubactionPaths; i++) {
@@ -7677,6 +7774,13 @@ static XrResult XRAPI_PTR xrCreateAction_runtime(XrActionSet, const XrActionCrea
                 if (it->second.find("right") != std::string::npos) handBinding |= 2;
             }
         }
+    }
+    if (handBinding == 0) {
+        const std::string name(actName);
+        if (name.find("hand_left") != std::string::npos || name.find("_left") != std::string::npos)
+            handBinding = 1;
+        else if (name.find("hand_right") != std::string::npos || name.find("_right") != std::string::npos)
+            handBinding = 2;
     }
     rt::g_actionHand[*action] = handBinding;
 
@@ -7780,9 +7884,11 @@ static XrResult XRAPI_PTR xrGetActionStateBoolean_runtime(XrSession, const XrAct
             buttonState = ctrl->gripPressed;
         } else if (ActionNameMatches(name, "menu")) {
             buttonState = ctrl->menuPressed;
-        } else if (ActionNameMatches(name, "primary") || ActionNameMatches(name, "a_button") || ActionNameMatches(name, "x_button")) {
+        } else if (ActionNameMatches(name, "primary") || ActionNameMatches(name, "a_button") || ActionNameMatches(name, "x_button") ||
+                   ActionNameMatches(name, "_input_a_click") || ActionNameMatches(name, "_input_x_click")) {
             buttonState = ctrl->primaryPressed;
-        } else if (ActionNameMatches(name, "secondary") || ActionNameMatches(name, "b_button") || ActionNameMatches(name, "y_button")) {
+        } else if (ActionNameMatches(name, "secondary") || ActionNameMatches(name, "b_button") || ActionNameMatches(name, "y_button") ||
+                   ActionNameMatches(name, "_input_b_click") || ActionNameMatches(name, "_input_y_click")) {
             buttonState = ctrl->secondaryPressed;
         } else if (ActionNameMatches(name, "thumbstick") || ActionNameMatches(name, "joystick")) {
             buttonState = ctrl->thumbstickPressed;

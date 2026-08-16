@@ -417,6 +417,34 @@
       ],
       "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoy -RuntimeReady -RequireIdle",
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoy -OutputRoot .\\run\\opennv-pipboy-live-<unique>"
+    },
+    {
+      "id": "opennv-vr-pipboy-weapons-native-v1",
+      "target": "OpenMW",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-OpenNVPipBoyVRCapture.ps1",
+      "captureMethod": "The repo-local OpenXR simulator projection-eye API retains native stereo source BMPs; ffmpeg encodes only those retained frames into a short square motion proof.",
+      "driverMethod": "OpenXR simulator commands move the tracked head and controllers through the production right-fingertip Pip-Boy pointer, weapon selection, reload, firearm trigger, and melee swing paths.",
+      "backgroundInputMethod": "per-process OpenXR simulator commands only; no host keyboard, mouse, window focus, or desktop control is used",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "openmw/native-frames/frame-*.bmp",
+      "telemetryPattern": "openmw/bridge/openmw-config/openmw.log; openmw/simulator/runtime_status.json",
+      "manifestPattern": "openmw/vr-pipboy-interaction-report.json; openmw/native-frame-manifest.json",
+      "videoPattern": "openmw/proof/OpenMW-VR-PipBoy-weapons-motion-proof.mp4",
+      "requiredTelemetry": [
+        "tracked VR rig and physical live Pip-Boy screen report ready",
+        "right fingertip pointer selects Knife, Varmint Rifle, and 9mm Pistol from their live inventory rows",
+        "pointer mode hides the held weapon and each selected item returns in the right hand",
+        "knife authored melee hit, pistol reload/fire, and rifle reload/fire report status=pass",
+        "firearm sockets report firearm-forward-x at 90 degrees and the knife reports melee-forward-y",
+        "native source frame sequence, engine telemetry, video hashes, and runtime hash are retained",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoyVR -OpeningRuntimeRoot '<staged VR runtime>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoyVR -OpeningRuntimeRoot '<staged VR runtime>' -OutputRoot .\\run\\opennv-vr-pipboy-weapons-<unique>"
     }
   ],
   "godotRecipes": [
@@ -607,10 +635,5 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario RealSave -RealSaveRouteId save330-pipboy-radio-stations-v1 -RealSaveCaptureSeconds 180 -OpeningRuntimeRoot '<staged runtime>' -OutputRoot .\\run\\fnv-save330-radio-<unique>"
     }
   ],
-  "knownGoodEvidence": {
-    "retailSmoke": "run/jam-background-smoke-20260725-ar",
-    "retailFull": "run/jam-background-retail-release-20260725-as",
-    "openMwFull": "run/jam-background-openmw-release-20260725-au",
-    "sideBySide": "run/jam-side-by-side-release-20260725-ay"
-  }
+  "knownGoodEvidence": {}
 }

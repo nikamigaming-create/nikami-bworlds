@@ -2,8 +2,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$OutputRoot,
-    [string]$WorldsRoot = 'D:\code\nikami-worlds',
-    [string]$Godot = 'D:\code\gd\Godot_v4.6.3-stable_win64.exe',
+    [string]$WorldsRoot = '',
+    [string]$Godot = '',
     [string]$AudioDevice = 'Stereo Mix (Realtek(R) Audio)',
     [ValidateRange(60, 240)]
     [int]$CaptureSeconds = 210,
@@ -13,6 +13,20 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($WorldsRoot)) {
+    $WorldsRoot = Split-Path -Parent $PSScriptRoot
+}
+$WorldsRoot = [IO.Path]::GetFullPath($WorldsRoot)
+. (Join-Path $PSScriptRoot 'WorldViewerPaths.ps1')
+$Godot = Resolve-NikamiPath -ParameterValue $Godot -EnvName 'NIKAMI_GODOT_BINARY' -ConfigName 'godotBinary'
+if ([string]::IsNullOrWhiteSpace($Godot)) {
+    $godotCommand = Get-Command godot4, godot -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -ne $godotCommand) { $Godot = $godotCommand.Source }
+}
+if ([string]::IsNullOrWhiteSpace($Godot)) {
+    throw 'Missing Godot executable. Set -Godot, env:NIKAMI_GODOT_BINARY, local/paths.json:godotBinary, or add Godot to PATH.'
+}
 
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 if (Test-Path -LiteralPath $OutputRoot) {

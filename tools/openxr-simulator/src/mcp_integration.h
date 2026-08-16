@@ -983,9 +983,17 @@ struct ControllerPoseCommand {
     float posZ = -0.4f;
     float yaw = 0.0f;      // Yaw offset relative to head
     float pitch = -0.3f;   // Pitch offset relative to head
+    float roll = 0.0f;     // Roll offset relative to head
     float trigger = 0.0f;  // 0.0-1.0 trigger value
     bool triggerSet = false;
-    int  buttonA = -1;     // -1=unchanged, 0=released, 1=pressed
+    float grip = 0.0f;     // 0.0-1.0 grip value
+    bool gripSet = false;
+    int buttonA = -1;      // -1=unchanged, 0=released, 1=pressed
+    int buttonB = -1;
+    int menu = -1;
+    int thumbstickClick = -1;
+    float thumbstickX = 2.0f; // outside [-1, 1] means unchanged
+    float thumbstickY = 2.0f;
 };
 
 // Check for controller pose command from MCP
@@ -995,7 +1003,7 @@ inline ControllerPoseCommand CheckControllerPoseCommand() {
     std::string cmdPath = GetSimulatorDataPath() + "\\controller_pose_command.json";
     FILE* f = nullptr;
     if (fopen_s(&f, cmdPath.c_str(), "r") == 0 && f) {
-        char buf[512];
+        char buf[1024];
         size_t n = fread(buf, 1, sizeof(buf)-1, f);
         buf[n] = 0;
         fclose(f);
@@ -1013,13 +1021,22 @@ inline ControllerPoseCommand CheckControllerPoseCommand() {
         cmd.posZ = o.number("posZ", -0.4f);
         cmd.yaw = o.number("yaw", 0.0f);
         cmd.pitch = o.number("pitch", -0.3f);
+        cmd.roll = o.number("roll", 0.0f);
         cmd.trigger = o.number("trigger", -1.0f);
         cmd.triggerSet = (cmd.trigger >= 0.0f);
         if (!cmd.triggerSet) cmd.trigger = 0.0f;
+        cmd.grip = o.number("grip", -1.0f);
+        cmd.gripSet = (cmd.grip >= 0.0f);
+        if (!cmd.gripSet) cmd.grip = 0.0f;
         cmd.buttonA = o.number("buttonA", -1);
+        cmd.buttonB = o.number("buttonB", -1);
+        cmd.menu = o.number("menu", -1);
+        cmd.thumbstickClick = o.number("thumbstickClick", -1);
+        cmd.thumbstickX = o.number("thumbstickX", 2.0f);
+        cmd.thumbstickY = o.number("thumbstickY", 2.0f);
 
-        McpLogf("Controller pose command: hand=%d pos(%.2f, %.2f, %.2f) yaw=%.2f pitch=%.2f trigger=%.1f",
-                cmd.hand, cmd.posX, cmd.posY, cmd.posZ, cmd.yaw, cmd.pitch, cmd.trigger);
+        McpLogf("Controller pose command: hand=%d pos(%.2f, %.2f, %.2f) yaw=%.2f pitch=%.2f roll=%.2f trigger=%.1f grip=%.1f",
+                cmd.hand, cmd.posX, cmd.posY, cmd.posZ, cmd.yaw, cmd.pitch, cmd.roll, cmd.trigger, cmd.grip);
     }
     return cmd;
 }

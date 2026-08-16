@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -36,6 +36,8 @@ param(
     [int]$TestMapCaptureSeconds = 16,
     [ValidateRange(15, 90)]
     [int]$PipBoyCaptureSeconds = 80,
+    [ValidateRange(8, 30)]
+    [int]$PipBoyVRFrameRate = 12,
     [ValidateRange(52, 90)]
     [int]$TerminalCaptureSeconds = 65,
     [switch]$PipBoyLifecycleOnly,
@@ -102,6 +104,7 @@ $retailOpeningRunner = Join-Path $PSScriptRoot "Invoke-RetailTTWOpeningCapture.p
 $openingRunner = Join-Path $PSScriptRoot "Invoke-OpenNVOpeningCapture.ps1"
 $testMapRunner = Join-Path $PSScriptRoot "Invoke-OpenNVTestMapDiagnostic.ps1"
 $pipBoyRunner = Join-Path $PSScriptRoot "Invoke-OpenNVPipBoyShowcaseCapture.ps1"
+$pipBoyVrRunner = Join-Path $PSScriptRoot "Invoke-OpenNVPipBoyVRCapture.ps1"
 $terminalRunner = Join-Path $PSScriptRoot "Invoke-OpenNVTerminalCapture.ps1"
 $retailPipBoyRunner = Join-Path $PSScriptRoot "Invoke-FNVRetailPipBoyStateCapture.ps1"
 $realSaveRunner = Join-Path $PSScriptRoot "Invoke-FNVRealSaveCapture.ps1"
@@ -165,6 +168,9 @@ if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
 if ($Scenario -eq "PipBoy" -and $Target -eq "Both") {
     throw "Pip-Boy state captures are intentionally single-engine. Run Retail first, then OpenMW."
 }
+if ($Scenario -eq "PipBoyVR" -and $Target -ne "OpenMW") {
+    throw "PipBoyVR is an OpenMW-only native OpenXR capture. Use -Target OpenMW."
+}
 if ($Scenario -eq "RealSave" -and $Target -eq "Both") {
     throw "RealSave captures are intentionally single-engine. Run Retail first, then OpenMW."
 }
@@ -211,6 +217,7 @@ $retailOpeningResult = $null
 $openingResult = $null
 $testMapResult = $null
 $pipBoyResult = $null
+$pipBoyVrResult = $null
 $terminalResult = $null
 $realSaveResult = $null
 $godotRouteResult = $null
@@ -616,6 +623,35 @@ if ($Scenario -eq "PipBoy") {
     }
 }
 
+if ($Scenario -eq "PipBoyVR") {
+    $pipBoyVrOutput = Join-Path $OutputRoot "openmw"
+    & $pipBoyVrRunner `
+        -WorldsRoot $WorldsRoot `
+        -BinaryRoot $OpeningRuntimeRoot `
+        -OutputRoot $pipBoyVrOutput `
+        -FrameRate $PipBoyVRFrameRate `
+        -TimeoutSeconds $TimeoutSeconds
+    $pipBoyVrResult =
+        Get-Content -Raw -LiteralPath (Join-Path $pipBoyVrOutput "vr-pipboy-interaction-report.json") |
+        ConvertFrom-Json
+    if ($pipBoyVrResult.status -ne "pass" -or
+        [bool]$pipBoyVrResult.capture.windowsAppControlUsed -or
+        [bool]$pipBoyVrResult.capture.foregroundActivationUsed -or
+        [bool]$pipBoyVrResult.capture.foregroundInputInjected -or
+        -not [bool]$pipBoyVrResult.capture.sourceFramesRetained -or
+        -not [bool]$pipBoyVrResult.capture.telemetryRetained -or
+        -not [bool]$pipBoyVrResult.assertions.livePipBoyScreenBound -or
+        -not [bool]$pipBoyVrResult.assertions.knifeSelectedByPointer -or
+        -not [bool]$pipBoyVrResult.assertions.rifleSelectedByPointer -or
+        -not [bool]$pipBoyVrResult.assertions.pistolSelectedByPointer -or
+        -not [bool]$pipBoyVrResult.assertions.knifeMeleePassed -or
+        -not [bool]$pipBoyVrResult.assertions.rifleShotPassed -or
+        -not [bool]$pipBoyVrResult.assertions.pistolShotPassed) {
+        throw "Canonical OpenMW VR Pip-Boy interaction capture did not pass its native-frame, pointer, weapon-action, or no-control gates."
+    }
+    $openMwResult = $pipBoyVrResult
+}
+
 if ($Scenario -eq "Terminal") {
     $terminalOutput = Join-Path $OutputRoot "openmw"
     & $terminalRunner `
@@ -749,6 +785,13 @@ if ($Scenario -eq "PipBoy" -and $null -ne $pipBoyResult) {
         }
     }
 }
+if ($Scenario -eq "PipBoyVR" -and $null -ne $pipBoyVrResult) {
+    foreach ($artifact in @($pipBoyVrResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
 if ($Scenario -eq "FirstSmoke" -and $null -ne $firstSmokeResult) {
     foreach ($artifact in @($firstSmokeResult.artifacts)) {
         if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
@@ -849,6 +892,7 @@ $summary = [ordered]@{
     opening = $openingResult
     testMapDiagnostic = $testMapResult
     pipBoyShowcase = $pipBoyResult
+    pipBoyVR = $pipBoyVrResult
     terminalCapture = $terminalResult
     realSave = $realSaveResult
     firstSmoke = $firstSmokeResult

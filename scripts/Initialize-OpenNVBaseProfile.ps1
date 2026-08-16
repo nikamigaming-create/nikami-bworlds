@@ -188,7 +188,6 @@ $FalloutNewVegasData = Resolve-NikamiPath `
     -ParameterValue $FalloutNewVegasData `
     -EnvName "NIKAMI_FALLOUT_NEW_VEGAS_DATA" `
     -ConfigName "falloutNewVegasData" `
-    -Fallback "D:/SteamLibrary/steamapps/common/Fallout New Vegas/Data" `
     -Required `
     -Description "Fallout: New Vegas Data directory"
 $FalloutNewVegasData = Resolve-ExistingDirectory -Path (Resolve-NikamiRepoRelativePath -Path $FalloutNewVegasData) -Description "Fallout: New Vegas Data directory"

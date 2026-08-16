@@ -1,5 +1,11 @@
 # Fallout: New Vegas 100% Parity Plan
 
+> Current execution note (2026-08-15): this remains the long-range parity plan.
+> The active unattended VR wrist Pip-Boy, pointer, and held-item acceptance lane
+> is the repository-relative `PipBoyVR` recipe documented in
+> `docs/fnv-jam-background-capture.md`. The dated VR build notes below are
+> historical snapshots, not launch instructions for the current build.
+
 > Active playability regression recovery is tracked in
 > `docs/fnv-playability-recovery-20260807.md` and
 > `catalog/fnv-playability-recovery-plan.json`. Complete that recovery ladder
@@ -52,7 +58,7 @@ provenance required for a complete case. A cloud, combat, container, furniture,
 or dialogue slice remains visible as bounded engineering evidence without
 silently becoming full-game credit.
 
-### 2026-07-18 VR validation build
+### Historical 2026-07-18 VR validation build
 
 The current local VR runtime is built from engine commit
 `3b2f43e73a0e869847f7ad3c8959ea74395ca35f`. The deployed
@@ -64,10 +70,10 @@ The full-profile VR launcher dry-run resolves the real Ultimate Edition profile
 without a proof-slice start cell, skip menu, or injected new-game state. No game
 or desktop UI was launched during this remote audit.
 
-When the user is home with the headset and OpenXR runtime ready, the next run is:
+The launch command recorded with that historical build was:
 
 ```powershell
-Set-Location D:\code\nikami-worlds
+# Run from the nikami-worlds repository root.
 .\scripts\Start-WorldProfileExisting.ps1 -WorldId fallout_new_vegas -Mode vr
 ```
 
@@ -89,7 +95,7 @@ one-to-one parity remains **0.00%**.
 Run the live report at any time:
 
 ```powershell
-Set-Location D:\code\nikami-worlds
+# Run from the nikami-worlds repository root.
 .\scripts\Test-FNVParityControlPlane.ps1
 .\scripts\Measure-FNVParityCoverage.ps1
 ```

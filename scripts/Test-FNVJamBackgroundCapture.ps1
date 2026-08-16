@@ -2,13 +2,14 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
     [switch]$RuntimeReady,
     [switch]$RequireIdle,
     [string]$WorldsRoot = "",
+    [string]$GodotBinary = "",
     [string]$ParityRoot = "",
     [string]$EngineRoot = "",
     [string]$RetailShadowRoot = "",
@@ -36,6 +37,12 @@ if ([string]::IsNullOrWhiteSpace($WorldsRoot)) {
     $WorldsRoot = Split-Path -Parent $PSScriptRoot
 }
 $WorldsRoot = [IO.Path]::GetFullPath($WorldsRoot)
+if ([string]::IsNullOrWhiteSpace($ParityRoot)) {
+    # The current repository owns the retail oracle alongside its capture
+    # scripts. Keep the preflight checkout-relative when no legacy parity
+    # checkout is supplied.
+    $ParityRoot = $WorldsRoot
+}
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 if ([string]::IsNullOrWhiteSpace($SavePath)) {
@@ -101,6 +108,9 @@ if ($Scenario -eq "RealSave" -and $Target -eq "All") {
 if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
     throw "Terminal interaction is an OpenMW-only lane. Use -Target OpenMW."
 }
+if ($Scenario -eq "PipBoyVR" -and $Target -ne "OpenMW") {
+    throw "PipBoyVR is an OpenMW-only native OpenXR lane. Use -Target OpenMW."
+}
 if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence") -and $Target -ne "OpenMW") {
     throw "FirstSmoke and Chet persistent routes are OpenMW-only lanes. Use -Target OpenMW."
 }
@@ -164,6 +174,11 @@ $retailTtwLayerManifestPath = Join-Path $WorldsRoot "local\ttw-retail-compat\com
 $openingRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVOpeningCapture.ps1"
 $testMapRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTestMapDiagnostic.ps1"
 $pipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVPipBoyShowcaseCapture.ps1"
+$pipBoyVrRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVPipBoyVRCapture.ps1"
+$vrStartRunnerPath = Join-Path $WorldsRoot "scripts\Start-FNVParityVRExisting.ps1"
+$vrHeadPosePath = Join-Path $WorldsRoot "scripts\Invoke-OpenXRSimulatorHeadPose.ps1"
+$vrControllerPosePath = Join-Path $WorldsRoot "scripts\Invoke-OpenXRSimulatorControllerPose.ps1"
+$vrNativeFramePath = Join-Path $WorldsRoot "scripts\Request-OpenXRSimulatorNativeEyeFrame.ps1"
 $terminalRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTerminalCapture.ps1"
 $retailPipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailPipBoyStateCapture.ps1"
 $realSaveRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRealSaveCapture.ps1"
@@ -186,7 +201,16 @@ if ($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) {
     $godotProjectPath = Join-Path $WorldsRoot "godot-fnv\project.godot"
 	$godotRoutePath = Join-Path $WorldsRoot $(if ($isCinematic -or $isPortrait) { "godot-fnv\generated\cinematics\scene-pack.json" } else { "godot-fnv\generated\world\goodsprings-strip-road-route.json" })
     $godotActorManifestPath = Join-Path $WorldsRoot "godot-fnv\generated\actors\goodsprings-strip-dense-road-v1\actor-manifest.json"
-    $godotBinary = "D:\code\gd\Godot_v4.6.3-stable_win64.exe"
+    $GodotBinary = Resolve-NikamiPath `
+        -ParameterValue $GodotBinary `
+        -EnvName "NIKAMI_GODOT_BINARY" `
+        -ConfigName "godotBinary"
+    if ([string]::IsNullOrWhiteSpace($GodotBinary)) {
+        $godotCommand = Get-Command godot4, godot -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -ne $godotCommand) {
+            $GodotBinary = $godotCommand.Source
+        }
+    }
     foreach ($path in @($catalogPath, $runbookPath, $entryPointPath, $preflightPath,
         $godotRunnerPath, $godotProjectPath, $godotRoutePath, $godotActorManifestPath)) {
         [void](Test-File "Canonical Godot route input exists: $([IO.Path]::GetFileName($path))" $path)
@@ -226,7 +250,7 @@ if ($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) {
     Add-Check "Godot route uses its declared native capture boundary" `
         ($driverDeclared -and $captureBoundaryDeclared) $godotRunnerPath
     if ($RuntimeReady) {
-        [void](Test-File "Godot executable exists" $godotBinary)
+        [void](Test-File "Godot executable exists" $GodotBinary)
         Add-Check "ffmpeg is available" ($null -ne (Get-Command ffmpeg -ErrorAction SilentlyContinue)) "ffmpeg"
         Add-Check "ffprobe is available" ($null -ne (Get-Command ffprobe -ErrorAction SilentlyContinue)) "ffprobe"
     }
@@ -292,6 +316,11 @@ elseif ($Scenario -eq "PipBoy") {
         foreach ($path in @($pipBoyRunnerPath, $newVegasInitializerPath)) {
             $canonicalFiles.Add($path)
         }
+    }
+}
+elseif ($Scenario -eq "PipBoyVR") {
+    foreach ($path in @($pipBoyVrRunnerPath, $vrStartRunnerPath, $vrHeadPosePath, $vrControllerPosePath, $vrNativeFramePath)) {
+        $canonicalFiles.Add($path)
     }
 }
 elseif ($Scenario -eq "Terminal") {
@@ -360,6 +389,21 @@ if ($null -ne $catalog) {
     if ($Scenario -eq "PipBoy") {
         Add-Check "Pip-Boy capture selects one engine" `
             ($Target -in @("Retail", "OpenMW")) "target=$Target"
+    }
+    if ($Scenario -eq "PipBoyVR") {
+        Add-Check "PipBoyVR capture is restricted to OpenMW" `
+            ($Target -eq "OpenMW") "target=$Target"
+        $pipBoyVrRunnerText = Get-Content -Raw -LiteralPath $pipBoyVrRunnerPath -ErrorAction SilentlyContinue
+        foreach ($forbidden in @("AppActivate", "SetForegroundWindow", "BringWindowToTop", "SetFocus", "SendInput")) {
+            Add-Check "PipBoyVR runner excludes $forbidden" `
+                ($pipBoyVrRunnerText -notmatch [regex]::Escape($forbidden)) $pipBoyVrRunnerPath
+        }
+        Add-Check "PipBoyVR runner declares native OpenXR capture and retained telemetry" `
+            ($pipBoyVrRunnerText -match 'projection-eye native frame API' -and
+                $pipBoyVrRunnerText -match 'sourceFramesRetained = \$true' -and
+                $pipBoyVrRunnerText -match 'telemetryRetained = \$true' -and
+                $pipBoyVrRunnerText -match 'windowsAppControlUsed = \$false' -and
+                $pipBoyVrRunnerText -match 'foregroundInputInjected = \$false') $pipBoyVrRunnerPath
     }
     if ($Scenario -eq "FirstSmoke") {
         Add-Check "FirstSmoke is restricted to OpenMW" ($Target -eq "OpenMW") "target=$Target"
@@ -455,7 +499,11 @@ if ($null -ne $catalog) {
         })
     } elseif ($Scenario -eq "PipBoy") {
         @($catalog.showcaseRecipes | Where-Object {
-            $_.target -eq $Target
+            $_.target -eq $Target -and [string]$_.id -ne 'opennv-vr-pipboy-weapons-native-v1'
+        })
+    } elseif ($Scenario -eq "PipBoyVR") {
+        @($catalog.showcaseRecipes | Where-Object {
+            $_.target -eq $Target -and [string]$_.id -eq 'opennv-vr-pipboy-weapons-native-v1'
         })
     } elseif ($Scenario -eq "Terminal") {
         @($catalog.terminalRecipes | Where-Object { $_.target -eq $Target })
@@ -488,6 +536,9 @@ if ($null -ne $catalog) {
     }
     elseif ($Scenario -eq "PipBoy") {
         if ($Target -in @("Retail", "OpenMW")) { 1 } else { 0 }
+    }
+    elseif ($Scenario -eq "PipBoyVR") {
+        if ($Target -eq "OpenMW") { 1 } else { 0 }
     }
     elseif ($Scenario -eq "Terminal") {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
@@ -599,6 +650,11 @@ elseif ($Scenario -eq "PipBoy") {
     if ($Target -eq "Retail") { $scriptsToParse.Add($retailPipBoyRunnerPath) }
     else { $scriptsToParse.Add($pipBoyRunnerPath) }
 }
+elseif ($Scenario -eq "PipBoyVR") {
+    foreach ($script in @($pipBoyVrRunnerPath, $vrStartRunnerPath, $vrHeadPosePath, $vrControllerPosePath, $vrNativeFramePath)) {
+        $scriptsToParse.Add($script)
+    }
+}
 elseif ($Scenario -eq "Terminal") {
     $scriptsToParse.Add($terminalRunnerPath)
 }
@@ -662,6 +718,12 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
         }
         Add-Check "Pip-Boy invocation routes to the declared showcase runner" `
             $expectedPipBoyRoute `
+            $entryPointPath
+    }
+    elseif ($Scenario -eq "PipBoyVR") {
+        Add-Check "PipBoyVR invocation routes to the declared native OpenXR runner" `
+            ($Target -eq "OpenMW" -and $entryText -match 'Invoke-OpenNVPipBoyVRCapture' -and
+                $entryText -match '\$Scenario\s+-eq\s+"PipBoyVR"') `
             $entryPointPath
     }
     elseif ($Scenario -eq "Terminal") {
@@ -747,7 +809,8 @@ if ($Scenario -eq "Jam" -and $Target -in @("All", "Retail")) {
         }
     }
 
-    if (Test-Path -LiteralPath $oracleSourcePath -PathType Leaf) {
+    if (-not [string]::IsNullOrWhiteSpace($oracleSourcePath) -and
+        (Test-Path -LiteralPath $oracleSourcePath -PathType Leaf)) {
         $oracleText = Get-Content -Raw -LiteralPath $oracleSourcePath
         Add-Check "Oracle selects only DirectInput keyboard" `
             ($oracleText -match 'GET_DIDEVICE_TYPE\(result\.deviceType\)\s*==\s*DI8DEVTYPE_KEYBOARD') `
@@ -1026,17 +1089,19 @@ if ($RuntimeReady) {
     [void](Test-File "Shared native save exists" $SavePath)
 
     if ($Target -in @("All", "Retail")) {
-        [void](Test-Directory "Retail shadow root exists" $RetailShadowRoot)
-        foreach ($file in @(
-            "FalloutNV.exe",
-            "Data\nvse\plugins\jip_nvse.dll",
-            "Data\nvse\plugins\johnnyguitar.dll",
-            "Data\nvse\plugins\kNVSE.dll",
-            "Data\nvse\plugins\nvse_stewie_tweaks.dll",
-            "Data\nvse\plugins\ui_organizer.dll"
-        )) {
-            [void](Test-File "Retail runtime file exists: $file" `
-                (Join-Path $RetailShadowRoot $file))
+        $retailShadowReady = Test-Directory "Retail shadow root exists" $RetailShadowRoot
+        if ($retailShadowReady) {
+            foreach ($file in @(
+                "FalloutNV.exe",
+                "Data\nvse\plugins\jip_nvse.dll",
+                "Data\nvse\plugins\johnnyguitar.dll",
+                "Data\nvse\plugins\kNVSE.dll",
+                "Data\nvse\plugins\nvse_stewie_tweaks.dll",
+                "Data\nvse\plugins\ui_organizer.dll"
+            )) {
+                [void](Test-File "Retail runtime file exists: $file" `
+                    (Join-Path $RetailShadowRoot $file))
+            }
         }
     }
 
@@ -1265,6 +1330,32 @@ if ($RuntimeReady) {
                 (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
         }
     }
+    elseif ($Scenario -eq "PipBoyVR") {
+        [void](Test-File "Deployed OpenMW VR binary exists" `
+            (Join-Path $OpeningRuntimeRoot "openmw_vr.exe"))
+        $vrRuntimeManifest = if (Test-Path -LiteralPath (Join-Path $OpeningRuntimeRoot "candidate-runtime-manifest.json") -PathType Leaf) {
+            Join-Path $OpeningRuntimeRoot "candidate-runtime-manifest.json"
+        } else {
+            Join-Path $OpeningRuntimeRoot "runtime-manifest.json"
+        }
+        [void](Test-File "Deployed OpenMW VR runtime manifest exists" $vrRuntimeManifest)
+        [void](Test-Directory "Deployed OpenMW VR resources exist" `
+            (Join-Path $OpeningRuntimeRoot "resources"))
+        foreach ($plugin in @("osgdb_bmp.dll", "osgdb_dds.dll", "osgdb_png.dll", "osgdb_freetype.dll")) {
+            [void](Test-File "Deployed OpenMW VR OSG plugin exists: $plugin" `
+                (Join-Path $OpeningRuntimeRoot (Join-Path "osgPlugins-3.6.5" $plugin)))
+        }
+        [void](Test-Directory "Standalone New Vegas VR Data root exists" $OpeningNewVegasData)
+        [void](Test-File "Standalone New Vegas VR master exists" `
+            (Join-Path $OpeningNewVegasData "FalloutNV.esm"))
+        Add-Check "ffmpeg is available for OpenMW VR native-frame encoding" `
+            ($null -ne (Get-Command ffmpeg -ErrorAction SilentlyContinue)) "ffmpeg"
+        Add-Check "ffprobe is available for OpenMW VR media validation" `
+            ($null -ne (Get-Command ffprobe -ErrorAction SilentlyContinue)) "ffprobe"
+        if ($OutputRoot) {
+            Add-Check "PipBoyVR output root is unused" (-not (Test-Path -LiteralPath $OutputRoot)) $OutputRoot
+        }
+    }
     elseif ($Scenario -eq "Terminal") {
         Add-Check "Terminal capture duration is bounded" `
             ($TerminalCaptureSeconds -ge 52 -and $TerminalCaptureSeconds -le 90) ([string]$TerminalCaptureSeconds)
@@ -1361,9 +1452,9 @@ if ($RequireIdle) {
     $processNames = if ($Target -eq "Retail") {
         @("FalloutNV", "nvse_loader")
     } elseif ($Target -eq "OpenMW") {
-        @("openmw")
+        @("openmw", "openmw_vr")
     } else {
-        @("FalloutNV", "nvse_loader", "openmw")
+        @("FalloutNV", "nvse_loader", "openmw", "openmw_vr")
     }
     $running = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue)
     Add-Check "Capture engines are idle" ($running.Count -eq 0) `
