@@ -36,12 +36,25 @@ function Get-NormalizedPath([string]$Path) {
 }
 
 function Assert-OrCreateJunction([string]$Path, [string]$Target) {
+    $bridgeRoot = Get-NormalizedPath (Join-Path $repoRoot "local\fnv-parity-vr-live")
+    $linkPath = Get-NormalizedPath $Path
     $targetPath = Get-NormalizedPath $Target
     if (Test-Path -LiteralPath $Path) {
         $item = Get-Item -LiteralPath $Path -Force
         $targets = @($item.Target | ForEach-Object { Get-NormalizedPath ([string]$_) })
-        if ($item.LinkType -ne "Junction" -or $targets -inotcontains $targetPath) {
-            throw "VR bridge path already exists with the wrong target: $Path"
+        if ($item.LinkType -ne "Junction") {
+            throw "VR bridge path is not a junction and will not be replaced: $Path"
+        }
+        if ($targets -inotcontains $targetPath) {
+            $bridgePrefix = $bridgeRoot + [IO.Path]::DirectorySeparatorChar
+            if (-not $linkPath.StartsWith($bridgePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Refusing to repair a VR junction outside the repo-local bridge: $Path"
+            }
+            # Remove only the junction entry, never its target. This lets a
+            # promoted runtime replace a retired candidate without requiring
+            # manual cleanup or inheriting another build's binaries.
+            Remove-Item -LiteralPath $Path -Force
+            New-Item -ItemType Junction -Path $Path -Target $targetPath | Out-Null
         }
         return
     }
