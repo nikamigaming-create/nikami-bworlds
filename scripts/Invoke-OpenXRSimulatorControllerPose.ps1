@@ -44,7 +44,6 @@ if (-not (Test-Path -LiteralPath $SimulatorDataDirectory -PathType Container)) {
 }
 
 $ackPath = Join-Path $SimulatorDataDirectory "command_ack.json"
-$started = [DateTime]::UtcNow
 $command = [ordered]@{
     hand = if ($Hand -eq "left") { 0 } else { 1 }
     posX = $PosX; posY = $PosY; posZ = $PosZ
@@ -55,6 +54,18 @@ $command = [ordered]@{
 }
 $commandPath = Join-Path $SimulatorDataDirectory "controller_pose_command.json"
 $temporaryPath = "$commandPath.tmp"
+
+# The simulator uses one one-shot acknowledgement file for all commands. Clear
+# the previous acknowledgement before publishing this command so a newly
+# created matching file is authoritative. Do not compare filesystem timestamps
+# with DateTime.UtcNow here: NTFS/file-cache timestamp precision can make a
+# successfully rewritten acknowledgement appear a few ticks older than the
+# command start time.
+if (Test-Path -LiteralPath $ackPath -PathType Leaf) {
+    Remove-Item -LiteralPath $ackPath -Force
+}
+
+$started = [DateTime]::UtcNow
 [IO.File]::WriteAllText($temporaryPath, ($command | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
 Move-Item -LiteralPath $temporaryPath -Destination $commandPath -Force
 
@@ -62,12 +73,10 @@ $deadline = $started.AddSeconds($TimeoutSeconds)
 do {
     if (Test-Path -LiteralPath $ackPath -PathType Leaf) {
         $ackItem = Get-Item -LiteralPath $ackPath
-        if ($ackItem.LastWriteTimeUtc -ge $started) {
-            $ack = Get-Content -LiteralPath $ackPath -Raw | ConvertFrom-Json
-            if ($ack.command -eq "controller_pose" -and [bool]$ack.success) {
-                [pscustomobject]@{ status = "pass"; command = $command; acknowledgedUtc = $ackItem.LastWriteTimeUtc.ToString("o") }
-                exit 0
-            }
+        $ack = Get-Content -LiteralPath $ackPath -Raw | ConvertFrom-Json
+        if ($ack.command -eq "controller_pose" -and [bool]$ack.success) {
+            [pscustomobject]@{ status = "pass"; command = $command; acknowledgedUtc = $ackItem.LastWriteTimeUtc.ToString("o") }
+            exit 0
         }
     }
     Start-Sleep -Milliseconds 50
