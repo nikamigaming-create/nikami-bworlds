@@ -64,6 +64,7 @@ $simulatorRoot = Join-Path $OutputRoot "simulator"
 $nativeFrameRoot = Join-Path $OutputRoot "native-frames"
 $nativeRttRoot = Join-Path $OutputRoot "native-rtt"
 $proofRoot = Join-Path $OutputRoot "proof"
+$phaseStillRoot = Join-Path $proofRoot "phase-closeups"
 $pipBoyRtt = Join-Path $nativeRttRoot "pipboy-rtt.png"
 $openMwLog = Join-Path $bridgeRoot "openmw-config\openmw.log"
 $videoPath = Join-Path $proofRoot "OpenMW-VR-PipBoy-weapons-motion-proof.mp4"
@@ -75,6 +76,7 @@ $reportPath = Join-Path $OutputRoot "vr-pipboy-interaction-report.json"
 New-Item -ItemType Directory -Path $nativeFrameRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $nativeRttRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $proofRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $phaseStillRoot -Force | Out-Null
 
 $startedAt = Get-Date
 $launchCutoff = $startedAt.AddSeconds(-2)
@@ -84,6 +86,11 @@ $spawnedProcessIds = @()
 $captureFailure = $null
 $script:NativeFrameNumber = 0
 $script:NativeFrameTelemetry = @()
+$script:CapturePhase = 'bootstrap'
+$script:ExpectedWeaponModel = ''
+$script:ExpectedWeaponVisible = $false
+$script:ExpectedAction = 'none'
+$script:PhaseStillPaths = @()
 $previousPointerCalibration = $env:OPENMW_FNV_VR_POINTER_CALIBRATION
 $previousNativeWeaponDebugAxes = $env:OPENMW_FNV_VR_NATIVE_WEAPON_DEBUG_AXES
 $previousNativeWeaponTelemetry = $env:OPENMW_FNV_VR_NATIVE_WEAPON_TELEMETRY
@@ -147,6 +154,18 @@ function Set-InspectionRig {
     Set-LeftController 0
 }
 
+function Set-CapturePhase(
+    [Parameter(Mandatory)][string]$Phase,
+    [string]$ExpectedWeaponModel = '',
+    [bool]$ExpectedWeaponVisible = $false,
+    [string]$ExpectedAction = 'none'
+) {
+    $script:CapturePhase = $Phase
+    $script:ExpectedWeaponModel = $ExpectedWeaponModel
+    $script:ExpectedWeaponVisible = $ExpectedWeaponVisible
+    $script:ExpectedAction = $ExpectedAction
+}
+
 function Save-NativeFrame {
     $script:NativeFrameNumber++
     $destination = Join-Path $nativeFrameRoot ('frame-{0:d4}.bmp' -f $script:NativeFrameNumber)
@@ -163,6 +182,10 @@ function Save-NativeFrame {
         captureIndex = $script:NativeFrameNumber
         simulatorFrame = [int64]$nativeFrameResult.frame
         capturedAtUtc = [DateTime]::UtcNow.ToString('o')
+        phase = $script:CapturePhase
+        expectedWeaponModel = $script:ExpectedWeaponModel
+        expectedWeaponVisible = $script:ExpectedWeaponVisible
+        expectedAction = $script:ExpectedAction
         path = $destination
     }
 }
@@ -618,6 +641,9 @@ try {
     }
     Write-Host "VR proof framing gate passed: leftPixelDelta=$framingLeftVisualDelta rightPixelDelta=$framingRightVisualDelta"
     # Begin retained evidence on the accepted steady two-hand view.
+    Set-CapturePhase -Phase 'starter-pistol-idle' `
+        -ExpectedWeaponModel 'meshes/weapons/1handpistol/9mm.nif' `
+        -ExpectedWeaponVisible $true -ExpectedAction 'idle'
     Save-HeldFrames 4
 
     Set-ProofHeadPose
@@ -627,13 +653,14 @@ try {
     # device control, not merely the LCD atlas. Solve each pose from the live
     # drawable center and restore ITEMS last so the subsequent row selections
     # continue through the production inventory pane.
-    $pipBoyButton01 = Find-PipBoyPhysicalControlPose 'PipBoyButton01'
-    $pipBoyButton02 = Find-PipBoyPhysicalControlPose 'PipBoyButton02'
-    $pipBoyButton03 = Find-PipBoyPhysicalControlPose 'PipBoyButton03'
-    $pipBoyTabKnob = Find-PipBoyPhysicalControlPose 'TabKnob'
-    $pipBoyScrollKnob = Find-PipBoyPhysicalControlPose 'ScrollKnob'
-
-    function Press-PipBoyPhysicalControl([string]$Control, [double[]]$Pose) {
+    function Press-PipBoyPhysicalControl([string]$Control) {
+        # The authored wrist keeps tracking while this sequence runs. Solve the named control from its current
+        # rendered center immediately before the press; replaying five poses calibrated against an earlier wrist
+        # frame misses the small edge controls even though the intersection math itself is correct.
+        $Pose = Find-PipBoyPhysicalControlPose $Control
+        Set-CapturePhase -Phase ("pipboy-control-{0}" -f $Control) `
+            -ExpectedWeaponModel 'meshes/weapons/1handpistol/9mm.nif' `
+            -ExpectedWeaponVisible $false -ExpectedAction 'pipboy-control'
         $focusPattern = "FNV Pip-Boy physical ray focus: control=$([regex]::Escape($Control))"
         $focusBefore = @(Select-String -LiteralPath $openMwLog -Pattern $focusPattern -ErrorAction SilentlyContinue).Count
         Set-RightController @Pose 0 1
@@ -678,11 +705,15 @@ try {
         Save-PacedFrames 2 50
     }
 
-    Press-PipBoyPhysicalControl 'PipBoyButton01' $pipBoyButton01
-    Press-PipBoyPhysicalControl 'PipBoyButton03' $pipBoyButton03
-    Press-PipBoyPhysicalControl 'TabKnob' $pipBoyTabKnob
-    Press-PipBoyPhysicalControl 'ScrollKnob' $pipBoyScrollKnob
-    Press-PipBoyPhysicalControl 'PipBoyButton02' $pipBoyButton02
+    Press-PipBoyPhysicalControl 'PipBoyButton01'
+    Press-PipBoyPhysicalControl 'PipBoyButton03'
+    Press-PipBoyPhysicalControl 'TabKnob'
+    Press-PipBoyPhysicalControl 'ScrollKnob'
+    Press-PipBoyPhysicalControl 'PipBoyButton02'
+
+    $pistolModel = 'meshes/weapons/1handpistol/9mm.nif'
+    $knifeModel = 'meshes/weapons/1handmelee/rustyknife.nif'
+    $rifleModel = 'meshes/weapons/2handrifle/varmintrifle.nif'
 
     if ($WeaponWheel) {
         # These targets are the inverse XR-space transform of the production wheel fixture centers measured
@@ -695,7 +726,9 @@ try {
         $swingTwo = @(0.35, 0.03, -0.14, -0.35, 0.35, 0.25)
         $swingThree = @(-0.02, 0.10, -0.20, -0.85, 0.55, 0.45)
 
-        function Grab-WheelWeapon([double[]]$Target) {
+        function Grab-WheelWeapon([double[]]$Target, [string]$SelectedModel, [string]$Label) {
+            Set-CapturePhase -Phase ("wheel-{0}-open" -f $Label) `
+                -ExpectedWeaponVisible $false -ExpectedAction 'weapon-wheel'
             Set-RightController @natural 0 0 1
             Save-HeldFrames 14
             Move-RightController $natural $Target 8 0 0 1
@@ -703,40 +736,60 @@ try {
             Save-HeldFrames 3
             Set-RightController @Target 0 1 1
             Save-HeldFrames 4
+            Set-CapturePhase -Phase ("wheel-{0}-handoff" -f $Label) `
+                -ExpectedWeaponModel $SelectedModel -ExpectedWeaponVisible $true -ExpectedAction 'equip'
             Set-RightController @Target 0 0 0
             Save-HeldFrames 3
             Move-RightController $Target $natural 8 0 0 0
+            Set-CapturePhase -Phase ("{0}-idle" -f $Label) `
+                -ExpectedWeaponModel $SelectedModel -ExpectedWeaponVisible $true -ExpectedAction 'idle'
             Set-RightController @natural 0 0 0
             Save-HeldFrames 5
         }
 
+        Set-CapturePhase -Phase 'starter-pistol-idle' `
+            -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'idle'
         Set-RightController @natural 0 0 0
         Save-HeldFrames 6
 
-        Grab-WheelWeapon $wheelKnife
+        Grab-WheelWeapon $wheelKnife $knifeModel 'knife'
+        Set-CapturePhase -Phase 'knife-melee' `
+            -ExpectedWeaponModel $knifeModel -ExpectedWeaponVisible $true -ExpectedAction 'melee'
         Move-RightController $natural $swingOne 3 1 0
         Move-RightController $swingOne $swingTwo 4 1 0
         Move-RightController $swingTwo $swingThree 4 1 0
         Set-RightController @swingThree 0 0 0
         Save-HeldFrames 5
 
-        Grab-WheelWeapon $wheelRifle
+        Grab-WheelWeapon $wheelRifle $rifleModel 'rifle'
+        Set-CapturePhase -Phase 'rifle-reload' `
+            -ExpectedWeaponModel $rifleModel -ExpectedWeaponVisible $true -ExpectedAction 'reload'
         Set-LeftController 1
         Save-NativeFrame
         Set-LeftController 0
         Save-PacedFrames 30
+        Set-CapturePhase -Phase 'rifle-fire' `
+            -ExpectedWeaponModel $rifleModel -ExpectedWeaponVisible $true -ExpectedAction 'fire'
         Set-RightController @natural 1 0 0
         Save-PacedFrames 12
+        Set-CapturePhase -Phase 'rifle-fire-release' `
+            -ExpectedWeaponModel $rifleModel -ExpectedWeaponVisible $true -ExpectedAction 'fire-release'
         Set-RightController @natural 0 0 0
         Save-PacedFrames 12
 
-        Grab-WheelWeapon $wheelPistol
+        Grab-WheelWeapon $wheelPistol $pistolModel 'pistol-return'
+        Set-CapturePhase -Phase 'pistol-return-reload' `
+            -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'reload'
         Set-LeftController 1
         Save-NativeFrame
         Set-LeftController 0
         Save-PacedFrames 30
+        Set-CapturePhase -Phase 'pistol-return-fire' `
+            -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'fire'
         Set-RightController @natural 1 0 0
         Save-PacedFrames 12
+        Set-CapturePhase -Phase 'pistol-return-fire-release' `
+            -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'fire-release'
         Set-RightController @natural 0 0 0
         Save-PacedFrames 12
     }
@@ -750,28 +803,40 @@ try {
     $swingTwo = @(0.35, 0.03, -0.14, -0.35, 0.35, 0.25)
     $swingThree = @(-0.02, 0.10, -0.20, -0.85, 0.55, 0.45)
 
+    Set-CapturePhase -Phase 'starter-pistol-idle' `
+        -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'idle'
     Set-RightController @natural 0 0
     Save-HeldFrames 6
 
     # The fresh proof loadout starts with an empty 9mm magazine. Exercise the
     # production reload edge, then retain the forward-barrel trigger action.
+    Set-CapturePhase -Phase 'starter-pistol-reload' `
+        -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'reload'
     Set-LeftController 1
     Save-NativeFrame
     Set-LeftController 0
     Save-PacedFrames 30
+    Set-CapturePhase -Phase 'starter-pistol-fire' `
+        -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'fire'
     Set-RightController @natural 1 0
     Save-PacedFrames 12
+    Set-CapturePhase -Phase 'starter-pistol-fire-release' `
+        -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'fire-release'
     Set-RightController @natural 0 0
     Save-PacedFrames 12
     # A fresh authored loadout may already have a full magazine, so guarantee
     # an observable production reload after the first shot creates capacity.
     Start-Sleep -Milliseconds 800
+    Set-CapturePhase -Phase 'starter-pistol-reload-after-shot' `
+        -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'reload'
     Set-LeftController 1
     Save-NativeFrame
     Set-LeftController 0
     Save-PacedFrames 30
 
     # Native right-hand pointer -> Knife -> ordinary melee delivery.
+    Set-CapturePhase -Phase 'pipboy-select-knife' `
+        -ExpectedWeaponVisible $false -ExpectedAction 'pipboy-select'
     Move-RightController $natural $knifePointer 8 0 1
     Save-HeldFrames 2
     Set-RightController @knifePointer 1 1
@@ -779,8 +844,12 @@ try {
     Set-RightController @knifePointer 0 1
     Save-HeldFrames 3
     Move-RightController $knifePointer $natural 8 0 1
+    Set-CapturePhase -Phase 'knife-idle' `
+        -ExpectedWeaponModel $knifeModel -ExpectedWeaponVisible $true -ExpectedAction 'idle'
     Set-RightController @natural 0 0
     Save-HeldFrames 5
+    Set-CapturePhase -Phase 'knife-melee' `
+        -ExpectedWeaponModel $knifeModel -ExpectedWeaponVisible $true -ExpectedAction 'melee'
     Move-RightController $natural $swingOne 2 1 0
     Move-RightController $swingOne $swingTwo 4 1 0
     Move-RightController $swingTwo $swingThree 4 1 0
@@ -788,6 +857,8 @@ try {
     Save-HeldFrames 3
 
     # Native right-hand pointer -> Varmint Rifle -> reload -> fire.
+    Set-CapturePhase -Phase 'pipboy-select-rifle' `
+        -ExpectedWeaponVisible $false -ExpectedAction 'pipboy-select'
     Move-RightController $swingThree $riflePointer 8 0 1
     Save-HeldFrames 2
     Set-RightController @riflePointer 1 1
@@ -795,18 +866,28 @@ try {
     Set-RightController @riflePointer 0 1
     Save-HeldFrames 3
     Move-RightController $riflePointer $natural 8 0 1
+    Set-CapturePhase -Phase 'rifle-idle' `
+        -ExpectedWeaponModel $rifleModel -ExpectedWeaponVisible $true -ExpectedAction 'idle'
     Set-RightController @natural 0 0
     Save-HeldFrames 5
+    Set-CapturePhase -Phase 'rifle-reload' `
+        -ExpectedWeaponModel $rifleModel -ExpectedWeaponVisible $true -ExpectedAction 'reload'
     Set-LeftController 1
     Save-NativeFrame
     Set-LeftController 0
     Save-PacedFrames 30
+    Set-CapturePhase -Phase 'rifle-fire' `
+        -ExpectedWeaponModel $rifleModel -ExpectedWeaponVisible $true -ExpectedAction 'fire'
     Set-RightController @natural 1 0
     Save-PacedFrames 12
+    Set-CapturePhase -Phase 'rifle-fire-release' `
+        -ExpectedWeaponModel $rifleModel -ExpectedWeaponVisible $true -ExpectedAction 'fire-release'
     Set-RightController @natural 0 0
     Save-PacedFrames 12
 
     # Native right-hand pointer -> 9mm Pistol -> fire again.
+    Set-CapturePhase -Phase 'pipboy-select-pistol-return' `
+        -ExpectedWeaponVisible $false -ExpectedAction 'pipboy-select'
     Move-RightController $natural $pistolPointer 8 0 1
     Save-HeldFrames 2
     Set-RightController @pistolPointer 1 1
@@ -814,10 +895,16 @@ try {
     Set-RightController @pistolPointer 0 1
     Save-HeldFrames 3
     Move-RightController $pistolPointer $natural 8 0 1
+    Set-CapturePhase -Phase 'pistol-return-idle' `
+        -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'idle'
     Set-RightController @natural 0 0
     Save-HeldFrames 5
+    Set-CapturePhase -Phase 'pistol-return-fire' `
+        -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'fire'
     Set-RightController @natural 1 0
     Save-PacedFrames 12
+    Set-CapturePhase -Phase 'pistol-return-fire-release' `
+        -ExpectedWeaponModel $pistolModel -ExpectedWeaponVisible $true -ExpectedAction 'fire-release'
     Set-RightController @natural 0 0
     Save-PacedFrames 12
     }
@@ -1009,6 +1096,16 @@ $probe = & $ffprobe.Source `
     -show_entries stream=width,height,avg_frame_rate,nb_frames `
     -of json $videoPath | ConvertFrom-Json
 $videoStream = @($probe.streams)[0]
+$closeupProbe = & $ffprobe.Source `
+    -v error `
+    -show_entries format=duration,size `
+    -show_entries stream=width,height,avg_frame_rate,nb_frames `
+    -of json $weaponCloseupVideoPath | ConvertFrom-Json
+$closeupStream = @($closeupProbe.streams)[0]
+$closeupMediaPassed = [int]$closeupStream.nb_frames -eq $nativeFrames.Count -and
+    [int]$closeupStream.width -eq 720 -and [int]$closeupStream.height -eq 700 -and
+    [string]$closeupStream.avg_frame_rate -eq [string]$videoStream.avg_frame_rate -and
+    [math]::Abs([double]$closeupProbe.format.duration - [double]$probe.format.duration) -le 0.01
 
 $manifestFrameIndex = 0
 $frameEntries = @($nativeFrames | ForEach-Object {
@@ -1018,11 +1115,47 @@ $frameEntries = @($nativeFrames | ForEach-Object {
         captureIndex = $capture.captureIndex
         simulatorFrame = $capture.simulatorFrame
         capturedAtUtc = $capture.capturedAtUtc
+        phase = $capture.phase
+        expectedWeaponModel = $capture.expectedWeaponModel
+        expectedWeaponVisible = [bool]$capture.expectedWeaponVisible
+        expectedAction = $capture.expectedAction
         path = $_.FullName
         bytes = $_.Length
         sha256 = Get-Sha256WithRetry $_.FullName
     }
 })
+
+# Preserve native-pixel close-ups for every visible equip/idle/action phase. The wide crop proves the complete
+# weapon and texture; the tight anatomy crop proves the grip/handle contact without asking reviewers to scrub video.
+$visibleProofPhases = @($frameEntries | Where-Object {
+    $_.expectedWeaponVisible -and $_.expectedAction -in @('equip', 'idle', 'reload', 'fire', 'fire-release', 'melee')
+} | Group-Object phase)
+foreach ($phaseGroup in $visibleProofPhases) {
+    $phaseFrames = @($phaseGroup.Group)
+    if ($phaseFrames.Count -eq 0) {
+        continue
+    }
+    $safePhase = [regex]::Replace([string]$phaseGroup.Name, '[^0-9A-Za-z._-]+', '-')
+    $sampleOffsets = @(0, [int][math]::Floor(($phaseFrames.Count - 1) / 2), $phaseFrames.Count - 1) |
+        Sort-Object -Unique
+    foreach ($sampleOffset in $sampleOffsets) {
+        $frame = $phaseFrames[$sampleOffset]
+        foreach ($crop in @(
+            [pscustomobject]@{ Name = 'wide'; Filter = 'crop=720:700:400:700' },
+            [pscustomobject]@{ Name = 'anatomy'; Filter = 'crop=300:200:760:940' }
+        )) {
+            $stillPath = Join-Path $phaseStillRoot (
+                '{0}-frame-{1:d4}-{2}.png' -f $safePhase, [int]$frame.captureIndex, $crop.Name)
+            & $ffmpeg.Source -hide_banner -loglevel error -y -i $frame.path `
+                -vf $crop.Filter -frames:v 1 $stillPath
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $stillPath -PathType Leaf)) {
+                throw "ffmpeg did not produce phase close-up: $stillPath"
+            }
+            $script:PhaseStillPaths += $stillPath
+        }
+    }
+}
+
 $uniqueFrameHashes = @($frameEntries.sha256 | Sort-Object -Unique).Count
 $frameManifest = [ordered]@{
     schema = 'nikami-openmw-vr-native-frame-manifest/v1'
@@ -1038,6 +1171,7 @@ $frameManifest = [ordered]@{
     [Text.UTF8Encoding]::new($false))
 
 $artifacts = @($videoPath, $weaponCloseupVideoPath, $contactSheetPath, $pipBoyRtt, $openMwLog, $frameManifestPath,
+    $script:PhaseStillPaths,
     $framingHiddenPath, $framingLeftPath, $framingRightPath, $framingBothPath) |
     Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
     ForEach-Object {
@@ -1053,7 +1187,8 @@ $passed = $failedAssertions.Count -eq 0 -and
     $uniqueFrameHashes -ge 20 -and
     [int]$videoStream.nb_frames -eq $nativeFrames.Count -and
     [int]$videoStream.width -eq 960 -and
-    [int]$videoStream.height -eq 600
+    [int]$videoStream.height -eq 600 -and
+    $closeupMediaPassed
 
 $report = [ordered]@{
     schema = 'nikami-openmw-vr-pipboy-interaction-proof/v1'
@@ -1092,6 +1227,13 @@ $report = [ordered]@{
         frameRate = [string]$videoStream.avg_frame_rate
         frameCount = [int]$videoStream.nb_frames
         durationSeconds = [double]$probe.format.duration
+        closeupWidth = [int]$closeupStream.width
+        closeupHeight = [int]$closeupStream.height
+        closeupFrameRate = [string]$closeupStream.avg_frame_rate
+        closeupFrameCount = [int]$closeupStream.nb_frames
+        closeupDurationSeconds = [double]$closeupProbe.format.duration
+        closeupMediaPassed = $closeupMediaPassed
+        phaseCloseupCount = $script:PhaseStillPaths.Count
         uniqueNativeFrameHashes = $uniqueFrameHashes
         nativeFrameCount = $nativeFrames.Count
     }
@@ -1106,5 +1248,6 @@ $report | ConvertTo-Json -Depth 10
 if (-not $passed) {
     throw "OpenMW VR Pip-Boy interaction proof failed: " +
         ((@($failedAssertions | ForEach-Object Key) +
-            $(if ($uniqueFrameHashes -lt 20) { 'native-frame-motion' } else { @() })) -join ', ')
+            $(if ($uniqueFrameHashes -lt 20) { 'native-frame-motion' } else { @() }) +
+            $(if (-not $closeupMediaPassed) { 'weapon-closeup-media' } else { @() })) -join ', ')
 }

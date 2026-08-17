@@ -355,8 +355,8 @@ $vrRigDefaults = [ordered]@{
     OPENMW_FNV_PIPBOY_SCALE = "1.35"
     # The opposite-hand pointer temporarily magnifies the device around the
     # same wrist socket, then smoothly restores the normal wearable scale.
-    OPENMW_FNV_PIPBOY_FOCUS_SCALE = "1.35"
-    OPENMW_FNV_PIPBOY_FOCUS_LERP = "0.20"
+    OPENMW_FNV_PIPBOY_FOCUS_SCALE = "1.45"
+    OPENMW_FNV_PIPBOY_FOCUS_LERP = "0.12"
     OPENMW_FNV_PIPBOY_SOCKET_MODEL_X = "17.0616"
     OPENMW_FNV_RIGHT_PIPBOY_CALIBRATION = "0"
     OPENMW_FNV_HAND_ROT_X = "90"
