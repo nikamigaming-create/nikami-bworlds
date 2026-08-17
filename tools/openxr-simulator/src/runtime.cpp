@@ -733,6 +733,15 @@ static ControllerState g_rightController = {
     {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f  // Velocity tracking
 };
 
+struct ControllerCommandInputState {
+    bool triggerSet = false;
+    bool gripSet = false;
+    float triggerValue = 0.0f;
+    float gripValue = 0.0f;
+};
+static ControllerCommandInputState g_leftControllerCommandInput;
+static ControllerCommandInputState g_rightControllerCommandInput;
+
 // Map XrSpace handles to controller type (0=none, 1=left grip, 2=left aim, 3=right grip, 4=right aim)
 static std::unordered_map<XrSpace, int> g_controllerSpaces;
 
@@ -4300,10 +4309,16 @@ static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*,
         // R = Primary button (A)
         // T = Secondary button (B)
         // Enter = Thumbstick click
-        rt::g_rightController.triggerPressed = (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0;
-        rt::g_rightController.triggerValue = rt::g_rightController.triggerPressed ? 1.0f : 0.0f;
-        rt::g_rightController.gripPressed = (GetAsyncKeyState('F') & 0x8000) != 0;
-        rt::g_rightController.gripValue = rt::g_rightController.gripPressed ? 1.0f : 0.0f;
+        const bool rightKeyboardTrigger = (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0;
+        const bool rightKeyboardGrip = (GetAsyncKeyState('F') & 0x8000) != 0;
+        rt::g_rightController.triggerValue = std::max(
+            rt::g_rightControllerCommandInput.triggerSet ? rt::g_rightControllerCommandInput.triggerValue : 0.0f,
+            rightKeyboardTrigger ? 1.0f : 0.0f);
+        rt::g_rightController.triggerPressed = rt::g_rightController.triggerValue >= 0.5f;
+        rt::g_rightController.gripValue = std::max(
+            rt::g_rightControllerCommandInput.gripSet ? rt::g_rightControllerCommandInput.gripValue : 0.0f,
+            rightKeyboardGrip ? 1.0f : 0.0f);
+        rt::g_rightController.gripPressed = rt::g_rightController.gripValue >= 0.5f;
         rt::g_rightController.menuPressed = (GetAsyncKeyState(VK_TAB) & 0x8000) != 0;
         rt::g_rightController.primaryPressed = (GetAsyncKeyState('R') & 0x8000) != 0;
         rt::g_rightController.secondaryPressed = (GetAsyncKeyState('T') & 0x8000) != 0;
@@ -4315,10 +4330,16 @@ static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*,
         // G = Menu (left hand)
         // V = Primary (X)
         // B = Secondary (Y)
-        rt::g_leftController.triggerPressed = (GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0;
-        rt::g_leftController.triggerValue = rt::g_leftController.triggerPressed ? 1.0f : 0.0f;
-        rt::g_leftController.gripPressed = (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0;
-        rt::g_leftController.gripValue = rt::g_leftController.gripPressed ? 1.0f : 0.0f;
+        const bool leftKeyboardTrigger = (GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0;
+        const bool leftKeyboardGrip = (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0;
+        rt::g_leftController.triggerValue = std::max(
+            rt::g_leftControllerCommandInput.triggerSet ? rt::g_leftControllerCommandInput.triggerValue : 0.0f,
+            leftKeyboardTrigger ? 1.0f : 0.0f);
+        rt::g_leftController.triggerPressed = rt::g_leftController.triggerValue >= 0.5f;
+        rt::g_leftController.gripValue = std::max(
+            rt::g_leftControllerCommandInput.gripSet ? rt::g_leftControllerCommandInput.gripValue : 0.0f,
+            leftKeyboardGrip ? 1.0f : 0.0f);
+        rt::g_leftController.gripPressed = rt::g_leftController.gripValue >= 0.5f;
         rt::g_leftController.menuPressed = (GetAsyncKeyState('G') & 0x8000) != 0;
         rt::g_leftController.primaryPressed = (GetAsyncKeyState('V') & 0x8000) != 0;
         rt::g_leftController.secondaryPressed = (GetAsyncKeyState('B') & 0x8000) != 0;
@@ -4499,6 +4520,8 @@ static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*,
         mcp::ControllerPoseCommand ctrlCmd = mcp::CheckControllerPoseCommand();
         if (ctrlCmd.valid) {
             rt::ControllerState& ctrl = (ctrlCmd.hand == 0) ? rt::g_leftController : rt::g_rightController;
+            rt::ControllerCommandInputState& commandInput
+                = (ctrlCmd.hand == 0) ? rt::g_leftControllerCommandInput : rt::g_rightControllerCommandInput;
             ctrl.posOffset.x = ctrlCmd.posX;
             ctrl.posOffset.y = ctrlCmd.posY;
             ctrl.posOffset.z = ctrlCmd.posZ;
@@ -4506,10 +4529,14 @@ static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*,
             ctrl.pitchOffset = ctrlCmd.pitch;
             ctrl.rollOffset = ctrlCmd.roll;
             if (ctrlCmd.triggerSet) {
+                commandInput.triggerSet = true;
+                commandInput.triggerValue = ctrlCmd.trigger;
                 ctrl.triggerValue = ctrlCmd.trigger;
                 ctrl.triggerPressed = (ctrlCmd.trigger >= 0.5f);
             }
             if (ctrlCmd.gripSet) {
+                commandInput.gripSet = true;
+                commandInput.gripValue = ctrlCmd.grip;
                 ctrl.gripValue = ctrlCmd.grip;
                 ctrl.gripPressed = (ctrlCmd.grip >= 0.5f);
             }

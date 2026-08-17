@@ -27,11 +27,20 @@ if (-not (Test-Path -LiteralPath $SimulatorDataDirectory -PathType Container)) {
 }
 
 $ackPath = Join-Path $SimulatorDataDirectory "command_ack.json"
-$started = [DateTime]::UtcNow
 $command = [ordered]@{ x = $PosX; y = $PosY; z = $PosZ; yaw = $Yaw; pitch = $Pitch }
 if ($SetRoll) { $command.roll = $Roll }
 $commandPath = Join-Path $SimulatorDataDirectory "head_pose_command.json"
 $temporaryPath = "$commandPath.tmp"
+
+# The simulator uses one one-shot acknowledgement file for all commands. Clear
+# the previous acknowledgement before publishing this command so a newly
+# created matching file is authoritative. Filesystem timestamp precision is
+# not reliable enough to order this IPC handshake against DateTime.UtcNow.
+if (Test-Path -LiteralPath $ackPath -PathType Leaf) {
+    Remove-Item -LiteralPath $ackPath -Force
+}
+
+$started = [DateTime]::UtcNow
 [IO.File]::WriteAllText($temporaryPath, ($command | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
 Move-Item -LiteralPath $temporaryPath -Destination $commandPath -Force
 
@@ -39,12 +48,10 @@ $deadline = $started.AddSeconds($TimeoutSeconds)
 do {
     if (Test-Path -LiteralPath $ackPath -PathType Leaf) {
         $ackItem = Get-Item -LiteralPath $ackPath
-        if ($ackItem.LastWriteTimeUtc -ge $started) {
-            $ack = Get-Content -LiteralPath $ackPath -Raw | ConvertFrom-Json
-            if ($ack.command -eq "head_pose" -and [bool]$ack.success) {
-                [pscustomobject]@{ status = "pass"; command = $command; acknowledgedUtc = $ackItem.LastWriteTimeUtc.ToString("o") }
-                exit 0
-            }
+        $ack = Get-Content -LiteralPath $ackPath -Raw | ConvertFrom-Json
+        if ($ack.command -eq "head_pose" -and [bool]$ack.success) {
+            [pscustomobject]@{ status = "pass"; command = $command; acknowledgedUtc = $ackItem.LastWriteTimeUtc.ToString("o") }
+            exit 0
         }
     }
     Start-Sleep -Milliseconds 50

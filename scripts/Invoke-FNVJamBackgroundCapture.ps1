@@ -38,6 +38,7 @@ param(
     [int]$PipBoyCaptureSeconds = 80,
     [ValidateRange(8, 30)]
     [int]$PipBoyVRFrameRate = 12,
+    [switch]$PipBoyVRWeaponWheel,
     [ValidateRange(52, 90)]
     [int]$TerminalCaptureSeconds = 65,
     [switch]$PipBoyLifecycleOnly,
@@ -630,20 +631,38 @@ if ($Scenario -eq "PipBoyVR") {
         -BinaryRoot $OpeningRuntimeRoot `
         -OutputRoot $pipBoyVrOutput `
         -FrameRate $PipBoyVRFrameRate `
+        -WeaponWheel:$PipBoyVRWeaponWheel `
         -TimeoutSeconds $TimeoutSeconds
     $pipBoyVrResult =
         Get-Content -Raw -LiteralPath (Join-Path $pipBoyVrOutput "vr-pipboy-interaction-report.json") |
         ConvertFrom-Json
+    $requiredInteractionPassed = if ($PipBoyVRWeaponWheel) {
+        [bool]$pipBoyVrResult.assertions.weaponWheelCentered -and
+        [bool]$pipBoyVrResult.assertions.knifeSelectedByWheel -and
+        [bool]$pipBoyVrResult.assertions.rifleSelectedByWheel -and
+        [bool]$pipBoyVrResult.assertions.pistolSelectedByWheel -and
+        [bool]$pipBoyVrResult.assertions.weaponAimFixturesPassed -and
+        [bool]$pipBoyVrResult.assertions.weaponGripFixturesPassed
+    } else {
+        [bool]$pipBoyVrResult.assertions.livePipBoyScreenBound -and
+        [bool]$pipBoyVrResult.assertions.knifeSelectedByPointer -and
+        [bool]$pipBoyVrResult.assertions.rifleSelectedByPointer -and
+        [bool]$pipBoyVrResult.assertions.pistolSelectedByPointer
+    }
+    $nativeWeaponPassed =
+        [bool]$pipBoyVrResult.assertions.nativeAttachmentRigidPassed -and
+        [bool]$pipBoyVrResult.assertions.weaponTexturesPassed -and
+        [bool]$pipBoyVrResult.assertions.weaponVisibilityPassed -and
+        [bool]$pipBoyVrResult.assertions.actualProjectileRayPassed -and
+        [bool]$pipBoyVrResult.assertions.nativeWeaponDebugAxesPassed
     if ($pipBoyVrResult.status -ne "pass" -or
         [bool]$pipBoyVrResult.capture.windowsAppControlUsed -or
         [bool]$pipBoyVrResult.capture.foregroundActivationUsed -or
         [bool]$pipBoyVrResult.capture.foregroundInputInjected -or
         -not [bool]$pipBoyVrResult.capture.sourceFramesRetained -or
         -not [bool]$pipBoyVrResult.capture.telemetryRetained -or
-        -not [bool]$pipBoyVrResult.assertions.livePipBoyScreenBound -or
-        -not [bool]$pipBoyVrResult.assertions.knifeSelectedByPointer -or
-        -not [bool]$pipBoyVrResult.assertions.rifleSelectedByPointer -or
-        -not [bool]$pipBoyVrResult.assertions.pistolSelectedByPointer -or
+        -not $requiredInteractionPassed -or
+        -not $nativeWeaponPassed -or
         -not [bool]$pipBoyVrResult.assertions.knifeMeleePassed -or
         -not [bool]$pipBoyVrResult.assertions.rifleShotPassed -or
         -not [bool]$pipBoyVrResult.assertions.pistolShotPassed) {

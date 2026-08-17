@@ -350,6 +350,13 @@ $vrRigDefaults = [ordered]@{
     OPENMW_FNV_PIPBOY_OFFSET_X = "-3"
     OPENMW_FNV_PIPBOY_OFFSET_Y = "-13"
     OPENMW_FNV_PIPBOY_OFFSET_Z = "-6.5"
+    # The authored model was calibrated at desktop proof distance. A modest
+    # socket-anchored increase keeps its display legible in a physical HMD.
+    OPENMW_FNV_PIPBOY_SCALE = "1.35"
+    # The opposite-hand pointer temporarily magnifies the device around the
+    # same wrist socket, then smoothly restores the normal wearable scale.
+    OPENMW_FNV_PIPBOY_FOCUS_SCALE = "1.45"
+    OPENMW_FNV_PIPBOY_FOCUS_LERP = "0.12"
     OPENMW_FNV_PIPBOY_SOCKET_MODEL_X = "17.0616"
     OPENMW_FNV_RIGHT_PIPBOY_CALIBRATION = "0"
     OPENMW_FNV_HAND_ROT_X = "90"
@@ -388,6 +395,8 @@ foreach ($name in @(
     "OPENMW_FNV_VR_STATICIZED_HANDS",
     "OPENMW_FNV_VR_CONTROLLER_DEBUG_AXES",
     "OPENMW_FNV_VR_HAND_TRACKING_LOG",
+    "OPENMW_FNV_STARTER_LOADOUT",
+    "OPENMW_FNV_UNLOCK_ALL_MAP_MARKERS",
     "XR_RUNTIME_JSON",
     "OPENXR_SIMULATOR_DATA_DIR",
     "OPENXR_SIMULATOR_LOG_PATH",
@@ -426,6 +435,16 @@ try {
     $env:OPENMW_FNV_VR_HAND_TRACKING_LOG = if ($ControllerPoseDiagnostics) { "1" } else { "0" }
     foreach ($entry in $vrRigDefaults.GetEnumerator()) {
         [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, "Process")
+    }
+    if ([string]::IsNullOrWhiteSpace($LoadSavegame)) {
+        # This direct Goodsprings start bypasses the retail opening sequence that
+        # normally grants equipment and discoveries. Populate the real player
+        # inventory with FalloutNV.esm records and expose the authored Mojave map
+        # so the headset session is immediately playable. Loaded saves retain
+        # their own inventory and discovery state untouched.
+        $env:OPENMW_FNV_STARTER_LOADOUT = "1"
+        $env:OPENMW_FNV_UNLOCK_ALL_MAP_MARKERS = "1"
+        Write-Host "Fresh FNV VR session: authored starter inventory and Mojave locations enabled."
     }
     if ($InteractionProofLoadout) {
         # Populate the normal player InventoryStore with named FalloutNV.esm
