@@ -311,8 +311,13 @@ selected 6,198 complete trees.
 - Clean `openmw-lib` and both owning tests compile with MSVC 19.44.
 - Clean `git diff --check`: pass.
 
-The following downstream commits remain useful product checkpoints but are no
-longer the proposed review base:
+The following downstream commits are product checkpoints rather than the
+proposed upstream review base:
+
+The maintainable product integration is branch
+`codex/openmw-maintainable-downstream-20260821`, currently headed by
+`25d120acbe`. The official-master series above remains the upstream review
+lane; the downstream commits below are the API-adapted product lane.
 
 - Identity-keyed material resolver: `d6569480a7`.
 - Authored packed collision loader: `bdd46e9403`.
@@ -322,18 +327,36 @@ longer the proposed review base:
 - Encapsulated identity-keyed material table: `3b3480f39e`.
 - Atomic BSX/active-tree ownership: `e790d4095d`.
 - Mirrored packed-scale validation: `ce6b04a8bd`.
+- Equivalent fixed packed-body merge: `7f79e433c0`.
+- Single animated packed-body ownership: `eae6cc20f3`.
+- Primitive, convex-transform, and supported list/MOPP-list conversion:
+  `a3a5c342dd`.
+- Equivalent fixed primitive-body merge: `904a089a8a`.
+- Scene-unit `bhkNiTriStripsShape` conversion: `2420a1ed59`.
+- Downstream NIF list-child reference resolution: `25d120acbe`. The retail
+  oracle exposed that this older API read `bhkListShape::mSubshapes` indices
+  without the standard `postRecordList` pass; hand-wired synthetic records
+  could not reveal the unresolved integer pointers. Current official OpenMW
+  already has the corresponding `bhkListShape::post` hook.
 - The converter owns its multipart vertex/index storage, applies the Fallout
   1:7 unit ratio plus rigid-body/root transforms, strips non-material flag bits,
   and preserves the compressed-vertex marker instead of decoding zeroes.
 - Unattached record scanning and its `FileView` record-index API were removed;
   material identity now comes only from the accepted collision path.
 - Focused ownership, material, and loader tests pass, including BSX root scope,
-  root-plus-descendant atomic fallback, animated fallback, and scale applied
-  exactly once.
+  equivalent fixed-body merges, heterogeneous/non-fixed atomic fallback,
+  animated ownership, list-child filter rejection, Bullet-observed compound
+  child identity, scene-unit strips, and scale applied exactly once.
 - Focused ray/convex identity tests: 5 / 5 pass.
-- Complete Release `components-tests`: 1,602 passed, 8 fixture-dependent skips.
+- Complete Release `components-tests`: 1,617 passed, 8 fixture-dependent skips.
 - Complete Release `openmw-tests`: 987 / 987 pass with MSVC 19.44.
-- Full Release `openmw-lib` and both owning test targets compile.
+- Full Release `openmw.exe`, `openmw-lib`, and both owning test targets compile.
+- A temporary read-only downstream production-loader oracle was removed after
+  enumerating the immutable retail archive through OpenMW's own VFS and NIF
+  reader. At product head `25d120acbe`, it parsed 14,881 / 14,881 NIFs and
+  selected exactly 7,330 authored collision files, including 85 animated
+  files. This matches the official-master clean oracle exactly and keeps the
+  active-collision result at 7,330 / 8,324 (88.06%).
 - Formatting and `git diff --check`: pass.
 - Retail-parity credit is bounded to authored collision geometry and material
   routing for the supported topology. Natural retail/OpenNV impact

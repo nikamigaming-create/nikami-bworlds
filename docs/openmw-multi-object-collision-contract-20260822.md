@@ -14,6 +14,9 @@ ordinary OpenMW objects that still own exactly one generated collision shape.
 - All 14,881 retail NIFs parse on official-master commit `e318e7ac36`.
 - Active collision denominator: 8,324 files.
 - Clean authored selection at `f1cd77f276`: 7,330 files (88.06%).
+- Downstream product selection at `25d120acbe`: the same 7,330 files, with
+  14,881 / 14,881 parsed and 85 selected animated files after restoring the
+  older NIF API's missing `bhkListShape::post` reference-resolution hook.
 - Explicit remaining boundary: 994 files.
 
 Remaining families:
