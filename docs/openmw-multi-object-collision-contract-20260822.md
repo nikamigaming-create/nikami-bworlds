@@ -68,12 +68,19 @@ on `Resource::BulletShape`. The values survive `BulletShapeInstance` cloning.
 Equivalent accepted bodies carry their shared tuple, while heterogeneous or
 otherwise rejected atomic trees fall back without collision-filter metadata.
 
-The clean Release gates pass 1,455 / 1,455 `components-tests`, 496 / 496
-`openmw-tests`, and the engine link. The downstream gates pass 1,618 component
+Clean commit `ae773b547d` and downstream commit `968e88bd0c` add the pure
+pair-policy evaluator. Exhaustive tests cover every primary and biped matrix
+pair plus all observed branches; an external probe compiled the committed C++
+and replayed 8,192 natural retail calls with zero unsupported words and zero
+mismatches.
+
+The clean Release gates pass 1,463 / 1,463 `components-tests`, 496 / 496
+`openmw-tests`, and the engine link. The downstream gates pass 1,626 component
 tests with 8 fixture-dependent skips, 987 / 987 `openmw-tests`, and the engine
 link. This foundation does not yet create multiple Bullet bodies, assign a
-runtime system group, install a pair callback, or implement phantom behavior.
-It therefore earns no additional corpus or retail-filter parity credit.
+runtime system group, install the evaluator as a pair callback, or implement
+phantom behavior. It therefore earns no additional corpus or live collision
+parity credit.
 
 ## Behavioral contract
 
