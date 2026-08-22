@@ -24,10 +24,12 @@ ordinary OpenMW objects that still own exactly one generated collision shape.
   recovery. An observe-only initialized process identifies the common pair
   evaluator at VA `0x00C84740`, a 43-row primary table at `0x01267F20`, and a
   32-row biped/dead-biped subfield table at `0x01268078`.
-- The exact first 32 primary rows and all 32 subfield rows were captured from
-  live memory. Both decoded matrices are symmetric. Rows 32–42 were recovered
-  from the prior live output and have zero 43x43 symmetry mismatches; their
-  tail-to-tail pairs remain probable pending uninterrupted recapture.
+- A first-call hook captured the complete contiguous 472-byte table region:
+  all 43 primary rows followed by all 32 subfield rows. Every row matches the
+  decoded matrices, the earlier first 256 bytes match byte-for-byte, and both
+  matrices have zero symmetry mismatches. A retained load-time all-zero
+  snapshot bounds initialization after plugin load and before the first
+  verified evaluator call.
 - All 12,942 retail `bhkRigidBody` records have identical world/body-info
   filters and authored group zero. Runtime instantiation therefore cannot be
   modeled as an unchanged copy into the observed live filter word.

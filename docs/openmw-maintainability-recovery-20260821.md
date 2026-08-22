@@ -420,21 +420,22 @@ Retail filter research is bound to `FalloutNV.exe` 1.4.0.525, SHA-256
 `518C87F58A6C4D9826E9EF8FBB7F4213882FA70822675610D45AEA2464502A57`.
 The initialized live evaluator is at VA `0x00C84740`; its primary 43-layer
 table begins at `0x01267F20` and its 32-row biped subfield table at
-`0x01268078`. Exact rows 0–31 and the full subfield table are confirmed and
-symmetric; recovered rows 32–42 are symmetry-verified but tail-to-tail pairs
-remain probable pending uninterrupted recapture. All 12,942 authored retail
-rigid-body groups are zero, so the runtime instantiation transform is not an
-unchanged NIF copy. An isolated Goodsprings hook captured 8,192 natural retail
-pair decisions over 1,361 words and 1,142 nonzero runtime groups; the recovered
-evaluator and tables reproduce all 8,192 results with zero mismatches. Runtime
-system-group assignment is therefore confirmed at population level, while the
-exact record-to-collidable identity transform remains to be traced and must not
-be guessed.
+`0x01268078`. A one-shot first-call hook captured the complete contiguous
+472-byte region: all 43 primary rows and all 32 subfield rows match the decoded
+matrices, the earlier first 256 bytes match byte-for-byte, and both matrices
+have zero symmetry mismatches. A retained load-time zero snapshot proves the
+tables initialize after NVSE plugin load and before the first verified
+evaluator call. All 12,942 authored retail rigid-body groups are zero, so the
+runtime instantiation transform is not an unchanged NIF copy. An isolated
+Goodsprings hook captured 8,192 natural retail pair decisions over 1,361 words
+and 1,142 nonzero runtime groups; the recovered evaluator and tables reproduce
+all 8,192 results with zero mismatches. Runtime system-group assignment is
+therefore confirmed at population level, while the exact record-to-collidable
+identity transform remains to be traced and must not be guessed.
 
-1. Encode the confirmed retail pair evaluator as a pure, table-driven policy
-   fixture only after uninterrupted capture confirms primary rows 32–42. Keep
-   it independent of Bullet and replay the retained 8,192-call trace with zero
-   mismatches.
+1. Encode the now fully confirmed retail pair evaluator as a pure,
+   table-driven policy fixture. Keep it independent of Bullet and replay the
+   retained 8,192-call trace with zero mismatches.
 2. Introduce a multi-object physics resource boundary before touching the 491
    heterogeneous-filter packed trees or the remaining multi-primitive trees;
    one Bullet object cannot represent per-body broad-phase filters honestly.
