@@ -3306,11 +3306,12 @@ namespace
         }
     }
 
-    void writeActor(Actor* actor)
+    void writeActor(Actor* actor, bool enforceTarget = true)
     {
         if (actor == nullptr || actor->baseProcess == nullptr)
             return;
-        if (gTargetForm != 0 && actor->refID != gTargetForm && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm))
+        if (enforceTarget && gTargetForm != 0 && actor->refID != gTargetForm
+            && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm))
             return;
         if (gFurnitureOnly)
         {
@@ -5153,6 +5154,65 @@ namespace
         Actor* actor64 = nullptr;
         if (safeRead(&manager->actor64, actor64) && actor64 != nullptr)
             actors.insert(actor64);
+    }
+
+    bool sidecarReadActorIdentity(Actor* actor, UInt32& reference, UInt32& base);
+
+    NiNode* safeActorRoot(Actor* actor)
+    {
+        __try
+        {
+            return actor != nullptr ? actor->GetNiNode() : nullptr;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            return nullptr;
+        }
+    }
+
+    void captureCellActorContext(Actor* target)
+    {
+        PlayerCharacter* player = nullptr;
+        safeRead(reinterpret_cast<const void*>(0x011DEA3C), player);
+        TESObjectCELL* captureCell = nullptr;
+        if (player == nullptr || !safeRead(&player->parentCell, captureCell) || captureCell == nullptr)
+            return;
+        std::set<Actor*> actors;
+        sidecarCollectActors(actors);
+        std::vector<std::pair<UInt32, Actor*>> ordered;
+        for (Actor* actor : actors)
+        {
+            UInt32 reference = 0;
+            UInt32 base = 0;
+            TESObjectCELL* actorCell = nullptr;
+            BaseProcess* process = nullptr;
+            NiNode* root = nullptr;
+            if (actor == nullptr || actor == player || actor == target
+                || !sidecarReadActorIdentity(actor, reference, base)
+                || !safeRead(&actor->parentCell, actorCell) || actorCell != captureCell
+                || !safeRead(&actor->baseProcess, process) || process == nullptr)
+                continue;
+            root = safeActorRoot(actor);
+            if (root != nullptr)
+                ordered.emplace_back(reference, actor);
+        }
+        std::sort(ordered.begin(), ordered.end(), [](const auto& left, const auto& right) {
+            return left.first < right.first;
+        });
+        for (std::size_t index = 0; index < ordered.size(); ++index)
+        {
+            UInt32 base = 0;
+            sidecarReadActorIdentity(ordered[index].second, ordered[index].first, base);
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"cell-actor-context\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"targetForm\":" << gTargetForm
+                    << ",\"index\":" << index
+                    << ",\"refForm\":" << ordered[index].first
+                    << ",\"baseForm\":" << base << "}\n";
+            gOutput.flush();
+            writeActor(ordered[index].second, false);
+        }
     }
 
     bool sidecarReadActorIdentity(Actor* actor, UInt32& reference, UInt32& base)
@@ -10580,7 +10640,11 @@ namespace
         {
             gBatchScreenshotRequested = true;
             if (gCaptureAnimation)
-                writeActor(findDriveActor());
+            {
+                Actor* target = findDriveActor();
+                writeActor(target);
+                captureCellActorContext(target);
+            }
             const bool accepted = scheduledCaptureBackBuffer();
             gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"batch-screenshot-request\""
                     << ",\"frame\":" << gFrame

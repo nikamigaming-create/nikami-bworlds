@@ -400,6 +400,14 @@ crops, camera and appearance telemetry, hashes, and the authored-to-retail
 validator report. The report also retains the live reference transform,
 source-labelled Direct3D 9 projection state, active idle phase, arm-bone
 transforms, and final `FaceGenFace`/`FaceGenHairNoHat` vertex hashes and bounds.
+The Trudy contract also names the expected live Goodsprings Settler reference;
+the capture retains every live non-player context actor in the cell with its
+reference/base identity, furniture state, active sequences, complete skeleton
+pose, and final geometry summary. Context actors are discovered from the retail
+process lists and validated against the data declaration, never hand-placed.
+This is `opennv-retail-actor-state-contract/v2`; the large per-bone/per-shape
+payload lives only in the contract artifact, while console and top-level reports
+carry compact state counts and paths.
 If fixed-function projection state is unavailable, the contract retains an
 explicitly provisional vertical-FOV derivation from live
 `fDefaultWorldFOV:Display`, a 4:3 reference-aspect hypothesis, and the native

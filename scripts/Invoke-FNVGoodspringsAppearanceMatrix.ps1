@@ -185,6 +185,9 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
         }
         $activeSequences = @($pose.animDataSequences | Where-Object { $null -ne $_ })
         $poseBones = @($pose.bones | Where-Object {
+            [string]$_.name -like 'Bip01*'
+        })
+        $armBones = @($poseBones | Where-Object {
             [string]$_.name -in @(
                 'Bip01 L UpperArm', 'Bip01 L Forearm', 'Bip01 R UpperArm', 'Bip01 R Forearm')
         })
@@ -192,9 +195,81 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
             @($activeSequences | Where-Object {
                 [string]$_.file -ieq 'Characters\_Male\Locomotion\mtidle.kf'
             }).Count -ne 1 -or
-            @($poseBones.name | Select-Object -Unique).Count -ne 4) {
-            throw "Retail portrait capture omitted the active idle phase or arm-bone pose for $($target.id)."
+            $poseBones.Count -lt 50 -or
+            @($poseBones.name | Select-Object -Unique).Count -ne $poseBones.Count -or
+            @($armBones.name | Select-Object -Unique).Count -ne 4) {
+            throw "Retail portrait capture omitted the active idle phase or complete skeleton pose for $($target.id)."
         }
+
+        $contextMarkers = @($events | Where-Object {
+            $_.event -eq 'cell-actor-context' -and
+            [uint32]$_.frame -eq [uint32]$targetBackBuffer[0].frame -and
+            [uint32]$_.targetForm -eq $targetForm
+        } | Sort-Object { [uint32]$_.index })
+        $expectedContextForms = if (
+            $target.PSObject.Properties.Name -contains 'contextActorReferenceForms'
+        ) {
+            @($target.contextActorReferenceForms | ForEach-Object { ConvertTo-RetailFormId $_ })
+        } else {
+            @()
+        }
+        foreach ($expectedContextForm in $expectedContextForms) {
+            if (@($contextMarkers | Where-Object {
+                [uint32]$_.refForm -eq [uint32]$expectedContextForm
+            }).Count -ne 1) {
+                throw ("Retail portrait capture omitted expected live context actor 0x{0:x8}." -f
+                    [uint32]$expectedContextForm)
+            }
+        }
+        $contextActors = @($contextMarkers | ForEach-Object {
+            $contextMarker = $_
+            $contextForm = [uint32]$contextMarker.refForm
+            $contextFrames = @($events | Where-Object {
+                $_.event -eq 'actor-frame' -and [uint32]$_.refForm -eq $contextForm -and
+                [uint32]$_.frame -eq [uint32]$contextMarker.frame
+            })
+            $contextGeometryStatus = @($events | Where-Object {
+                $_.event -eq 'actor-geometry-status' -and [uint32]$_.refForm -eq $contextForm
+            })
+            $contextGeometry = @($events | Where-Object {
+                $_.event -eq 'actor-geometry' -and [uint32]$_.refForm -eq $contextForm -and
+                [bool]$_.complete
+            })
+            if ($contextFrames.Count -ne 1 -or $contextGeometryStatus.Count -ne 1 -or
+                [bool]$contextGeometryStatus[0].traversalFault -or
+                [int]$contextGeometryStatus[0].emittedShapes -ne $contextGeometry.Count) {
+                throw ("Retail context actor 0x{0:x8} lacks complete pose or geometry." -f
+                    $contextForm)
+            }
+            $contextPose = $contextFrames[0]
+            $contextBones = @($contextPose.bones | Where-Object {
+                [string]$_.name -like 'Bip01*'
+            })
+            if ($contextBones.Count -lt 20 -or
+                @($contextBones.name | Select-Object -Unique).Count -ne $contextBones.Count) {
+                throw ("Retail context actor 0x{0:x8} lacks a unique skeleton pose." -f
+                    $contextForm)
+            }
+            [pscustomobject][ordered]@{
+                referenceForm = ('0x{0:x8}' -f $contextForm)
+                baseForm = ('0x{0:x8}' -f [uint32]$contextMarker.baseForm)
+                position = $contextPose.position
+                rotation = $contextPose.rotation
+                furnitureState = $contextPose.furnitureState
+                activeSequences = @(
+                    @($contextPose.middleHighSequences) + @($contextPose.animDataSequences) |
+                        Where-Object { $null -ne $_ } |
+                        Select-Object file, state, cycle, weight, frequency, begin, end,
+                            last, lastScaled, offset, start, group
+                )
+                bones = @($contextBones | Select-Object name, parentName, runtimeFlags, transform)
+                geometry = [pscustomobject][ordered]@{
+                    status = $contextGeometryStatus[0]
+                    shapes = @($contextGeometry | Select-Object name, parentName, runtimeType,
+                        vertexCount, fnv1a32, dataBound, measuredBounds, transform)
+                }
+            }
+        })
 
         $nativeProjection = $targetBackBuffer[0].projection
         $directProjection = $null -ne $nativeProjection -and
@@ -257,7 +332,7 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
         }
 
         $targetStates += [pscustomobject][ordered]@{
-            schema = 'opennv-retail-actor-shot-state/v1'
+            schema = 'opennv-retail-actor-shot-state/v2'
             target = [pscustomobject][ordered]@{
                 id = [string]$target.id
                 referenceForm = [string]$target.reference.form
@@ -282,8 +357,10 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
                 footIkEnabled = $pose.footIkEnabled
                 activeSequences = @($activeSequences | Select-Object file, state, cycle, weight,
                     frequency, begin, end, last, lastScaled, offset, start, group)
-                armBones = @($poseBones | Select-Object name, parentName, runtimeFlags, transform)
+                bones = @($poseBones | Select-Object name, parentName, runtimeFlags, transform)
+                armBones = @($armBones | Select-Object name, parentName, runtimeFlags, transform)
             }
+            contextActors = $contextActors
             geometry = [pscustomobject][ordered]@{
                 status = $geometryStatus[0]
                 shapes = @($requiredGeometry | Select-Object name, parentName, runtimeType,
@@ -331,7 +408,7 @@ if ($allStates.Count -ne $humanoids.Count) {
 $exactProjectionCount = @($allStates | Where-Object { [bool]$_.camera.projection.exact }).Count
 $stateContractPath = Join-Path $outputDirectory 'retail-state-contract.json'
 $stateContract = [pscustomobject][ordered]@{
-    schema = 'opennv-retail-actor-state-contract/v1'
+    schema = 'opennv-retail-actor-state-contract/v2'
     source = [pscustomobject][ordered]@{
         runtime = 'FalloutNV-1.4.0.525'
         capture = 'xNVSE schedule + native Direct3D 9 backbuffer'
@@ -352,6 +429,22 @@ $stateContract = [pscustomobject][ordered]@{
 $contactSheet = Join-Path $outputDirectory "retail-contact-sheet.png"
 & $contactSheetScript -ManifestPath $reportPath -OutputPath $contactSheet -Columns 4 | Out-Null
 
+$publicGroupRuns = @($groupRuns | ForEach-Object {
+    [pscustomobject][ordered]@{
+        label = $_.label
+        cell = $_.cell
+        targets = $_.targets
+        output = $_.output
+        runManifest = $_.runManifest
+        screenshots = $_.screenshots
+        proofCrops = $_.proofCrops
+        stateCount = @($_.states).Count
+        exactProjectionCount = @($_.states | Where-Object {
+            [bool]$_.camera.projection.exact
+        }).Count
+    }
+})
+
 [pscustomobject][ordered]@{
     schema = "nikami-fnv-goodsprings-appearance-run/v1"
     runId = $RunId
@@ -364,7 +457,7 @@ $contactSheet = Join-Path $outputDirectory "retail-contact-sheet.png"
     passed = $humanoids.Count
     exactProjectionCount = $exactProjectionCount
     exactProjectionResolved = $exactProjectionCount -eq $allStates.Count
-    groups = $groupRuns
+    groups = $publicGroupRuns
     report = $reportPath
     stateContract = $stateContractPath
     contactSheet = $contactSheet

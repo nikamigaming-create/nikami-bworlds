@@ -453,6 +453,9 @@
         "name": ""
       },
       "referenceEditorId": "TrudyRef",
+      "contextActorReferenceForms": [
+        "0x104f08"
+      ],
       "base": {
         "form": "0x104c6c",
         "openmwForm": "FormId:0x104c6c",

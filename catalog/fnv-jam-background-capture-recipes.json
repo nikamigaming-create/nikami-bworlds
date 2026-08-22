@@ -466,6 +466,7 @@
         "front portrait and front full-body shots use the same selected reference and run sequentially",
         "native Direct3D 9 source frames, appearance telemetry, camera telemetry, proof crops, and hashes are retained",
         "live reference transform, source-labelled Direct3D 9 projection telemetry with an explicitly provisional retail-FOV fallback, active idle phase, arm-bone transforms, and complete final FaceGenFace/FaceGenHairNoHat geometry hashes and bounds are retained",
+        "the data-declared live context actors in the retail cell retain reference/base identity, furniture state, active sequences, complete skeleton pose, and final rendered geometry",
         "the authored-to-retail appearance comparator passes the selected target for both shots",
         "capture.windowsAppControlUsed=false",
         "capture.foregroundActivationUsed=false",
