@@ -1,0 +1,101 @@
+{
+  "schema": "nikami-bworlds-retirement/v1",
+  "decisionDate": "2026-08-21",
+  "status": "migration-required-before-archive-or-rename",
+  "decision": {
+    "retiredProductScope": "B-worlds / multi-Bethesda-world picker and world walker",
+    "activeProduct": "OpenNV",
+    "destructiveCleanupAuthorized": false,
+    "policy": "Preserve first, classify second, migrate or archive third, delete nothing until every archive gate passes."
+  },
+  "repositories": {
+    "engineSource": {
+      "name": "nikami-openmw-lab",
+      "role": "OpenMW/OpenNV C++ implementation"
+    },
+    "transitionalControlPlane": {
+      "currentName": "nikami-bworlds",
+      "targetName": "OpenNV-specific name",
+      "role": "contracts, profiles, oracles, patch queues, capture, build, test, packaging, and provenance"
+    }
+  },
+  "inventorySnapshot": {
+    "trackedFiles": 698,
+    "openNvOrFnvNamedFiles": 456,
+    "godotFnvFiles": 163,
+    "largestTopLevelGroups": {
+      "scripts": 255,
+      "godot-fnv": 163,
+      "catalog": 71,
+      "patches": 67,
+      "tools": 40,
+      "docs": 37,
+      "oracles": 28,
+      "config": 23
+    }
+  },
+  "dispositions": [
+    {
+      "id": "retain-opennv-control-plane",
+      "status": "active",
+      "paths": [
+        "patches/openmw",
+        "patches/xnvse",
+        "oracles/fnv_actor_sidecar",
+        "oracles/fnv_save330_visual",
+        "oracles/xnvse",
+        "catalog/fnv-*",
+        "catalog/open-nv-*",
+        "docs/fnv-*",
+        "docs/fallout-*",
+        "scripts/*FNV*",
+        "scripts/*OpenNV*",
+        "scripts/*fnv*",
+        "config/*fnv*"
+      ],
+      "destination": "renamed OpenNV control-plane repository",
+      "gate": "All referenced locks, scripts, patches, and evidence hashes resolve after the rename."
+    },
+    {
+      "id": "split-godot-runtime",
+      "status": "pending",
+      "paths": ["godot-fnv"],
+      "destination": "separate OpenNV Godot experiment or read-only archive",
+      "gate": "Its project, tests, shaders, and provenance remain independently runnable."
+    },
+    {
+      "id": "archive-multi-world-research",
+      "status": "pending",
+      "paths": [
+        "docs/architecture.md",
+        "catalog/cells",
+        "catalog/bethesda-openmw-capabilities.json",
+        "catalog/world-settings-presets.json",
+        "profiles",
+        "upstream-overrides"
+      ],
+      "destination": "history-preserving research archive",
+      "gate": "No active OpenNV command, lock, or documentation link depends on an archived path."
+    },
+    {
+      "id": "archive-other-game-labs",
+      "status": "pending",
+      "paths": [
+        "patches/sfse",
+        "patches/xobse",
+        "oracles/sfse",
+        "oracles/xobse",
+        "non-FNV DAO, Starfield, Oblivion, Skyrim, Fallout 4, and Fallout 76 research"
+      ],
+      "destination": "separate per-game archives when retention is useful",
+      "gate": "Every retained dossier has an immutable source commit and no OpenNV runtime dependency."
+    }
+  ],
+  "archiveGate": [
+    "Promoted and candidate OpenMW patch replay validators pass.",
+    "OpenNV build and test entry points resolve only retained paths.",
+    "All public-safe evidence hashes and oracle source remain reachable.",
+    "The maintainable downstream engine branch and clean extraction branches are preserved remotely or in a verified bundle.",
+    "The historical repository is renamed or archived read-only only after destination commits and trees are recorded."
+  ]
+}

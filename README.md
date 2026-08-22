@@ -1,15 +1,26 @@
-# Nikami Worlds
+# OpenNV Control Plane
 
-Clean world-selection and patch layer for OpenMW and OpenMW VR experiments.
+This is the transitional control-plane repository for OpenNV. The former
+`B-worlds` / multi-Bethesda-world product scope was retired on 2026-08-21. Do
+not add new world-picker, world-walker, or cross-game product features here.
 
-The goal is to make one shared catalog that both flat OpenMW and OpenMW VR can use:
+Until retirement migration is complete, this repository preserves:
 
-1. Detect installed Bethesda worlds and existing OpenMW profiles.
-2. Classify each world by what OpenMW can honestly load today.
-3. Generate isolated `openmw.cfg` profiles per world.
-4. Feed the same catalog into a native in-engine world/cell picker later.
-5. Use the loaded profile as a world walker: search cells, click exterior maps,
-   enter coordinates, and teleport there.
+1. OpenNV profiles, behavior contracts, capability ledgers, and release locks.
+2. Retail oracle and background-capture tooling.
+3. Replayable downstream OpenMW and xNVSE patch queues.
+4. Build, test, packaging, and provenance automation.
+5. Historical multi-world and alternate-runtime research needed to explain
+   existing evidence.
+
+The repository should ultimately be renamed from its historical
+`nikami-bworlds` GitHub slug to an OpenNV-specific name. Historical multi-world
+materials remain readable during migration but are not an active roadmap.
+
+OpenNV engine C++ remains in the separate `nikami-openmw-lab` repository.
+OpenMW is an upstream dependency and architectural reference. Only small,
+generic engine fixes cross that boundary; OpenNV product policy, proof routes,
+UI, mod compatibility, and control-plane orchestration do not.
 
 This repo does not duplicate complete third-party engine trees. Final Nikami
 oracle C/C++ and project files are directly browsable under `oracles/`, and the

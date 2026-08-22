@@ -18,7 +18,7 @@ new implementation work.
 | Promoted overlay | existing locked queue | `f8863dd47a608c5534d1a89dc6d1584b4c79fd12` | `1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a` | Patches 0001-0024; formal replay baseline |
 | Candidate overlay | `codex/openmw-overlay-0025-checkpoint` | `79290f2a06e7fff85c17e39bd3cd1dc1412ada33` | `c5b4f00165e8a02813b443e45311ba7ea29fe605` | Patches 0001-0025; telemetry candidate only |
 | Clean extraction | `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Official-master-based parser topics and reusable synthetic fixtures |
-| Maintainable downstream | `codex/openmw-maintainable-downstream-20260821` | `40efc220ea4f357b090e3b331a2fab3e96e73e1a` | `b807bafa83e753d6d42b6ca4e97ff54b78db49fb` | Product cleanup rooted at the immutable recovery checkpoint |
+| Maintainable downstream | `codex/openmw-maintainable-downstream-20260821` | `e3d86c5fa683517eb28e0e5781c1a926bb4e2617` | `db4e9e92918a3c878b3b0c918ee5d947c55078ff` | Product cleanup rooted at the immutable recovery checkpoint |
 
 The clean extraction parent is official OpenMW `master`
 `e318e7ac360cdf082459184f968986c9e93b5ca7`.
@@ -151,6 +151,20 @@ runtime store API at that lifecycle point would always return false.
   VR, and all affected GUI translation units, compiles successfully.
 - `git diff --check`: pass.
 
+### Startup identity completion
+
+- Ordered startup classifier: `d20540af81634bdac3c0cc76badf7e9befcfd520`.
+- Engine-to-WindowManager profile threading:
+  `e3d86c5fa683517eb28e0e5781c1a926bb4e2617`.
+- The first recognized base game is computed once from configured content
+  order; built-in scripts and addons are ignored and filename case is
+  normalized.
+- Engine reuses the immutable session value for its pre-load FNV gates and
+  passes it explicitly into WindowManager.
+- Removed the final GUI VFS master probe and four repeated Engine scans.
+- Focused startup/profile tests: 4 / 4 pass.
+- Release `openmw-tests`: 982 / 982 pass with MSVC 19.44.
+
 ## Rejected non-topics
 
 - Compact `SPEC` material routing is not independently extractable: it belongs
@@ -191,21 +205,19 @@ Every new clean topic must satisfy all of the following:
 | 6 | Projectile launch and impact | downstream OpenNV services | Separate generic physics query from FNV damage policy | pending |
 | 7 | Combat cadence and ammo state | downstream OpenNV mechanics | Remove proof paths and numeric UI policy | pending |
 | 8 | Pip-Boy data presentation | downstream OpenNV UI | Presenter boundary, localization, no `SpellWindow`/`StatsWindow` repurposing | redesign required |
-| 9 | Content detection | downstream capability service | Runtime consumers use parsed ESM4 game identity; startup receives explicit profile next | runtime complete at `40efc220ea` |
+| 9 | Content detection | downstream capability service | Runtime and pre-World consumers share one ordered immutable game identity | complete at `e3d86c5fa6` |
 | 10 | Proof and capture orchestration | external harness | Remove from `Engine::frame()` and production UI | redesign required |
 
 ## Next no-detour sequence
 
-1. Pass an explicit immutable startup content profile into WindowManager and
-   remove its last pre-World `falloutnv.esm` VFS probe.
-2. Define a collision-hit material contract that preserves mixed per-subshape
+1. Define a collision-hit material contract that preserves mixed per-subshape
    Havok materials; do not promote the recovery branch's file-wide optional
    material shortcut.
-3. Split generic projectile ray/shape data from FNV ammo, damage, impact-set,
+2. Split generic projectile ray/shape data from FNV ammo, damage, impact-set,
    and presentation policy.
-4. Introduce Pip-Boy presenters for status, inventory, data, and map, then stop
+3. Introduce Pip-Boy presenters for status, inventory, data, and map, then stop
    repurposing Morrowind `StatsWindow` and `SpellWindow` as data models.
-5. Move proof/capture routes out of `Engine::frame()` behind an external
+4. Move proof/capture routes out of `Engine::frame()` behind an external
    integration driver and narrow engine test commands.
 
 Large recovery commits are mined for contracts and tests only. They are never
