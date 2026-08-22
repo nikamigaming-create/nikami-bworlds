@@ -227,23 +227,29 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
             if ($backBufferWidth -lt 1 -or $backBufferHeight -lt 1) {
                 throw "Retail portrait backbuffer dimensions are invalid for $($target.id)."
             }
-            $aspect = [double]$backBufferWidth / [double]$backBufferHeight
+            $backBufferAspect = [double]$backBufferWidth / [double]$backBufferHeight
+            $referenceAspect = 4.0 / 3.0
             $fovXRadians = $worldFovDegrees * [Math]::PI / 180.0
-            $fovYRadians = 2.0 * [Math]::Atan([Math]::Tan($fovXRadians / 2.0) / $aspect)
+            $fovYRadians = 2.0 * [Math]::Atan(
+                [Math]::Tan($fovXRadians / 2.0) / $referenceAspect)
+            $backBufferFovXRadians = 2.0 * [Math]::Atan(
+                [Math]::Tan($fovYRadians / 2.0) * $backBufferAspect)
             $projection = [pscustomobject][ordered]@{
                 status = 'provisional'
                 exact = $false
-                source = 'retail-ini-setting+native-backbuffer-aspect'
-                confidence = 'horizontal-fov-hypothesis'
+                source = 'retail-ini-setting+4:3-reference-aspect'
+                confidence = 'reference-aspect-hypothesis'
                 fovYRadians = $fovYRadians
                 fovYDegrees = $fovYRadians * 180.0 / [Math]::PI
-                aspect = $aspect
+                aspect = $backBufferAspect
+                horizontalFovDegrees = $backBufferFovXRadians * 180.0 / [Math]::PI
                 matrix = $null
                 viewport = $targetBackBuffer[0].viewport
                 sourceSetting = [pscustomobject][ordered]@{
                     name = [string]$targetCamera[0].fovSetting.name
                     degrees = $worldFovDegrees
-                    interpretation = 'horizontal-hypothesis'
+                    interpretation = 'horizontal-at-reference-aspect-hypothesis'
+                    referenceAspect = $referenceAspect
                     collection = [string]$targetCamera[0].fovSetting.source
                 }
                 directProbe = $nativeProjection

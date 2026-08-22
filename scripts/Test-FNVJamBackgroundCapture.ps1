@@ -563,11 +563,17 @@ if ($null -ne $catalog) {
             $portraitRunnerText -match 'CaptureAnimation\s*=\s*\$true' -and
             $portraitRunnerText -match 'exactProjectionResolved' -and
             $portraitRunnerText -match 'retail-state-contract\.json' -and
+            $portraitRunnerText -match 'referenceAspect\s*=\s*4\.0\s*/\s*3\.0' -and
             $portraitRunnerText -match 'actor-geometry-status' -and
             $portraitRunnerText -match 'FaceGenFace' -and
             $portraitRunnerText -match 'FaceGenHairNoHat' -and
             $portraitRunnerText -match 'Bip01 L UpperArm.*Bip01 L Forearm.*Bip01 R UpperArm.*Bip01 R Forearm'
         ) "$retailPortraitRunnerPath; $oracleSourcePath"
+        $referenceFovY = 2.0 * [Math]::Atan(
+            [Math]::Tan(75.0 * [Math]::PI / 360.0) / (4.0 / 3.0)) * 180.0 / [Math]::PI
+        Add-Check "Retail 75-degree reference FOV derives to 59.840 degrees vertical" (
+            [Math]::Abs($referenceFovY - 59.8404440089854) -lt 0.000001
+        ) "derived=$referenceFovY"
     }
     $selectedRecipes = @($(if ($Scenario -eq "Jam") { $catalog.recipes } elseif ($Scenario -eq "Opening") {
         @($catalog.openingRecipes | Where-Object {
