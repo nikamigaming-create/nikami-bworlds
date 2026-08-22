@@ -24,6 +24,7 @@ new implementation work.
 | Promoted overlay | existing locked queue | `f8863dd47a608c5534d1a89dc6d1584b4c79fd12` | `1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a` | Patches 0001-0024; formal replay baseline |
 | Candidate overlay | `codex/openmw-overlay-0025-checkpoint` | `79290f2a06e7fff85c17e39bd3cd1dc1412ada33` | `c5b4f00165e8a02813b443e45311ba7ea29fe605` | Patches 0001-0025; telemetry candidate only |
 | Clean extraction | `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Official-master-based parser topics and reusable synthetic fixtures |
+| Clean collision | `codex/openmw-clean-collision-20260822` | `b3f73ff2c80426d7d54d06c1d5c0222779ad3fa0` | `1fe0a54d2d5066cef9dde7f7ba381c0b966ab691` | Four-topic collision/material series directly over official OpenMW master |
 | Maintainable downstream | `codex/openmw-maintainable-downstream-20260821` | `ce6b04a8bdf6066a8953638a430e3a86404b0878` | `e50d62193d7e3cd06932c77d6547f6b30bb43569` | Product cleanup rooted at the immutable recovery checkpoint |
 
 The clean extraction parent is official OpenMW `master`
@@ -258,6 +259,34 @@ timing. The merged TTW/OpenMW corpus is explicitly non-retail evidence.
 
 ### Implementation and verification
 
+The reviewable acceptance lane is now reconstructed directly over official
+OpenMW `master`, independent of the recovery and downstream trees:
+
+1. `d2b2990db5` — preserve accepted ray shape-part/triangle identity.
+2. `a356d8fc29` — resolve exact, part-default, and explicit uniform materials
+   through a private map-backed table and the existing physics object boundary.
+3. `0c1085eafc` — load only the supported complete Fallout packed-collision
+   topology with root-scoped BSX, transform, scale, and atomic-fallback gates.
+4. `b3f73ff2c8` — preserve the same identity/material contract for convex
+   sweeps and physical projectile impacts.
+
+The clean series is 21 files, 922 insertions, and 11 deletions across four
+single-purpose commits. It introduces no Lua, MyGUI, proof route, content-name
+scan, environment-controlled gameplay policy, public NIF-record scan API, or
+copied retail fixture. Its synthetic loader test performs an actual Bullet
+raycast through the converted multipart mesh and resolves the struck part's
+material. A temporary read-only production-loader audit was removed after it
+confirmed all 14,881 retail NIFs parse and exactly 5,465 files select authored
+collision.
+
+- Clean Release `components-tests`: 1,441 / 1,441 pass.
+- Clean Release `openmw-tests`: 496 / 496 pass.
+- Clean `openmw-lib` and both owning tests compile with MSVC 19.44.
+- Clean `git diff --check`: pass.
+
+The following downstream commits remain useful product checkpoints but are no
+longer the proposed review base:
+
 - Identity-keyed material resolver: `d6569480a7`.
 - Authored packed collision loader: `bdd46e9403`.
 - Sphere/projectile convex hit identity: `bfd6028cdd`.
@@ -319,7 +348,7 @@ Every new clean topic must satisfy all of the following:
 | 2 | WEAP `MOD4` / `WNAM` semantics | generic ESM4 component | Separate from combat, animation, and UI | complete at `e6268c309e` |
 | 3 | NIF `SPEC` material channel token | external-KF property subsystem | Extract only with the owning property-controller route | blocked as standalone dead code |
 | 4 | Blend-bool visibility shell handling | generic NIF loader | Existing path already skips the callback | dropped as log-only |
-| 5 | Havok material propagation | generic resource/physics layer | Preserve per-subshape semantics; do not collapse mixed materials | strict complete single-body path at `ce6b04a8bd`; 5,465 / 6,232 retail files selected, 767 explicit fallbacks |
+| 5 | Havok material propagation | generic resource/physics layer | Preserve per-subshape semantics; do not collapse mixed materials | official-master clean series complete at `b3f73ff2c8`; 5,465 / 6,232 retail files selected, 767 explicit fallbacks |
 | 6 | Projectile launch and impact | downstream OpenNV services | Separate generic physics query from FNV damage policy | pending |
 | 7 | Combat cadence and ammo state | downstream OpenNV mechanics | Remove proof paths and numeric UI policy | pending |
 | 8 | Pip-Boy data presentation | downstream OpenNV UI | Presenter boundary, localization, no `SpellWindow`/`StatsWindow` repurposing | redesign required |
