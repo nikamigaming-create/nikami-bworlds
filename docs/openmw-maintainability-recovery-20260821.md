@@ -18,7 +18,7 @@ new implementation work.
 | Promoted overlay | existing locked queue | `f8863dd47a608c5534d1a89dc6d1584b4c79fd12` | `1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a` | Patches 0001-0024; formal replay baseline |
 | Candidate overlay | `codex/openmw-overlay-0025-checkpoint` | `79290f2a06e7fff85c17e39bd3cd1dc1412ada33` | `c5b4f00165e8a02813b443e45311ba7ea29fe605` | Patches 0001-0025; telemetry candidate only |
 | Clean extraction | `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Official-master-based parser topics and reusable synthetic fixtures |
-| Maintainable downstream | `codex/openmw-maintainable-downstream-20260821` | `e3d86c5fa683517eb28e0e5781c1a926bb4e2617` | `db4e9e92918a3c878b3b0c918ee5d947c55078ff` | Product cleanup rooted at the immutable recovery checkpoint |
+| Maintainable downstream | `codex/openmw-maintainable-downstream-20260821` | `fb41613273b9c826a195b7bff38dcdd6f7af3f2f` | `e7282e2560434bba484aa0cb18ae521fc6b829c0` | Product cleanup rooted at the immutable recovery checkpoint |
 
 The clean extraction parent is official OpenMW `master`
 `e318e7ac360cdf082459184f968986c9e93b5ca7`.
@@ -165,6 +165,32 @@ runtime store API at that lifecycle point would always return false.
 - Focused startup/profile tests: 4 / 4 pass.
 - Release `openmw-tests`: 982 / 982 pass with MSVC 19.44.
 
+## Collision foundation: closest-hit geometry identity
+
+### Defect
+
+The recovery implementation attached one optional Havok material to an entire
+loaded NIF and copied that value into ray results. That loses the distinction
+between collision subshapes and triangles, so a mixed-material mesh can report
+the wrong surface even when Bullet selected the correct primitive.
+
+### Contract
+
+For an accepted closest ray hit, preserve Bullet's shape-part and triangle
+indices through `RayCastingResult`. A closer hit without local shape metadata
+must clear stale identity, and a filtered hit must not overwrite the accepted
+identity. This contract does not infer or select a material.
+
+### Implementation and verification
+
+- Hit-identity topic: `fb41613273b9c826a195b7bff38dcdd6f7af3f2f`.
+- Surface: 6 files, 97 insertions, 1 deletion.
+- Focused synthetic callback tests: 3 / 3 pass.
+- Release `openmw-tests`: 985 / 985 pass with MSVC 19.44.
+- `git diff --check`: pass.
+- Retail-parity credit: none yet. The next topic must preserve a material table
+  at the NIF/Bullet ownership boundary and resolve it from this hit identity.
+
 ## Rejected non-topics
 
 - Compact `SPEC` material routing is not independently extractable: it belongs
@@ -201,7 +227,7 @@ Every new clean topic must satisfy all of the following:
 | 2 | WEAP `MOD4` / `WNAM` semantics | generic ESM4 component | Separate from combat, animation, and UI | complete at `e6268c309e` |
 | 3 | NIF `SPEC` material channel token | external-KF property subsystem | Extract only with the owning property-controller route | blocked as standalone dead code |
 | 4 | Blend-bool visibility shell handling | generic NIF loader | Existing path already skips the callback | dropped as log-only |
-| 5 | Havok material propagation | generic resource/physics layer | Preserve per-subshape semantics; do not collapse mixed materials | redesign required |
+| 5 | Havok material propagation | generic resource/physics layer | Preserve per-subshape semantics; do not collapse mixed materials | hit identity complete at `fb41613273`; material table and resolution pending |
 | 6 | Projectile launch and impact | downstream OpenNV services | Separate generic physics query from FNV damage policy | pending |
 | 7 | Combat cadence and ammo state | downstream OpenNV mechanics | Remove proof paths and numeric UI policy | pending |
 | 8 | Pip-Boy data presentation | downstream OpenNV UI | Presenter boundary, localization, no `SpellWindow`/`StatsWindow` repurposing | redesign required |
@@ -210,9 +236,9 @@ Every new clean topic must satisfy all of the following:
 
 ## Next no-detour sequence
 
-1. Define a collision-hit material contract that preserves mixed per-subshape
-   Havok materials; do not promote the recovery branch's file-wide optional
-   material shortcut.
+1. Preserve the NIF/Bullet per-subshape material table and resolve a ray hit's
+   material from its shape-part/triangle identity; do not promote the recovery
+   branch's file-wide optional material shortcut.
 2. Split generic projectile ray/shape data from FNV ammo, damage, impact-set,
    and presentation policy.
 3. Introduce Pip-Boy presenters for status, inventory, data, and map, then stop
