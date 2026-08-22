@@ -18,6 +18,7 @@ new implementation work.
 | Promoted overlay | existing locked queue | `f8863dd47a608c5534d1a89dc6d1584b4c79fd12` | `1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a` | Patches 0001-0024; formal replay baseline |
 | Candidate overlay | `codex/openmw-overlay-0025-checkpoint` | `79290f2a06e7fff85c17e39bd3cd1dc1412ada33` | `c5b4f00165e8a02813b443e45311ba7ea29fe605` | Patches 0001-0025; telemetry candidate only |
 | Clean extraction | `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Official-master-based parser topics and reusable synthetic fixtures |
+| Maintainable downstream | `codex/openmw-maintainable-downstream-20260821` | `40efc220ea4f357b090e3b331a2fab3e96e73e1a` | `b807bafa83e753d6d42b6ca4e97ff54b78db49fb` | Product cleanup rooted at the immutable recovery checkpoint |
 
 The clean extraction parent is official OpenMW `master`
 `e318e7ac360cdf082459184f968986c9e93b5ca7`.
@@ -117,6 +118,50 @@ subrecord boundary.
 - Complete Release `components-tests`: 1,436 / 1,436 pass with MSVC 19.44.
 - Formatting and `git diff --check`: pass.
 
+## First downstream architecture topic: game-owned UI identity
+
+### Defect
+
+HUD, inventory, item view, map, spell view, stats, and window management each
+rescanned content filenames to decide whether to enable the New Vegas
+interface. Several also treated `OPENMW_FNV_PROOF_PIPBOY_SURFACE` as a
+production game-identity override. The already-loaded `ESMStore::getESM4Game()`
+was the authoritative API but was bypassed.
+
+### Contract
+
+New Vegas UI selection is true only for `ESM4Game::FalloutNewVegas` after a
+World exists. It is false for Unknown, Oblivion, Fallout 3, Skyrim, Fallout 4,
+and Starfield. Proof configuration cannot redefine the loaded game.
+
+One VFS check remains at WindowManager construction because the engine creates
+the GUI before it creates and loads World/ESMStore. Removing that check requires
+passing an explicit startup content profile into the constructor; calling the
+runtime store API at that lifecycle point would always return false.
+
+### Implementation and verification
+
+- Central policy and enum coverage: `57d5c55adc8437c8486c7779a386829821303a8f`.
+- Seven-consumer migration: `40efc220ea4f357b090e3b331a2fab3e96e73e1a`.
+- Net surface from recovery: 12 files, 78 insertions, 119 deletions.
+- Removed every GUI content-list scan and every
+  `OPENMW_FNV_PROOF_PIPBOY_SURFACE` identity override.
+- Release `openmw-tests`: 979 / 979 pass with MSVC 19.44.
+- Full `openmw-lib`, including Engine, ESM4 NPC animation, physics, mechanics,
+  VR, and all affected GUI translation units, compiles successfully.
+- `git diff --check`: pass.
+
+## Rejected non-topics
+
+- Compact `SPEC` material routing is not independently extractable: it belongs
+  to the downstream external-KF property controller subsystem, which official
+  OpenMW does not contain. Adding the alias alone would be unused code.
+- `NiBlendBoolInterpolator` visibility-shell handling is not a behavior fix in
+  the current upstream path. The existing loader already rejects it and adds no
+  callback; the recovery change only suppresses expected error logging.
+
+Neither item receives a commit merely to make the backlog appear to move.
+
 ## Extraction rules
 
 Every new clean topic must satisfy all of the following:
@@ -140,14 +185,28 @@ Every new clean topic must satisfy all of the following:
 | ---: | --- | --- | --- | --- |
 | 1 | AMMO 12-byte `DAT2` | generic ESM4 component | Full-reader fixtures and load-order FormID checks | complete at `1a0bb044de` |
 | 2 | WEAP `MOD4` / `WNAM` semantics | generic ESM4 component | Separate from combat, animation, and UI | complete at `e6268c309e` |
-| 3 | NIF `SPEC` material channel token | generic NIF loader | One controller fixture; no other NIF changes | pending |
-| 4 | Blend-bool visibility shell handling | generic NIF loader | Demonstrate duplicate callback overwrite in isolation | pending |
+| 3 | NIF `SPEC` material channel token | external-KF property subsystem | Extract only with the owning property-controller route | blocked as standalone dead code |
+| 4 | Blend-bool visibility shell handling | generic NIF loader | Existing path already skips the callback | dropped as log-only |
 | 5 | Havok material propagation | generic resource/physics layer | Preserve per-subshape semantics; do not collapse mixed materials | redesign required |
 | 6 | Projectile launch and impact | downstream OpenNV services | Separate generic physics query from FNV damage policy | pending |
 | 7 | Combat cadence and ammo state | downstream OpenNV mechanics | Remove proof paths and numeric UI policy | pending |
 | 8 | Pip-Boy data presentation | downstream OpenNV UI | Presenter boundary, localization, no `SpellWindow`/`StatsWindow` repurposing | redesign required |
-| 9 | Content detection | downstream capability service | One parsed content profile; no repeated filename scans | redesign required |
+| 9 | Content detection | downstream capability service | Runtime consumers use parsed ESM4 game identity; startup receives explicit profile next | runtime complete at `40efc220ea` |
 | 10 | Proof and capture orchestration | external harness | Remove from `Engine::frame()` and production UI | redesign required |
+
+## Next no-detour sequence
+
+1. Pass an explicit immutable startup content profile into WindowManager and
+   remove its last pre-World `falloutnv.esm` VFS probe.
+2. Define a collision-hit material contract that preserves mixed per-subshape
+   Havok materials; do not promote the recovery branch's file-wide optional
+   material shortcut.
+3. Split generic projectile ray/shape data from FNV ammo, damage, impact-set,
+   and presentation policy.
+4. Introduce Pip-Boy presenters for status, inventory, data, and map, then stop
+   repurposing Morrowind `StatsWindow` and `SpellWindow` as data models.
+5. Move proof/capture routes out of `Engine::frame()` behind an external
+   integration driver and narrow engine test commands.
 
 Large recovery commits are mined for contracts and tests only. They are never
 used as evidence that a clean topic is correctly shaped.
