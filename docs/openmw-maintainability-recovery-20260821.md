@@ -384,6 +384,13 @@ Every new clean topic must satisfy all of the following:
 
 ## Next no-detour sequence
 
+The owning design is
+[`openmw-multi-object-collision-contract-20260822.md`](openmw-multi-object-collision-contract-20260822.md).
+Retail filter research is bound to `FalloutNV.exe` 1.4.0.525, SHA-256
+`518C87F58A6C4D9826E9EF8FBB7F4213882FA70822675610D45AEA2464502A57`.
+Layer names and phantom/filter type presence are confirmed; the retail
+layer-pair interaction matrix is not yet confirmed and must not be guessed.
+
 1. Introduce a multi-object physics resource boundary before touching the 491
    heterogeneous-filter packed trees or the remaining multi-primitive trees;
    one Bullet object cannot represent per-body broad-phase filters honestly.
