@@ -5,14 +5,14 @@
 The only public Git ref in `nikamigaming-create/nikami-openmw-lab` is now:
 
 - branch: `main`
-- commit: `18263dbb919530ac9abce6d7f21816db99061ce6`
-- tree: `0907b49c22becf8fc2ff06cbac5489d9247f8a7c`
+- commit: `4f1fb249a70f24a4fae82385df5c435128904e71`
+- tree: `8902ddb50f6e6066ca4796ea9e1c039777c25ff0`
 - official OpenMW base: `e47ad7782c6a3204f1bae0bcb42356e467319168`
-- clean topics after the official base: 19
+- clean topics after the official base: 20
 
-The topics are five generic ESM4 parser/model-reference commits and fourteen
-collision/material/filter/ownership commits. The combined public surface is 51
-files, 3,728 insertions, and 96 deletions. There is no product merge, proof
+The topics are six generic ESM4 parser/model-reference commits and fourteen
+collision/material/filter/ownership commits. The combined public surface is 54
+files, 3,989 insertions, and 96 deletions. There is no product merge, proof
 route, B-world dependency, release artifact, or recovery branch in the public
 ref graph.
 
@@ -23,7 +23,7 @@ had moved.
 
 Git and GitHub API verification after publication reported:
 
-- one public branch: `main` at `18263dbb919530ac9abce6d7f21816db99061ce6`;
+- one public branch: `main` at `4f1fb249a70f24a4fae82385df5c435128904e71`;
 - zero public tags;
 - zero releases;
 - zero open pull requests;
@@ -33,23 +33,22 @@ Git and GitHub API verification after publication reported:
 
 The initial candidate was reconstructed in a fresh worktree on the
 then-current official OpenMW `master`, not by squashing the product branch.
-Its first 17 topics cherry-picked without a source conflict. The eighteenth
-and nineteenth topics were each developed and verified locally, then published
-as ordinary one-commit fast-forwards of `main` with no remote topic branch or
-pull request.
+Its first 17 topics cherry-picked without a source conflict. Every later topic
+was developed and verified locally, then published as an ordinary one-commit
+fast-forward of `main` with no remote topic branch or pull request.
 
 Fresh MSVC 19.44 `RelWithDebInfo` results:
 
-- `components-tests.exe`: 1,475 / 1,475 passed;
+- `components-tests.exe`: 1,478 / 1,478 passed;
 - `openmw-tests.exe`: 497 / 497 passed;
 - `openmw.exe`: linked;
 - `openmw-navmeshtool.exe`: linked;
 - `openmw-cs.exe`: linked;
 - `git diff --check`: passed.
 
-The 17-topic reconstructed baseline and eighteenth projectile-record topic
-both completed GitHub CI successfully on Ubuntu, Windows 2022, macOS ARM, and
-macOS Intel before the nineteenth topic was advanced to public `main`.
+The 17-topic reconstructed baseline plus the projectile-record and weapon-data
+topics completed GitHub CI successfully on Ubuntu, Windows 2022, macOS ARM,
+and macOS Intel before the twentieth topic was advanced to public `main`.
 
 ## First post-curation topic: projectile records
 
@@ -79,6 +78,20 @@ beyond the proven prefix is skipped without losing the next subrecord. Three
 new synthetic tests cover the full prefix, the animation-only prefix, the
 version gate, truncation, FormID adjustment, and alignment. No retail bytes or
 private artifacts are committed.
+
+## Third post-curation topic: explosion records
+
+Commit `4f1fb249a70f24a4fae82385df5c435128904e71` adds typed FNV `EXPL`
+record loading without executing explosion damage, force, image-space, impact,
+sound, or radiation behavior. The immutable Ultimate Edition corpus contains
+223 winning explosion records and every one uses the same 52-byte `DATA`
+layout; xEdit independently defines the same fields and offsets.
+
+The implementation accepts that layout only for FNV plugin versions, adjusts
+all inner and outer FormIDs through `ESM4::Reader`, stores the model through
+`ESM::Path`, skips unknown or other-game data atomically, and appends the new
+store so existing tuple positions remain stable. Three synthetic tests cover
+the accepted layout, every FormID, the version gate, and stream alignment.
 
 The build directory is local at
 `D:\code\nikami-openmw-public-clean\build-tests`. The clean checkout is
