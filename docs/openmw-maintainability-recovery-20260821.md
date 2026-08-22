@@ -24,8 +24,8 @@ new implementation work.
 | Promoted overlay | existing locked queue | `f8863dd47a608c5534d1a89dc6d1584b4c79fd12` | `1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a` | Patches 0001-0024; formal replay baseline |
 | Candidate overlay | `codex/openmw-overlay-0025-checkpoint` | `79290f2a06e7fff85c17e39bd3cd1dc1412ada33` | `c5b4f00165e8a02813b443e45311ba7ea29fe605` | Patches 0001-0025; telemetry candidate only |
 | Clean extraction | `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Official-master-based parser topics and reusable synthetic fixtures |
-| Clean collision | `codex/openmw-clean-collision-20260822` | `ee88692801d7f3e5952b43841098eff8aa1ca7dd` | `39bb6171afb912b39beb91552eb2f354ffc53e23` | Thirteen-topic collision/material/filter/ownership series directly over official OpenMW master |
-| Maintainable downstream | `codex/openmw-maintainable-downstream-20260821` | `cd47e7b7e368d6e143db23973e98a472ce80a185` | `af9fdea9c3c2ecb5d5461e393f885384fb25ea83` | Product cleanup rooted at the immutable recovery checkpoint |
+| Clean collision | `codex/openmw-clean-collision-20260822` | `e65a8bbd9e54e99c9f8236dcd1f000cee0344dac` | `e7e95437e919472e2d01b899337c896f2d87b220` | Fourteen-topic collision/material/filter/ownership series directly over official OpenMW master |
+| Maintainable downstream and lab `main` | `codex/openmw-maintainable-downstream-20260821`, `main` | `61e26bb058142db460a67c38de8abe61c426f0a7` | `f375096aa036e1e7b8170daeea3f729996da6a6a` | Curated runnable product; main promotion is an ancestry-only merge over the tested product tree |
 
 The clean extraction parent is official OpenMW `master`
 `e318e7ac360cdf082459184f968986c9e93b5ca7`.
@@ -307,8 +307,11 @@ OpenMW `master`, independent of the recovery and downstream trees:
 13. `ee88692801` — create, register, transform, AABB-update, query, ignore, and
     remove every ordered body in `MWPhysics::Object`; carry body identity into
     hit material and projectile/caster paths.
+14. `e65a8bbd9e` — enumerate every body through navigation add/update/remove,
+    offline navmesh generation, union scene/door bounds, and a body-one-only
+    pathfinding regression.
 
-The clean series is 31 files, 2,880 insertions, and 59 deletions across thirteen
+The clean series is 37 files, 3,029 insertions, and 83 deletions across fourteen
 single-purpose commits. It introduces no Lua, MyGUI, proof route, content-name
 scan, environment-controlled gameplay policy, public NIF-record scan API, or
 copied retail fixture. Its synthetic loader test performs an actual Bullet
@@ -318,7 +321,7 @@ confirmed all 14,881 retail NIFs parse and exactly 7,330 files select authored
 collision. A separate TTW/OpenMW sweep at the primitive/multi checkpoint
 selected 6,198 complete trees.
 
-- Clean Release `components-tests`: 1,464 / 1,464 pass.
+- Clean Release `components-tests`: 1,465 / 1,465 pass.
 - Clean Release `openmw-tests`: 497 / 497 pass.
 - Clean `openmw.exe`, `openmw-lib`, and both owning tests compile with MSVC
   19.44.
@@ -329,7 +332,7 @@ proposed upstream review base:
 
 The maintainable product integration is branch
 `codex/openmw-maintainable-downstream-20260821`, currently headed by
-`cd47e7b7e3`. The official-master series above remains the upstream review
+`61e26bb058`. The official-master series above remains the upstream review
 lane; the downstream commits below are the API-adapted product lane.
 
 - Identity-keyed material resolver: `d6569480a7`.
@@ -367,6 +370,10 @@ lane; the downstream commits below are the API-adapted product lane.
   queries, is included in ray/projectile ignore sets, and resolves material by
   `(body, shapePart, triangleIndex)`. A real two-body Bullet-world test proves
   body-one ray/material identity and complete removal.
+- Navigation and bounds enumeration: `cde793d26a`. Logical object removal now
+  removes stable child navigation IDs, a body-one-only obstacle changes the
+  generated path, and the offline navmesh tool plus scene/door bounds consume
+  the union of every ordered body.
 - The converter owns its multipart vertex/index storage, applies the Fallout
   1:7 unit ratio plus rigid-body/root transforms, strips non-material flag bits,
   and preserves the compressed-vertex marker instead of decoding zeroes.
@@ -377,9 +384,10 @@ lane; the downstream commits below are the API-adapted product lane.
   animated ownership, list-child filter rejection, Bullet-observed compound
   child identity, scene-unit strips, and scale applied exactly once.
 - Focused ray/convex identity tests: 5 / 5 pass.
-- Complete Release `components-tests`: 1,627 passed, 8 fixture-dependent skips.
+- Complete Release `components-tests`: 1,628 passed, 8 fixture-dependent skips.
 - Complete Release `openmw-tests`: 988 / 988 pass with MSVC 19.44.
-- Full Release `openmw.exe`, `openmw-lib`, and both owning test targets compile.
+- Full Release `openmw.exe`, `openmw-lib`, `openmw-navmeshtool`, and both owning
+  test targets compile.
 - A temporary read-only downstream production-loader oracle was removed after
   enumerating the immutable retail archive through OpenMW's own VFS and NIF
   reader. At product head `25d120acbe`, it parsed 14,881 / 14,881 NIFs and
@@ -390,6 +398,24 @@ lane; the downstream commits below are the API-adapted product lane.
 - Retail-parity credit is bounded to authored collision geometry and material
   routing for the supported topology. Natural retail/OpenNV impact
   differentials remain required.
+
+### Curated lab main
+
+Lab `main`, `origin/main`, and the maintainable downstream branch now resolve
+exactly to `61e26bb058142db460a67c38de8abe61c426f0a7`. The final merge preserves
+remote-main ancestry and has the exact already-tested product tree
+`f375096aa036e1e7b8170daeea3f729996da6a6a`; no force push or pull request was
+used.
+
+The previous divergent local main is preserved remotely as
+`codex/main-pre-curated-local-20260822` at
+`9b9bb9328956998189454b99c660e861f4e8827e`. The previous remote main is
+preserved as `codex/main-pre-curated-remote-20260822` at
+`ce996f10773f9f06214de507d439926dd0ca40e9`. Its four local VR/Pip-Boy commits
+were audited during promotion: their behavior is already present or superseded
+by the stronger production-ray, physical-control, live-bound, and palm-frame
+paths in the curated product. Their exact original history remains reachable
+from the backup branch.
 
 ## Rejected non-topics
 
@@ -455,12 +481,11 @@ all 8,192 results with zero mismatches. Runtime system-group assignment is
 therefore confirmed at population level, while the exact record-to-collidable
 identity transform remains to be traced and must not be guessed.
 
-1. Enumerate every ordered body through navigation and remaining direct scene
-   bounds before touching the 491 heterogeneous-filter packed trees or the
-   remaining multi-primitive trees. Assign runtime system identity only after
-   the authored-to-live transform is confirmed, then route final Fallout body
-   pairs through the immutable evaluator; 43 layers cannot be represented
-   losslessly by one ordinary 32-bit mask.
+1. Trace the authored-body-to-live filter-word transform and runtime system
+   identity assignment. Then install the immutable evaluator and populate
+   ordered bodies for the 491 heterogeneous-filter packed trees and remaining
+   multi-primitive trees; 43 layers cannot be represented losslessly by one
+   ordinary 32-bit mask.
 2. Model `bhkSimpleShapePhantom` as trigger ownership, never as solid geometry.
 3. Treat the 28 nested mixed list/MOPP wrappers as a recursive material/filter
    namespace topic after multi-object ownership exists.

@@ -87,11 +87,17 @@ ignore lists, projectile casters, and removal enumerate the full set. The
 two-body Bullet-world regression strikes body one, resolves its distinct
 material, and verifies both objects leave the world on destruction.
 
-The clean Release gates pass 1,464 / 1,464 `components-tests`, 497 / 497
-`openmw-tests`, and the engine link. The downstream gates pass 1,627 component
-tests with 8 fixture-dependent skips, 988 / 988 `openmw-tests`, and the engine
-link. The loader does not yet populate additional authored bodies, navigation
-and direct scene bounds do not yet enumerate them, and runtime system-group
+Clean commit `e65a8bbd9e` and downstream commit `cde793d26a` finish the current
+ownership consumers: navigation tracks stable child IDs through add, update,
+and remove; direct scene and door bounds use the union AABB; and the offline
+navmesh tool submits every ordered body. A body-one-only obstacle changes the
+path and disappears when its logical owner is removed.
+
+The clean Release gates pass 1,465 / 1,465 `components-tests`, 497 / 497
+`openmw-tests`, the engine link, and the offline navmesh-tool link. The
+downstream gates pass 1,628 component tests with 8 fixture-dependent skips,
+988 / 988 `openmw-tests`, the engine link, and the navmesh-tool link. The
+loader does not yet populate additional authored bodies; runtime system-group
 assignment, evaluator callback installation, and phantom behavior remain open.
 The infrastructure therefore earns no additional corpus or live collision
 parity credit.
