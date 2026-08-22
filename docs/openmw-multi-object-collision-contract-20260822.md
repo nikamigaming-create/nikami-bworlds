@@ -13,8 +13,10 @@ ordinary OpenMW objects that still own exactly one generated collision shape.
   `054E299829FF24FD4BD4EDF69F6424346B400C87379CEE39BEC02E4D082BF85A`.
 - All 14,881 retail NIFs parse on official-master commit `e318e7ac36`.
 - Active collision denominator: 8,324 files.
-- Clean authored selection at `f1cd77f276`: 7,330 files (88.06%).
-- Downstream product selection at `25d120acbe`: the same 7,330 files, with
+- Clean authored selection at `74976d977a`: 7,330 files (88.06%); the selection
+  count was last rerun at its behavior-equivalent predecessor `f1cd77f276`.
+- Downstream product selection at `1e55c94eb9`: the same 7,330-file behavior;
+  the production-loader sweep was last rerun at predecessor `25d120acbe`, with
   14,881 / 14,881 parsed and 85 selected animated files after restoring the
   older NIF API's missing `bhkListShape::post` reference-resolution hook.
 - Explicit remaining boundary: 994 files.
@@ -55,6 +57,21 @@ The categories total 994 and are mutually exclusive at the file level.
 Confidence: `confirmed` for the hashed retail corpus, category counts, sampled
 pair policy, and population-level runtime group assignment. The exact
 record-to-collidable group allocator and phantom event policy remain unknown.
+
+## Implemented foundation
+
+Clean commit `74976d977a` and downstream commit `1e55c94eb9` preserve the raw
+world-object and rigid-body tuples plus the distinct accepted subshape tuples
+on `Resource::BulletShape`. The values survive `BulletShapeInstance` cloning.
+Equivalent accepted bodies carry their shared tuple, while heterogeneous or
+otherwise rejected atomic trees fall back without collision-filter metadata.
+
+The clean Release gates pass 1,455 / 1,455 `components-tests`, 496 / 496
+`openmw-tests`, and the engine link. The downstream gates pass 1,618 component
+tests with 8 fixture-dependent skips, 987 / 987 `openmw-tests`, and the engine
+link. This foundation does not yet create multiple Bullet bodies, assign a
+runtime system group, install a pair callback, or implement phantom behavior.
+It therefore earns no additional corpus or retail-filter parity credit.
 
 ## Behavioral contract
 
