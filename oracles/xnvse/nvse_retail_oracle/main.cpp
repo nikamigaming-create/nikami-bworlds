@@ -124,6 +124,16 @@ namespace
         std::string path;
     };
 
+    struct BackBufferCaptureState
+    {
+        UInt32 width = 0;
+        UInt32 height = 0;
+        HRESULT viewportResult = E_FAIL;
+        D3DVIEWPORT9 viewport = {};
+        HRESULT projectionResult = E_FAIL;
+        D3DMATRIX projection = {};
+    };
+
     PluginHandle gPluginHandle = kPluginHandle_Invalid;
     NVSEMessagingInterface* gMessaging = nullptr;
     NVSEConsoleInterface* gConsole = nullptr;
@@ -2933,6 +2943,8 @@ namespace
     // for that exact runtime version in NVSEPlugin_Load.
     constexpr std::uintptr_t sGameSettingCollectionSingletonAddress = 0x011C8048;
     constexpr std::uintptr_t sGameSettingMapLookupAddress = 0x00853130;
+    constexpr std::uintptr_t sIniSettingCollectionSingletonAddress = 0x011F96A0;
+    constexpr std::uintptr_t sIniPrefCollectionSingletonAddress = 0x011F35A0;
 
     bool lookupRetailGameSetting(
         GameSettingCollection* collection, const char* editorId, Setting*& setting)
@@ -2952,6 +2964,55 @@ namespace
             setting = nullptr;
             return false;
         }
+    }
+
+    bool lookupRetailIniSetting(
+        const char* settingName, OracleSetting& snapshot, const char*& source)
+    {
+        snapshot = {};
+        source = "unresolved";
+        if (settingName == nullptr || *settingName == '\0')
+            return false;
+        struct CollectionSource
+        {
+            std::uintptr_t singletonAddress;
+            const char* name;
+        };
+        constexpr CollectionSource collections[] = {
+            { sIniPrefCollectionSingletonAddress, "ini-prefs" },
+            { sIniSettingCollectionSingletonAddress, "ini-settings" },
+        };
+        for (const CollectionSource& candidate : collections)
+        {
+            UInt8* collection = nullptr;
+            if (!safeRead(reinterpret_cast<const void*>(candidate.singletonAddress), collection)
+                || collection == nullptr)
+                continue;
+            auto* nodeAddress = reinterpret_cast<ListNode<Setting>*>(collection + 0x10C);
+            std::set<std::uintptr_t> visited;
+            for (UInt32 count = 0; nodeAddress != nullptr && count < 65536; ++count)
+            {
+                const auto address = reinterpret_cast<std::uintptr_t>(nodeAddress);
+                if (!visited.insert(address).second)
+                    break;
+                ListNode<Setting> node;
+                if (!safeRead(nodeAddress, node))
+                    break;
+                OracleSetting setting = {};
+                if (node.data != nullptr && safeRead(node.data, setting))
+                {
+                    const std::string resolvedName = safeRuntimeString(setting.name);
+                    if (!resolvedName.empty() && _stricmp(resolvedName.c_str(), settingName) == 0)
+                    {
+                        snapshot = setting;
+                        source = candidate.name;
+                        return true;
+                    }
+                }
+                nodeAddress = node.next;
+            }
+        }
+        return false;
     }
 
     UInt32 gameSettingType(const std::string& name)
@@ -4114,6 +4175,8 @@ namespace
         }
     }
 
+    void* sidecarGetSceneCameraUnsafe();
+
     void drivePortraitCameraUnsafe()
     {
         if (!gPortraitCamera || gConsole == nullptr || gTargetForm == 0)
@@ -4641,6 +4704,17 @@ namespace
         if (!gPortraitCameraLogged)
         {
             gPortraitCameraLogged = true;
+            constexpr const char* worldFovSettingName = "fDefaultWorldFOV:Display";
+            OracleSetting worldFovSetting = {};
+            const char* worldFovSource = "unresolved";
+            float worldFovDegrees = 0.f;
+            const bool worldFovReadable
+                = lookupRetailIniSetting(worldFovSettingName, worldFovSetting, worldFovSource)
+                && gameSettingType(safeRuntimeString(worldFovSetting.name)) == Setting::kSetting_Float;
+            if (worldFovReadable)
+                std::memcpy(&worldFovDegrees, &worldFovSetting.rawValue, sizeof(worldFovDegrees));
+            const bool worldFovValid = worldFovReadable && std::isfinite(worldFovDegrees)
+                && worldFovDegrees > 0.f && worldFovDegrees < 180.f;
             gOutput << std::setprecision(9)
                     << "{\"schema\":" << sSchemaJson
                     << ",\"event\":\"portrait-camera-set\""
@@ -4651,6 +4725,10 @@ namespace
                     << ",\"focusKind\":\"" << focusKindLabel << '\"'
                     << ",\"focusFallbackReason\":"
                     << (focusFallbackReason != nullptr ? jsonString(focusFallbackReason) : "null")
+                    << ",\"referenceTransform\":{\"position\":[" << actor->posX << ','
+                    << actor->posY << ',' << actor->posZ << "]"
+                    << ",\"rotation\":[" << actor->rotX << ',' << actor->rotY << ','
+                    << actor->rotZ << "]}"
                     << ",\"headWorld\":[" << focusWorld.x << ',' << focusWorld.y << ',' << focusWorld.z << ']'
                     << ",\"headForwardXY\":[" << forwardX << ',' << forwardY << ']'
                     << ",\"rootWorldBound\":";
@@ -4673,7 +4751,19 @@ namespace
                     << ",\"minimumCameraZ\":" << minimumCameraZ
                     << ",\"aim\":[" << aimX << ',' << aimY << ',' << aimZ << ']'
                     << ",\"camera\":[" << cameraX << ',' << cameraY << ',' << cameraZ << ']'
-                    << ",\"rotation\":[" << cameraPitch << ',' << cameraYaw << "]}\n";
+                    << ",\"rotation\":[" << cameraPitch << ',' << cameraYaw << ']'
+                    << ",\"projection\":{\"resolved\":false"
+                    << ",\"source\":\"deferred-to-native-backbuffer-capture\"}"
+                    << ",\"fovSetting\":{\"readable\":"
+                    << (worldFovValid ? "true" : "false")
+                    << ",\"source\":" << jsonString(worldFovSource)
+                    << ",\"name\":" << jsonString(worldFovSettingName);
+            if (worldFovValid)
+                gOutput << ",\"degrees\":" << worldFovDegrees
+                        << ",\"rawValue\":" << worldFovSetting.rawValue;
+            else
+                gOutput << ",\"degrees\":null,\"rawValue\":null";
+            gOutput << "}}\n";
             gOutput.flush();
         }
     }
@@ -5105,10 +5195,13 @@ namespace
         return WriteFile(file, data, size, &written, nullptr) != FALSE && written == size;
     }
 
-    bool sidecarCaptureBackBuffer(std::string& outputPath, long& captureResult)
+    bool sidecarCaptureBackBuffer(
+        std::string& outputPath, long& captureResult, BackBufferCaptureState* captureState = nullptr)
     {
         outputPath.clear();
         captureResult = E_FAIL;
+        if (captureState != nullptr)
+            *captureState = {};
         IDirect3DSurface9* backBuffer = nullptr;
         IDirect3DSurface9* resolved = nullptr;
         IDirect3DSurface9* systemSurface = nullptr;
@@ -5134,6 +5227,13 @@ namespace
             return false;
         }
 
+        if (captureState != nullptr)
+        {
+            captureState->viewportResult = device->GetViewport(&captureState->viewport);
+            captureState->projectionResult
+                = device->GetTransform(D3DTS_PROJECTION, &captureState->projection);
+        }
+
         HRESULT result = device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer);
         if (FAILED(result) || backBuffer == nullptr)
         {
@@ -5141,6 +5241,11 @@ namespace
             goto cleanup;
         }
         result = backBuffer->GetDesc(&description);
+        if (SUCCEEDED(result) && captureState != nullptr)
+        {
+            captureState->width = description.Width;
+            captureState->height = description.Height;
+        }
         if (FAILED(result) || description.Width == 0 || description.Height == 0
             || description.Width > static_cast<UINT>(LONG_MAX)
             || description.Height > static_cast<UINT>(LONG_MAX)
@@ -5740,8 +5845,6 @@ namespace
 
     void sidecarWriteFinite(std::ostringstream& out, float value);
     void sidecarWriteAnimationTelemetry(std::ostringstream& out, Actor* actor);
-    void* sidecarGetSceneCameraUnsafe();
-
     Actor* sidecarLookupActor(UInt32 formId)
     {
         if (formId == 0)
@@ -7431,13 +7534,76 @@ namespace
     {
         std::string outputPath;
         long captureResult = E_FAIL;
-        const bool captured = sidecarCaptureBackBuffer(outputPath, captureResult);
-        gOutput << "{\"schema\":" << sSchemaJson
+        BackBufferCaptureState captureState;
+        const bool captured = sidecarCaptureBackBuffer(outputPath, captureResult, &captureState);
+        const float* projectionValues = &captureState.projection._11;
+        bool projectionFinite = SUCCEEDED(captureState.projectionResult);
+        for (UInt32 index = 0; projectionFinite && index < 16; ++index)
+            projectionFinite = std::isfinite(projectionValues[index]);
+        const bool perspectiveProjection = projectionFinite
+            && std::fabs(captureState.projection._11) > 0.000001f
+            && std::fabs(captureState.projection._22) > 0.000001f
+            && std::fabs(captureState.projection._44) < 0.0001f
+            && std::fabs(std::fabs(captureState.projection._34) - 1.f) < 0.01f;
+        const float fovYRadians = perspectiveProjection
+            ? 2.f * std::atan(1.f / std::fabs(captureState.projection._22)) : 0.f;
+        const float projectionAspect = perspectiveProjection
+            ? std::fabs(captureState.projection._22 / captureState.projection._11) : 0.f;
+        const float backBufferAspect = captureState.height > 0
+            ? static_cast<float>(captureState.width) / captureState.height : 0.f;
+        const bool aspectMatchesBackBuffer = perspectiveProjection && backBufferAspect > 0.f
+            && std::fabs(projectionAspect - backBufferAspect) <= backBufferAspect * 0.02f;
+        gOutput << std::setprecision(9)
+                << "{\"schema\":" << sSchemaJson
                 << ",\"event\":\"scheduled-backbuffer-capture\""
                 << ",\"frame\":" << gFrame
+                << ",\"targetIndex\":" << gBatchTargetIndex
+                << ",\"targetForm\":" << gTargetForm
                 << ",\"path\":" << jsonString(outputPath.c_str())
                 << ",\"result\":" << captureResult
-                << ",\"accepted\":" << (captured ? "true" : "false") << "}\n";
+                << ",\"accepted\":" << (captured ? "true" : "false")
+                << ",\"backbuffer\":{\"width\":" << captureState.width
+                << ",\"height\":" << captureState.height
+                << ",\"aspect\":" << backBufferAspect << '}'
+                << ",\"viewport\":{\"result\":"
+                << static_cast<long>(captureState.viewportResult);
+        if (SUCCEEDED(captureState.viewportResult))
+        {
+            gOutput << ",\"x\":" << captureState.viewport.X
+                    << ",\"y\":" << captureState.viewport.Y
+                    << ",\"width\":" << captureState.viewport.Width
+                    << ",\"height\":" << captureState.viewport.Height
+                    << ",\"minZ\":" << captureState.viewport.MinZ
+                    << ",\"maxZ\":" << captureState.viewport.MaxZ;
+        }
+        gOutput << "},\"projection\":{\"source\":\"d3d9-fixed-function-state\""
+                << ",\"result\":" << static_cast<long>(captureState.projectionResult)
+                << ",\"finite\":" << (projectionFinite ? "true" : "false")
+                << ",\"perspective\":" << (perspectiveProjection ? "true" : "false")
+                << ",\"aspectMatchesBackbuffer\":"
+                << (aspectMatchesBackBuffer ? "true" : "false");
+        if (perspectiveProjection)
+        {
+            gOutput << ",\"fovYRadians\":" << fovYRadians
+                    << ",\"aspect\":" << projectionAspect;
+        }
+        else
+            gOutput << ",\"fovYRadians\":null,\"aspect\":null";
+        gOutput << ",\"matrix\":";
+        if (projectionFinite)
+        {
+            gOutput << '[';
+            for (UInt32 index = 0; index < 16; ++index)
+            {
+                if (index != 0)
+                    gOutput << ',';
+                gOutput << projectionValues[index];
+            }
+            gOutput << ']';
+        }
+        else
+            gOutput << "null";
+        gOutput << "}}\n";
         gOutput.flush();
         return captured;
     }

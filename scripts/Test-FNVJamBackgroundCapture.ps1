@@ -59,7 +59,8 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     }
     else { "" }
 }
-if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
+if ($Target -ne "Godot" -and $Scenario -ne "RetailPortraits" -and
+    [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
     if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
         $OpeningRuntimeRoot = $pipBoyRuntimeRoot
@@ -68,7 +69,7 @@ if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) 
         $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
     }
 }
-if ($Target -ne "Godot") {
+if ($Target -ne "Godot" -and $Scenario -ne "RetailPortraits") {
     $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 }
 
@@ -551,6 +552,22 @@ if ($null -ne $catalog) {
             $oracleRunnerText -match 'appearanceTelemetry' -and
             $portraitRunnerText -match 'CameraShotKind'
         ) "$retailPortraitRunnerPath; $retailOracleRunnerPath"
+        Add-Check "Retail portrait path retains source-labelled state without blind camera scans" (
+            $oracleSourceText -match '\\"referenceTransform\\"' -and
+            $oracleSourceText -match 'D3DTS_PROJECTION' -and
+            $oracleSourceText -match 'aspectMatchesBackbuffer' -and
+            $oracleSourceText -notmatch 'camera-owner-scan' -and
+            $oracleSourceText -notmatch 'interface-scene-graph-scan' -and
+            $oracleSourceText -match 'sIniSettingCollectionSingletonAddress\s*=\s*0x011F96A0' -and
+            $oracleSourceText -match 'fDefaultWorldFOV:Display' -and
+            $portraitRunnerText -match 'CaptureAnimation\s*=\s*\$true' -and
+            $portraitRunnerText -match 'exactProjectionResolved' -and
+            $portraitRunnerText -match 'retail-state-contract\.json' -and
+            $portraitRunnerText -match 'actor-geometry-status' -and
+            $portraitRunnerText -match 'FaceGenFace' -and
+            $portraitRunnerText -match 'FaceGenHairNoHat' -and
+            $portraitRunnerText -match 'Bip01 L UpperArm.*Bip01 L Forearm.*Bip01 R UpperArm.*Bip01 R Forearm'
+        ) "$retailPortraitRunnerPath; $oracleSourcePath"
     }
     $selectedRecipes = @($(if ($Scenario -eq "Jam") { $catalog.recipes } elseif ($Scenario -eq "Opening") {
         @($catalog.openingRecipes | Where-Object {

@@ -21,10 +21,11 @@
     <OutDir>$(ProjectDir)build\</OutDir>
     <IntDir>$(ProjectDir)build\obj\</IntDir>
     <LinkIncremental>false</LinkIncremental>
+    <XnvseSourceRoot Condition="'$(XnvseSourceRoot)'==''">$(ProjectDir)..\..\..\external\xnvse</XnvseSourceRoot>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\..\..\external\xnvse;$(ProjectDir)..\..\..\external\xnvse\nvse;$(ProjectDir)..\..\..\external\xnvse\nvse\nvse;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(XnvseSourceRoot);$(XnvseSourceRoot)\nvse;$(XnvseSourceRoot)\nvse\nvse;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;RUNTIME_VERSION=0x040020D0;RUNTIME;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeader />

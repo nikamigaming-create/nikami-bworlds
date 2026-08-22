@@ -26,6 +26,28 @@ function Resolve-AbsolutePath([string]$Path) {
     return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Path))
 }
 
+function ConvertTo-RetailFormId([string]$Text) {
+    if ($Text -notmatch '^0[xX][0-9a-fA-F]{1,8}$') {
+        throw "Invalid retail form ID: $Text"
+    }
+    return [Convert]::ToUInt32($Text.Substring(2), 16)
+}
+
+function ConvertFrom-RetailStateLine([string]$Line) {
+    if ($Line -match '"event":"actor-geometry"') {
+        # The immutable JSONL keeps every final vertex for forensic evidence.
+        # The state contract needs only hashes, bounds, and transforms, so avoid
+        # materializing those large arrays in PowerShell.
+        $verticesMarker = ',"vertices":['
+        $verticesIndex = $Line.LastIndexOf($verticesMarker, [StringComparison]::Ordinal)
+        if ($verticesIndex -lt 0) {
+            throw 'actor-geometry telemetry has no vertices payload boundary.'
+        }
+        return (($Line.Substring(0, $verticesIndex) + '}') | ConvertFrom-Json)
+    }
+    return ($Line | ConvertFrom-Json)
+}
+
 $matrixFile = Resolve-AbsolutePath $MatrixPath
 $outputDirectory = Resolve-AbsolutePath (Join-Path $OutputRoot $RunId)
 $runner = Join-Path $PSScriptRoot "Invoke-FNVRetailOracle.ps1"
@@ -90,6 +112,7 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
         PortraitDistance = $PortraitDistance
         CameraShotKind = $CameraShotKind
         FullBodyDistanceScale = $FullBodyDistanceScale
+        CaptureAnimation = $true
         RequireAppearanceTelemetry = $true
         SaveFixture = Resolve-AbsolutePath $SaveFixture
         BeforeFrame = 5
@@ -104,6 +127,164 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
         $runnerArguments.BatchEnableTargets = $true
     }
     $run = & $runner @runnerArguments
+    $events = @([System.IO.File]::ReadLines($jsonl) | ForEach-Object {
+        ConvertFrom-RetailStateLine $_
+    })
+    $cameraEvents = @($events | Where-Object { $_.event -eq 'portrait-camera-set' })
+    $backBufferEvents = @($events | Where-Object {
+        $_.event -eq 'scheduled-backbuffer-capture' -and [bool]$_.accepted
+    })
+    if ($cameraEvents.Count -ne $targets.Count -or $backBufferEvents.Count -ne $targets.Count -or
+        @($cameraEvents | Where-Object { -not [bool]$_.fovSetting.readable }).Count -ne 0) {
+        throw "Retail portrait capture omitted live transform, native projection, or FOV-setting telemetry."
+    }
+
+    $targetStates = @()
+    foreach ($target in $targets) {
+        $targetForm = ConvertTo-RetailFormId ([string]$target.reference.form)
+        $targetCamera = @($cameraEvents | Where-Object { [uint32]$_.refForm -eq $targetForm })
+        $targetBackBuffer = @($backBufferEvents | Where-Object { [uint32]$_.targetForm -eq $targetForm })
+        if ($targetCamera.Count -ne 1 -or $targetBackBuffer.Count -ne 1 -or
+            $null -eq $targetCamera[0].referenceTransform) {
+            throw "Retail portrait state is not uniquely keyed to $($target.id)."
+        }
+
+        $geometryStatus = @($events | Where-Object {
+            $_.event -eq 'actor-geometry-status' -and [uint32]$_.refForm -eq $targetForm
+        })
+        $geometry = @($events | Where-Object {
+            $_.event -eq 'actor-geometry' -and [uint32]$_.refForm -eq $targetForm -and [bool]$_.complete
+        })
+        $requiredGeometry = @($geometry | Where-Object {
+            ([string]$_.name -eq 'FaceGenFace' -and [int]$_.vertexCount -eq 1211) -or
+            ([string]$_.name -eq 'FaceGenHairNoHat' -and [int]$_.vertexCount -gt 0)
+        })
+        if ($geometryStatus.Count -ne 1 -or [bool]$geometryStatus[0].traversalFault -or
+            [int]$geometryStatus[0].pointerReadFailures -ne 0 -or
+            [int]$geometryStatus[0].dataReadFailures -ne 0 -or
+            [int]$geometryStatus[0].invalidDataLayouts -ne 0 -or
+            [int]$geometryStatus[0].vertexReadFailures -ne 0 -or
+            [int]$geometryStatus[0].emittedShapes -ne $geometry.Count -or
+            $requiredGeometry.Count -ne 2) {
+            throw "Retail portrait capture omitted complete final head/hair geometry for $($target.id)."
+        }
+        if ([string]$target.id -eq 'trudy' -and
+            @($requiredGeometry | Where-Object {
+                [string]$_.name -eq 'FaceGenHairNoHat' -and [int]$_.vertexCount -eq 962
+            }).Count -ne 1) {
+            throw 'Retail Trudy hair geometry no longer matches the confirmed 962-vertex runtime mesh.'
+        }
+
+        $actorFrames = @($events | Where-Object {
+            $_.event -eq 'actor-frame' -and [uint32]$_.refForm -eq $targetForm -and
+            [uint32]$_.frame -le [uint32]$targetBackBuffer[0].frame
+        } | Sort-Object { [uint32]$_.frame })
+        $pose = $actorFrames | Select-Object -Last 1
+        if ($null -eq $pose) {
+            throw "Retail portrait capture omitted actor pose telemetry for $($target.id)."
+        }
+        $activeSequences = @($pose.animDataSequences | Where-Object { $null -ne $_ })
+        $poseBones = @($pose.bones | Where-Object {
+            [string]$_.name -in @(
+                'Bip01 L UpperArm', 'Bip01 L Forearm', 'Bip01 R UpperArm', 'Bip01 R Forearm')
+        })
+        if ($activeSequences.Count -lt 1 -or
+            @($activeSequences | Where-Object {
+                [string]$_.file -ieq 'Characters\_Male\Locomotion\mtidle.kf'
+            }).Count -ne 1 -or
+            @($poseBones.name | Select-Object -Unique).Count -ne 4) {
+            throw "Retail portrait capture omitted the active idle phase or arm-bone pose for $($target.id)."
+        }
+
+        $nativeProjection = $targetBackBuffer[0].projection
+        $directProjection = $null -ne $nativeProjection -and
+            [bool]$nativeProjection.finite -and [bool]$nativeProjection.perspective -and
+            [bool]$nativeProjection.aspectMatchesBackbuffer -and
+            [double]$nativeProjection.fovYRadians -gt 0 -and
+            [double]$nativeProjection.fovYRadians -lt [Math]::PI -and
+            @($nativeProjection.matrix).Count -eq 16
+        if ($directProjection) {
+            $projection = [pscustomobject][ordered]@{
+                status = 'resolved'
+                exact = $true
+                source = 'd3d9-fixed-function-state'
+                confidence = 'direct-runtime'
+                fovYRadians = [double]$nativeProjection.fovYRadians
+                fovYDegrees = [double]$nativeProjection.fovYRadians * 180.0 / [Math]::PI
+                aspect = [double]$nativeProjection.aspect
+                matrix = @($nativeProjection.matrix)
+                viewport = $targetBackBuffer[0].viewport
+            }
+        } else {
+            $worldFovDegrees = [double]$targetCamera[0].fovSetting.degrees
+            if ([double]::IsNaN($worldFovDegrees) -or
+                [double]::IsInfinity($worldFovDegrees) -or
+                $worldFovDegrees -le 0 -or $worldFovDegrees -ge 180) {
+                throw "Retail fDefaultWorldFOV is not a finite perspective angle for $($target.id)."
+            }
+            $backBufferWidth = [uint32]$targetBackBuffer[0].backbuffer.width
+            $backBufferHeight = [uint32]$targetBackBuffer[0].backbuffer.height
+            if ($backBufferWidth -lt 1 -or $backBufferHeight -lt 1) {
+                throw "Retail portrait backbuffer dimensions are invalid for $($target.id)."
+            }
+            $aspect = [double]$backBufferWidth / [double]$backBufferHeight
+            $fovXRadians = $worldFovDegrees * [Math]::PI / 180.0
+            $fovYRadians = 2.0 * [Math]::Atan([Math]::Tan($fovXRadians / 2.0) / $aspect)
+            $projection = [pscustomobject][ordered]@{
+                status = 'provisional'
+                exact = $false
+                source = 'retail-ini-setting+native-backbuffer-aspect'
+                confidence = 'horizontal-fov-hypothesis'
+                fovYRadians = $fovYRadians
+                fovYDegrees = $fovYRadians * 180.0 / [Math]::PI
+                aspect = $aspect
+                matrix = $null
+                viewport = $targetBackBuffer[0].viewport
+                sourceSetting = [pscustomobject][ordered]@{
+                    name = [string]$targetCamera[0].fovSetting.name
+                    degrees = $worldFovDegrees
+                    interpretation = 'horizontal-hypothesis'
+                    collection = [string]$targetCamera[0].fovSetting.source
+                }
+                directProbe = $nativeProjection
+            }
+        }
+
+        $targetStates += [pscustomobject][ordered]@{
+            schema = 'opennv-retail-actor-shot-state/v1'
+            target = [pscustomobject][ordered]@{
+                id = [string]$target.id
+                referenceForm = [string]$target.reference.form
+                baseForm = [string]$target.base.form
+            }
+            shotKind = $CameraShotKind
+            captureFrame = [uint32]$targetBackBuffer[0].frame
+            referenceTransform = $targetCamera[0].referenceTransform
+            camera = [pscustomobject][ordered]@{
+                position = $targetCamera[0].camera
+                rotation = $targetCamera[0].rotation
+                aim = $targetCamera[0].aim
+                distance = $targetCamera[0].cameraDistance
+                lineDistance = $targetCamera[0].cameraLineDistance
+                projection = $projection
+            }
+            pose = [pscustomobject][ordered]@{
+                frame = $pose.frame
+                position = $pose.position
+                rotation = $pose.rotation
+                footIkAvailable = $pose.footIkAvailable
+                footIkEnabled = $pose.footIkEnabled
+                activeSequences = @($activeSequences | Select-Object file, state, cycle, weight,
+                    frequency, begin, end, last, lastScaled, offset, start, group)
+                armBones = @($poseBones | Select-Object name, parentName, runtimeFlags, transform)
+            }
+            geometry = [pscustomobject][ordered]@{
+                status = $geometryStatus[0]
+                shapes = @($requiredGeometry | Select-Object name, parentName, runtimeType,
+                    vertexCount, fnv1a32, dataBound, measuredBounds, transform)
+            }
+        }
+    }
     $groupRuns += [pscustomobject][ordered]@{
         label = $groupLabel
         cell = $group.Name
@@ -112,6 +293,7 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
         runManifest = $run.runManifest
         screenshots = @($run.screenshots)
         proofCrops = @($run.portraitProofCrops)
+        states = $targetStates
     }
     foreach ($target in $targets) {
         $captureByTarget[[string]$target.id] = $jsonl
@@ -136,6 +318,31 @@ if ($failedHumanoids.Count -gt 0) {
     throw "Goodsprings authored-to-retail differential failed for $($failedHumanoids.Count) humanoid(s)."
 }
 
+$allStates = @($groupRuns | ForEach-Object { @($_.states) })
+if ($allStates.Count -ne $humanoids.Count) {
+    throw "Retail state-contract count does not match the selected target count."
+}
+$exactProjectionCount = @($allStates | Where-Object { [bool]$_.camera.projection.exact }).Count
+$stateContractPath = Join-Path $outputDirectory 'retail-state-contract.json'
+$stateContract = [pscustomobject][ordered]@{
+    schema = 'opennv-retail-actor-state-contract/v1'
+    source = [pscustomobject][ordered]@{
+        runtime = 'FalloutNV-1.4.0.525'
+        capture = 'xNVSE schedule + native Direct3D 9 backbuffer'
+        windowsAppControlUsed = $false
+        foregroundInputInjected = $false
+    }
+    shotKind = $CameraShotKind
+    stateCount = $allStates.Count
+    exactProjectionCount = $exactProjectionCount
+    exactProjectionResolved = $exactProjectionCount -eq $allStates.Count
+    states = $allStates
+}
+[IO.File]::WriteAllText(
+    $stateContractPath,
+    ($stateContract | ConvertTo-Json -Depth 20),
+    [Text.UTF8Encoding]::new($false))
+
 $contactSheet = Join-Path $outputDirectory "retail-contact-sheet.png"
 & $contactSheetScript -ManifestPath $reportPath -OutputPath $contactSheet -Columns 4 | Out-Null
 
@@ -149,8 +356,11 @@ $contactSheet = Join-Path $outputDirectory "retail-contact-sheet.png"
     targetCount = $humanoids.Count
     groupCount = $groups.Count
     passed = $humanoids.Count
+    exactProjectionCount = $exactProjectionCount
+    exactProjectionResolved = $exactProjectionCount -eq $allStates.Count
     groups = $groupRuns
     report = $reportPath
+    stateContract = $stateContractPath
     contactSheet = $contactSheet
     status = "retail-traits-passed-pixels-captured-review-required"
 }
