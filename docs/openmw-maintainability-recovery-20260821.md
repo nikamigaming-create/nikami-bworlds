@@ -24,7 +24,7 @@ new implementation work.
 | Promoted overlay | existing locked queue | `f8863dd47a608c5534d1a89dc6d1584b4c79fd12` | `1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a` | Patches 0001-0024; formal replay baseline |
 | Candidate overlay | `codex/openmw-overlay-0025-checkpoint` | `79290f2a06e7fff85c17e39bd3cd1dc1412ada33` | `c5b4f00165e8a02813b443e45311ba7ea29fe605` | Patches 0001-0025; telemetry candidate only |
 | Clean extraction | `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Official-master-based parser topics and reusable synthetic fixtures |
-| Maintainable downstream | `codex/openmw-maintainable-downstream-20260821` | `bdd46e94030fb90030ae5b641fbc073c5c003ab9` | `99a773ac48e517eb68688958bc0dd0e038332340` | Product cleanup rooted at the immutable recovery checkpoint |
+| Maintainable downstream | `codex/openmw-maintainable-downstream-20260821` | `bfd6028cdd44db3899781d8984e031247681000d` | `42e79687f18a82e82cf3893646aef588b84e1130` | Product cleanup rooted at the immutable recovery checkpoint |
 
 The clean extraction parent is official OpenMW `master`
 `e318e7ac360cdf082459184f968986c9e93b5ca7`.
@@ -238,17 +238,19 @@ the 6 unparsed NIFs, other `bhk` shape families, or end-to-end impact timing.
 
 - Identity-keyed material resolver: `d6569480a7`.
 - Authored packed collision loader: `bdd46e9403`.
+- Sphere/projectile convex hit identity: `bfd6028cdd`.
 - The converter owns its multipart vertex/index storage, applies the Fallout
   1:7 unit ratio plus rigid-body/root transforms, strips non-material flag bits,
   and preserves the compressed-vertex marker instead of decoding zeroes.
 - Focused material/loader tests: 6 / 6 pass.
+- Focused ray/convex identity tests: 5 / 5 pass.
 - Complete Release `components-tests`: 1,594 passed, 8 fixture-dependent skips.
-- Complete Release `openmw-tests`: 985 / 985 pass with MSVC 19.44.
+- Complete Release `openmw-tests`: 987 / 987 pass with MSVC 19.44.
 - Full Release `openmw-lib` and both owning test targets compile.
 - Formatting and `git diff --check`: pass.
 - Retail-parity credit is bounded to authored collision geometry and material
-  routing for the supported topology. Projectile convex-sweep identity and
-  natural retail/OpenNV impact differentials remain required.
+  routing for the supported topology. Natural retail/OpenNV impact
+  differentials remain required.
 
 ## Rejected non-topics
 
@@ -286,7 +288,7 @@ Every new clean topic must satisfy all of the following:
 | 2 | WEAP `MOD4` / `WNAM` semantics | generic ESM4 component | Separate from combat, animation, and UI | complete at `e6268c309e` |
 | 3 | NIF `SPEC` material channel token | external-KF property subsystem | Extract only with the owning property-controller route | blocked as standalone dead code |
 | 4 | Blend-bool visibility shell handling | generic NIF loader | Existing path already skips the callback | dropped as log-only |
-| 5 | Havok material propagation | generic resource/physics layer | Preserve per-subshape semantics; do not collapse mixed materials | ray identity and root packed path complete at `bdd46e9403`; 371 packed topologies and convex sweeps pending |
+| 5 | Havok material propagation | generic resource/physics layer | Preserve per-subshape semantics; do not collapse mixed materials | ray, sphere, projectile, and root packed path complete at `bfd6028cdd`; 371 packed topologies pending |
 | 6 | Projectile launch and impact | downstream OpenNV services | Separate generic physics query from FNV damage policy | pending |
 | 7 | Combat cadence and ammo state | downstream OpenNV mechanics | Remove proof paths and numeric UI policy | pending |
 | 8 | Pip-Boy data presentation | downstream OpenNV UI | Presenter boundary, localization, no `SpellWindow`/`StatsWindow` repurposing | redesign required |
@@ -298,8 +300,8 @@ Every new clean topic must satisfy all of the following:
 1. Classify the 371 packed-collision fallback files by attachment/wrapper/root
    topology, then extend authored conversion one bounded shape family at a
    time. Keep the 6 `NiRangeLODData` parser misses as a separate parser topic.
-2. Preserve `LocalShapeInfo` through sphere and projectile convex sweeps and
-   resolve their material through the same identity-keyed API.
+2. Build natural retail/OpenNV impact differentials for supported uniform and
+   mixed-material surfaces; staged or proof-only routes earn no parity credit.
 3. Split generic projectile query/result data from FNV ammo, damage,
    impact-set, timing, and presentation policy.
 4. Introduce Pip-Boy presenters for status, inventory, data, and map, then stop
