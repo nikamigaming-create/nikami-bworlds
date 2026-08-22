@@ -74,8 +74,14 @@ pair plus all observed branches; an external probe compiled the committed C++
 and replayed 8,192 natural retail calls with zero unsupported words and zero
 mismatches.
 
-The clean Release gates pass 1,463 / 1,463 `components-tests`, 496 / 496
-`openmw-tests`, and the engine link. The downstream gates pass 1,626 component
+Clean commit `155614a8ca` and downstream commit `4b73acfdac` add the ordered
+resource-body boundary. The existing shape remains body zero for source
+compatibility; additional bodies independently own shape, material, and raw
+filter metadata and preserve that identity through resource cloning and
+scaling. The loader still leaves the additional collection empty.
+
+The clean Release gates pass 1,464 / 1,464 `components-tests`, 496 / 496
+`openmw-tests`, and the engine link. The downstream gates pass 1,627 component
 tests with 8 fixture-dependent skips, 987 / 987 `openmw-tests`, and the engine
 link. This foundation does not yet create multiple Bullet bodies, assign a
 runtime system group, install the evaluator as a pair callback, or implement
