@@ -23,12 +23,15 @@ new implementation work.
 | Recovery lab | `codex/recovery-20260821-openmw-lab` | `8594ef323f548f8b01c86bdf7149ccdf03361933` | `07bf15bf70da1c84271e5bae7ec1398d74b815a4` | Exact 79-file pre-cleanup implementation; never promoted as a topic |
 | Promoted overlay | existing locked queue | `f8863dd47a608c5534d1a89dc6d1584b4c79fd12` | `1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a` | Patches 0001-0024; formal replay baseline |
 | Candidate overlay | `codex/openmw-overlay-0025-checkpoint` | `79290f2a06e7fff85c17e39bd3cd1dc1412ada33` | `c5b4f00165e8a02813b443e45311ba7ea29fe605` | Patches 0001-0025; telemetry candidate only |
-| Clean extraction | `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Official-master-based parser topics and reusable synthetic fixtures |
-| Clean collision | `codex/openmw-clean-collision-20260822` | `e65a8bbd9e54e99c9f8236dcd1f000cee0344dac` | `e7e95437e919472e2d01b899337c896f2d87b220` | Fourteen-topic collision/material/filter/ownership series directly over official OpenMW master |
-| Maintainable downstream and lab `main` | `codex/openmw-maintainable-downstream-20260821`, `main` | `61e26bb058142db460a67c38de8abe61c426f0a7` | `f375096aa036e1e7b8170daeea3f729996da6a6a` | Curated runnable product; main promotion is an ancestry-only merge over the tested product tree |
+| Clean extraction | local recovery ref `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Parser topics and reusable synthetic fixtures; former public work branch is now local/bundled only |
+| Clean collision | local recovery ref `codex/openmw-clean-collision-20260822` | `e65a8bbd9e54e99c9f8236dcd1f000cee0344dac` | `e7e95437e919472e2d01b899337c896f2d87b220` | Fourteen-topic collision/material/filter/ownership source series; former public work branch is now local/bundled only |
+| Maintainable downstream product | local recovery ref `codex/openmw-maintainable-downstream-20260821` | `61e26bb058142db460a67c38de8abe61c426f0a7` | `f375096aa036e1e7b8170daeea3f729996da6a6a` | Runnable product/reference lane; no longer public |
+| Public lab `main` | `main` | `440e4dcc41251317d2564b9628c4ffc29073b39a` | `2206377991a33e2ac0a21854945816a4df232818` | Current official OpenMW plus seventeen tested, upstream-shaped topics; only public Git ref |
 
-The clean extraction parent is official OpenMW `master`
-`e318e7ac360cdf082459184f968986c9e93b5ca7`.
+The source clean branches were cut from official OpenMW `master`
+`e318e7ac360cdf082459184f968986c9e93b5ca7`. Public `main` reconstructs their
+seventeen accepted topics over the newer official base
+`e47ad7782c6a3204f1bae0bcb42356e467319168`.
 
 ## Queue boundary
 
@@ -321,19 +324,25 @@ confirmed all 14,881 retail NIFs parse and exactly 7,330 files select authored
 collision. A separate TTW/OpenMW sweep at the primitive/multi checkpoint
 selected 6,198 complete trees.
 
-- Clean Release `components-tests`: 1,465 / 1,465 pass.
+- Source collision-lane Release `components-tests`: 1,465 / 1,465 pass.
 - Clean Release `openmw-tests`: 497 / 497 pass.
 - Clean `openmw.exe`, `openmw-lib`, and both owning tests compile with MSVC
   19.44.
 - Clean `git diff --check`: pass.
 
+After combining the three parser topics and fourteen collision topics on the
+2026-08-22 official base, public-main verification is 1,469 / 1,469 component
+tests and 497 / 497 OpenMW tests, with both `openmw.exe` and
+`openmw-navmeshtool.exe` linked from a fresh worktree.
+
 The following downstream commits are product checkpoints rather than the
 proposed upstream review base:
 
-The maintainable product integration is branch
-`codex/openmw-maintainable-downstream-20260821`, currently headed by
-`61e26bb058`. The official-master series above remains the upstream review
-lane; the downstream commits below are the API-adapted product lane.
+The maintainable product integration remains locally at
+`codex/openmw-maintainable-downstream-20260821`, headed by `61e26bb058`. It is
+also preserved in the pre-clean bundle and is no longer a public branch. The
+official-master series above is now the public acceptance lane; the downstream
+commits below remain the API-adapted local product/reference lane.
 
 - Identity-keyed material resolver: `d6569480a7`.
 - Authored packed collision loader: `bdd46e9403`.
@@ -401,21 +410,26 @@ lane; the downstream commits below are the API-adapted product lane.
 
 ### Curated lab main
 
-Lab `main`, `origin/main`, and the maintainable downstream branch now resolve
-exactly to `61e26bb058142db460a67c38de8abe61c426f0a7`. The final merge preserves
-remote-main ancestry and has the exact already-tested product tree
-`f375096aa036e1e7b8170daeea3f729996da6a6a`; no force push or pull request was
-used.
+Lab `main` and `origin/main` now resolve exactly to
+`440e4dcc41251317d2564b9628c4ffc29073b39a`, tree
+`2206377991a33e2ac0a21854945816a4df232818`. This is a reconstruction over
+current official OpenMW, not a squash or merge of the runnable product tree.
+It contains the three accepted ESM4 topics and fourteen accepted collision
+topics as seventeen linear, single-purpose commits.
 
-The previous divergent local main is preserved remotely as
-`codex/main-pre-curated-local-20260822` at
-`9b9bb9328956998189454b99c660e861f4e8827e`. The previous remote main is
-preserved as `codex/main-pre-curated-remote-20260822` at
-`ce996f10773f9f06214de507d439926dd0ca40e9`. Its four local VR/Pip-Boy commits
-were audited during promotion: their behavior is already present or superseded
-by the stronger production-ray, physical-control, live-bound, and palm-frame
-paths in the curated product. Their exact original history remains reachable
-from the backup branch.
+The public replacement used `--force-with-lease` against exact old main
+`61e26bb058142db460a67c38de8abe61c426f0a7`. GitHub now exposes only `main`:
+eight work/backup branches, fourteen WIP/archive tags, and six prereleases were
+removed after local preservation. There are zero open pull requests.
+
+All former refs are preserved in the verified bundle
+`D:\code\archives\nikami-openmw-lab-pre-clean-20260822.bundle` (SHA-256
+`313C6C6BEE033FFA8854D987BF00E31E08CEF49A4618C696E56675B35A015EEB`).
+The eleven former prerelease installers and their exact release notes are in
+`D:\code\archives\nikami-openmw-lab-releases-pre-clean-20260822`; all eleven
+asset digests match GitHub metadata. Exact restore instructions and the public
+audit are in
+[`openmw-public-main-curation-20260822.md`](openmw-public-main-curation-20260822.md).
 
 ## Rejected non-topics
 
