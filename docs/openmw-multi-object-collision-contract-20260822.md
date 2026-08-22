@@ -18,6 +18,17 @@ ordinary OpenMW objects that still own exactly one generated collision shape.
   14,881 / 14,881 parsed and 85 selected animated files after restoring the
   older NIF API's missing `bhkListShape::post` reference-resolution hook.
 - Explicit remaining boundary: 994 files.
+- Retail's packed-on-disk `.text` cannot support trustworthy static function
+  recovery. An observe-only initialized process identifies the common pair
+  evaluator at VA `0x00C84740`, a 43-row primary table at `0x01267F20`, and a
+  32-row biped/dead-biped subfield table at `0x01268078`.
+- The exact first 32 primary rows and all 32 subfield rows were captured from
+  live memory. Both decoded matrices are symmetric. Rows 32–42 were recovered
+  from the prior live output and have zero 43x43 symmetry mismatches; their
+  tail-to-tail pairs remain probable pending uninterrupted recapture.
+- All 12,942 retail `bhkRigidBody` records have identical world/body-info
+  filters and authored group zero. Runtime instantiation therefore cannot be
+  modeled as an unchanged copy into the observed live filter word.
 
 Remaining families:
 
@@ -47,8 +58,8 @@ are mapped against a retail oracle.
    rejects the authored resource; partial authored/generated mixtures are not
    permitted.
 3. Raw Bethesda filter values are preserved losslessly in the resource layer.
-   Mapping them to OpenMW collision groups/masks happens at physics-instance
-   creation through an explicit game policy.
+   Physics-instance creation owns the explicit, evidence-backed transform from
+   authored tuple to runtime filter word and assigns object/system identity.
 4. Solid bodies become Bullet collision objects. Phantoms become overlap-only
    objects and never enter the solid contact path.
 5. Every hit identity contains body index, shape part, and triangle index.
@@ -57,6 +68,9 @@ are mapped against a retail oracle.
    nodes keep the initial transform as static collision and stop polling that
    owner; they do not delete unrelated bodies.
 7. Legacy one-shape OpenMW resources behave exactly as before.
+8. Final Fallout body-pair admission is evaluated pairwise. Coarse OpenMW
+   group/mask bits may prune impossible engine categories but cannot replace
+   the 43-layer retail table or its group/subfield rules.
 
 ## Resource model
 
@@ -107,13 +121,16 @@ BethesdaCollisionFilter
   uint16 group
 ```
 
-An instance-time policy returns Bullet group, mask, collision flags, and
-solid/overlap role for a raw filter plus the owning game record category. The
-policy must be immutable for a loaded session and independently testable.
+An instance-time policy returns coarse Bullet group/mask values, collision
+flags, solid/overlap role, and an immutable authored-body filter record. It
+also assigns any runtime system-group/subfield state at object scope. A custom
+overlap-filter callback owns the final body-pair decision.
 
-No numeric Fallout layer mapping is accepted from convention or enum names
-alone. Each mapping needs one retail interaction experiment covering actor,
-projectile, camera, and world contact as applicable.
+The live evaluator proves these pairwise inputs: low-seven-bit layer, five-bit
+subfield, bits 14/15, and high-16-bit system group. Its primary 43-layer table
+cannot fit one ordinary 32-bit Bullet mask without aliasing. The raw-to-runtime
+instantiation transform and phantom role remain gated; neither may be guessed
+from enum names.
 
 ## Port-side tests
 
@@ -128,6 +145,9 @@ projectile, camera, and world contact as applicable.
 7. An unsupported third body rejects the entire resource.
 8. Legacy one-shape Morrowind objects retain one collision object and unchanged
    group/mask behavior.
+9. A pure policy fixture matches every confirmed retail layer/subfield bit and
+   covers zero/different/equal system-group paths plus bits 14 and 15.
+10. More than 32 Fallout layers remain distinct through the pair callback.
 
 ## Acceptance gates
 

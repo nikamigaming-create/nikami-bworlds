@@ -411,12 +411,20 @@ The owning design is
 [`openmw-multi-object-collision-contract-20260822.md`](openmw-multi-object-collision-contract-20260822.md).
 Retail filter research is bound to `FalloutNV.exe` 1.4.0.525, SHA-256
 `518C87F58A6C4D9826E9EF8FBB7F4213882FA70822675610D45AEA2464502A57`.
-Layer names and phantom/filter type presence are confirmed; the retail
-layer-pair interaction matrix is not yet confirmed and must not be guessed.
+The initialized live evaluator is at VA `0x00C84740`; its primary 43-layer
+table begins at `0x01267F20` and its 32-row biped subfield table at
+`0x01268078`. Exact rows 0–31 and the full subfield table are confirmed and
+symmetric; recovered rows 32–42 are symmetry-verified but tail-to-tail pairs
+remain probable pending uninterrupted recapture. All 12,942 authored retail
+rigid-body groups are zero, so the runtime instantiation transform is not an
+unchanged NIF copy and remains unknown. No runtime grouping may be guessed.
 
 1. Introduce a multi-object physics resource boundary before touching the 491
    heterogeneous-filter packed trees or the remaining multi-primitive trees;
    one Bullet object cannot represent per-body broad-phase filters honestly.
+   Preserve raw tuples, assign runtime system identity at object instancing,
+   and route final Fallout body pairs through a custom immutable callback; 43
+   layers cannot be represented losslessly by one ordinary 32-bit mask.
 2. Model `bhkSimpleShapePhantom` as trigger ownership, never as solid geometry.
 3. Treat the 28 nested mixed list/MOPP wrappers as a recursive material/filter
    namespace topic after multi-object ownership exists.
