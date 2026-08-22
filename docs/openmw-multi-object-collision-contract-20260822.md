@@ -80,12 +80,20 @@ compatibility; additional bodies independently own shape, material, and raw
 filter metadata and preserve that identity through resource cloning and
 scaling. The loader still leaves the additional collection empty.
 
-The clean Release gates pass 1,464 / 1,464 `components-tests`, 496 / 496
+Clean commit `ee88692801` and downstream commit `cd47e7b7e3` consume that
+collection in physics. Each body becomes a separately registered Bullet object
+with a stable user index; transform, AABB, ray/sweep/contact material identity,
+ignore lists, projectile casters, and removal enumerate the full set. The
+two-body Bullet-world regression strikes body one, resolves its distinct
+material, and verifies both objects leave the world on destruction.
+
+The clean Release gates pass 1,464 / 1,464 `components-tests`, 497 / 497
 `openmw-tests`, and the engine link. The downstream gates pass 1,627 component
-tests with 8 fixture-dependent skips, 987 / 987 `openmw-tests`, and the engine
-link. This foundation does not yet create multiple Bullet bodies, assign a
-runtime system group, install the evaluator as a pair callback, or implement
-phantom behavior. It therefore earns no additional corpus or live collision
+tests with 8 fixture-dependent skips, 988 / 988 `openmw-tests`, and the engine
+link. The loader does not yet populate additional authored bodies, navigation
+and direct scene bounds do not yet enumerate them, and runtime system-group
+assignment, evaluator callback installation, and phantom behavior remain open.
+The infrastructure therefore earns no additional corpus or live collision
 parity credit.
 
 ## Behavioral contract
