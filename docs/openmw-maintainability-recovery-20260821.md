@@ -17,7 +17,7 @@ new implementation work.
 | Recovery lab | `codex/recovery-20260821-openmw-lab` | `8594ef323f548f8b01c86bdf7149ccdf03361933` | `07bf15bf70da1c84271e5bae7ec1398d74b815a4` | Exact 79-file pre-cleanup implementation; never promoted as a topic |
 | Promoted overlay | existing locked queue | `f8863dd47a608c5534d1a89dc6d1584b4c79fd12` | `1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a` | Patches 0001-0024; formal replay baseline |
 | Candidate overlay | `codex/openmw-overlay-0025-checkpoint` | `79290f2a06e7fff85c17e39bd3cd1dc1412ada33` | `c5b4f00165e8a02813b443e45311ba7ea29fe605` | Patches 0001-0025; telemetry candidate only |
-| Clean extraction | `codex/openmw-clean-extraction-20260821` | `1a0bb044dec402e38b8cad1d0f2ee72d9bb1884d` | `9475a1416bd707cd5aa229fa5d709d8b99cd0d06` | First official-master-based parser topic |
+| Clean extraction | `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Official-master-based parser topics and reusable synthetic fixtures |
 
 The clean extraction parent is official OpenMW `master`
 `e318e7ac360cdf082459184f968986c9e93b5ca7`.
@@ -75,6 +75,48 @@ subrecord boundary.
 - Complete Release `components-tests`: 1,435 / 1,435 pass with MSVC 19.44.
 - `git diff --check`: pass.
 
+## Second clean topic: WEAP model identities
+
+### Evidence
+
+- xEdit source commit:
+  `fd1e36020b2b5b6217e553dc0038983146a2e2dd`.
+- `wbDefinitionsFNV.pas` SHA-256:
+  `175360DFAC2F51BA1F041E916ED82732C8698F84D010C9C64B20DA3B224CD5EC`.
+- xEdit defines WEAP `MOD4` as the world model and `WNAM` as a first-person
+  model reference constrained to `STAT`.
+- Generator SHA-256:
+  `C7BE2F79A9DCE405A16A55C5FFDD8A1C4A334DFE1D0B86D2F59B85E3ECF5250F`.
+- Fresh report SHA-256:
+  `BFD506F519954D876CE3087354E6994BEA81E9A517E042FBEE27192330D88228`.
+- Canonical report SHA-256, excluding local diagnostics:
+  `d2ed089a3f56feb3785256e46102755b820c3116bfc9ba81cf566aa7c84cd442`.
+- Winning FNV WEAP records: 496 total; 111 carry `MOD4`; 329 carry `WNAM`.
+- All 245 firing held weapons resolve a first-person model: 232 through a
+  `WNAM -> STAT -> MODL` chain and 13 through the held `MODL` fallback.
+
+Confidence: `confirmed` for FNV and corroborated by the independent xEdit
+definition; other Bethesda-title consumers of the same fields remain outside
+this bounded claim.
+
+### Behavioral contract
+
+Preserve the primary held model from `MODL`, the dropped/world model path from
+`MOD4`, and the load-order-adjusted first-person static-model reference from
+`WNAM`. Consume the associated `MO4*` model metadata without losing the next
+subrecord boundary.
+
+### Implementation and verification
+
+- Test-only fixture refactor: `654773f4be3d0cbcef15d6e2c132864cf95eb942`.
+- Model parser topic: `e6268c309eee4577b6cf649d7de9bc0c28adc38a`.
+- Production topic surface: 4 files, 58 insertions, 4 deletions.
+- No combat, animation, renderer, UI, or runtime-policy changes.
+- Synthetic full-reader test checks all three model identities, skipped
+  `MO4*` metadata, following-record alignment, and FormID adjustment.
+- Complete Release `components-tests`: 1,436 / 1,436 pass with MSVC 19.44.
+- Formatting and `git diff --check`: pass.
+
 ## Extraction rules
 
 Every new clean topic must satisfy all of the following:
@@ -97,7 +139,7 @@ Every new clean topic must satisfy all of the following:
 | Order | Topic | Destination | Required split / gate | Status |
 | ---: | --- | --- | --- | --- |
 | 1 | AMMO 12-byte `DAT2` | generic ESM4 component | Full-reader fixtures and load-order FormID checks | complete at `1a0bb044de` |
-| 2 | WEAP `MOD4` / `WNAM` semantics | generic ESM4 component | Separate from combat, animation, and UI | next |
+| 2 | WEAP `MOD4` / `WNAM` semantics | generic ESM4 component | Separate from combat, animation, and UI | complete at `e6268c309e` |
 | 3 | NIF `SPEC` material channel token | generic NIF loader | One controller fixture; no other NIF changes | pending |
 | 4 | Blend-bool visibility shell handling | generic NIF loader | Demonstrate duplicate callback overwrite in isolation | pending |
 | 5 | Havok material propagation | generic resource/physics layer | Preserve per-subshape semantics; do not collapse mixed materials | redesign required |
