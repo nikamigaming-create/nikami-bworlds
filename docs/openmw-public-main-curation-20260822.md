@@ -66,6 +66,21 @@ synthetic: no retail bytes, assets, paths, named records, or private evidence
 are committed. Three focused tests cover both accepted layouts and atomic
 unknown-size fallback.
 
+## Ready local next topic: IPCT core
+
+The next topic is complete locally but intentionally not public yet:
+
+- branch: `codex/openmw-clean-impact-record-20260822`;
+- commit: `f85b3cde4b83d0f6a6ac0fac4a78932e754d2a68`;
+- parent/public base: `a740618b6eb53a30d456c85991370a843e315ad7`;
+- local gates: 1,484 / 1,484 component tests, 497 / 497 OpenMW tests, and
+  `openmw.exe`, `openmw-navmeshtool.exe`, and `openmw-cs.exe` linked;
+- predecessor IPDS CI run: `32599125283`, still in progress at handoff.
+
+Resume by waiting for that predecessor run to succeed, then fast-forwarding
+`main` to the topic commit with the usual exact-SHA guard. No public topic
+branch or pull request exists.
+
 ## Second post-curation topic: weapon data prefixes
 
 Commit `18263dbb919530ac9abce6d7f21816db99061ce6` preserves FNV
