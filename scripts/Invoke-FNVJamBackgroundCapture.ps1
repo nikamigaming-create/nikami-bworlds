@@ -520,7 +520,9 @@ if ($Scenario -eq "RetailPortraits") {
         throw "Retail portrait target '$RetailPortraitTargetId' is not uniquely declared in the appearance matrix."
     }
     $retailShotStates = @($shotRuns | ForEach-Object {
-        @($_.groups | ForEach-Object { @($_.states) })
+        $shotStateContract = Get-Content -Raw -LiteralPath ([string]$_.stateContract) |
+            ConvertFrom-Json
+        @($shotStateContract.states)
     })
     if ($retailShotStates.Count -ne $shotRuns.Count -or
         @($retailShotStates | Where-Object {
@@ -533,7 +535,7 @@ if ($Scenario -eq "RetailPortraits") {
     }).Count
     $retailStateContractPath = Join-Path $retailOutput 'retail-state-contract.json'
     $retailStateContract = [ordered]@{
-        schema = 'opennv-retail-actor-state-contract/v1'
+        schema = 'opennv-retail-actor-state-contract/v2'
         target = [ordered]@{
             id = $RetailPortraitTargetId
             referenceForm = [string]$targetRows[0].reference.form

@@ -540,6 +540,8 @@ if ($null -ne $catalog) {
         $portraitRunnerText = Get-Content -Raw -LiteralPath $retailPortraitRunnerPath -ErrorAction SilentlyContinue
         $oracleRunnerText = Get-Content -Raw -LiteralPath $retailOracleRunnerPath -ErrorAction SilentlyContinue
         $oracleSourceText = Get-Content -Raw -LiteralPath $oracleSourcePath -ErrorAction SilentlyContinue
+        $retailAppearanceMatrixText = Get-Content -Raw -LiteralPath $retailAppearanceMatrixPath `
+            -ErrorAction SilentlyContinue
         foreach ($forbidden in @("AppActivate", "SetForegroundWindow", "BringWindowToTop", "SetFocus", "SendInput", "Invoke-FNVRetailJamInput")) {
             Add-Check "Retail portrait path excludes $forbidden" (
                 $portraitRunnerText -notmatch [regex]::Escape($forbidden) -and
@@ -560,6 +562,9 @@ if ($null -ne $catalog) {
             $oracleSourceText -notmatch 'interface-scene-graph-scan' -and
             $oracleSourceText -match 'sIniSettingCollectionSingletonAddress\s*=\s*0x011F96A0' -and
             $oracleSourceText -match 'fDefaultWorldFOV:Display' -and
+            $oracleSourceText -match 'cell-actor-context' -and
+            $retailAppearanceMatrixText -match 'contextActorReferenceForms' -and
+            $retailAppearanceMatrixText -match '0x104f08' -and
             $portraitRunnerText -match 'CaptureAnimation\s*=\s*\$true' -and
             $portraitRunnerText -match 'exactProjectionResolved' -and
             $portraitRunnerText -match 'retail-state-contract\.json' -and
@@ -567,6 +572,10 @@ if ($null -ne $catalog) {
             $portraitRunnerText -match 'actor-geometry-status' -and
             $portraitRunnerText -match 'FaceGenFace' -and
             $portraitRunnerText -match 'FaceGenHairNoHat' -and
+            $portraitRunnerText -match 'contextActors' -and
+            $portraitRunnerText -match 'bones\s*=\s*@\(' -and
+            $portraitRunnerText -match 'opennv-retail-actor-state-contract/v2' -and
+            $portraitRunnerText -match 'publicGroupRuns' -and
             $portraitRunnerText -match 'Bip01 L UpperArm.*Bip01 L Forearm.*Bip01 R UpperArm.*Bip01 R Forearm'
         ) "$retailPortraitRunnerPath; $oracleSourcePath"
         $referenceFovY = 2.0 * [Math]::Atan(
