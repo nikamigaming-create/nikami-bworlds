@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "RetailPortraits", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -10,6 +10,8 @@ param(
     [switch]$RequireIdle,
     [string]$WorldsRoot = "",
     [string]$GodotBinary = "",
+    [ValidatePattern('^[a-z0-9_-]+$')]
+    [string]$RetailPortraitTargetId = "trudy",
     [string]$ParityRoot = "",
     [string]$EngineRoot = "",
     [string]$RetailShadowRoot = "",
@@ -51,6 +53,9 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     }
     elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence")) {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
+    }
+    elseif ($Scenario -eq "RetailPortraits") {
+        Join-Path $WorldsRoot "local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos"
     }
     else { "" }
 }
@@ -110,6 +115,9 @@ if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
 }
 if ($Scenario -eq "PipBoyVR" -and $Target -ne "OpenMW") {
     throw "PipBoyVR is an OpenMW-only native OpenXR lane. Use -Target OpenMW."
+}
+if ($Scenario -eq "RetailPortraits" -and $Target -ne "Retail") {
+    throw "RetailPortraits is a retail-only native D3D9 oracle lane. Use -Target Retail."
 }
 if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence") -and $Target -ne "OpenMW") {
     throw "FirstSmoke and Chet persistent routes are OpenMW-only lanes. Use -Target OpenMW."
@@ -181,6 +189,11 @@ $vrControllerPosePath = Join-Path $WorldsRoot "scripts\Invoke-OpenXRSimulatorCon
 $vrNativeFramePath = Join-Path $WorldsRoot "scripts\Request-OpenXRSimulatorNativeEyeFrame.ps1"
 $terminalRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTerminalCapture.ps1"
 $retailPipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailPipBoyStateCapture.ps1"
+$retailPortraitRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVGoodspringsAppearanceMatrix.ps1"
+$retailOracleRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailOracle.ps1"
+$retailAppearanceMatrixPath = Join-Path $WorldsRoot "catalog\fnv-goodsprings-retail-matrix.json"
+$retailAppearanceComparatorPath = Join-Path $WorldsRoot "scripts\compare_fnv_goodsprings_appearance.py"
+$retailContactSheetPath = Join-Path $WorldsRoot "scripts\New-ScreenshotContactSheet.ps1"
 $realSaveRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRealSaveCapture.ps1"
 $ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
 $newVegasInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-OpenNVBaseProfile.ps1"
@@ -335,6 +348,18 @@ elseif ($Scenario -eq "RealSave") {
     }
     if ($Target -eq "OpenMW") {
         $canonicalFiles.Add($newVegasInitializerPath)
+    }
+}
+elseif ($Scenario -eq "RetailPortraits") {
+    foreach ($path in @(
+        $retailPortraitRunnerPath,
+        $retailOracleRunnerPath,
+        $retailAppearanceMatrixPath,
+        $retailAppearanceComparatorPath,
+        $retailContactSheetPath,
+        $oracleSourcePath
+    )) {
+        $canonicalFiles.Add($path)
     }
 }
 elseif ($Scenario -eq "FirstSmoke") {
@@ -492,6 +517,41 @@ if ($null -ne $catalog) {
         Add-Check "Terminal capture is restricted to OpenMW" `
             ($Target -eq "OpenMW") "target=$Target"
     }
+    if ($Scenario -eq "RetailPortraits") {
+        Add-Check "RetailPortraits capture is restricted to retail" ($Target -eq "Retail") "target=$Target"
+        [void](Test-File "RetailPortraits immutable save exists" $SavePath)
+        try {
+            $appearanceMatrix = Get-Content -Raw -LiteralPath $retailAppearanceMatrixPath | ConvertFrom-Json
+            $portraitTargets = @($appearanceMatrix.targets | Where-Object { [string]$_.id -eq $RetailPortraitTargetId })
+            Add-Check "Retail portrait target is uniquely data-declared" ($portraitTargets.Count -eq 1) $RetailPortraitTargetId
+            if ($portraitTargets.Count -eq 1) {
+                Add-Check "Retail portrait target has exact reference and appearance identities" (
+                    -not [string]::IsNullOrWhiteSpace([string]$portraitTargets[0].reference.form) -and
+                    -not [string]::IsNullOrWhiteSpace([string]$portraitTargets[0].base.form) -and
+                    -not [string]::IsNullOrWhiteSpace([string]$portraitTargets[0].appearance.effectiveTraits.race.form) -and
+                    -not [string]::IsNullOrWhiteSpace([string]$portraitTargets[0].appearance.effectiveTraits.hair.form)
+                ) $RetailPortraitTargetId
+            }
+        }
+        catch {
+            Add-Check "Retail appearance matrix parses" $false $_.Exception.Message
+        }
+        $portraitRunnerText = Get-Content -Raw -LiteralPath $retailPortraitRunnerPath -ErrorAction SilentlyContinue
+        $oracleRunnerText = Get-Content -Raw -LiteralPath $retailOracleRunnerPath -ErrorAction SilentlyContinue
+        $oracleSourceText = Get-Content -Raw -LiteralPath $oracleSourcePath -ErrorAction SilentlyContinue
+        foreach ($forbidden in @("AppActivate", "SetForegroundWindow", "BringWindowToTop", "SetFocus", "SendInput", "Invoke-FNVRetailJamInput")) {
+            Add-Check "Retail portrait path excludes $forbidden" (
+                $portraitRunnerText -notmatch [regex]::Escape($forbidden) -and
+                $oracleRunnerText -notmatch [regex]::Escape($forbidden)
+            ) "$retailPortraitRunnerPath; $retailOracleRunnerPath"
+        }
+        Add-Check "Retail portrait path retains native D3D9 frames and telemetry" (
+            $oracleSourceText -match 'GetRenderTargetData' -and
+            $oracleRunnerText -match 'framebuffer-derived-retail-screenshot' -and
+            $oracleRunnerText -match 'appearanceTelemetry' -and
+            $portraitRunnerText -match 'CameraShotKind'
+        ) "$retailPortraitRunnerPath; $retailOracleRunnerPath"
+    }
     $selectedRecipes = @($(if ($Scenario -eq "Jam") { $catalog.recipes } elseif ($Scenario -eq "Opening") {
         @($catalog.openingRecipes | Where-Object {
             ($Target -eq "All" -or $_.target -eq $Target) -and
@@ -513,6 +573,8 @@ if ($null -ne $catalog) {
         })
     } elseif ($Scenario -eq "FirstSmoke") {
         @($catalog.firstSmokeRecipes | Where-Object { $_.target -eq $Target })
+    } elseif ($Scenario -eq "RetailPortraits") {
+        @($catalog.retailPortraitRecipes | Where-Object { $_.target -eq $Target })
     } elseif ($Scenario -eq "ChetObservation") {
         @($catalog.r2ChetRecipes | Where-Object { $_.target -eq $Target })
     } elseif ($Scenario -eq "ChetPersistent") {
@@ -548,6 +610,9 @@ if ($null -ne $catalog) {
     }
     elseif ($Scenario -eq "FirstSmoke") {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
+    }
+    elseif ($Scenario -eq "RetailPortraits") {
+        if ($Target -eq "Retail") { 1 } else { 0 }
     }
     elseif ($Scenario -eq "ChetObservation") {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
@@ -661,6 +726,10 @@ elseif ($Scenario -eq "Terminal") {
 elseif ($Scenario -eq "RealSave") {
     $scriptsToParse.Add($realSaveRunnerPath)
 }
+elseif ($Scenario -eq "RetailPortraits") {
+    $scriptsToParse.Add($retailPortraitRunnerPath)
+    $scriptsToParse.Add($retailOracleRunnerPath)
+}
 elseif ($Scenario -eq "FirstSmoke") {
     $scriptsToParse.Add($firstSmokeRunnerPath)
 }
@@ -739,6 +808,13 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
                 $entryText -match '\$Scenario\s+-eq\s+"RealSave"' -and
                 $entryText -match '(?s)&\s+\$preflight.*?-RuntimeReady.*?-RequireIdle') `
             $entryPointPath
+    }
+    elseif ($Scenario -eq "RetailPortraits") {
+        Add-Check "RetailPortraits invocation routes to the appearance-matrix oracle" (
+            $Target -eq "Retail" -and
+            $entryText -match 'Invoke-FNVGoodspringsAppearanceMatrix' -and
+            $entryText -match '\$Scenario\s+-eq\s+"RetailPortraits"'
+        ) $entryPointPath
     }
     elseif ($Scenario -eq "FirstSmoke") {
         Add-Check "FirstSmoke invocation routes to the declared OpenMW runner" `
@@ -1075,6 +1151,13 @@ if (Test-Path -LiteralPath $runbookPath -PathType Leaf) {
     )) {
         Add-Check "Runbook contains '$requiredText'" `
             ($runbookText -match [regex]::Escape($requiredText)) $runbookPath
+    }
+    if ($Scenario -eq "RetailPortraits") {
+        foreach ($requiredText in @("RetailPortraits", "native Direct3D 9", "sequentially")) {
+            Add-Check "Retail portrait runbook contains '$requiredText'" (
+                $runbookText -match [regex]::Escape($requiredText)
+            ) $runbookPath
+        }
     }
 }
 
@@ -1427,6 +1510,32 @@ if ($RuntimeReady) {
         }
         if ($OutputRoot) {
             Add-Check "RealSave output root is unused" `
+                (-not (Test-Path -LiteralPath $OutputRoot)) $OutputRoot
+        }
+    }
+    elseif ($Scenario -eq "RetailPortraits") {
+        [void](Test-File "Retail FalloutNV executable exists for portraits" `
+            (Join-Path (Split-Path -Parent $OpeningNewVegasData) "FalloutNV.exe"))
+        [void](Test-File "Retail portrait oracle runtime manifest exists" $oracleRuntimeManifestPath)
+        [void](Test-File "Retail portrait oracle DLL exists" $oracleDllPath)
+        [void](Test-File "Retail portrait save fixture exists" $SavePath)
+        [void](Test-File "Retail appearance matrix exists" $retailAppearanceMatrixPath)
+        [void](Test-File "Retail appearance comparator exists" $retailAppearanceComparatorPath)
+        if ((Test-Path -LiteralPath $oracleRuntimeManifestPath -PathType Leaf) -and
+            (Test-Path -LiteralPath $oracleDllPath -PathType Leaf)) {
+            try {
+                $runtimeManifest = Get-Content -Raw -LiteralPath $oracleRuntimeManifestPath | ConvertFrom-Json
+                $expectedHash = ([string]$runtimeManifest.files.plugin.sha256).ToLowerInvariant()
+                $actualHash = (Get-FileHash -LiteralPath $oracleDllPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                Add-Check "Retail portrait oracle DLL matches its manifest" `
+                    ($actualHash -eq $expectedHash) "expected=$expectedHash actual=$actualHash"
+            }
+            catch {
+                Add-Check "Retail portrait oracle DLL matches its manifest" $false $_.Exception.Message
+            }
+        }
+        if ($OutputRoot) {
+            Add-Check "RetailPortraits output root is unused" `
                 (-not (Test-Path -LiteralPath $OutputRoot)) $OutputRoot
         }
     }

@@ -142,10 +142,16 @@ def compare_target(target, capture_path):
         )
     else:
         metrics = image_metrics(proof_crop)
+        raw_metrics = image_metrics(raw_screenshot)
         result["pixelMetrics"] = metrics
-        if metrics["width"] < 800 or metrics["height"] < 600:
+        result["rawPixelMetrics"] = raw_metrics
+        if raw_metrics["width"] < 800 or raw_metrics["height"] < 600:
             result["mismatches"].append(
-                {"field": "pixelDimensions", "expected": ">=800x600", "actual": metrics}
+                {"field": "rawPixelDimensions", "expected": ">=800x600", "actual": raw_metrics}
+            )
+        if metrics["width"] < 600 or metrics["height"] < 600 or metrics["width"] != metrics["height"]:
+            result["mismatches"].append(
+                {"field": "proofCropDimensions", "expected": "square and >=600x600", "actual": metrics}
             )
         if metrics["meanLuma"] < 3 or metrics["lumaStdDev"] < 3:
             result["mismatches"].append(

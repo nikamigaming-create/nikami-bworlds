@@ -10415,11 +10415,12 @@ namespace
             gBatchScreenshotRequested = true;
             if (gCaptureAnimation)
                 writeActor(findDriveActor());
-            const bool accepted = gConsole != nullptr && gConsole->RunScriptLine2("TapKey 183", nullptr, true);
+            const bool accepted = scheduledCaptureBackBuffer();
             gOutput << "{\"schema\":" << sSchemaJson << ",\"event\":\"batch-screenshot-request\""
                     << ",\"frame\":" << gFrame
                     << ",\"targetIndex\":" << gBatchTargetIndex
                     << ",\"targetForm\":" << gTargetForm
+                    << ",\"mode\":\"d3d9-backbuffer\""
                     << ",\"accepted\":" << (accepted ? "true" : "false") << "}\n";
             gOutput.flush();
         }

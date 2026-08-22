@@ -447,6 +447,33 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoyVR -OpeningRuntimeRoot '<staged VR runtime>' -OutputRoot .\\run\\opennv-vr-pipboy-weapons-<unique>"
     }
   ],
+  "retailPortraitRecipes": [
+    {
+      "id": "fnv-retail-actor-portraits-v1",
+      "target": "Retail",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-FNVGoodspringsAppearanceMatrix.ps1",
+      "captureMethod": "xNVSE schedules the actor and camera in-process while the retail oracle retains native Direct3D 9 GetRenderTargetData backbuffer BMPs, proof crops, appearance telemetry, and immutable manifests",
+      "driverMethod": "the data-declared ACHR/NPC identity is loaded from the immutable save, staged by the in-process oracle when initially disabled, and captured sequentially as a front portrait and front full-body shot",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent and no window activation or Windows app-control operation is used",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "retail/*/*-screens/frame-target-*.bmp; retail/*/*-screens/frame-target-*-proof-crop.png",
+      "telemetryPattern": "retail/*/*.jsonl; retail/*/*.manifest.json",
+      "manifestPattern": "retail/retail-portrait-report.json; background-capture-summary.json",
+      "requiredTelemetry": [
+        "the selected target resolves to one exact authored reference, base, race, hair, eyes, and head-part contract",
+        "front portrait and front full-body shots use the same selected reference and run sequentially",
+        "native Direct3D 9 source frames, appearance telemetry, camera telemetry, proof crops, and hashes are retained",
+        "the authored-to-retail appearance comparator passes the selected target for both shots",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario RetailPortraits -RetailPortraitTargetId trudy -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario RetailPortraits -RetailPortraitTargetId trudy -OutputRoot .\\run\\fnv-retail-trudy-portraits-<unique>"
+    }
+  ],
   "godotRecipes": [
     {
       "id": "opennv-godot-goodsprings-strip-v1",
