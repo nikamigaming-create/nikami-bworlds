@@ -128,7 +128,8 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     }
     else { "" }
 }
-if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
+if ($Target -ne "Godot" -and $Scenario -ne "RetailPortraits" -and
+    [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
     if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
         $OpeningRuntimeRoot = $pipBoyRuntimeRoot
@@ -137,7 +138,7 @@ if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) 
         $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
     }
 }
-if ($Target -ne "Godot") {
+if ($Target -ne "Godot" -and $Scenario -ne "RetailPortraits") {
     $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 }
 
@@ -518,9 +519,38 @@ if ($Scenario -eq "RetailPortraits") {
     if ($targetRows.Count -ne 1) {
         throw "Retail portrait target '$RetailPortraitTargetId' is not uniquely declared in the appearance matrix."
     }
+    $retailShotStates = @($shotRuns | ForEach-Object {
+        @($_.groups | ForEach-Object { @($_.states) })
+    })
+    if ($retailShotStates.Count -ne $shotRuns.Count -or
+        @($retailShotStates | Where-Object {
+            [string]$_.target.id -ne $RetailPortraitTargetId
+        }).Count -ne 0) {
+        throw 'Retail portrait state contracts are not one-to-one with the requested shots.'
+    }
+    $exactProjectionCount = @($retailShotStates | Where-Object {
+        [bool]$_.camera.projection.exact
+    }).Count
+    $retailStateContractPath = Join-Path $retailOutput 'retail-state-contract.json'
+    $retailStateContract = [ordered]@{
+        schema = 'opennv-retail-actor-state-contract/v1'
+        target = [ordered]@{
+            id = $RetailPortraitTargetId
+            referenceForm = [string]$targetRows[0].reference.form
+            baseForm = [string]$targetRows[0].base.form
+        }
+        exactProjectionCount = $exactProjectionCount
+        exactProjectionResolved = $exactProjectionCount -eq $retailShotStates.Count
+        shots = $retailShotStates
+    }
+    [IO.File]::WriteAllText(
+        $retailStateContractPath,
+        ($retailStateContract | ConvertTo-Json -Depth 24),
+        [Text.UTF8Encoding]::new($false))
     $retailPortraitArtifactPaths = @()
     foreach ($shotRun in $shotRuns) {
         $retailPortraitArtifactPaths += [string]$shotRun.report
+        $retailPortraitArtifactPaths += [string]$shotRun.stateContract
         $retailPortraitArtifactPaths += [string]$shotRun.contactSheet
         foreach ($group in @($shotRun.groups)) {
             $retailPortraitArtifactPaths += [string]$group.output
@@ -553,10 +583,14 @@ if ($Scenario -eq "RetailPortraits") {
         assertions = [ordered]@{
             sameAuthoredReferenceUsed = $true
             appearanceTelemetryValidated = $true
+            cameraProjectionTelemetryRetained = $true
+            exactCameraProjectionResolved = $exactProjectionCount -eq $retailShotStates.Count
+            finalHeadHairGeometryValidated = $true
             nativeFrameCount = @($shotRuns | ForEach-Object { @($_.groups.proofCrops).Count } | Measure-Object -Sum).Sum
             shotCount = $shotRuns.Count
             humanVisualVerdictRequired = $true
         }
+        stateContract = $retailStateContractPath
         shots = $shotRuns
         artifacts = @($retailPortraitArtifactPaths | Sort-Object -Unique | ForEach-Object {
             [pscustomobject][ordered]@{ path = [IO.Path]::GetFullPath($_) }
@@ -568,6 +602,7 @@ if ($Scenario -eq "RetailPortraits") {
         ($retailPortraitResult | ConvertTo-Json -Depth 16),
         [Text.UTF8Encoding]::new($false))
     $retailPortraitResult.artifacts += [pscustomobject][ordered]@{ path = $retailPortraitReportPath }
+    $retailPortraitResult.artifacts += [pscustomobject][ordered]@{ path = $retailStateContractPath }
     $retailResult = [pscustomobject]$retailPortraitResult
 }
 

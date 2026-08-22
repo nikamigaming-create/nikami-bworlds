@@ -397,7 +397,16 @@ actor such as Trudy. The xNVSE oracle selects the exact authored ACHR/NPC
 identity in-process and captures a front portrait and a front full-body shot
 sequentially. It retains native Direct3D 9 backbuffer BMPs, derived proof
 crops, camera and appearance telemetry, hashes, and the authored-to-retail
-validator report. It sends no host input and uses no Windows app control.
+validator report. The report also retains the live reference transform,
+source-labelled Direct3D 9 projection state, active idle phase, arm-bone
+transforms, and final `FaceGenFace`/`FaceGenHairNoHat` vertex hashes and bounds.
+If fixed-function projection state is unavailable, the contract retains an
+explicitly provisional vertical-FOV derivation from live
+`fDefaultWorldFOV:Display` and the native backbuffer aspect; that fallback does
+not close the exact-projection parity gate. The compact consumer artifact is
+`retail/retail-state-contract.json`; full vertex arrays remain only in the
+immutable forensic JSONL.
+It sends no host input and uses no Windows app control.
 
 Run the mandatory preflight and then the single entry point with a fresh output
 directory:

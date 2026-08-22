@@ -539,7 +539,7 @@ if ($planMode) {
             continue
         }
 
-        $fields = @($line -split "`t", -1)
+        $fields = @($line -split "`t")
         switch -CaseSensitive ($fields[0]) {
             'sequence' {
                 if ($sidecarRecordPhase -ne 'sequence' -or $fields.Count -ne 2 -or
