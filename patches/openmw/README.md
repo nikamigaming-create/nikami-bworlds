@@ -16,11 +16,25 @@ Copy-Item config/paths.example.json local/paths.json
 .\scripts\Apply-OpenMWPatches.ps1
 ```
 
-Patch files listed in `series` are applied in order from locked lab base
-`9acf88c34b`. A clean cumulative replay of patches 0001-0023 produces tree
-`82b7b3083932ccef1b6b401187bd56de1d1c06ed`, exactly matching lab checkpoint
-`a77bf86556`; run `scripts/Test-OpenMWOverlayReplay.ps1` to repeat that proof in
-a disposable worktree. Patch 0001 is the world viewer snapshot exported from
+Patch files listed in `series` are the formally promoted queue and are applied
+in order from locked lab base `9acf88c34b`. A clean cumulative replay through
+patch 0024 produces tree `1eaaaa089807aef77c57a7cd616f8c24fb5dbf4a`,
+exactly matching lab checkpoint `f8863dd47a`. Run
+`scripts/Test-OpenMWOverlayReplay.ps1` to repeat that proof in a disposable
+worktree.
+
+`series-next` is a candidate superset, never an implied promotion. It currently
+adds patch 0025 and replays to tree
+`c5b4f00165e8a02813b443e45311ba7ea29fe605`, matching contiguous candidate
+checkpoint `79290f2a06`. Validate it independently with:
+
+```powershell
+.\scripts\Test-OpenMWOverlayReplay.ps1 `
+  -LockPath catalog/openmw-candidate-lock.json `
+  -SeriesPath patches/openmw/series-next
+```
+
+Patch 0001 is the world viewer snapshot exported from
 downstream commit `01f8b0935f`. Patch 0002 is the focused FO3/FNV actor animation,
 attachment, FormID-script, and weapon-selector correction exported from commit
 `d6c36c6b7e`. Patch 0003 is the bounded behavior-record, quest-condition,
@@ -175,8 +189,10 @@ then re-export that single commit with `git format-patch`. Split it into smaller
 upstreamable topics only after the behavior and proof contracts are stable.
 
 Failed or incomplete hypotheses live under `experiments/` and are not applied by
-`series`. Keep their proof links in the patch header so a later pass can reuse
-the evidence without accidentally promoting the failed state.
+either queue. Candidate patches may be listed in `series-next` only after they
+have their own replay lock; they move to `series` only after the full promotion
+gate passes. Keep proof links in each patch header so a later pass can reuse the
+evidence without accidentally promoting the failed state.
 
 ## Patch Ownership Discipline
 
@@ -191,7 +207,7 @@ Use this flow for every engine change:
 2. Make the smallest source change in the external checkout needed to test the
    hypothesis.
 3. Export or hand-port the exact source diff into a topic patch in this
-   directory, then list it in `series`.
+   directory, then list it in `series-next` with a candidate replay lock.
 4. Rebuild the non-VR runtime, copy the rebuilt executable into the configured
    local runtime root, and rerun the same slice.
 5. Record screenshot evidence, actor runtime evidence, and visual review rows.
@@ -242,12 +258,13 @@ cinematic/tint/fade stage. Easy Pete and Lucas Simms native background
 portraits are the bounded visual evidence; full linear-HDR and retail timing
 parity remain broader acceptance gates.
 
-Patch 0025 adds opt-in, JSON-shaped telemetry for the seamless-exterior
+Candidate patch 0025 adds opt-in, JSON-shaped telemetry for the seamless-exterior
 baseline. With `OPENMW_FNV_SEAMLESS_TELEMETRY=1`, it records grid-change plans
 and timing, loading-scope entry/exit, actual loading-screen draws, fade
 requests, teleport actions, door-preload state, frame samples, and the current
 unimplemented exterior-worldspace handoff state. It makes no transition-path
-behavior change and therefore does not claim that a route is seamless.
+behavior change and therefore does not claim that a route is seamless. It is
+not part of the formally promoted `series` queue.
 
 On a cold restart, read `../../docs/fallout-retail-parity-reboot.md` before
 editing an external checkout. Every new compatibility assumption must also be

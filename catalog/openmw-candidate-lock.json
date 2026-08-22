@@ -1,0 +1,50 @@
+{
+  "schema": "nikami-openmw-base-lock/v1",
+  "verifiedAt": "2026-08-21",
+  "workingCheckout": "D:\\code\\nikami-openmw-overlay-0025",
+  "overlayRepositoryBranch": "codex/openmw-provenance-repair-20260821",
+  "workingBranch": "codex/openmw-overlay-0025-checkpoint",
+  "queueBase": "9acf88c34bdae7e7241104e0035cb5af9e1bac9d",
+  "queueBaseTree": "3fc970d982fa1220461eb243225191351a0f8267",
+  "overlayRepository": "https://github.com/nikamigaming-create/nikami-bworlds.git",
+  "compositeCheckpoint": {
+    "repository": "https://github.com/nikamigaming-create/nikami-openmw-lab.git",
+    "branch": "codex/openmw-overlay-0025-checkpoint",
+    "publicationStatus": "local-only",
+    "commit": "79290f2a06e7fff85c17e39bd3cd1dc1412ada33",
+    "tree": "c5b4f00165e8a02813b443e45311ba7ea29fe605"
+  },
+  "replayVerification": {
+    "series": "patches/openmw/series-next",
+    "patchCount": 25,
+    "base": "9acf88c34bdae7e7241104e0035cb5af9e1bac9d",
+    "replayedTree": "c5b4f00165e8a02813b443e45311ba7ea29fe605",
+    "matchesCompositeCheckpoint": true,
+    "method": "cumulative git apply in a disposable detached worktree, followed by git add -A and git write-tree"
+  },
+  "remotes": {
+    "official": {
+      "name": "upstream",
+      "url": "https://gitlab.com/OpenMW/openmw.git",
+      "observedMaster": "e318e7ac360cdf082459184f968986c9e93b5ca7"
+    },
+    "vrFork": {
+      "name": "origin",
+      "url": "https://gitlab.com/madsbuvi/openmw",
+      "observedOpenmwVr": "0f520f65c3e085369e66d6a90ce871e817d4533f"
+    }
+  },
+  "unpublishedBaseDelta": {
+    "commitCountAheadOfOriginOpenmwVr": 98,
+    "status": "published-in-nikami-openmw-lab-base-history",
+    "reachableFrom": "main",
+    "constraint": "patches/openmw require the locked queueBase and do not apply to official master"
+  },
+  "layers": [
+    "official-openmw-moving-reference",
+    "openmw-vr-fork-and-unpublished-98-commit-base-delta",
+    "flat-bethesda-overlay-patches-0001-through-0024-promoted",
+    "candidate-telemetry-patch-0025",
+    "future-vr-integration-after-flat-parity"
+  ]
+}

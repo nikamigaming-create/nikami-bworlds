@@ -1,4 +1,4 @@
-# Add patch files here, one per line, in apply order.
+# Candidate superset of the formally promoted queue in series.
 0001-local-world-viewer.patch
 0002-Fix-Fallout-actor-animation-and-attachment-parity.patch
 0003-Fallout-behavior-records-quests-conditions-and-saves.patch
@@ -23,3 +23,4 @@
 0022-Make-flat-OpenXR-headers-reproducible.patch
 0023-Stop-implicit-Fallout-preview-equipment.patch
 0024-Execute-Fallout-HDR-blend-and-bloom.patch
+0025-Add-FNV-seamless-exterior-telemetry.patch
