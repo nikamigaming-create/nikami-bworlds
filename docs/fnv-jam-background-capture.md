@@ -402,8 +402,10 @@ source-labelled Direct3D 9 projection state, active idle phase, arm-bone
 transforms, and final `FaceGenFace`/`FaceGenHairNoHat` vertex hashes and bounds.
 If fixed-function projection state is unavailable, the contract retains an
 explicitly provisional vertical-FOV derivation from live
-`fDefaultWorldFOV:Display` and the native backbuffer aspect; that fallback does
-not close the exact-projection parity gate. The compact consumer artifact is
+`fDefaultWorldFOV:Display`, a 4:3 reference-aspect hypothesis, and the native
+backbuffer aspect. The current 75-degree setting derives to 59.840 degrees
+vertical and 91.309 degrees horizontal at 16:9; that fallback does not close the
+exact-projection parity gate. The compact consumer artifact is
 `retail/retail-state-contract.json`; full vertex arrays remain only in the
 immutable forensic JSONL.
 It sends no host input and uses no Windows app control.
