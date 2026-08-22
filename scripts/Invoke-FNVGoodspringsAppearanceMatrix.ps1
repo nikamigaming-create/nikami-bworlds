@@ -6,7 +6,13 @@ param(
     [string]$RunId = ("fnv-goodsprings-appearance-" + (Get-Date -Format "yyyyMMdd-HHmmss")),
     [string]$OutputRoot = "run/retail-oracle",
     [switch]$StageReferences,
-    [string[]]$TargetId = @()
+    [string[]]$TargetId = @(),
+    [ValidateSet('front-portrait', 'front-full-body')]
+    [string]$CameraShotKind = 'front-portrait',
+    [ValidateRange(32, 512)]
+    [float]$PortraitDistance = 70,
+    [ValidateRange(1, 8)]
+    [float]$FullBodyDistanceScale = 2.9
 )
 
 Set-StrictMode -Version Latest
@@ -52,7 +58,7 @@ if ($targetFilter.Count -eq 0 -and $humanoids.Count -ne [int]$matrix.scope.human
 }
 
 $captureByTarget = @{}
-$groupRuns = New-Object System.Collections.Generic.List[object]
+$groupRuns = @()
 $groups = @($humanoids | Group-Object { $_.cell.form })
 for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
     $group = $groups[$groupIndex]
@@ -81,7 +87,9 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
         BatchMoveToTargets = $true
         BatchSettleFrames = 90
         BatchAdvanceFrames = 3
-        PortraitDistance = 70
+        PortraitDistance = $PortraitDistance
+        CameraShotKind = $CameraShotKind
+        FullBodyDistanceScale = $FullBodyDistanceScale
         RequireAppearanceTelemetry = $true
         SaveFixture = Resolve-AbsolutePath $SaveFixture
         BeforeFrame = 5
@@ -96,7 +104,7 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
         $runnerArguments.BatchEnableTargets = $true
     }
     $run = & $runner @runnerArguments
-    $groupRuns.Add([pscustomobject][ordered]@{
+    $groupRuns += [pscustomobject][ordered]@{
         label = $groupLabel
         cell = $group.Name
         targets = @($targets.id)
@@ -104,7 +112,7 @@ for ($groupIndex = 0; $groupIndex -lt $groups.Count; ++$groupIndex) {
         runManifest = $run.runManifest
         screenshots = @($run.screenshots)
         proofCrops = @($run.portraitProofCrops)
-    }) | Out-Null
+    }
     foreach ($target in $targets) {
         $captureByTarget[[string]$target.id] = $jsonl
     }
@@ -134,11 +142,14 @@ $contactSheet = Join-Path $outputDirectory "retail-contact-sheet.png"
 [pscustomobject][ordered]@{
     schema = "nikami-fnv-goodsprings-appearance-run/v1"
     runId = $RunId
+    cameraShotKind = $CameraShotKind
+    portraitDistance = $PortraitDistance
+    fullBodyDistanceScale = $FullBodyDistanceScale
     stagedReferences = [bool]$StageReferences
     targetCount = $humanoids.Count
     groupCount = $groups.Count
     passed = $humanoids.Count
-    groups = @($groupRuns)
+    groups = $groupRuns
     report = $reportPath
     contactSheet = $contactSheet
     status = "retail-traits-passed-pixels-captured-review-required"

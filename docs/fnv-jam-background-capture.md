@@ -390,6 +390,34 @@ completion are proven, and character-generation overlay suppression is active
 after the handoff. Keep other desktop audio quiet during this run because Stereo
 Mix records audible system output.
 
+## Retail actor portrait oracle
+
+`RetailPortraits` is the canonical appearance baseline for a data-declared
+actor such as Trudy. The xNVSE oracle selects the exact authored ACHR/NPC
+identity in-process and captures a front portrait and a front full-body shot
+sequentially. It retains native Direct3D 9 backbuffer BMPs, derived proof
+crops, camera and appearance telemetry, hashes, and the authored-to-retail
+validator report. It sends no host input and uses no Windows app control.
+
+Run the mandatory preflight and then the single entry point with a fresh output
+directory:
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target Retail -Scenario RetailPortraits `
+  -RetailPortraitTargetId trudy -RuntimeReady -RequireIdle
+
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target Retail -Scenario RetailPortraits `
+  -RetailPortraitTargetId trudy `
+  -OutputRoot .\run\fnv-retail-trudy-portraits-<unique>
+```
+
+Run the matching Godot capture only after the retail process has exited. Compare
+normalized identities, transforms, camera parameters, animation time, material
+inputs, and native pixels; raw process addresses and heap layouts are not a
+cross-engine compatibility contract.
+
 ## Godot Goodsprings-to-Strip route
 
 The Godot route is a third declared lane. It uses the same no-control policy:
