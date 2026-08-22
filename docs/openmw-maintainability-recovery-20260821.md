@@ -417,7 +417,12 @@ table begins at `0x01267F20` and its 32-row biped subfield table at
 symmetric; recovered rows 32–42 are symmetry-verified but tail-to-tail pairs
 remain probable pending uninterrupted recapture. All 12,942 authored retail
 rigid-body groups are zero, so the runtime instantiation transform is not an
-unchanged NIF copy and remains unknown. No runtime grouping may be guessed.
+unchanged NIF copy. An isolated Goodsprings hook captured 8,192 natural retail
+pair decisions over 1,361 words and 1,142 nonzero runtime groups; the recovered
+evaluator and tables reproduce all 8,192 results with zero mismatches. Runtime
+system-group assignment is therefore confirmed at population level, while the
+exact record-to-collidable identity transform remains to be traced and must not
+be guessed.
 
 1. Introduce a multi-object physics resource boundary before touching the 491
    heterogeneous-filter packed trees or the remaining multi-primitive trees;

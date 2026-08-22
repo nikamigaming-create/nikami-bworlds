@@ -29,6 +29,12 @@ ordinary OpenMW objects that still own exactly one generated collision shape.
 - All 12,942 retail `bhkRigidBody` records have identical world/body-info
   filters and authored group zero. Runtime instantiation therefore cannot be
   modeled as an unchanged copy into the observed live filter word.
+- An isolated Goodsprings trace captured 8,192 natural evaluator calls over
+  1,361 distinct words and 1,142 nonzero runtime groups. The clean decision
+  contract reproduces all 8,192 returns with zero mismatches: 3,023 same-group,
+  5,169 different-group, and 1,132 same-group biped calls. This confirms
+  runtime system-group assignment and the pair evaluator for the sampled
+  branches; bit-14 and zero-group branches remain instruction-only evidence.
 
 Remaining families:
 
@@ -46,9 +52,9 @@ Remaining families:
 
 The categories total 994 and are mutually exclusive at the file level.
 
-Confidence: `confirmed` for the hashed retail corpus and category counts.
-Retail interaction masks and phantom event policy remain `unknown` until they
-are mapped against a retail oracle.
+Confidence: `confirmed` for the hashed retail corpus, category counts, sampled
+pair policy, and population-level runtime group assignment. The exact
+record-to-collidable group allocator and phantom event policy remain unknown.
 
 ## Behavioral contract
 
