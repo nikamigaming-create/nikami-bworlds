@@ -5,14 +5,14 @@
 The only public Git ref in `nikamigaming-create/nikami-openmw-lab` is now:
 
 - branch: `main`
-- commit: `4f1fb249a70f24a4fae82385df5c435128904e71`
-- tree: `8902ddb50f6e6066ca4796ea9e1c039777c25ff0`
+- commit: `a740618b6eb53a30d456c85991370a843e315ad7`
+- tree: `91054c5c67a9d0de8b61ca7f172add57073bd8f8`
 - official OpenMW base: `e47ad7782c6a3204f1bae0bcb42356e467319168`
-- clean topics after the official base: 20
+- clean topics after the official base: 21
 
-The topics are six generic ESM4 parser/model-reference commits and fourteen
+The topics are seven generic ESM4 parser/model-reference commits and fourteen
 collision/material/filter/ownership commits. The combined public surface is 54
-files, 3,989 insertions, and 96 deletions. There is no product merge, proof
+files, 4,174 insertions, and 96 deletions. There is no product merge, proof
 route, B-world dependency, release artifact, or recovery branch in the public
 ref graph.
 
@@ -23,7 +23,7 @@ had moved.
 
 Git and GitHub API verification after publication reported:
 
-- one public branch: `main` at `4f1fb249a70f24a4fae82385df5c435128904e71`;
+- one public branch: `main` at `a740618b6eb53a30d456c85991370a843e315ad7`;
 - zero public tags;
 - zero releases;
 - zero open pull requests;
@@ -39,16 +39,17 @@ fast-forward of `main` with no remote topic branch or pull request.
 
 Fresh MSVC 19.44 `RelWithDebInfo` results:
 
-- `components-tests.exe`: 1,478 / 1,478 passed;
+- `components-tests.exe`: 1,481 / 1,481 passed;
 - `openmw-tests.exe`: 497 / 497 passed;
 - `openmw.exe`: linked;
 - `openmw-navmeshtool.exe`: linked;
 - `openmw-cs.exe`: linked;
 - `git diff --check`: passed.
 
-The 17-topic reconstructed baseline plus the projectile-record and weapon-data
-topics completed GitHub CI successfully on Ubuntu, Windows 2022, macOS ARM,
-and macOS Intel before the twentieth topic was advanced to public `main`.
+The 17-topic reconstructed baseline plus the projectile, weapon-data, and
+explosion-record topics completed GitHub CI successfully on Ubuntu, Windows
+2022, macOS ARM, and macOS Intel before the twenty-first topic was advanced to
+public `main`.
 
 ## First post-curation topic: projectile records
 
@@ -78,6 +79,20 @@ beyond the proven prefix is skipped without losing the next subrecord. Three
 new synthetic tests cover the full prefix, the animation-only prefix, the
 version gate, truncation, FormID adjustment, and alignment. No retail bytes or
 private artifacts are committed.
+
+## Fourth post-curation topic: impact data sets
+
+Commit `a740618b6eb53a30d456c85991370a843e315ad7` adds typed FNV `IPDS`
+material-to-impact tables. The bounded corpus contains 73 winning records:
+two use nine entries (36 bytes), three use ten entries (40 bytes), and 68 use
+twelve entries (48 bytes). xEdit independently defines the same nine-to-twelve
+material-slot contract.
+
+The loader adjusts every material FormID, preserves deterministic material
+ordering, gates the observed sizes to FNV versions, and skips unsupported data
+without losing alignment. Three synthetic full-reader tests cover shortened
+and full tables, version gating, and fallback. No impact playback or physics
+policy is included.
 
 ## Third post-curation topic: explosion records
 

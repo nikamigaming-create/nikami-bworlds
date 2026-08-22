@@ -26,14 +26,14 @@ new implementation work.
 | Clean extraction | local recovery ref `codex/openmw-clean-extraction-20260821` | `e6268c309eee4577b6cf649d7de9bc0c28adc38a` | `280110379b352526fd3a7b5d9ac27cb0a43fb303` | Parser topics and reusable synthetic fixtures; former public work branch is now local/bundled only |
 | Clean collision | local recovery ref `codex/openmw-clean-collision-20260822` | `e65a8bbd9e54e99c9f8236dcd1f000cee0344dac` | `e7e95437e919472e2d01b899337c896f2d87b220` | Fourteen-topic collision/material/filter/ownership source series; former public work branch is now local/bundled only |
 | Maintainable downstream product | local recovery ref `codex/openmw-maintainable-downstream-20260821` | `61e26bb058142db460a67c38de8abe61c426f0a7` | `f375096aa036e1e7b8170daeea3f729996da6a6a` | Runnable product/reference lane; no longer public |
-| Public lab `main` | `main` | `4f1fb249a70f24a4fae82385df5c435128904e71` | `8902ddb50f6e6066ca4796ea9e1c039777c25ff0` | Current official OpenMW plus twenty tested, upstream-shaped topics; only public Git ref |
+| Public lab `main` | `main` | `a740618b6eb53a30d456c85991370a843e315ad7` | `91054c5c67a9d0de8b61ca7f172add57073bd8f8` | Current official OpenMW plus twenty-one tested, upstream-shaped topics; only public Git ref |
 
 The source clean branches were cut from official OpenMW `master`
 `e318e7ac360cdf082459184f968986c9e93b5ca7`. Public `main` reconstructs their
 seventeen accepted topics over the newer official base
 `e47ad7782c6a3204f1bae0bcb42356e467319168`, then adds independently
-developed and verified projectile-record, weapon-data, and explosion-record
-topics.
+developed and verified projectile-record, weapon-data, explosion-record, and
+impact-data-set topics.
 
 ## Queue boundary
 
@@ -251,6 +251,44 @@ losing following-subrecord alignment. Parsing adds no explosion policy.
 - `openmw.exe`, `openmw-navmeshtool.exe`, and `openmw-cs.exe` link.
 - `git diff --check`: pass.
 
+## Sixth clean topic: IPDS material tables
+
+### Evidence
+
+- xEdit source commit: `fd1e36020b2b5b6217e553dc0038983146a2e2dd`.
+- `wbDefinitionsFNV.pas` SHA-256:
+  `175360DFAC2F51BA1F041E916ED82732C8698F84D010C9C64B20DA3B224CD5EC`.
+- Ballistics corpus:
+  `local/analysis/fnv-ballistics-corpus-20260818-r4/fnv-ballistics-corpus.json`.
+- Ballistics corpus SHA-256:
+  `246524D06915891EE1D07811EF45F46F25395F13AC726147810049BAC68E7586`.
+- Winning IPDS records: 73; two 9-entry, three 10-entry, and 68 12-entry
+  tables; the linked audit has zero failures.
+- xEdit defines the same Stone, Dirt, Grass, Glass, Metal, Wood, Organic,
+  Cloth, Water, Hollow Metal, Organic Bug, and Organic Glow slots.
+
+Confidence: `confirmed` for the hashed bounded corpus and independently
+corroborated material ordering. Impact playback remains outside this slice.
+
+### Behavioral contract
+
+For FNV plugin versions only, load 9-to-12 contiguous material FormIDs from
+`IPDS.DATA` sizes 36, 40, 44, or 48 bytes. Preserve table order and adjust each
+FormID through the existing reader. Unsupported sizes and other-game layouts
+remain absent without consuming the next subrecord.
+
+### Implementation and verification
+
+- Commit: `a740618b6eb53a30d456c85991370a843e315ad7`.
+- Surface: 9 files, 186 insertions, 1 deletion.
+- The new store is appended so existing tuple positions remain stable.
+- All fixtures are synthetic full-reader records; no retail bytes or assets.
+- Focused IPDS tests: 3 / 3 pass.
+- Complete Release `components-tests`: 1,481 / 1,481 pass.
+- Complete Release `openmw-tests`: 497 / 497 pass.
+- `openmw.exe`, `openmw-navmeshtool.exe`, and `openmw-cs.exe` link.
+- `git diff --check`: pass.
+
 ## First downstream architecture topic: game-owned UI identity
 
 ### Defect
@@ -453,8 +491,8 @@ selected 6,198 complete trees.
   19.44.
 - Clean `git diff --check`: pass.
 
-After combining six parser topics and fourteen collision topics on the
-2026-08-22 official base, public-main verification is 1,478 / 1,478 component
+After combining seven parser topics and fourteen collision topics on the
+2026-08-22 official base, public-main verification is 1,481 / 1,481 component
 tests and 497 / 497 OpenMW tests, with `openmw.exe`,
 `openmw-navmeshtool.exe`, and `openmw-cs.exe` linked from a fresh worktree.
 
@@ -534,11 +572,11 @@ commits below remain the API-adapted local product/reference lane.
 ### Curated lab main
 
 Lab `main` and `origin/main` now resolve exactly to
-`4f1fb249a70f24a4fae82385df5c435128904e71`, tree
-`8902ddb50f6e6066ca4796ea9e1c039777c25ff0`. This is a reconstruction over
+`a740618b6eb53a30d456c85991370a843e315ad7`, tree
+`91054c5c67a9d0de8b61ca7f172add57073bd8f8`. This is a reconstruction over
 current official OpenMW, not a squash or merge of the runnable product tree.
-It contains six accepted ESM4 topics and fourteen accepted collision topics
-as twenty linear, single-purpose commits.
+It contains seven accepted ESM4 topics and fourteen accepted collision topics
+as twenty-one linear, single-purpose commits.
 
 The public replacement used `--force-with-lease` against exact old main
 `61e26bb058142db460a67c38de8abe61c426f0a7`. GitHub now exposes only `main`:
