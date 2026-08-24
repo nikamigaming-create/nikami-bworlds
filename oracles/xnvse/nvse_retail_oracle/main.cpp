@@ -1,4 +1,5 @@
 #include "nvse/PluginAPI.h"
+#include "nvse/GameData.h"
 #include "nvse/GameForms.h"
 #include "nvse/GameExtraData.h"
 #include "nvse/GameObjects.h"
@@ -145,6 +146,7 @@ namespace
     std::size_t gObserverWaypointIndex = 0;
     bool gAllHighActors = true;
     bool gCaptureAnimation = true;
+    bool gCompactActorTelemetry = false;
     bool gCaptureSession = false;
     bool gPipBoyProbe = false;
     bool gHoldRetailPipBoyRenderedState = false;
@@ -181,6 +183,7 @@ namespace
     UInt32 gScheduledSpawnBaseForm = 0;
     Actor* gScheduledSpawnedActor = nullptr;
     std::set<UInt32> gScheduledSpawnBaselineRefs;
+    bool gRequireScheduledSpawn = false;
     std::vector<std::string> gActorCommands;
     std::vector<std::string> gFurnitureSettledCommands;
     std::vector<UInt32> gScreenshotFrames;
@@ -237,6 +240,7 @@ namespace
     bool gAppearanceLogged = false;
     bool gRenderEnvironmentLogged = false;
     bool gImageSpaceShaderHookLogged = false;
+    bool gPluginStackLogged = false;
     std::set<UInt32> gActorGeometryLogged;
     float gPortraitDistance = 110.f;
     unsigned int gBehaviorBeforeFrame = 60;
@@ -509,7 +513,8 @@ namespace
 
     void __cdecl recordBoneLodWriterCall(HighProcess* process, Actor* actor)
     {
-        if (!gCaptureAnimation || !gOutput.is_open() || process == nullptr || actor == nullptr
+        if (gCompactActorTelemetry || !gCaptureAnimation || !gOutput.is_open()
+            || process == nullptr || actor == nullptr
             || (gTargetForm != 0 && actor->refID != gTargetForm
                 && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm)))
             return;
@@ -529,7 +534,8 @@ namespace
 
     void __cdecl recordHighProcessBoneLodPath(HighProcess* process, Actor* actor)
     {
-        if (!gCaptureAnimation || !gOutput.is_open() || process == nullptr || actor == nullptr
+        if (gCompactActorTelemetry || !gCaptureAnimation || !gOutput.is_open()
+            || process == nullptr || actor == nullptr
             || (gTargetForm != 0 && actor->refID != gTargetForm
                 && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm)))
             return;
@@ -1233,6 +1239,53 @@ namespace
         }
         out << '"';
         return out.str();
+    }
+
+    constexpr std::uintptr_t sRuntimeDataHandlerPointerAddress = 0x011C3F2C;
+    constexpr UInt32 sMaximumRuntimePluginCount = 0xff;
+
+    void writePluginStackObservation()
+    {
+        if (gPluginStackLogged)
+            return;
+        gPluginStackLogged = true;
+
+        DataHandler* handler = nullptr;
+        UInt32 loadedCount = 0;
+        const bool readable
+            = safeRead(reinterpret_cast<DataHandler**>(sRuntimeDataHandlerPointerAddress), handler)
+            && handler != nullptr
+            && safeRead(&handler->modList.loadedModCount, loadedCount)
+            && loadedCount <= sMaximumRuntimePluginCount;
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"runtime-plugin-stack\""
+                << ",\"frame\":" << gFrame
+                << ",\"readable\":" << (readable ? "true" : "false")
+                << ",\"loadedCount\":" << (readable ? loadedCount : 0)
+                << ",\"plugins\":[";
+        if (readable)
+        {
+            for (UInt32 index = 0; index < loadedCount; ++index)
+            {
+                ModInfo* mod = nullptr;
+                UInt8 modIndex = 0xff;
+                if (index != 0)
+                    gOutput << ',';
+                const bool entryReadable
+                    = safeRead(&handler->modList.loadedMods[index], mod)
+                    && mod != nullptr
+                    && safeRead(&mod->modIndex, modIndex);
+                const std::string name = entryReadable
+                    ? safeRuntimeString(mod->name, sizeof(mod->name)) : std::string();
+                gOutput << "{\"loadOrderIndex\":" << index
+                        << ",\"readable\":" << (entryReadable ? "true" : "false")
+                        << ",\"modIndex\":" << static_cast<UInt32>(modIndex)
+                        << ",\"name\":"
+                        << jsonString(name.empty() ? nullptr : name.c_str()) << '}';
+            }
+        }
+        gOutput << "]}\n";
+        gOutput.flush();
     }
 
     unsigned int envUInt(const char* name, unsigned int fallback)
@@ -1972,6 +2025,8 @@ namespace
                        "\"boneLodWriterCallsHooked\":" << (gBoneLodWriterCallsHooked ? "true" : "false") << ','
                     << "\"highProcessBoneLodPathHooked\":"
                     << (gHighProcessBoneLodPathHooked ? "true" : "false") << ','
+                    << "\"compactActorTelemetry\":"
+                    << (gCompactActorTelemetry ? "true" : "false") << ','
                     << "\"vatsControlBytesAddress\":9709312,"
                     << "\"vatsControlBytesReadable\":" << (vatsControlBytesReadable ? "true" : "false") << ','
                     << "\"vatsControlBytesHex\":" << jsonString(vatsControlHex.c_str()) << ','
@@ -3131,6 +3186,76 @@ namespace
         out << '}';
     }
 
+    void writeCompactSequence(std::ostream& out, const BSAnimGroupSequence* sequence)
+    {
+        if (sequence == nullptr)
+        {
+            out << "null";
+            return;
+        }
+
+        out << "{\"file\":" << jsonString(sequence->filePath)
+            << ",\"state\":" << sequence->state
+            << ",\"cycle\":" << sequence->cycleType
+            << ",\"weight\":" << sequence->weight
+            << ",\"frequency\":" << sequence->freq
+            << ",\"lastScaled\":" << sequence->lastScaled
+            << ",\"group\":"
+            << (sequence->animGroup != nullptr
+                ? static_cast<unsigned int>(sequence->animGroup->animGroup)
+                : 0xffff)
+            << '}';
+    }
+
+    void writeCompactActorPose(
+        Actor* actor, BaseProcess* process, MiddleHighProcess* mhp, HighProcess* hp,
+        TESObjectWEAP* weapon, NiNode* root)
+    {
+        gOutput << std::setprecision(9)
+                << "{\"schema\":" << sSchemaJson << ",\"event\":\"actor-pose-sample\""
+                << ",\"frame\":" << gFrame
+                << ",\"refForm\":" << actor->refID
+                << ",\"baseForm\":" << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
+                << ",\"position\":[" << actor->posX << ',' << actor->posY << ',' << actor->posZ << ']'
+                << ",\"rotation\":[" << actor->rotX << ',' << actor->rotY << ',' << actor->rotZ << ']'
+                << ",\"actorLifeState\":" << actor->lifeState
+                << ",\"processLevel\":" << process->processLevel
+                << ",\"weaponOut\":" << (mhp != nullptr && mhp->isWeaponOut ? "true" : "false")
+                << ",\"aiming\":" << (mhp != nullptr && mhp->isAiming ? "true" : "false")
+                << ",\"weaponForm\":" << (weapon != nullptr ? weapon->refID : 0)
+                << ",\"rootWorld\":";
+        if (root != nullptr)
+        {
+            const NiTransform& world = runtimeTransform(*root, sNiAVObjectWorldTransformOffset);
+            gOutput << "{\"rotation\":";
+            writeMatrix(gOutput, world.rotate);
+            gOutput << ",\"translation\":";
+            writeVector(gOutput, world.translate);
+            gOutput << ",\"scale\":" << world.scale << '}';
+        }
+        else
+            gOutput << "null";
+
+        gOutput << ",\"middleHighSequences\":[";
+        for (unsigned int index = 0; index < 3; ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            writeCompactSequence(gOutput, mhp != nullptr ? mhp->animSequence[index] : nullptr);
+        }
+        gOutput << "],\"animationDataSequences\":[";
+        for (unsigned int index = 0; index < 8; ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            writeCompactSequence(
+                gOutput, hp != nullptr && hp->animData != nullptr
+                    ? hp->animData->animSequence[index]
+                    : nullptr);
+        }
+        gOutput << "]}\n";
+    }
+
     void observeFurnitureLifecycle(
         Actor* actor, UInt32 actorSitSleepState, UInt8 processSitSleepState, UInt32 usedFurnitureRefForm)
     {
@@ -3249,7 +3374,9 @@ namespace
     {
         if (actor == nullptr || actor->baseProcess == nullptr)
             return;
-        if (gTargetForm != 0 && actor->refID != gTargetForm && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm))
+        if (gTargetForm != 0 && actor != gScheduledSpawnedActor
+            && actor->refID != gTargetForm
+            && (actor->baseForm == nullptr || actor->baseForm->refID != gTargetForm))
             return;
         if (gFurnitureOnly)
         {
@@ -3265,6 +3392,11 @@ namespace
             HighProcess* hp = process->processLevel == 0 ? static_cast<HighProcess*>(process) : nullptr;
             TESObjectWEAP* weapon = mhp != nullptr && mhp->weaponInfo != nullptr ? mhp->weaponInfo->weapon : nullptr;
             NiNode* root = actor->GetNiNode();
+            if (gCompactActorTelemetry)
+            {
+                writeCompactActorPose(actor, process, mhp, hp, weapon, root);
+                return;
+            }
             if (root != nullptr && gActorGeometryLogged.find(actor->refID) == gActorGeometryLogged.end()
                 && writeActorGeometry(actor, root))
                 gActorGeometryLogged.insert(actor->refID);
@@ -3777,6 +3909,12 @@ namespace
 
     Actor* findDriveActor()
     {
+        if (gScheduledSpawnedActor != nullptr
+            && gScheduledSpawnedActor->baseProcess != nullptr
+            && (gFurnitureOnly || gScheduledSpawnedActor->GetNiNode() != nullptr))
+            return gScheduledSpawnedActor;
+        if (gRequireScheduledSpawn)
+            return nullptr;
         if (gTargetForm != 0)
         {
             TESForm* target = lookupForm(gTargetForm);
@@ -3852,6 +3990,8 @@ namespace
         } raceFaceSlots[8];
         unsigned int raceFaceSlotCount;
     };
+
+    void writeActorTemplateObservation(Actor* actor);
 
     bool readNpcAppearanceUnsafe(Actor* actor, NpcAppearanceSnapshot& result)
     {
@@ -3934,6 +4074,7 @@ namespace
             gOutput.flush();
             return;
         }
+        writeActorTemplateObservation(actor);
         gAppearanceLogged = true;
         if (!snapshot.npc)
         {
@@ -4511,6 +4652,18 @@ namespace
         }
         forwardX /= forwardLength;
         forwardY /= forwardLength;
+        float cameraDirectionX = forwardX;
+        float cameraDirectionY = forwardY;
+        if (gCameraShotKind == "left-profile")
+        {
+            cameraDirectionX = -forwardY;
+            cameraDirectionY = forwardX;
+        }
+        else if (gCameraShotKind == "right-profile")
+        {
+            cameraDirectionX = forwardY;
+            cameraDirectionY = -forwardX;
+        }
         const float framingRadius = gFullBodyCamera
             ? worldBound.radius + (gBatchProofStaging
                 ? std::fabs(aimZ - worldBound.center.z)
@@ -4519,8 +4672,8 @@ namespace
         const float cameraDistance = gFullBodyCamera
             ? (std::max)(gPortraitDistance, framingRadius * gFullBodyDistanceScale)
             : gPortraitDistance;
-        const float cameraX = aimX + forwardX * cameraDistance;
-        const float cameraY = aimY + forwardY * cameraDistance;
+        const float cameraX = aimX + cameraDirectionX * cameraDistance;
+        const float cameraY = aimY + cameraDirectionY * cameraDistance;
         const float minimumCameraZ = gBatchProofTargetZ + gBatchProofMinimumCameraHeight;
         const float cameraZ = gBatchProofStaging && gFullBodyCamera
             ? (std::max)(aimZ, minimumCameraZ)
@@ -4653,6 +4806,8 @@ namespace
                     << (focusFallbackReason != nullptr ? jsonString(focusFallbackReason) : "null")
                     << ",\"headWorld\":[" << focusWorld.x << ',' << focusWorld.y << ',' << focusWorld.z << ']'
                     << ",\"headForwardXY\":[" << forwardX << ',' << forwardY << ']'
+                    << ",\"cameraDirectionXY\":[" << cameraDirectionX << ','
+                    << cameraDirectionY << ']'
                     << ",\"rootWorldBound\":";
             writeRawBoundDiagnostics(
                 gOutput, rootWorldBoundPointerReadable, rootWorldBoundAddress,
@@ -5013,6 +5168,106 @@ namespace
     };
 
     static_assert(sizeof(SidecarExtraDataHeader) == 0x0C);
+
+    constexpr UInt32 sActorObservationMaximumExtraDataNodes = 256;
+    constexpr UInt32 sTemporaryRuntimeFormIndex = 0xff;
+
+    UInt32 sidecarSafeFormId(const TESForm* form);
+
+    bool readActorLeveledExtraForms(
+        Actor* actor, TESForm*& extraBaseForm, TESForm*& extraForm)
+    {
+        extraBaseForm = nullptr;
+        extraForm = nullptr;
+        BSExtraData* extraAddress = nullptr;
+        if (actor == nullptr || !safeRead(&actor->extraDataList.m_data, extraAddress))
+            return false;
+        for (UInt32 visited = 0;
+             extraAddress != nullptr && visited < sActorObservationMaximumExtraDataNodes;
+             ++visited)
+        {
+            SidecarExtraDataHeader header = {};
+            if (!safeRead(extraAddress, header))
+                return false;
+            if (header.type == kExtraData_LeveledCreature)
+            {
+                ExtraLeveledCreature* leveled
+                    = reinterpret_cast<ExtraLeveledCreature*>(extraAddress);
+                return safeRead(&leveled->baseForm, extraBaseForm)
+                    && safeRead(&leveled->form, extraForm);
+            }
+            extraAddress = header.next;
+        }
+        return false;
+    }
+
+    void writeActorTemplateObservation(Actor* actor)
+    {
+        TESForm* runtimeBase = nullptr;
+        UInt32 referenceForm = 0;
+        UInt32 runtimeBaseForm = 0;
+        UInt8 runtimeBaseType = 0;
+        UInt32 actorFlags = 0;
+        UInt16 templateFlags = 0;
+        TESForm* templateActor = nullptr;
+        TESForm* subtypeTemplate = nullptr;
+        TESForm* extraBaseForm = nullptr;
+        TESForm* extraForm = nullptr;
+        bool leveledExtraReadable = false;
+
+        const bool baseReadable = actor != nullptr
+            && safeRead(&actor->refID, referenceForm)
+            && safeRead(&actor->baseForm, runtimeBase)
+            && runtimeBase != nullptr
+            && safeRead(&runtimeBase->refID, runtimeBaseForm)
+            && safeRead(&runtimeBase->typeID, runtimeBaseType);
+        if (baseReadable
+            && (runtimeBaseType == kFormType_TESNPC
+                || runtimeBaseType == kFormType_TESCreature))
+        {
+            TESActorBase* actorBase = static_cast<TESActorBase*>(runtimeBase);
+            safeRead(&actorBase->baseData.flags, actorFlags);
+            safeRead(&actorBase->baseData.templateFlags, templateFlags);
+            safeRead(&actorBase->baseData.templateActor, templateActor);
+            if (runtimeBaseType == kFormType_TESNPC)
+            {
+                TESNPC* npc = static_cast<TESNPC*>(runtimeBase);
+                TESNPC* copyFrom = nullptr;
+                if (safeRead(&npc->copyFrom, copyFrom))
+                    subtypeTemplate = copyFrom;
+            }
+            else
+            {
+                TESCreature* creature = static_cast<TESCreature*>(runtimeBase);
+                TESCreature* creatureTemplate = nullptr;
+                if (safeRead(&creature->creatureTemplate, creatureTemplate))
+                    subtypeTemplate = creatureTemplate;
+            }
+        }
+        leveledExtraReadable = readActorLeveledExtraForms(
+            actor, extraBaseForm, extraForm);
+
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"actor-template-observation\""
+                << ",\"frame\":" << gFrame
+                << ",\"requestedBaseForm\":" << gTargetForm
+                << ",\"referenceForm\":" << referenceForm
+                << ",\"baseReadable\":" << (baseReadable ? "true" : "false")
+                << ",\"runtimeBaseForm\":" << runtimeBaseForm
+                << ",\"runtimeBaseType\":" << static_cast<UInt32>(runtimeBaseType)
+                << ",\"runtimeBaseModIndex\":" << (runtimeBaseForm >> 24)
+                << ",\"runtimeBaseTemporary\":"
+                << ((runtimeBaseForm >> 24) == sTemporaryRuntimeFormIndex ? "true" : "false")
+                << ",\"actorFlags\":" << actorFlags
+                << ",\"templateFlags\":" << templateFlags
+                << ",\"templateActorForm\":" << sidecarSafeFormId(templateActor)
+                << ",\"subtypeTemplateForm\":" << sidecarSafeFormId(subtypeTemplate)
+                << ",\"leveledExtra\":{\"readable\":"
+                << (leveledExtraReadable ? "true" : "false")
+                << ",\"baseForm\":" << sidecarSafeFormId(extraBaseForm)
+                << ",\"form\":" << sidecarSafeFormId(extraForm) << "}}\n";
+        gOutput.flush();
+    }
 
     void sidecarFail(NikamiFNVSidecar::ErrorCode code, const std::string& message)
     {
@@ -5741,6 +5996,7 @@ namespace
     void sidecarWriteFinite(std::ostringstream& out, float value);
     void sidecarWriteAnimationTelemetry(std::ostringstream& out, Actor* actor);
     void* sidecarGetSceneCameraUnsafe();
+    void writeReviewCameraObservation();
 
     Actor* sidecarLookupActor(UInt32 formId)
     {
@@ -7392,14 +7648,23 @@ namespace
         {
             UInt32 reference = 0;
             UInt32 actorBase = 0;
-            if (sidecarReadActorIdentity(actor, reference, actorBase)
-                && actorBase == gScheduledSpawnBaseForm
-                && gScheduledSpawnBaselineRefs.find(reference) == gScheduledSpawnBaselineRefs.end())
+            if (!sidecarReadActorIdentity(actor, reference, actorBase)
+                || gScheduledSpawnBaselineRefs.find(reference) != gScheduledSpawnBaselineRefs.end())
+                continue;
+            TESForm* extraBaseForm = nullptr;
+            TESForm* extraForm = nullptr;
+            const bool leveledExtraReadable = readActorLeveledExtraForms(
+                actor, extraBaseForm, extraForm);
+            if (actorBase == gScheduledSpawnBaseForm
+                || (leveledExtraReadable
+                    && (sidecarSafeFormId(extraBaseForm) == gScheduledSpawnBaseForm
+                        || sidecarSafeFormId(extraForm) == gScheduledSpawnBaseForm)))
                 matches.emplace_back(reference, actor);
         }
         if (matches.size() != 1)
             return false;
         gScheduledSpawnedActor = matches.front().second;
+        gDrivenActor = gScheduledSpawnedActor;
         return true;
     }
 
@@ -7429,6 +7694,7 @@ namespace
 
     bool scheduledCaptureBackBuffer()
     {
+        writeReviewCameraObservation();
         std::string outputPath;
         long captureResult = E_FAIL;
         const bool captured = sidecarCaptureBackBuffer(outputPath, captureResult);
@@ -8032,6 +8298,32 @@ namespace
             return scheduledSpawnActor(spawnBaseForm);
         if (scheduled.targetForm == 0 && scheduled.command == "ResolveSpawnedActor")
             return scheduledResolveSpawnedActor();
+        static constexpr char reviewShotPrefix[] = "SetReviewShot ";
+        if (scheduled.targetForm == 0
+            && scheduled.command.rfind(reviewShotPrefix, 0) == 0)
+        {
+            const char* shotKind = scheduled.command.c_str() + sizeof(reviewShotPrefix) - 1;
+            const bool valid = std::strcmp(shotKind, "front-portrait") == 0
+                || std::strcmp(shotKind, "front-detail") == 0
+                || std::strcmp(shotKind, "left-profile") == 0
+                || std::strcmp(shotKind, "right-profile") == 0
+                || std::strcmp(shotKind, "front-full-body") == 0
+                || std::strcmp(shotKind, "idle-motion") == 0;
+            if (!valid)
+                return false;
+            const bool cameraStateAlreadyPublished = gCameraShotKind == shotKind
+                && gPortraitCameraLogged;
+            gCameraShotKind = shotKind;
+            gFullBodyCamera = std::strcmp(shotKind, "front-full-body") == 0
+                || std::strcmp(shotKind, "idle-motion") == 0;
+            if (!cameraStateAlreadyPublished)
+            {
+                gPortraitCameraLogged = false;
+                gPortraitCameraWaitingLogged = false;
+                gFullBodyBoundsWaitingLogged = false;
+            }
+            return true;
+        }
         float stageDistance = 0.f;
         if (target != nullptr
             && sscanf_s(scheduled.command.c_str(), "StageInFrontOfPlayer %f", &stageDistance) == 1)
@@ -8341,6 +8633,72 @@ namespace
             result = nullptr;
         }
         return result;
+    }
+
+    void writeReviewCameraObservation()
+    {
+        void* sceneCamera = sidecarGetSceneCameraUnsafe();
+        NiTransform world = {};
+        NiFrustum frustum = {};
+        NiViewport viewport = {};
+        const bool readable = sceneCamera != nullptr
+            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera)
+                    + sNiAVObjectWorldTransformOffset, world)
+            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0xEC, frustum)
+            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x110, viewport);
+        float view[16] = {};
+        float projection[16] = {};
+        if (readable)
+        {
+            const float viewRotation[16] = {
+                world.rotate.data[0], world.rotate.data[3], world.rotate.data[6], 0.f,
+                world.rotate.data[1], world.rotate.data[4], world.rotate.data[7], 0.f,
+                world.rotate.data[2], world.rotate.data[5], world.rotate.data[8], 0.f,
+                0.f, 0.f, 0.f, 1.f
+            };
+            std::copy(std::begin(viewRotation), std::end(viewRotation), std::begin(view));
+            view[12] = -(view[0] * world.translate.x + view[4] * world.translate.y
+                + view[8] * world.translate.z);
+            view[13] = -(view[1] * world.translate.x + view[5] * world.translate.y
+                + view[9] * world.translate.z);
+            view[14] = -(view[2] * world.translate.x + view[6] * world.translate.y
+                + view[10] * world.translate.z);
+            if (frustum.r != frustum.l && frustum.t != frustum.b && frustum.f != frustum.n)
+            {
+                projection[0] = 2.f * frustum.n / (frustum.r - frustum.l);
+                projection[5] = 2.f * frustum.n / (frustum.t - frustum.b);
+                projection[8] = (frustum.l + frustum.r) / (frustum.l - frustum.r);
+                projection[9] = (frustum.t + frustum.b) / (frustum.b - frustum.t);
+                projection[10] = frustum.f / (frustum.f - frustum.n);
+                projection[11] = 1.f;
+                projection[14] = -frustum.n * frustum.f / (frustum.f - frustum.n);
+            }
+        }
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"review-camera-observation\""
+                << ",\"frame\":" << gFrame
+                << ",\"shotKind\":" << jsonString(gCameraShotKind.c_str())
+                << ",\"readable\":" << (readable ? "true" : "false")
+                << ",\"viewMatrix\":[";
+        for (UInt32 index = 0; index < 16; ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            gOutput << view[index];
+        }
+        gOutput << "],\"projectionMatrix\":[";
+        for (UInt32 index = 0; index < 16; ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            gOutput << projection[index];
+        }
+        gOutput << "],\"frustum\":[" << frustum.l << ',' << frustum.r << ','
+                << frustum.t << ',' << frustum.b << ',' << frustum.n << ',' << frustum.f
+                << ',' << static_cast<UInt32>(frustum.o) << ']'
+                << ",\"viewport\":[" << viewport.l << ',' << viewport.r << ','
+                << viewport.t << ',' << viewport.b << "]}\n";
+        gOutput.flush();
     }
 
     void sidecarWriteFinite(std::ostringstream& out, float value)
@@ -11387,6 +11745,7 @@ namespace
             return;
         }
         ++gFrame;
+        writePluginStackObservation();
         captureRequestedGameSettings();
         if (gSidecarPlanActive)
         {
@@ -11404,7 +11763,8 @@ namespace
             writeRetailPipBoySnapshot("sample");
         if (gCaptureSession && gFrame % gSampleEvery == 0)
             sidecarWriteCombatSessionTelemetry();
-        if (!gScheduledCommands.empty() && gFrame % gSampleEvery == 0)
+        if (!gCompactActorTelemetry && !gScheduledCommands.empty()
+            && gFrame % gSampleEvery == 0)
         {
             gOutput << "{\"schema\":" << sSchemaJson
                     << ",\"event\":\"vats-observer-snapshot\""
@@ -11533,7 +11893,8 @@ namespace
                 driveObserverApproach();
                 driveBatchWeaponState();
                 drivePortraitCamera();
-                const bool passiveBatchCapture = gSidecarPlanActive || !gBatchTargetForms.empty();
+                const bool passiveBatchCapture = gSidecarPlanActive
+                    || !gBatchTargetForms.empty() || gRequireScheduledSpawn;
                 if (gCaptureAnimation && !passiveBatchCapture && !gPrepareRequested
                     && gWorldLoopFrame >= gPrepareActorFrame)
                     prepareActor();
@@ -11600,6 +11961,10 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gSampleEvery = (std::max)(1u, envUInt("NIKAMI_ORACLE_SAMPLE_EVERY", 1));
     gMaxFrames = (std::max)(1u, envUInt("NIKAMI_ORACLE_MAX_FRAMES", 3600));
     gTargetForm = envUInt("NIKAMI_ORACLE_TARGET_FORM", 0);
+    gRequireScheduledSpawn
+        = envUInt("NIKAMI_ORACLE_REQUIRE_SCHEDULED_SPAWN", 0) != 0;
+    if (gRequireScheduledSpawn && gTargetForm == 0)
+        return false;
     gEquipForm = envUInt("NIKAMI_ORACLE_EQUIP_FORM", 0);
     gObserverApproachForm = envUInt("NIKAMI_ORACLE_OBSERVER_APPROACH_FORM", 0);
     gObserverWaypoints = envObserverWaypoints("NIKAMI_ORACLE_OBSERVER_WAYPOINTS");
@@ -11609,6 +11974,7 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
         = (std::max)(1.f, envFloat("NIKAMI_ORACLE_OBSERVER_APPROACH_STEP_DISTANCE", 64.f));
     gAllHighActors = envUInt("NIKAMI_ORACLE_ALL_HIGH_ACTORS", 1) != 0;
     gCaptureAnimation = envUInt("NIKAMI_ORACLE_CAPTURE_ANIMATION", 1) != 0;
+    gCompactActorTelemetry = envUInt("NIKAMI_ORACLE_COMPACT_ACTOR_TELEMETRY", 0) != 0;
     gCaptureSession = envUInt("NIKAMI_ORACLE_CAPTURE_SESSION", 0) != 0;
     gPipBoyProbe = envUInt("NIKAMI_ORACLE_PIPBOY_PROBE", 0) != 0;
     gSessionTargetForm = envUInt("NIKAMI_ORACLE_SESSION_TARGET_FORM", 0);
@@ -11623,9 +11989,12 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gCameraShotKind = envString("NIKAMI_ORACLE_CAMERA_SHOT_KIND");
     if (gCameraShotKind.empty())
         gCameraShotKind = "front-portrait";
-    if (gCameraShotKind != "front-portrait" && gCameraShotKind != "front-full-body")
+    if (gCameraShotKind != "front-portrait" && gCameraShotKind != "front-detail"
+        && gCameraShotKind != "left-profile"
+        && gCameraShotKind != "right-profile" && gCameraShotKind != "front-full-body"
+        && gCameraShotKind != "idle-motion")
         return false;
-    gFullBodyCamera = gCameraShotKind == "front-full-body";
+    gFullBodyCamera = gCameraShotKind == "front-full-body" || gCameraShotKind == "idle-motion";
     gFullBodyDistanceScale
         = (std::max)(1.25f, envFloat("NIKAMI_ORACLE_FULL_BODY_DISTANCE_SCALE", 1.6f));
     gBatchForceWeaponOut = envUInt("NIKAMI_ORACLE_BATCH_FORCE_WEAPON_OUT", 0) != 0;

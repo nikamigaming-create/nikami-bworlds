@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -20,6 +20,13 @@ param(
     [string]$OpeningNewVegasData = "",
     [string]$OpeningAudioDevice = "",
     [string]$SavePath = "",
+    [string]$ActorPlanRoot = "",
+    [string]$ActorCorpusRoot = "",
+    [string]$ActorCaptureJobKey = "",
+    [string]$ActorOracleSeedRoot = "",
+    [string]$ActorOraclePluginDll = "",
+    [string]$ActorSaveFixture = "",
+    [string]$ActorGameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
     [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")]
     [string]$RealSaveRouteId = "save330-cold-load-settle-v1",
     [ValidateRange(5, 600)]
@@ -54,7 +61,8 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     }
     else { "" }
 }
-if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
+if ($Target -ne "Godot" -and $Scenario -ne "ActorObservation" -and
+    [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
     if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
         $OpeningRuntimeRoot = $pipBoyRuntimeRoot
@@ -63,7 +71,7 @@ if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) 
         $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
     }
 }
-if ($Target -ne "Godot") {
+if ($Target -ne "Godot" -and $Scenario -ne "ActorObservation") {
     $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 }
 
@@ -104,6 +112,9 @@ if (($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($T
 
 if ($Scenario -eq "RealSave" -and $Target -eq "All") {
     throw "RealSave is a single-engine lane. Run Retail and OpenMW as separate sequential captures."
+}
+if ($Scenario -eq "ActorObservation" -and $Target -ne "Retail") {
+    throw "ActorObservation is a retail-only lane. Use -Target Retail."
 }
 if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
     throw "Terminal interaction is an OpenMW-only lane. Use -Target OpenMW."
@@ -182,6 +193,8 @@ $vrNativeFramePath = Join-Path $WorldsRoot "scripts\Request-OpenXRSimulatorNativ
 $terminalRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTerminalCapture.ps1"
 $retailPipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailPipBoyStateCapture.ps1"
 $realSaveRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRealSaveCapture.ps1"
+$actorObservationRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVActorObservationCapture.ps1"
+$actorObservationQueuePath = Join-Path $WorldsRoot "scripts\Invoke-FNVActorObservationQueue.ps1"
 $ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
 $newVegasInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-OpenNVBaseProfile.ps1"
 $oracleSourcePath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $null } else {
@@ -192,6 +205,215 @@ $oracleRuntimeManifestPath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $n
 }
 $oracleDllPath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $null } else {
     Join-Path $ParityRoot "local\xnvse-retail-oracle\plugins\nvse_retail_oracle.dll"
+}
+
+if ($Scenario -eq 'ActorObservation') {
+    function Resolve-ActorPreflightPath([string]$Path) {
+        if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
+        if ([IO.Path]::IsPathRooted($Path)) { return [IO.Path]::GetFullPath($Path) }
+        return [IO.Path]::GetFullPath((Join-Path $WorldsRoot $Path))
+    }
+
+    $actorPlanDirectory = Resolve-ActorPreflightPath $ActorPlanRoot
+    $actorCorpusDirectory = Resolve-ActorPreflightPath $ActorCorpusRoot
+    $actorSeedDirectory = Resolve-ActorPreflightPath $ActorOracleSeedRoot
+    $actorPluginPath = Resolve-ActorPreflightPath $ActorOraclePluginDll
+    $actorSavePath = Resolve-ActorPreflightPath $ActorSaveFixture
+    $actorGameDirectory = Resolve-ActorPreflightPath $ActorGameRoot
+    $actorPlanManifestPath = if ($actorPlanDirectory) {
+        Join-Path $actorPlanDirectory 'manifest.json'
+    } else { '' }
+    $actorCorpusManifestPath = if ($actorCorpusDirectory) {
+        Join-Path $actorCorpusDirectory 'manifest.json'
+    } else { '' }
+    $actorJobsPath = if ($actorPlanDirectory) {
+        Join-Path $actorPlanDirectory 'capture-jobs.jsonl'
+    } else { '' }
+    $actorAppearancePath = if ($actorCorpusDirectory) {
+        Join-Path $actorCorpusDirectory 'appearance-review.jsonl'
+    } else { '' }
+    $actorSeedManifestPath = if ($actorSeedDirectory) {
+        Join-Path $actorSeedDirectory 'oracle-runtime-manifest.json'
+    } else { '' }
+
+    Add-Check 'ActorObservation is restricted to retail' ($Target -eq 'Retail') "target=$Target"
+    Add-Check 'ActorObservation CaptureJobKey is canonical' `
+        ($ActorCaptureJobKey -match '^[^:]+\.(?:esm|esp):[0-9a-fA-F]{6}$') `
+        $ActorCaptureJobKey
+    foreach ($tool in @('ffmpeg', 'ffprobe')) {
+        $toolCommand = Get-Command $tool -ErrorAction SilentlyContinue | Select-Object -First 1
+        Add-Check "ActorObservation tool is available: $tool" ($null -ne $toolCommand) `
+            $(if ($null -ne $toolCommand) { $toolCommand.Source } else { 'missing' })
+    }
+    [void](Test-Directory 'Actor capture plan directory exists' $actorPlanDirectory)
+    [void](Test-Directory 'Actor parity corpus directory exists' $actorCorpusDirectory)
+    [void](Test-Directory 'Actor oracle seed runtime exists' $actorSeedDirectory)
+    [void](Test-Directory 'Retail game root exists' $actorGameDirectory)
+    foreach ($file in @($actorObservationRunnerPath, $actorObservationQueuePath,
+            $oracleSourcePath, $catalogPath,
+            $runbookPath, $entryPointPath, $preflightPath, $actorPlanManifestPath,
+            $actorCorpusManifestPath, $actorJobsPath, $actorAppearancePath,
+            $actorSeedManifestPath, $actorPluginPath, $actorSavePath,
+            $(if ($actorGameDirectory) { Join-Path $actorGameDirectory 'FalloutNV.exe' } else { '' }))) {
+        [void](Test-File "ActorObservation input exists: $([IO.Path]::GetFileName($file))" $file)
+    }
+    foreach ($script in @($entryPointPath, $preflightPath, $actorObservationRunnerPath,
+            $actorObservationQueuePath)) {
+        if (Test-Path -LiteralPath $script -PathType Leaf) { Test-PowerShellParse $script }
+    }
+    $actorRunnerText = (Get-Content -Raw -LiteralPath $actorObservationRunnerPath `
+        -ErrorAction SilentlyContinue) + [Environment]::NewLine +
+        (Get-Content -Raw -LiteralPath $actorObservationQueuePath -ErrorAction SilentlyContinue)
+    foreach ($forbidden in @('AppActivate', 'SetForegroundWindow', 'BringWindowToTop',
+            'SetFocus', 'SendInput', 'Invoke-FNVRetailJamInput')) {
+        Add-Check "ActorObservation runner excludes $forbidden" `
+            ($actorRunnerText -notmatch [regex]::Escape($forbidden)) $actorObservationRunnerPath
+    }
+    Add-Check 'ActorObservation output does not already exist' `
+        ([string]::IsNullOrWhiteSpace($OutputRoot) -or -not (Test-Path -LiteralPath $OutputRoot)) `
+        $(if ($OutputRoot) { $OutputRoot } else { 'automatic unique output' })
+
+    try {
+        $catalog = Get-Content -Raw -LiteralPath $catalogPath | ConvertFrom-Json
+        $recipes = @($catalog.actorObservationRecipes | Where-Object {
+            [string]$_.id -eq 'fnv-official-actor-retail-observation-v1'
+        })
+        Add-Check 'ActorObservation recipe is uniquely declared' ($recipes.Count -eq 1) $catalogPath
+        if ($recipes.Count -eq 1) {
+            Add-Check 'ActorObservation recipe forbids app control and foreground input' `
+                (-not [bool]$recipes[0].windowsAppControlUsed -and
+                    -not [bool]$recipes[0].foregroundRequired -and
+                    -not [bool]$catalog.policy.windowsAppControlAllowed -and
+                    -not [bool]$catalog.policy.injectedWindowsInputAllowed) `
+                ([string]$recipes[0].captureMethod)
+            Add-Check 'ActorObservation recipe declares the canonical queue runner' `
+                ([string]$recipes[0].queueRunner -ceq
+                    'scripts/Invoke-FNVActorObservationQueue.ps1') `
+                ([string]$recipes[0].queueRunner)
+            $timeline = @($recipes[0].capturePolicy.shotTimeline)
+            $timelineSlots = @($timeline | ForEach-Object { [string]$_.slot })
+            $shotFrames = @($timeline | ForEach-Object { @($_.screenshotFrames) })
+            $recordTypeMappings = @(
+                $recipes[0].capturePolicy.shotKindOverridesByRecordType.PSObject.Properties
+            )
+            $resolvedShotSets = @($recordTypeMappings | ForEach-Object {
+                $mapping = $_
+                $resolvedKinds = @($timeline | ForEach-Object {
+                    $slot = [string]$_.slot
+                    $override = @($mapping.Value.PSObject.Properties | Where-Object {
+                        [string]$_.Name -ceq $slot
+                    })
+                    if ($override.Count -eq 1) { [string]$override[0].Value } else { $slot }
+                })
+                [pscustomobject]@{ recordType = [string]$mapping.Name; kinds = $resolvedKinds }
+            })
+            $validResolvedShotSets = @($resolvedShotSets | Where-Object {
+                $_.kinds.Count -eq $timeline.Count -and
+                @($_.kinds | Sort-Object -Unique).Count -eq $_.kinds.Count
+            })
+            Add-Check 'ActorObservation recipe declares a unique record-aware shot timeline' `
+                ($timeline.Count -gt 0 -and
+                    @($timelineSlots | Sort-Object -Unique).Count -eq $timelineSlots.Count -and
+                    @($shotFrames | Sort-Object -Unique).Count -eq $shotFrames.Count -and
+                    $recordTypeMappings.Count -eq 2 -and
+                    ((@($recordTypeMappings.Name | Sort-Object) -join ',') -ceq 'CREA,NPC_') -and
+                    $validResolvedShotSets.Count -eq $recordTypeMappings.Count) `
+                (($resolvedShotSets | ForEach-Object {
+                    "$($_.recordType)=[$($_.kinds -join ',')]"
+                }) -join '; ')
+            Add-Check 'ActorObservation recipe declares a bounded motion-video policy' `
+                (@($resolvedShotSets | Where-Object {
+                    @($_.kinds | Where-Object {
+                        [string]$_ -ceq [string]$recipes[0].capturePolicy.motionVideo.shotKind
+                    }).Count -eq 1
+                }).Count -eq $resolvedShotSets.Count -and
+                    [int]$recipes[0].capturePolicy.motionVideo.timelineFrameRate -gt 0 -and
+                    [int]$recipes[0].capturePolicy.motionVideo.outputFrameRate -gt 0) `
+                ([string]$recipes[0].capturePolicy.motionVideo.file)
+        }
+    }
+    catch {
+        Add-Check 'ActorObservation recipe catalog parses' $false $_.Exception.Message
+    }
+
+    try {
+        $planManifest = Get-Content -Raw -LiteralPath $actorPlanManifestPath | ConvertFrom-Json
+        $corpusManifest = Get-Content -Raw -LiteralPath $actorCorpusManifestPath | ConvertFrom-Json
+        Add-Check 'Actor capture plan schema is canonical' `
+            ([string]$planManifest.schema -ceq 'opennv-actor-capture-plan/v1') $actorPlanManifestPath
+        Add-Check 'Actor parity corpus schema is canonical' `
+            ([string]$corpusManifest.schema -ceq 'opennv-actor-parity-corpus/v1') $actorCorpusManifestPath
+        Add-Check 'Actor plan is bound to the supplied appearance ledger' `
+            ([string]$planManifest.sourceCorpus.appearanceReviewSha256 -ceq
+                [string]$corpusManifest.outputs.appearanceReview.sha256) `
+            ([string]$planManifest.sourceCorpus.appearanceReviewSha256)
+        foreach ($binding in @(
+                [pscustomobject]@{ Path = $actorJobsPath; Entry = $planManifest.outputs.jobs; Label = 'capture jobs' },
+                [pscustomobject]@{ Path = $actorAppearancePath; Entry = $corpusManifest.outputs.appearanceReview; Label = 'appearance review' }
+            )) {
+            $actualBytes = if (Test-Path -LiteralPath $binding.Path -PathType Leaf) {
+                (Get-Item -LiteralPath $binding.Path).Length
+            } else { -1 }
+            $actualHash = if ($actualBytes -ge 0) {
+                (Get-FileHash -LiteralPath $binding.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+            } else { '' }
+            Add-Check "ActorObservation $($binding.Label) matches manifest" `
+                ($actualBytes -eq [int64]$binding.Entry.bytes -and
+                    $actualHash -ceq [string]$binding.Entry.sha256) $binding.Path
+        }
+        $jobCount = if (Test-Path -LiteralPath $actorJobsPath -PathType Leaf) {
+            @([IO.File]::ReadLines($actorJobsPath) | Where-Object {
+                $_ -match ('"captureJobKey":"' + [regex]::Escape($ActorCaptureJobKey) + '"')
+            }).Count
+        } else { 0 }
+        Add-Check 'ActorObservation job key resolves exactly once' ($jobCount -eq 1) $ActorCaptureJobKey
+    }
+    catch {
+        Add-Check 'ActorObservation plan and corpus parse' $false $_.Exception.Message
+    }
+
+    if ($RuntimeReady -and (Test-Path -LiteralPath $actorSeedManifestPath -PathType Leaf)) {
+        try {
+            $seedManifest = Get-Content -Raw -LiteralPath $actorSeedManifestPath | ConvertFrom-Json
+            foreach ($entryName in @('loader', 'steamLoader', 'core')) {
+                $entry = $seedManifest.files.$entryName
+                $source = Join-Path $actorSeedDirectory ([string]$entry.path)
+                $actualHash = if (Test-Path -LiteralPath $source -PathType Leaf) {
+                    (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+                } else { '' }
+                Add-Check "ActorObservation seed $entryName matches manifest" `
+                    ($actualHash -ceq [string]$entry.sha256) $source
+            }
+        }
+        catch {
+            Add-Check 'ActorObservation seed runtime manifest parses' $false $_.Exception.Message
+        }
+    }
+    if ($RequireIdle) {
+        $active = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.ProcessName -match '^(FalloutNV|nvse_loader|openmw|Godot.*)$'
+        })
+        Add-Check 'ActorObservation capture engines are idle' ($active.Count -eq 0) `
+            $(if ($active.Count -eq 0) { 'idle' } else { ($active.ProcessName -join ', ') })
+    }
+    $failed = @($checks | Where-Object { -not $_.passed })
+    $result = [pscustomobject][ordered]@{
+        schema = 'nikami-fnv-jam-background-capture-preflight/v1'
+        status = if ($failed.Count -eq 0) { 'pass' } else { 'fail' }
+        target = $Target
+        scenario = $Scenario
+        runtimeReadyChecked = [bool]$RuntimeReady
+        idleChecked = [bool]$RequireIdle
+        passedChecks = $checks.Count - $failed.Count
+        failedChecks = $failed.Count
+        checks = @($checks)
+    }
+    $result
+    if ($failed.Count -ne 0) {
+        throw "ActorObservation background-capture preflight failed $($failed.Count) check(s): " +
+            (($failed | ForEach-Object name) -join '; ')
+    }
+    return
 }
 
 if ($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) {

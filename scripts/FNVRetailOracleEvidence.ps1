@@ -90,8 +90,11 @@ function Assert-FNVRetailOracleEvidence {
         [int]$BatchProofInitializationFrames = 30,
         [string[]]$BatchEnableParentForm = @(),
         [bool]$PortraitCamera = $false,
+        [int]$ExpectedPortraitCameraSetCount = 1,
+        [bool]$SpawnBaseCapture = $false,
         [bool]$RequireAppearanceTelemetry = $false,
         [bool]$BackgroundDataMode = $false,
+        [bool]$BehaviorStateExpected = $true,
         [string]$ExpectedRuntime = 'FalloutNV-1.4.0.525',
         [string]$ExpectedSchema = 'nikami-retail-oracle/v4'
     )
@@ -162,18 +165,24 @@ function Assert-FNVRetailOracleEvidence {
     $beforeSnapshots = @($allEvents | Where-Object { $_.event -eq 'behavior-snapshot' -and $_.label -eq 'before' })
     $afterSnapshots = @($allEvents | Where-Object { $_.event -eq 'behavior-snapshot' -and $_.label -eq 'after' })
     $commandEvents = @($allEvents | Where-Object { $_.event -eq 'behavior-commands' })
-    Assert-FNVEvidence ($beforeSnapshots.Count -eq 1) `
-        "expected one before behavior-snapshot, got $($beforeSnapshots.Count)."
-    Assert-FNVEvidence ($afterSnapshots.Count -eq 1) `
-        "expected one after behavior-snapshot, got $($afterSnapshots.Count)."
     Assert-FNVEvidence ($commandEvents.Count -eq 1) `
         "expected one behavior-commands event, got $($commandEvents.Count)."
-    Assert-FNVEvidence ((Get-FNVEventFrame $beforeSnapshots[0] 'before behavior-snapshot') -eq $BeforeFrame) `
-        "before behavior-snapshot is not frame $BeforeFrame."
     Assert-FNVEvidence ((Get-FNVEventFrame $commandEvents[0] 'behavior-commands') -eq $CommandFrame) `
         "behavior-commands is not frame $CommandFrame."
-    Assert-FNVEvidence ((Get-FNVEventFrame $afterSnapshots[0] 'after behavior-snapshot') -eq $AfterFrame) `
-        "after behavior-snapshot is not frame $AfterFrame."
+    if ($BehaviorStateExpected) {
+        Assert-FNVEvidence ($beforeSnapshots.Count -eq 1) `
+            "expected one before behavior-snapshot, got $($beforeSnapshots.Count)."
+        Assert-FNVEvidence ($afterSnapshots.Count -eq 1) `
+            "expected one after behavior-snapshot, got $($afterSnapshots.Count)."
+        Assert-FNVEvidence ((Get-FNVEventFrame $beforeSnapshots[0] 'before behavior-snapshot') -eq $BeforeFrame) `
+            "before behavior-snapshot is not frame $BeforeFrame."
+        Assert-FNVEvidence ((Get-FNVEventFrame $afterSnapshots[0] 'after behavior-snapshot') -eq $AfterFrame) `
+            "after behavior-snapshot is not frame $AfterFrame."
+    }
+    else {
+        Assert-FNVEvidence ($beforeSnapshots.Count -eq 0 -and $afterSnapshots.Count -eq 0) `
+            'capture with no requested quest/global state unexpectedly emitted behavior snapshots.'
+    }
 
     $completeEvents = @($allEvents | Where-Object { $_.event -eq 'capture-complete' })
     Assert-FNVEvidence ($completeEvents.Count -eq 1) `
@@ -199,6 +208,7 @@ function Assert-FNVRetailOracleEvidence {
         'BatchTargetForm contains duplicates.'
 
     $appearanceEvents = @($allEvents | Where-Object { $_.event -in @('npc-appearance', 'target-appearance') })
+    $templateObservations = @($allEvents | Where-Object { $_.event -eq 'actor-template-observation' })
     $portraitEvents = @($allEvents | Where-Object { $_.event -eq 'portrait-camera-set' })
     $singleScreenshots = @($allEvents | Where-Object { $_.event -eq 'screenshot-request' })
     $batchScreenshots = @($allEvents | Where-Object { $_.event -eq 'batch-screenshot-request' })
@@ -217,8 +227,59 @@ function Assert-FNVRetailOracleEvidence {
             $appearance = $appearanceEvents[0]
             $actualRef = Get-FNVEventForm $appearance 'refForm' 'target appearance'
             $actualBase = Get-FNVEventForm $appearance 'baseForm' 'target appearance'
-            Assert-FNVEvidence ($actualRef -eq $expectedTarget) `
-                "appearance refForm $(Format-FNVFormId $actualRef) does not match $(Format-FNVFormId $expectedTarget)."
+            if ($SpawnBaseCapture) {
+                Assert-FNVEvidence ($actualRef -ne 0 -and $actualRef -ne $expectedTarget) `
+                    'spawned appearance did not resolve a distinct nonzero reference.'
+                Assert-FNVEvidence ($templateObservations.Count -eq 1) `
+                    "expected one spawned actor-template-observation, got $($templateObservations.Count)."
+                $observation = $templateObservations[0]
+                $observedRequest = Get-FNVEventForm $observation 'requestedBaseForm' `
+                    'actor-template-observation'
+                $observedRef = Get-FNVEventForm $observation 'referenceForm' `
+                    'actor-template-observation'
+                $observedRuntimeBase = Get-FNVEventForm $observation 'runtimeBaseForm' `
+                    'actor-template-observation'
+                Assert-FNVEvidence ($observedRequest -eq $expectedTarget) `
+                    'actor-template-observation requested base does not match TargetForm.'
+                Assert-FNVEvidence ($observedRef -eq $actualRef) `
+                    'actor-template-observation reference does not match appearance telemetry.'
+                Assert-FNVEvidence ($observedRuntimeBase -eq $actualBase) `
+                    'actor-template-observation runtime base does not match appearance telemetry.'
+                Assert-FNVEvidence (Get-FNVEvidenceBoolean $observation 'baseReadable' `
+                    'actor-template-observation') 'spawned runtime base was unreadable.'
+                Assert-FNVEvidence (Test-FNVEvidenceProperty $observation 'leveledExtra') `
+                    'actor-template-observation is missing leveledExtra.'
+                $leveledExtra = $observation.leveledExtra
+                $leveledReadable = Get-FNVEvidenceBoolean $leveledExtra 'readable' `
+                    'actor-template-observation.leveledExtra'
+                $leveledBase = Get-FNVEventForm $leveledExtra 'baseForm' `
+                    'actor-template-observation.leveledExtra'
+                $leveledForm = Get-FNVEventForm $leveledExtra 'form' `
+                    'actor-template-observation.leveledExtra'
+                Assert-FNVEvidence ($actualBase -eq $expectedTarget -or
+                    ($leveledReadable -and
+                        ($leveledBase -eq $expectedTarget -or $leveledForm -eq $expectedTarget))) `
+                    'spawned runtime identity has no observed link to the requested base.'
+                $spawnEvents = @($allEvents | Where-Object {
+                    $_.event -eq 'scheduled-console-command' -and
+                        [string]$_.command -match '^SpawnActor\s+'
+                })
+                $resolveEvents = @($allEvents | Where-Object {
+                    $_.event -eq 'scheduled-console-command' -and
+                        [string]$_.command -eq 'ResolveSpawnedActor'
+                })
+                Assert-FNVEvidence ($spawnEvents.Count -eq 1 -and $resolveEvents.Count -eq 1) `
+                    'spawn capture did not retain exactly one spawn and resolve command.'
+                Assert-FNVEvidence ((Get-FNVEvidenceBoolean $spawnEvents[0] 'accepted' `
+                    'SpawnActor command') -and
+                    (Get-FNVEvidenceBoolean $resolveEvents[0] 'accepted' `
+                    'ResolveSpawnedActor command')) `
+                    'spawn or resolve command was rejected.'
+            }
+            else {
+                Assert-FNVEvidence ($actualRef -eq $expectedTarget) `
+                    "appearance refForm $(Format-FNVFormId $actualRef) does not match $(Format-FNVFormId $expectedTarget)."
+            }
             Assert-FNVEvidence ($actualBase -ne 0) 'appearance baseForm is zero.'
             if ($expectedBase -ne 0) {
                 Assert-FNVEvidence ($actualBase -eq $expectedBase) `
@@ -231,12 +292,18 @@ function Assert-FNVRetailOracleEvidence {
             $appearanceFrame = Get-FNVEventFrame $appearance 'target appearance'
             $portraitFrame = $null
             if ($PortraitCamera) {
-                Assert-FNVEvidence ($portraitEvents.Count -eq 1) `
-                    "expected one portrait-camera-set, got $($portraitEvents.Count)."
-                $portraitRef = Get-FNVEventForm $portraitEvents[0] 'refForm' 'portrait-camera-set'
-                Assert-FNVEvidence ($portraitRef -eq $expectedTarget) `
-                    "portrait refForm $(Format-FNVFormId $portraitRef) does not match target."
-                $portraitFrame = Get-FNVEventFrame $portraitEvents[0] 'portrait-camera-set'
+                Assert-FNVEvidence ($ExpectedPortraitCameraSetCount -ge 1) `
+                    'ExpectedPortraitCameraSetCount must be positive when PortraitCamera is enabled.'
+                Assert-FNVEvidence ($portraitEvents.Count -eq $ExpectedPortraitCameraSetCount) `
+                    "expected $ExpectedPortraitCameraSetCount portrait-camera-set event(s), got $($portraitEvents.Count)."
+                $expectedPortraitRef = if ($SpawnBaseCapture) { $actualRef } else { $expectedTarget }
+                for ($cameraIndex = 0; $cameraIndex -lt $portraitEvents.Count; ++$cameraIndex) {
+                    $portraitRef = Get-FNVEventForm $portraitEvents[$cameraIndex] 'refForm' `
+                        "portrait-camera-set $cameraIndex"
+                    Assert-FNVEvidence ($portraitRef -eq $expectedPortraitRef) `
+                        "portrait refForm $(Format-FNVFormId $portraitRef) does not match target."
+                }
+                $portraitFrame = Get-FNVEventFrame $portraitEvents[0] 'portrait-camera-set 0'
             }
             else {
                 Assert-FNVEvidence ($portraitEvents.Count -eq 0) 'unexpected portrait-camera-set event.'
@@ -245,6 +312,8 @@ function Assert-FNVRetailOracleEvidence {
                 targetIndex = 0
                 refForm = Format-FNVFormId $actualRef
                 baseForm = Format-FNVFormId $actualBase
+                requestedBaseForm = if ($SpawnBaseCapture) { Format-FNVFormId $expectedTarget } else { $null }
+                spawned = $SpawnBaseCapture
                 appearanceFrame = $appearanceFrame
                 portraitFrame = $portraitFrame
             }) | Out-Null

@@ -410,6 +410,75 @@ exterior corridor, crosses the authored Freeside and Strip seams, and ends insid
 the collapsed Strip. It is not accepted unless the route report, thirteen native
 checkpoints, exact-title video, audio stream, hashes, and no-control flags all pass.
 
+## Whole-game retail actor observation
+
+`ActorObservation` is the canonical single-base probe used by the whole-game
+actor and creature review corpus. It consumes one immutable OpenNV capture-plan
+job, spawns that official runtime base inside retail, resolves the new reference,
+and retains runtime template identity, live bounds, compact pose samples, camera
+matrices, and native Direct3D 9 frames. One live reference supplies four still
+views plus an idle-motion clip: humanoids use front portrait, left profile,
+right profile, and front full body; creatures substitute front detail for front
+portrait. The recipe owns the shared timeline and declares only the record-type
+detail-name override, so the two paths cannot drift independently. Run retail
+and Godot sequentially.
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target Retail -Scenario ActorObservation `
+  -ActorPlanRoot '<immutable capture plan>' `
+  -ActorCorpusRoot '<immutable actor corpus>' `
+  -ActorCaptureJobKey 'FalloutNV.esm:000a84' `
+  -ActorOracleSeedRoot '<isolated xNVSE runtime>' `
+  -ActorOraclePluginDll '<built nvse_retail_oracle.dll>' `
+  -ActorSaveFixture '<immutable legal retail save>' `
+  -RuntimeReady -RequireIdle
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target Retail -Scenario ActorObservation `
+  -ActorPlanRoot '<immutable capture plan>' `
+  -ActorCorpusRoot '<immutable actor corpus>' `
+  -ActorCaptureJobKey 'FalloutNV.esm:000a84' `
+  -ActorOracleSeedRoot '<isolated xNVSE runtime>' `
+  -ActorOraclePluginDll '<built nvse_retail_oracle.dll>' `
+  -ActorSaveFixture '<immutable legal retail save>' `
+  -OutputRoot .\run\fnv-actor-observation-<unique>
+```
+
+A successful probe reports `captured-unclassified-runtime-observation` until
+observed runtime lineage selects exactly one declared review signature, then
+`captured-classified-runtime-observation`. Neither status is a parity pass:
+every required view must still be captured in retail and Godot and the matched
+visual review must pass. Dynamic roots remain pending until every expected
+signature has been observed. The compact JSONL ceiling, five camera-state
+sequence, per-shot camera matrix, source-frame hash, and encoded idle clip are
+validated before a run may enter the coverage ledger. A green retail probe is
+still only reference evidence; it never marks the Godot rendition or matched
+comparison as passed.
+
+Run a resumable retail sweep through the queue wrapper. The queue root owns an
+immutable source-binding manifest, an append-only event ledger, immutable
+coverage checkpoints, and one fresh canonical proof directory per attempt.
+Repeating the command skips completed jobs. Use `-BatchKey` for one declared
+32-base batch or omit it for the full plan; `-MaximumJobs` is a bounded smoke
+control and does not change completeness semantics.
+
+```powershell
+& .\scripts\Invoke-FNVActorObservationQueue.ps1 `
+  -PlanRoot '<immutable capture plan>' `
+  -CorpusRoot '<immutable actor corpus>' `
+  -QueueRoot '<private resumable retail queue>' `
+  -OracleSeedRoot '<isolated xNVSE runtime>' `
+  -OraclePluginDll '<built nvse_retail_oracle.dll>' `
+  -SaveFixture '<immutable legal retail save>' `
+  -BatchKey 'actor-appearance-00000'
+```
+
+Every attempt still enters through `Invoke-FNVJamBackgroundCapture.ps1`, so it
+must pass the normal idle preflight and no-app-control gate. Dynamic jobs use
+the catalog-declared attempts-per-outcome sweep budget; exhausting one sweep
+leaves missing signatures pending and a later sweep resumes them. A capture
+error is retained as a ledger event and never converted into coverage.
+
 ## Provenance and recovery
 
 Every successful directory must retain:

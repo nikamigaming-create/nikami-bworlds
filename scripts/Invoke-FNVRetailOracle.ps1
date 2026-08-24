@@ -26,6 +26,7 @@ param(
     [int]$BarrierTimeoutMilliseconds = 30000,
     [int]$SampleEvery = 1,
     [string]$TargetForm = "0",
+    [switch]$SpawnBaseCapture,
     [string]$ExpectedTargetBaseForm = "0",
     [string]$ObserverApproachForm = "0",
     [float]$ObserverApproachStopDistance = 1400,
@@ -55,6 +56,8 @@ param(
     [switch]$PipBoyProbe,
     [string]$SessionTargetForm = "0",
     [switch]$CaptureAnimation,
+    [switch]$TargetAnimationOnly,
+    [switch]$CompactActorTelemetry,
     [int[]]$ScreenshotFrame = @(),
     [string]$ScreenshotDirectory = "",
     [switch]$MaterialShaderCapture,
@@ -63,8 +66,9 @@ param(
     [switch]$PortraitCamera,
     [ValidateRange(32, 1000)]
     [float]$PortraitDistance = 110,
-    [ValidateSet('front-portrait', 'front-full-body')]
+    [ValidateSet('front-portrait', 'front-detail', 'left-profile', 'right-profile', 'front-full-body', 'idle-motion')]
     [string]$CameraShotKind = 'front-portrait',
+    [string[]]$ExpectedCameraShotKind = @(),
     [ValidateRange(1.25, 10)]
     [float]$FullBodyDistanceScale = 1.6,
     [switch]$RequireAppearanceTelemetry,
@@ -406,6 +410,56 @@ foreach ($frame in $ScreenshotFrame) {
 if ($PortraitCamera -and $TargetForm -match '^(0[xX]0+|0+)$') {
     throw "PortraitCamera requires a nonzero TargetForm."
 }
+$allowedCameraShotKinds = @(
+    'front-portrait',
+    'front-detail',
+    'left-profile',
+    'right-profile',
+    'front-full-body',
+    'idle-motion'
+)
+$ExpectedCameraShotKind = @($ExpectedCameraShotKind)
+if ($ExpectedCameraShotKind.Count -eq 0) {
+    $ExpectedCameraShotKind = @($CameraShotKind)
+}
+foreach ($shotKind in $ExpectedCameraShotKind) {
+    if ([string]$shotKind -cnotin $allowedCameraShotKinds) {
+        throw "ExpectedCameraShotKind contains unsupported shot '$shotKind'."
+    }
+}
+if ($ExpectedCameraShotKind.Count -gt 1 -and (-not $PortraitCamera -or
+    $BatchTargetForm.Count -gt 0 -or $planMode)) {
+    throw 'Multiple expected camera shots require single-target PortraitCamera mode.'
+}
+$scheduledReviewShots = @($ScheduledCommand | Where-Object {
+    $_ -match '^[0-9]+:SetReviewShot\s+'
+})
+if ($ExpectedCameraShotKind.Count -gt 1 -and
+    $scheduledReviewShots.Count -ne $ExpectedCameraShotKind.Count) {
+    throw 'Multi-view capture requires one scheduled SetReviewShot command per expected shot kind.'
+}
+if ($SpawnBaseCapture) {
+    if ($TargetForm -match '^(0[xX]0+|0+)$' -or $BatchTargetForm.Count -gt 0 -or $planMode) {
+        throw "SpawnBaseCapture requires one nonzero TargetForm and cannot use batch or sidecar-plan mode."
+    }
+    if ($ExpectedTargetBaseForm -notmatch '^(0[xX]0+|0+)$') {
+        throw "SpawnBaseCapture resolves the runtime base from telemetry; ExpectedTargetBaseForm must be zero."
+    }
+    $spawnTarget = (Format-FNVFormId $TargetForm) -replace '^0[xX]', ''
+    $spawnCommands = @($ScheduledCommand | Where-Object {
+        $_ -match ('^[0-9]+:SpawnActor\s+0*' + [regex]::Escape($spawnTarget) + '$')
+    })
+    $resolveCommands = @($ScheduledCommand | Where-Object { $_ -match '^[0-9]+:ResolveSpawnedActor$' })
+    if ($spawnCommands.Count -ne 1 -or $resolveCommands.Count -ne 1) {
+        throw "SpawnBaseCapture requires exactly one matching SpawnActor command and one ResolveSpawnedActor command."
+    }
+}
+if ($TargetAnimationOnly -and -not $CaptureAnimation) {
+    throw "TargetAnimationOnly requires CaptureAnimation."
+}
+if ($CompactActorTelemetry -and -not $CaptureAnimation) {
+    throw "CompactActorTelemetry requires CaptureAnimation."
+}
 if ($CameraShotKind -eq 'front-full-body' -and -not $PortraitCamera -and
     $BatchTargetForm.Count -eq 0 -and -not $planMode) {
     throw "CameraShotKind front-full-body requires PortraitCamera or BatchTargetForm."
@@ -539,7 +593,7 @@ if ($planMode) {
             continue
         }
 
-        $fields = @($line -split "`t", -1)
+        $fields = @($line.Split([char]9, [StringSplitOptions]::None))
         switch -CaseSensitive ($fields[0]) {
             'sequence' {
                 if ($sidecarRecordPhase -ne 'sequence' -or $fields.Count -ne 2 -or
@@ -809,13 +863,15 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_SAMPLE_EVERY = [string]$SampleEvery
     NIKAMI_ORACLE_MAX_FRAMES = [string]$MaxFrames
     NIKAMI_ORACLE_TARGET_FORM = $TargetForm
+    NIKAMI_ORACLE_REQUIRE_SCHEDULED_SPAWN = if ($SpawnBaseCapture) { "1" } else { "0" }
     NIKAMI_ORACLE_OBSERVER_APPROACH_FORM = $ObserverApproachForm
     NIKAMI_ORACLE_OBSERVER_APPROACH_STOP_DISTANCE = [string]$ObserverApproachStopDistance
     NIKAMI_ORACLE_OBSERVER_APPROACH_STEP_DISTANCE = [string]$ObserverApproachStepDistance
     NIKAMI_ORACLE_OBSERVER_WAYPOINTS = (@($ObserverWaypoint) -join ";")
     NIKAMI_ORACLE_EQUIP_FORM = $EquipForm
-    NIKAMI_ORACLE_ALL_HIGH_ACTORS = if ($CaptureAnimation) { "1" } else { "0" }
+    NIKAMI_ORACLE_ALL_HIGH_ACTORS = if ($CaptureAnimation -and -not $TargetAnimationOnly) { "1" } else { "0" }
     NIKAMI_ORACLE_CAPTURE_ANIMATION = if ($CaptureAnimation) { "1" } else { "0" }
+    NIKAMI_ORACLE_COMPACT_ACTOR_TELEMETRY = if ($CompactActorTelemetry) { "1" } else { "0" }
     NIKAMI_ORACLE_CAPTURE_SESSION = if ($CaptureSession) { "1" } else { "0" }
     NIKAMI_ORACLE_PIPBOY_PROBE = if ($PipBoyProbe) { "1" } else { "0" }
     NIKAMI_ORACLE_SESSION_TARGET_FORM = $SessionTargetForm
@@ -928,8 +984,12 @@ if ($DryRun) {
             runManifest = Test-Path -LiteralPath $runManifest
         }
         expectedTargetBaseForm = $ExpectedTargetBaseForm
+        spawnBaseCapture = [bool]$SpawnBaseCapture
+        targetAnimationOnly = [bool]$TargetAnimationOnly
+        compactActorTelemetry = [bool]$CompactActorTelemetry
         batchExpectedBaseForms = @($BatchExpectedBaseForm)
         cameraShotKind = $CameraShotKind
+        expectedCameraShotKinds = @($ExpectedCameraShotKind)
         fullBodyDistanceScale = $FullBodyDistanceScale
         batchForceWeaponOut = [bool]$BatchForceWeaponOut
         batchWeaponProbeFrames = $BatchWeaponProbeFrames
@@ -1442,8 +1502,11 @@ if ($planMode) {
         -BatchProofInitializationFrames $BatchProofInitializationFrames `
         -BatchEnableParentForm $BatchEnableParentForm `
         -PortraitCamera ([bool]$PortraitCamera) `
+        -ExpectedPortraitCameraSetCount $ExpectedCameraShotKind.Count `
+        -SpawnBaseCapture ([bool]$SpawnBaseCapture) `
         -RequireAppearanceTelemetry ([bool]$RequireAppearanceTelemetry) `
-        -BackgroundDataMode ([bool]$BackgroundDataMode)
+        -BackgroundDataMode ([bool]$BackgroundDataMode) `
+        -BehaviorStateExpected (@($QuestForm).Count -gt 0 -or @($GlobalForm).Count -gt 0)
 }
 $validationEventCount = [int]$eventValidation.eventCount
 $totalStreamEventCount = [int](($streamEventCounts.Values | Measure-Object -Sum).Sum)
@@ -1476,6 +1539,8 @@ if ($PipBoyProbe) {
     $eventValidation | Add-Member -NotePropertyName pipBoyProbeSnapshots -NotePropertyValue $pipBoyProbeSnapshots.Count
 }
 $appearanceEvents = @($events | Where-Object { $_.event -in @("npc-appearance", "target-appearance") })
+$actorTemplateObservations = @($events | Where-Object { $_.event -eq 'actor-template-observation' })
+$runtimePluginStacks = @($events | Where-Object { $_.event -eq 'runtime-plugin-stack' })
 $expectedScreenshotNames = if ($planMode) {
     @($sidecarCaptureLabels | ForEach-Object { "frame-$_.bmp" })
 } else {
@@ -1485,18 +1550,24 @@ $screenshotEvidence = @(Assert-FNVRetailScreenshotFiles `
     -Path $capturedScreenshots -ExpectedName $expectedScreenshotNames)
 $expectedPortraitEvents = if ($planMode) { 0 } elseif ($BatchTargetForm.Count -gt 0) {
     $BatchTargetForm.Count
-} elseif ($PortraitCamera) { 1 } else { 0 }
+} elseif ($PortraitCamera) { $ExpectedCameraShotKind.Count } else { 0 }
 if ($expectedPortraitEvents -gt 0) {
     $portraitEvents = @($events | Where-Object { $_.event -eq "portrait-camera-set" })
     if ($portraitEvents.Count -ne $expectedPortraitEvents) {
         throw "Portrait camera resolved $($portraitEvents.Count) actor head(s), expected $expectedPortraitEvents."
     }
-    foreach ($cameraEvent in $portraitEvents) {
-        if ($cameraEvent.PSObject.Properties.Name -notcontains 'shotKind' -or
-            [string]$cameraEvent.shotKind -ne $CameraShotKind) {
-            throw "Camera shot-kind contract expected '$CameraShotKind' on every portrait-camera-set event."
+    for ($cameraIndex = 0; $cameraIndex -lt $portraitEvents.Count; ++$cameraIndex) {
+        $cameraEvent = $portraitEvents[$cameraIndex]
+        $expectedShotKind = if ($BatchTargetForm.Count -gt 0) {
+            $CameraShotKind
+        } else {
+            [string]$ExpectedCameraShotKind[$cameraIndex]
         }
-        if ($CameraShotKind -eq 'front-full-body') {
+        if ($cameraEvent.PSObject.Properties.Name -notcontains 'shotKind' -or
+            [string]$cameraEvent.shotKind -cne $expectedShotKind) {
+            throw "Camera shot-kind contract expected '$expectedShotKind' at camera index $cameraIndex."
+        }
+        if ($expectedShotKind -in @('front-full-body', 'idle-motion')) {
             if ($cameraEvent.PSObject.Properties.Name -notcontains 'worldBound' -or
                 -not [bool]$cameraEvent.worldBound.valid -or [double]$cameraEvent.worldBound.radius -le 0) {
                 throw "Full-body camera event lacks a valid assembled-actor world bound."
@@ -1700,6 +1771,7 @@ $manifestDocument = [ordered]@{
         } } else { $null }
         targetForm = Format-FNVFormId $TargetForm
         targetBaseForm = Format-FNVFormId $ExpectedTargetBaseForm
+        spawnBaseCapture = [bool]$SpawnBaseCapture
         batchTargetForms = @($BatchTargetForm | ForEach-Object { Format-FNVFormId $_ })
         batchBaseForms = @($BatchExpectedBaseForm | ForEach-Object { Format-FNVFormId $_ })
         batchEnableParentForms = @($BatchEnableParentForm | ForEach-Object { Format-FNVFormId $_ })
@@ -1713,6 +1785,7 @@ $manifestDocument = [ordered]@{
         batchSettleFrames = $BatchSettleFrames
         batchAdvanceFrames = $BatchAdvanceFrames
         cameraShotKind = $CameraShotKind
+        expectedCameraShotKinds = @($ExpectedCameraShotKind)
         fullBodyDistanceScale = $FullBodyDistanceScale
         batchForceWeaponOut = [bool]$BatchForceWeaponOut
         batchWeaponProbeFrames = $BatchWeaponProbeFrames
@@ -1747,6 +1820,8 @@ $manifestDocument = [ordered]@{
         materialCapture = $materialCaptureEvidence
         validationPayloadOmissions = @('actor-geometry')
         eventCounts = @($eventCounts)
+        actorTemplateObservations = @($actorTemplateObservations)
+        runtimePluginStacks = @($runtimePluginStacks)
     }
     validation = $eventValidation
 }
@@ -1809,6 +1884,7 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     portraitCamera = [bool]$PortraitCamera
     portraitDistance = $PortraitDistance
     cameraShotKind = $CameraShotKind
+    expectedCameraShotKinds = @($ExpectedCameraShotKind)
     fullBodyDistanceScale = $FullBodyDistanceScale
     batchForceWeaponOut = [bool]$BatchForceWeaponOut
     batchWeaponProbeFrames = $BatchWeaponProbeFrames
@@ -1824,9 +1900,12 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     materialShaderFrame = $MaterialShaderFrame
     materialCaptureEvidence = $materialCaptureEvidence
     appearanceTelemetry = @($appearanceEvents)
+    actorTemplateObservations = @($actorTemplateObservations)
+    runtimePluginStacks = @($runtimePluginStacks)
     setStageQuestForm = $SetStageQuestForm
     setStageIndex = $SetStageIndex
     captureAnimation = [bool]$CaptureAnimation
+    compactActorTelemetry = [bool]$CompactActorTelemetry
     captureSession = [bool]$CaptureSession
     pipBoyProbe = [bool]$PipBoyProbe
     pipBoyProbeSnapshots = @($pipBoyProbeSnapshots)
@@ -1834,6 +1913,8 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     furnitureOnly = [bool]$FurnitureOnly
     sampleEvery = $SampleEvery
     targetForm = $TargetForm
+    spawnBaseCapture = [bool]$SpawnBaseCapture
+    targetAnimationOnly = [bool]$TargetAnimationOnly
     expectedTargetBaseForm = $ExpectedTargetBaseForm
     observerApproachForm = $ObserverApproachForm
     observerApproachStopDistance = $ObserverApproachStopDistance

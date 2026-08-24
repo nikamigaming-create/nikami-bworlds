@@ -20,3 +20,11 @@ run is not evidence merely because the game launched: its summary/report must
 name the capture method, state that Windows app control and foreground input
 were unused, retain native source frames/telemetry, and pass the relevant
 validator.
+
+For whole-game actor or creature review, use the immutable OpenNV actor corpus
+and capture plan described in `docs/fnv-jam-background-capture.md`, then run
+`scripts/Invoke-FNVActorObservationQueue.ps1`. The queue may append its ledger
+and create new attempt directories, but it must never modify an existing proof.
+Retail coverage is reference evidence only; do not call an actor reviewed or
+passed until matched Godot evidence and a visual verdict exist for every
+required shot and every expected runtime appearance signature.

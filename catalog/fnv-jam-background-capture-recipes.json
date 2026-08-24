@@ -523,6 +523,106 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotPortraits -OutputRoot .\\run\\opennv-godot-portraits-<unique>"
     }
   ],
+  "actorObservationRecipes": [
+    {
+      "id": "fnv-official-actor-retail-observation-v1",
+      "target": "Retail",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-FNVActorObservationCapture.ps1",
+      "queueRunner": "scripts/Invoke-FNVActorObservationQueue.ps1",
+      "captureMethod": "xNVSE spawns exactly one requested official actor base, correlates the resulting live reference and runtime template identity, frames it from live render bounds, and retains the native Direct3D 9 backbuffer BMP plus frame-labelled JSONL telemetry",
+      "driverMethod": "in-process xNVSE scheduled SpawnActor, ResolveSpawnedActor, and reference-targeted StageInFrontOfPlayer commands; no Windows input or application control",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "sourceFramePattern": "retail/native-d3d9-frames/frame-*.bmp",
+      "telemetryPattern": "retail/actor-observation.jsonl",
+      "manifestPattern": "retail/actor-observation-report.json; retail/actor-observation.jsonl.manifest.json; background-capture-summary.json",
+      "acceptedObservationStatuses": [
+        "captured-unclassified-runtime-observation",
+        "captured-classified-runtime-observation"
+      ],
+      "requiredTelemetry": [
+        "capture job and source corpus hashes match their immutable manifests",
+        "runtime official plugin stack exactly matches the corpus load order",
+        "one spawned reference is correlated to the requested stable base",
+        "runtime base, template pointers, leveled extra-data links, render bounds, camera, animation, and native source-frame hash are retained",
+        "evidence status remains captured-unclassified-runtime-observation until an expected review signature is correlated",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "officialPlugins": [
+        "FalloutNV.esm",
+        "DeadMoney.esm",
+        "HonestHearts.esm",
+        "OldWorldBlues.esm",
+        "LonesomeRoad.esm",
+        "TribalPack.esm",
+        "MercenaryPack.esm",
+        "ClassicPack.esm",
+        "CaravanPack.esm",
+        "GunRunnersArsenal.esm"
+      ],
+      "capturePolicy": {
+        "spawnFrame": 30,
+        "resolveFrame": 45,
+        "stageFrame": 46,
+        "stageDistance": 384,
+        "beforeFrame": 60,
+        "commandFrame": 65,
+        "afterFrame": 215,
+        "maxFrames": 220,
+        "timeoutSeconds": 90,
+        "sampleEvery": 1,
+        "portraitDistance": 110,
+        "fullBodyDistanceScale": 1.6,
+        "shotTimeline": [
+          { "slot": "detail", "setFrame": 48, "screenshotFrames": [70] },
+          { "slot": "left-profile", "setFrame": 80, "screenshotFrames": [95] },
+          { "slot": "right-profile", "setFrame": 105, "screenshotFrames": [120] },
+          { "slot": "front-full-body", "setFrame": 130, "screenshotFrames": [145] },
+          { "slot": "idle-motion", "setFrame": 155, "screenshotFrames": [165, 175, 185, 195, 205, 215] }
+        ],
+        "shotKindOverridesByRecordType": {
+          "NPC_": { "detail": "front-portrait" },
+          "CREA": { "detail": "front-detail" }
+        },
+        "motionVideo": {
+          "shotKind": "idle-motion",
+          "timelineFrameRate": 60,
+          "tailDurationFrames": 10,
+          "outputFrameRate": 60,
+          "codec": "libx264",
+          "preset": "medium",
+          "crf": 18,
+          "pixelFormat": "yuv420p",
+          "movFlags": "+faststart",
+          "file": "idle-motion-retail.mp4"
+        }
+      },
+      "telemetryPolicy": {
+        "mode": "compact-actor-pose-sample",
+        "poseEvent": "actor-pose-sample",
+        "minimumPoseSamples": 2,
+        "cameraMatrixElementCount": 16,
+        "maximumJsonlBytes": 524288,
+        "forbiddenEvents": [
+          "actor-frame",
+          "bone-lod-writer-call",
+          "high-process-bone-lod-path",
+          "vats-observer-snapshot"
+        ]
+      },
+      "queuePolicy": {
+        "attemptsPerExpectedOutcomePerSweep": 4,
+        "checkpointEveryAttempts": 32,
+        "continueAfterCaptureFailure": true
+      },
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario ActorObservation -ActorPlanRoot '<immutable capture plan>' -ActorCorpusRoot '<immutable corpus>' -ActorCaptureJobKey '<plugin:local-form>' -ActorOracleSeedRoot '<isolated xNVSE runtime>' -ActorOraclePluginDll '<built oracle DLL>' -ActorSaveFixture '<immutable legal retail save>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario ActorObservation -ActorPlanRoot '<immutable capture plan>' -ActorCorpusRoot '<immutable corpus>' -ActorCaptureJobKey '<plugin:local-form>' -ActorOracleSeedRoot '<isolated xNVSE runtime>' -ActorOraclePluginDll '<built oracle DLL>' -ActorSaveFixture '<immutable legal retail save>' -OutputRoot .\\run\\fnv-actor-observation-<unique>"
+    }
+  ],
   "terminalRecipes": [
     {
       "id": "opennv-authored-terminal-paced-input-v1",

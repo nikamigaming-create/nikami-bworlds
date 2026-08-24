@@ -70,6 +70,33 @@ Assert-Contract ($singleResult.targets[0].refForm -eq '0x00104C80') 'Single-targ
 Assert-Contract ($singleResult.targets[0].baseForm -eq '0x00104C7F') 'Single-target summary lost baseForm identity.'
 Assert-Contract ($singleResult.screenshots[0].frame -eq 30) 'Single-target summary lost screenshot frame identity.'
 
+$statelessEvents = @($singleEvents | Where-Object { $_.event -ne 'behavior-snapshot' })
+$statelessArguments = @{}
+foreach ($key in $singleArguments.Keys) { $statelessArguments[$key] = $singleArguments[$key] }
+$statelessArguments.BehaviorStateExpected = $false
+$statelessResult = Assert-FNVRetailOracleEvidence @statelessArguments -Events $statelessEvents
+Assert-Contract ($statelessResult.status -eq 'passed') `
+    'Valid evidence with no requested quest/global state did not pass.'
+$case = Copy-OracleEvents $statelessEvents
+$case += New-OracleEvent 'behavior-snapshot' @{ frame = 10; label = 'before' }
+Assert-ThrowsLike { Assert-FNVRetailOracleEvidence @statelessArguments -Events $case } `
+    'no requested quest/global state unexpectedly emitted behavior snapshots' `
+    'Unexpected behavior state was accepted for a stateless capture.'
+
+$multiCameraEvents = Copy-OracleEvents $singleEvents
+$multiCameraEvents += New-OracleEvent 'portrait-camera-set' @{
+    frame = 2; refForm = 0x00104C80
+}
+$multiCameraArguments = @{}
+foreach ($key in $singleArguments.Keys) { $multiCameraArguments[$key] = $singleArguments[$key] }
+$multiCameraArguments.ExpectedPortraitCameraSetCount = 2
+$multiCameraResult = Assert-FNVRetailOracleEvidence @multiCameraArguments -Events $multiCameraEvents
+Assert-Contract ($multiCameraResult.status -eq 'passed') `
+    'Valid multi-camera single-target evidence did not pass.'
+$multiCameraArguments.ExpectedPortraitCameraSetCount = 3
+Assert-ThrowsLike { Assert-FNVRetailOracleEvidence @multiCameraArguments -Events $multiCameraEvents } `
+    'expected 3 portrait-camera-set event' 'Incomplete multi-camera evidence was accepted.'
+
 $twoScreenshotEvents = New-Object System.Collections.Generic.List[object]
 foreach ($event in $singleEvents) {
     if ($event.event -eq 'screenshot-request') {
