@@ -746,6 +746,19 @@ if ($null -eq $equippedWeapon.PSObject.Properties['weaponOut'] -or
     throw 'Retail equipped-weapon contract has no Boolean weaponOut state.'
 }
 $equippedWeaponOut = [bool]$equippedWeapon.weaponOut
+$equippedWeaponNodeProperty = $equippedWeapon.PSObject.Properties['nodePresent']
+if ($null -eq $equippedWeaponNodeProperty -or
+    $equippedWeaponNodeProperty.Value -isnot [bool]) {
+    throw 'Retail equipped-weapon contract has no Boolean nodePresent state.'
+}
+$equippedWeaponNodePresent = [bool]$equippedWeaponNodeProperty.Value
+$equippedWeaponModelPath = [string]$equippedWeapon.modelPath
+$canonicalEquippedWeaponModelPath = $equippedWeaponModelPath.Trim().Replace('\', '/').ToLowerInvariant()
+$equippedWeaponModelPathIsCanonical = -not [string]::IsNullOrEmpty($equippedWeaponModelPath) -and
+    $canonicalEquippedWeaponModelPath -ceq $equippedWeaponModelPath -and
+    $canonicalEquippedWeaponModelPath.EndsWith('.nif', [StringComparison]::Ordinal) -and
+    -not $canonicalEquippedWeaponModelPath.StartsWith('/', [StringComparison]::Ordinal) -and
+    -not $canonicalEquippedWeaponModelPath.Contains('../', [StringComparison]::Ordinal)
 $equippedWeaponFormText = [string]$equippedWeapon.sourceFormId
 if ($equippedWeaponFormText -notmatch '^0x[0-9A-F]{8}$') {
     throw "Retail equipped-weapon FormID '$equippedWeaponFormText' is not canonical."
@@ -765,8 +778,8 @@ switch -CaseSensitive ($equippedWeaponState) {
         if ($equippedWeaponForm -ne 0 -or $poseWeaponForm -ne 0 -or
             $equippedWeaponRenderState -cne 'not-applicable' -or
             $equippedWeaponOut -or $poseWeaponOut -or
-            [bool]$equippedWeapon.nodePresent -or
-            -not [string]::IsNullOrEmpty([string]$equippedWeapon.modelPath) -or
+            $equippedWeaponNodePresent -or
+            -not [string]::IsNullOrEmpty($equippedWeaponModelPath) -or
             $visibleWeaponParts.Count -ne 0) {
             throw 'Retail no-weapon appearance state disagrees with the live pose or render parts.'
         }
@@ -780,11 +793,11 @@ switch -CaseSensitive ($equippedWeaponState) {
             'visible-source-bound' {
                 $matchingWeaponParts = @($visibleWeaponParts | Where-Object {
                     [string]$_.sourceFormId -ceq $equippedWeaponFormText -and
-                    [string]$_.modelPath -ceq [string]$equippedWeapon.modelPath -and
+                    [string]$_.modelPath -ceq $equippedWeaponModelPath -and
                     [bool]$_.required -and [bool]$_.attached -and [bool]$_.drawable
                 })
-                if (-not [bool]$equippedWeapon.nodePresent -or
-                    [string]::IsNullOrWhiteSpace([string]$equippedWeapon.modelPath) -or
+                if (-not $equippedWeaponNodePresent -or
+                    -not $equippedWeaponModelPathIsCanonical -or
                     $matchingWeaponParts.Count -lt 1) {
                     throw 'Retail equipped-weapon appearance does not have one authoritative visible runtime attachment.'
                 }
@@ -792,6 +805,10 @@ switch -CaseSensitive ($equippedWeaponState) {
             'not-visible-at-frame' {
                 if ($equippedWeaponOut -or $visibleWeaponParts.Count -ne 0) {
                     throw 'Retail nonvisible equipped-weapon state disagrees with the same-frame pose or render parts.'
+                }
+                if (-not [string]::IsNullOrEmpty($equippedWeaponModelPath) -and
+                    -not $equippedWeaponModelPathIsCanonical) {
+                    throw 'Retail nonvisible equipped-weapon model path is not canonical.'
                 }
             }
             'unreadable' {
