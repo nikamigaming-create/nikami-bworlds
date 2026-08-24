@@ -764,6 +764,10 @@ static XrPath g_activeProfile = XR_NULL_PATH;
 // Map XrAction to action name for input mapping
 static std::unordered_map<XrAction, std::string> g_actionNames;
 
+// Retain the application's suggested component paths. Input semantics belong to
+// the binding path, not to an arbitrary action name chosen by the application.
+static std::unordered_map<XrAction, std::vector<XrPath>> g_actionBindingPaths;
+
 // Map XrAction to which hand it's bound to (0=both/any, 1=left, 2=right)
 static std::unordered_map<XrAction, int> g_actionHand;
 
@@ -7815,6 +7819,9 @@ static XrResult XRAPI_PTR xrCreateAction_runtime(XrActionSet, const XrActionCrea
 }
 
 static XrResult XRAPI_PTR xrDestroyAction_runtime(XrAction action) {
+    rt::g_actionNames.erase(action);
+    rt::g_actionBindingPaths.erase(action);
+    rt::g_actionHand.erase(action);
     Log("[SimXR] xrDestroyAction");
     return XR_SUCCESS;
 }
@@ -7828,6 +7835,13 @@ static XrResult XRAPI_PTR xrSuggestInteractionProfileBindings_runtime(XrInstance
         auto& list = rt::g_suggestedProfiles;
         if (std::find(list.begin(), list.end(), bindings->interactionProfile) == list.end()) {
             list.push_back(bindings->interactionProfile);
+        }
+    }
+    for (uint32_t index = 0; index < bindings->countSuggestedBindings; ++index) {
+        const XrActionSuggestedBinding& suggested = bindings->suggestedBindings[index];
+        auto& paths = rt::g_actionBindingPaths[suggested.action];
+        if (std::find(paths.begin(), paths.end(), suggested.binding) == paths.end()) {
+            paths.push_back(suggested.binding);
         }
     }
     return XR_SUCCESS;
@@ -7891,6 +7905,18 @@ static bool ActionNameMatches(const std::string& name, const char* pattern) {
     return lower.find(patLower) != std::string::npos;
 }
 
+static bool ActionBindingMatches(XrAction action, const char* pattern) {
+    auto actionIt = rt::g_actionBindingPaths.find(action);
+    if (actionIt == rt::g_actionBindingPaths.end()) return false;
+    for (XrPath path : actionIt->second) {
+        auto pathIt = rt::g_pathStrings.find(path);
+        if (pathIt != rt::g_pathStrings.end() && pathIt->second.find(pattern) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static XrResult XRAPI_PTR xrGetActionStateBoolean_runtime(XrSession, const XrActionStateGetInfo* info, XrActionStateBoolean* state) {
     if (!info || !state) return XR_ERROR_VALIDATION_FAILURE;
     state->type = XR_TYPE_ACTION_STATE_BOOLEAN;
@@ -7900,25 +7926,44 @@ static XrResult XRAPI_PTR xrGetActionStateBoolean_runtime(XrSession, const XrAct
     // Get controller for this action
     rt::ControllerState* ctrl = GetControllerForAction(info->action, info->subactionPath);
 
-    // Get action name to determine input type
+    // Prefer the application's suggested component path. Retain the legacy
+    // action-name mapping only for clients that do not suggest bindings.
     bool buttonState = false;
-    auto nameIt = rt::g_actionNames.find(info->action);
-    if (nameIt != rt::g_actionNames.end()) {
-        const std::string& name = nameIt->second;
-        if (ActionNameMatches(name, "trigger") || ActionNameMatches(name, "select") || ActionNameMatches(name, "fire")) {
-            buttonState = ctrl->triggerPressed;
-        } else if (ActionNameMatches(name, "grip") || ActionNameMatches(name, "squeeze") || ActionNameMatches(name, "grab")) {
-            buttonState = ctrl->gripPressed;
-        } else if (ActionNameMatches(name, "menu")) {
-            buttonState = ctrl->menuPressed;
-        } else if (ActionNameMatches(name, "primary") || ActionNameMatches(name, "a_button") || ActionNameMatches(name, "x_button") ||
-                   ActionNameMatches(name, "_input_a_click") || ActionNameMatches(name, "_input_x_click")) {
-            buttonState = ctrl->primaryPressed;
-        } else if (ActionNameMatches(name, "secondary") || ActionNameMatches(name, "b_button") || ActionNameMatches(name, "y_button") ||
-                   ActionNameMatches(name, "_input_b_click") || ActionNameMatches(name, "_input_y_click")) {
-            buttonState = ctrl->secondaryPressed;
-        } else if (ActionNameMatches(name, "thumbstick") || ActionNameMatches(name, "joystick")) {
-            buttonState = ctrl->thumbstickPressed;
+    if (ActionBindingMatches(info->action, "/input/trigger")) {
+        buttonState = ctrl->triggerPressed;
+    } else if (ActionBindingMatches(info->action, "/input/squeeze")) {
+        buttonState = ctrl->gripPressed;
+    } else if (ActionBindingMatches(info->action, "/input/menu")) {
+        buttonState = ctrl->menuPressed;
+    } else if (ActionBindingMatches(info->action, "/input/a/click") ||
+               ActionBindingMatches(info->action, "/input/x/click") ||
+               ActionBindingMatches(info->action, "/input/primary/click")) {
+        buttonState = ctrl->primaryPressed;
+    } else if (ActionBindingMatches(info->action, "/input/b/click") ||
+               ActionBindingMatches(info->action, "/input/y/click") ||
+               ActionBindingMatches(info->action, "/input/secondary/click")) {
+        buttonState = ctrl->secondaryPressed;
+    } else if (ActionBindingMatches(info->action, "/input/thumbstick/click")) {
+        buttonState = ctrl->thumbstickPressed;
+    } else {
+        auto nameIt = rt::g_actionNames.find(info->action);
+        if (nameIt != rt::g_actionNames.end()) {
+            const std::string& name = nameIt->second;
+            if (ActionNameMatches(name, "trigger") || ActionNameMatches(name, "select") || ActionNameMatches(name, "fire")) {
+                buttonState = ctrl->triggerPressed;
+            } else if (ActionNameMatches(name, "grip") || ActionNameMatches(name, "squeeze") || ActionNameMatches(name, "grab")) {
+                buttonState = ctrl->gripPressed;
+            } else if (ActionNameMatches(name, "menu")) {
+                buttonState = ctrl->menuPressed;
+            } else if (ActionNameMatches(name, "primary") || ActionNameMatches(name, "a_button") || ActionNameMatches(name, "x_button") ||
+                       ActionNameMatches(name, "_input_a_click") || ActionNameMatches(name, "_input_x_click")) {
+                buttonState = ctrl->primaryPressed;
+            } else if (ActionNameMatches(name, "secondary") || ActionNameMatches(name, "b_button") || ActionNameMatches(name, "y_button") ||
+                       ActionNameMatches(name, "_input_b_click") || ActionNameMatches(name, "_input_y_click")) {
+                buttonState = ctrl->secondaryPressed;
+            } else if (ActionNameMatches(name, "thumbstick") || ActionNameMatches(name, "joystick")) {
+                buttonState = ctrl->thumbstickPressed;
+            }
         }
     }
 
@@ -7936,15 +7981,21 @@ static XrResult XRAPI_PTR xrGetActionStateFloat_runtime(XrSession, const XrActio
     // Get controller for this action
     rt::ControllerState* ctrl = GetControllerForAction(info->action, info->subactionPath);
 
-    // Get action name to determine input type
+    // Prefer the suggested component path, then fall back for legacy clients.
     float floatState = 0.0f;
-    auto nameIt = rt::g_actionNames.find(info->action);
-    if (nameIt != rt::g_actionNames.end()) {
-        const std::string& name = nameIt->second;
-        if (ActionNameMatches(name, "trigger") || ActionNameMatches(name, "select") || ActionNameMatches(name, "fire")) {
-            floatState = ctrl->triggerValue;
-        } else if (ActionNameMatches(name, "grip") || ActionNameMatches(name, "squeeze") || ActionNameMatches(name, "grab")) {
-            floatState = ctrl->gripValue;
+    if (ActionBindingMatches(info->action, "/input/trigger")) {
+        floatState = ctrl->triggerValue;
+    } else if (ActionBindingMatches(info->action, "/input/squeeze")) {
+        floatState = ctrl->gripValue;
+    } else {
+        auto nameIt = rt::g_actionNames.find(info->action);
+        if (nameIt != rt::g_actionNames.end()) {
+            const std::string& name = nameIt->second;
+            if (ActionNameMatches(name, "trigger") || ActionNameMatches(name, "select") || ActionNameMatches(name, "fire")) {
+                floatState = ctrl->triggerValue;
+            } else if (ActionNameMatches(name, "grip") || ActionNameMatches(name, "squeeze") || ActionNameMatches(name, "grab")) {
+                floatState = ctrl->gripValue;
+            }
         }
     }
 
@@ -7969,18 +8020,22 @@ static XrResult XRAPI_PTR xrGetActionStateVector2f_runtime(XrSession, const XrAc
     // Get controller for this action
     rt::ControllerState* ctrl = GetControllerForAction(info->action, info->subactionPath);
 
-    // Get action name to determine input type
-    auto nameIt = rt::g_actionNames.find(info->action);
-    if (nameIt != rt::g_actionNames.end()) {
-        const std::string& name = nameIt->second;
-        if (ActionNameMatches(name, "thumbstick") || ActionNameMatches(name, "joystick") ||
-            ActionNameMatches(name, "move") || ActionNameMatches(name, "turn")) {
-            state->currentState = ctrl->thumbstick;
+    // Prefer the suggested component path, then fall back for legacy clients.
+    if (ActionBindingMatches(info->action, "/input/thumbstick")) {
+        state->currentState = ctrl->thumbstick;
+    } else {
+        auto nameIt = rt::g_actionNames.find(info->action);
+        if (nameIt != rt::g_actionNames.end()) {
+            const std::string& name = nameIt->second;
+            if (ActionNameMatches(name, "thumbstick") || ActionNameMatches(name, "joystick") ||
+                ActionNameMatches(name, "move") || ActionNameMatches(name, "turn")) {
+                state->currentState = ctrl->thumbstick;
+            } else {
+                state->currentState = {0.0f, 0.0f};
+            }
         } else {
             state->currentState = {0.0f, 0.0f};
         }
-    } else {
-        state->currentState = {0.0f, 0.0f};
     }
 
     state->isActive = XR_TRUE;
