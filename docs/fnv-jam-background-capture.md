@@ -446,8 +446,11 @@ and Godot sequentially.
 ```
 
 A successful probe reports `captured-unclassified-runtime-observation` until
-observed runtime lineage selects exactly one declared review signature, then
-`captured-classified-runtime-observation`. Neither status is a parity pass:
+observed runtime lineage selects exactly one declared review signature. A
+classified probe with incomplete runtime attachment evidence reports
+`captured-classified-incomplete-appearance-evidence` and remains pending; only
+complete lineage and appearance evidence reports
+`captured-classified-runtime-observation`. None of these statuses is a parity pass:
 every required view must still be captured in retail and Godot and the matched
 visual review must pass. Dynamic roots remain pending until every expected
 signature has been observed. The compact JSONL ceiling, five camera-state
@@ -456,6 +459,11 @@ appearance inventory, source-frame hash, and encoded idle clip are
 validated before a run may enter the coverage ledger. A green retail probe is
 still only reference evidence; it never marks the Godot rendition or matched
 comparison as passed.
+
+The queue only advances an expected outcome for
+`captured-classified-runtime-observation`. Classified-but-incomplete attempts
+remain in the append-only ledger and increment `incompleteAppearanceAttempts`;
+they cannot reduce the pending denominator.
 
 Run a resumable retail sweep through the queue wrapper. The queue root owns an
 immutable source-binding manifest, an append-only event ledger, immutable

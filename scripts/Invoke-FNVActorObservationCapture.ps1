@@ -984,8 +984,11 @@ $classifiedReviewKey = if ($classificationCandidates.Count -eq 1) {
     [string]$classificationCandidates[0].reviewKey
 } else { $null }
 $classificationComplete = $null -ne $classifiedReviewKey
-$observationStatus = if ($classificationComplete) {
+$observationStatus = if ($classificationComplete -and
+    $appearanceEvidenceStatus -ceq 'complete') {
     'captured-classified-runtime-observation'
+} elseif ($classificationComplete) {
+    'captured-classified-incomplete-appearance-evidence'
 } else {
     'captured-unclassified-runtime-observation'
 }

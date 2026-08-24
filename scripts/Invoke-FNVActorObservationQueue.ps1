@@ -105,6 +105,7 @@ function New-Coverage([object[]]$Jobs) {
         pendingOutcomes = $expectedOutcomes
         attempts = 0
         unclassifiedAttempts = 0
+        incompleteAppearanceAttempts = 0
         captureErrors = 0
         capturedKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
         attemptsByJob = [Collections.Generic.Dictionary[string,int]]::new(
@@ -129,6 +130,7 @@ function Add-CoverageEvent([object]$Coverage, [object]$Event) {
     }
     $status = [string]$Event.resultStatus
     if ($status -cnotin @('captured-classified-runtime-observation',
+            'captured-classified-incomplete-appearance-evidence',
             'captured-unclassified-runtime-observation', 'capture-error')) {
         throw "Actor-observation queue event has unsupported status '$status'."
     }
@@ -160,6 +162,14 @@ function Add-CoverageEvent([object]$Coverage, [object]$Event) {
             $Coverage.capturedOutcomes++
             $Coverage.pendingOutcomes--
         }
+    }
+    elseif ($status -ceq 'captured-classified-incomplete-appearance-evidence') {
+        $classifiedKey = [string]$Event.classifiedReviewKey
+        if ([string]::IsNullOrWhiteSpace($classifiedKey) -or
+            -not $expected.Contains($classifiedKey)) {
+            throw "Incomplete-appearance queue event classified an undeclared review key for '$jobKey'."
+        }
+        $Coverage.incompleteAppearanceAttempts++
     }
     elseif ($status -ceq 'captured-unclassified-runtime-observation') {
         if (-not [string]::IsNullOrWhiteSpace([string]$Event.classifiedReviewKey)) {
@@ -210,6 +220,7 @@ function Write-CoverageCheckpoint(
         pendingOutcomes = $Coverage.pendingOutcomes
         attempts = $Coverage.attempts
         unclassifiedAttempts = $Coverage.unclassifiedAttempts
+        incompleteAppearanceAttempts = $Coverage.incompleteAppearanceAttempts
         captureErrors = $Coverage.captureErrors
         parityVerdictStatus = 'not-evaluated-by-retail-reference-queue'
     }
@@ -218,6 +229,8 @@ function Write-CoverageCheckpoint(
         if ([string]$existing.schema -cne [string]$checkpoint.schema -or
             [int]$existing.attempts -ne [int]$checkpoint.attempts -or
             [int]$existing.capturedOutcomes -ne [int]$checkpoint.capturedOutcomes -or
+            [int]$existing.incompleteAppearanceAttempts -ne
+                [int]$checkpoint.incompleteAppearanceAttempts -or
             [int]$existing.captureErrors -ne [int]$checkpoint.captureErrors -or
             [string]$existing.planManifestSha256 -cne $PlanManifestHash -or
             [string]$existing.corpusManifestSha256 -cne $CorpusManifestHash) {
@@ -368,6 +381,7 @@ if ($InitializeOnly -or $PlanOnly) {
             capturedOutcomes = $coverage.capturedOutcomes
             pendingOutcomes = $coverage.pendingOutcomes
             attempts = $coverage.attempts
+            incompleteAppearanceAttempts = $coverage.incompleteAppearanceAttempts
             captureErrors = $coverage.captureErrors
         }
     } | ConvertTo-Json -Depth 8
@@ -506,6 +520,7 @@ try {
             pendingOutcomes = $coverage.pendingOutcomes
             attempts = $coverage.attempts
             unclassifiedAttempts = $coverage.unclassifiedAttempts
+            incompleteAppearanceAttempts = $coverage.incompleteAppearanceAttempts
             captureErrors = $coverage.captureErrors
         }
         parityVerdictStatus = 'not-evaluated-by-retail-reference-queue'

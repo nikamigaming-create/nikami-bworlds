@@ -540,6 +540,7 @@
       "manifestPattern": "retail/actor-observation-report.json; retail/actor-observation.jsonl.manifest.json; background-capture-summary.json",
       "acceptedObservationStatuses": [
         "captured-unclassified-runtime-observation",
+        "captured-classified-incomplete-appearance-evidence",
         "captured-classified-runtime-observation"
       ],
       "requiredTelemetry": [
@@ -553,6 +554,7 @@
         "every native source frame retains each live skinned geometry's runtime bone order, cache dimensions, exact palette floats, and palette hash",
         "exactly one visual snapshot retains the resolved render-part, source-form, source-slot, and texture-binding appearance inventory",
         "evidence status remains captured-unclassified-runtime-observation until an expected review signature is correlated",
+        "a classified outcome remains captured-classified-incomplete-appearance-evidence until its retained runtime attachment snapshot is complete",
         "capture.windowsAppControlUsed=false",
         "capture.foregroundActivationUsed=false",
         "capture.foregroundInputInjected=false"
