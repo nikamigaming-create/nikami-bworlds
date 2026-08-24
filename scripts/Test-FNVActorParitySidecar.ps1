@@ -154,6 +154,17 @@ try {
     Assert-Contract ($faceGenReader -match
         'capacityEndAddress[\s\S]*valuesBaseAddress[\s\S]*capacityEndAddress - valuesBaseAddress') `
         'Retail FaceGen telemetry does not convert its absolute end pointer into a capacity-byte count.'
+    $weaponCollector = [regex]::Match($retailOracleSource,
+        'void sidecarCollectEquippedWeaponAttachment[\s\S]*?void sidecarCollectAppearanceSourcesAndAttachments').Value
+    Assert-Contract ($weaponCollector -match
+        'capture\.sources\.actorBaseType == kFormType_TESNPC[\s\S]*candidate\.sourceForm != capture\.equippedWeaponForm') `
+        'Retail appearance does not bind NPC weapon geometry through the exact biped WEAP source.'
+    Assert-Contract ($weaponCollector.IndexOf('capture.sources.actorBaseType == kFormType_TESNPC',
+            [StringComparison]::Ordinal) -lt
+        $weaponCollector.IndexOf('middleHigh->weaponNode', [StringComparison]::Ordinal)) `
+        'Retail appearance reaches the broad process weapon node before applying the NPC biped rule.'
+    Assert-Contract ($retailOracleSource -notmatch 'visible-skin-body-color-missing') `
+        'Retail appearance still rejects authored unbound bodyColor stages.'
     $schemaDocument = Get-Content -LiteralPath $schema -Raw | ConvertFrom-Json
     Assert-Contract ($null -ne $schemaDocument.'$defs'.appearance) `
         'Schema does not declare generic post-frame appearance evidence.'
@@ -287,8 +298,19 @@ try {
     ($handWithoutBodyColor.document.appearance.renderParts | Where-Object role -eq 'rightHand').textureBindings = @()
     Assert-ThrowsLike {
         Assert-SidecarAppearanceParity -Retail $retailAppearance -OpenMw $handWithoutBodyColor
-    } 'righthand.*required bodyColor texture semantic' `
-        'Appearance parity accepted a hand without the bodyColor texture semantic.'
+    } 'texture binding mismatch.*righthand.*bodycolor' `
+        'Appearance parity accepted a unilateral missing bodyColor binding.'
+
+    $retailHandWithoutBodyColor = Copy-JsonDocument $retailAppearance
+    ($retailHandWithoutBodyColor.document.appearance.renderParts |
+        Where-Object role -eq 'rightHand').textureBindings = @()
+    try {
+        [void](Assert-SidecarAppearanceParity `
+            -Retail $retailHandWithoutBodyColor -OpenMw $handWithoutBodyColor)
+    }
+    catch {
+        $failures.Add("Appearance parity rejected matching unbound bodyColor stages: $($_.Exception.Message)") | Out-Null
+    }
 
     $textureSemanticMismatch = Copy-JsonDocument $openMwAppearance
     (($textureSemanticMismatch.document.appearance.renderParts | Where-Object role -eq 'equipment').textureBindings[0]).semantic = 'gearNormal'
@@ -399,7 +421,33 @@ try {
     } 'missing, detached, hidden, or under the wrong retail parent' `
         'Coordinator accepted a hidden live holstered weapon.'
 
-    $validationRows = @(& $coordinator -ManifestPath $fixture -ValidateOnly)
+    $validationFixturePath = Join-Path ([IO.Path]::GetTempPath()) `
+        ("nikami-fnv-sidecar-fixture-{0}.json" -f [Guid]::NewGuid().ToString('N'))
+    $validationRosterPath = Join-Path ([IO.Path]::GetTempPath()) `
+        ("nikami-fnv-sidecar-roster-{0}.json" -f [Guid]::NewGuid().ToString('N'))
+    $temporaryFiles.Add($validationFixturePath) | Out-Null
+    $temporaryFiles.Add($validationRosterPath) | Out-Null
+    $validationDocument = Get-Content -LiteralPath $fixture -Raw | ConvertFrom-Json
+    $validationDocument.openMw.representativeOffset = 0
+    $validationDocument.actors[0].openMwRepresentativeIndex = 0
+    [IO.File]::WriteAllText($validationFixturePath,
+        ($validationDocument | ConvertTo-Json -Depth 32), [Text.UTF8Encoding]::new($false))
+    $validationRoster = [pscustomobject][ordered]@{
+        schema = 'nikami-fnv-loaded-actor-roster/v1'
+        selectedCount = 1
+        distinctVisualTypes = 1
+        actors = @([pscustomobject][ordered]@{
+            index = 0
+            form = [string]$validationDocument.actors[0].openMwBaseId
+            visualSignature = [string]$validationDocument.actors[0].visualTypeKey
+            selectedWeapon = [string]$validationDocument.actors[0].selectedMainWeapon.editorId
+            editorId = [string]$validationDocument.actors[0].editorId
+        })
+    }
+    [IO.File]::WriteAllText($validationRosterPath,
+        ($validationRoster | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+    $validationRows = @(& $coordinator -ManifestPath $validationFixturePath `
+        -OpenMwRosterPath $validationRosterPath -ValidateOnly)
     Assert-Contract ($validationRows.Count -eq 1) 'ValidateOnly did not return exactly one plan object.'
     $validation = $validationRows[0]
     Assert-Contract ($validation.status -eq 'validated-no-launch') `

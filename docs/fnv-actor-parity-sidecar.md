@@ -151,6 +151,11 @@ ordinary texture-set paths are `authored` and pathless runtime resolutions are
 `runtime`. Skin stages are `baseColor`, `normal`,
 `faceGenDetail`, `bodyColor`, `skinScatter`, and `environmentMask`; equipment
 and weapon stages use role-prefixed color/normal semantics.
+Only stages actually bound by the settled retail shader are emitted. An
+authored unbound skin stage remains an explicit absence: collection does not
+synthesize a neutral `bodyColor` binding or mark that absence unreadable.
+Parity still compares the complete binding set, so a stage present in only one
+engine is a mismatch.
 
 Collection is capped at 8,192 scene nodes, 128 geometry candidates, 48 emitted
 parts, 64 MiB of canonical bytes per texture, and a dynamically reduced

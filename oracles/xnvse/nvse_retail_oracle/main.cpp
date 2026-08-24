@@ -10699,6 +10699,43 @@ namespace
                 = sidecarNormalizeAssetPath(safeRuntimeString(modelAddress));
         }
 
+        if (capture.sources.actorBaseType == kFormType_TESNPC)
+        {
+            SidecarAppearanceAttachment* weaponAttachment = nullptr;
+            for (SidecarAppearanceAttachment& candidate : capture.attachments)
+            {
+                if (candidate.sourceForm != capture.equippedWeaponForm
+                    || candidate.sourceType != weaponType)
+                    continue;
+                if (weaponAttachment != nullptr)
+                {
+                    capture.equippedWeaponState = "equipped-unrendered";
+                    sidecarAppearanceFault(capture,
+                        "npc-equipped-weapon-biped-attachment-ambiguous");
+                    return;
+                }
+                weaponAttachment = &candidate;
+            }
+
+            capture.equippedWeaponNodePresent
+                = weaponAttachment != nullptr && weaponAttachment->root != nullptr;
+            if (!capture.equippedWeaponNodePresent)
+            {
+                capture.equippedWeaponState = "equipped-unrendered";
+                sidecarAppearanceFault(capture,
+                    "npc-equipped-weapon-biped-attachment-missing");
+                return;
+            }
+
+            capture.equippedWeaponState = "equipped";
+            weaponAttachment->role = "weapon";
+            weaponAttachment->modelPath = capture.equippedWeaponModelPath;
+            weaponAttachment->required = true;
+            if (capture.equippedWeaponModelPath.empty())
+                sidecarAppearanceFault(capture, "equipped-weapon-model-path-missing");
+            return;
+        }
+
         NiNode* weaponNode = nullptr;
         if (!safeRead(&middleHigh->weaponNode, weaponNode))
         {
@@ -11011,16 +11048,6 @@ namespace
                         if (left.semantic != right.semantic) return left.semantic < right.semantic;
                         return left.path < right.path;
                     });
-                if (part.visible && part.skinSurface)
-                {
-                    const bool hasBodyColor = std::any_of(part.textureBindings.begin(),
-                        part.textureBindings.end(), [](const SidecarTextureBinding& binding) {
-                            return binding.semantic == "bodyColor";
-                        });
-                    if (!hasBodyColor)
-                        sidecarAppearanceFault(capture,
-                            "visible-skin-body-color-missing");
-                }
                 part.stableKey = sidecarRenderPartStableKey(part);
                 part.deterministicKey = sidecarRenderPartDeterministicKey(part);
                 capture.parts.push_back(std::move(part));

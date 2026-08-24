@@ -931,11 +931,6 @@ function ConvertTo-SidecarRenderPartIndex(
 
     $partIndex = [System.Collections.Generic.Dictionary[string, object]]::new(
         [StringComparer]::Ordinal)
-    $skinRoles = [System.Collections.Generic.HashSet[string]]::new(
-        [StringComparer]::Ordinal)
-    foreach ($role in @('body', 'exposedbody', 'face', 'head', 'lefthand', 'righthand')) {
-        $skinRoles.Add($role) | Out-Null
-    }
 
     for ($partOrdinal = 0; $partOrdinal -lt $renderParts.Count; ++$partOrdinal) {
         $part = $renderParts[$partOrdinal]
@@ -1075,19 +1070,6 @@ function ConvertTo-SidecarRenderPartIndex(
                 sourceKind = $sourceKind
             })
         }
-        if ($visible -and $skinRoles.Contains($role)) {
-            $hasBodyColor = $false
-            foreach ($binding in $bindingIndex.Values) {
-                if ([string]$binding.semantic -ceq 'bodycolor') {
-                    $hasBodyColor = $true
-                    break
-                }
-            }
-            if (-not $hasBodyColor) {
-                throw "NKSC $Lane render part '$identity' lacks required bodyColor texture semantic."
-            }
-        }
-
         $partIndex.Add($identity, [pscustomobject][ordered]@{
             identity = $identity
             role = $role
