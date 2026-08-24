@@ -17,7 +17,8 @@ param(
     [string]$SaveFixture,
     [string]$GameRoot = 'D:\SteamLibrary\steamapps\common\Fallout New Vegas',
     [string]$WorldsRoot = '',
-    [int]$TimeoutSeconds = 0
+    [int]$TimeoutSeconds = 0,
+    [switch]$ActorDrawContractDiagnostic
 )
 
 Set-StrictMode -Version Latest
@@ -73,6 +74,15 @@ function Get-FileEvidence([string]$Path, [string]$Kind) {
     }
 }
 
+function Test-FiniteNumberArray([object[]]$Values, [int]$ExpectedCount) {
+    if ($Values.Count -ne $ExpectedCount) { return $false }
+    foreach ($value in $Values) {
+        try { $number = [double]$value } catch { return $false }
+        if (-not [double]::IsFinite($number)) { return $false }
+    }
+    return $true
+}
+
 function ConvertTo-StableFormKey([uint32]$FormId, [object[]]$RuntimePlugins) {
     if ($FormId -eq 0) { return $null }
     $pluginIndex = [int](($FormId -shr 24) -band 0xff)
@@ -119,13 +129,58 @@ if ($recipes.Count -ne 1) {
 $recipe = $recipes[0]
 $policy = $recipe.capturePolicy
 $telemetryPolicy = $recipe.telemetryPolicy
+$surfaceContractPolicy = $telemetryPolicy.surfaceContract
+$drawContractPolicy = $telemetryPolicy.drawContractDiagnostic
 if ([string]$telemetryPolicy.mode -cne 'compact-actor-pose-sample' -or
     [string]$telemetryPolicy.poseEvent -cne 'actor-pose-sample' -or
+    [string]$telemetryPolicy.visualSnapshotEvent -cne 'actor-visual-snapshot' -or
+    [string]$telemetryPolicy.visualSnapshotFaultEvent -cne 'actor-visual-snapshot-fault' -or
+    [int]$telemetryPolicy.requiredVisualSnapshotsPerSourceFrame -ne 1 -or
+    [int]$telemetryPolicy.requiredAppearanceSnapshots -ne 1 -or
+    -not [bool]$telemetryPolicy.requireSkinPalettesForSkinnedGeometry -or
+    [int]$telemetryPolicy.skinPaletteComponentsPerRegister -lt 1 -or
+    [int]$telemetryPolicy.skinPaletteBytesPerComponent -lt 1 -or
+    [int]$telemetryPolicy.skinPaletteMaximumBytesPerShape -lt 1 -or
+    [int]$telemetryPolicy.minimumNamedNodesPerSnapshot -lt 1 -or
     [int]$telemetryPolicy.minimumPoseSamples -lt 2 -or
-    [int]$telemetryPolicy.cameraMatrixElementCount -lt 1 -or
+    [int]$telemetryPolicy.cameraMatrixElementCount -ne 16 -or
+    [int]$telemetryPolicy.cameraWorldRotationElementCount -ne 9 -or
+    [int]$telemetryPolicy.cameraWorldTranslationElementCount -ne 3 -or
+    [int]$telemetryPolicy.cameraFrustumElementCount -ne 7 -or
+    [int]$telemetryPolicy.cameraViewportElementCount -ne 4 -or
+    -not [bool]$telemetryPolicy.requireExactPerspectiveProjection -or
     [int64]$telemetryPolicy.maximumJsonlBytes -lt 1 -or
     @($telemetryPolicy.forbiddenEvents).Count -lt 1) {
     throw 'The actor-observation telemetry policy is incomplete or invalid.'
+}
+if ($null -eq $surfaceContractPolicy -or
+    [string]$surfaceContractPolicy.event -cne 'actor-surface-contract' -or
+    [string]$surfaceContractPolicy.targetTexturesEvent -cne
+        'actor-draw-contract-target-textures' -or
+    [int]$surfaceContractPolicy.renderFrameLead -lt 1 -or
+    [int]$surfaceContractPolicy.textureStageCount -lt 1 -or
+    [int]$surfaceContractPolicy.textureStageCount -gt 16 -or
+    [int]$surfaceContractPolicy.maximumShaderBytes -lt 1 -or
+    [int]$surfaceContractPolicy.matrixElementCount -ne 16 -or
+    [double]$surfaceContractPolicy.matrixTolerance -le 0 -or
+    -not [bool]$surfaceContractPolicy.requireBackBufferDimensions -or
+    [double]$surfaceContractPolicy.normalizedDepthMinimum -ge
+        [double]$surfaceContractPolicy.normalizedDepthMaximum) {
+    throw 'The actor surface-contract policy is incomplete or invalid.'
+}
+if ($null -eq $drawContractPolicy -or
+    [string]$drawContractPolicy.event -cne 'actor-draw-contract' -or
+    [string]$drawContractPolicy.targetTexturesEvent -cne
+        'actor-draw-contract-target-textures' -or
+    [int]$drawContractPolicy.renderFrameLead -lt 1 -or
+    [int]$drawContractPolicy.textureStageCount -lt 1 -or
+    [int]$drawContractPolicy.textureStageCount -gt 16 -or
+    [int]$drawContractPolicy.maximumRecordsPerSourceFrame -lt 1 -or
+    [int]$drawContractPolicy.vertexShaderRegisterCount -lt 1 -or
+    [int]$drawContractPolicy.vertexShaderRegisterCount -gt 256 -or
+    [int]$drawContractPolicy.maximumShaderBytes -lt 1 -or
+    [int]$drawContractPolicy.maximumBufferBytesPerRecord -lt 1) {
+    throw 'The actor draw-contract diagnostic policy is incomplete or invalid.'
 }
 if ($TimeoutSeconds -le 0) {
     $TimeoutSeconds = [int]$policy.timeoutSeconds
@@ -344,6 +399,10 @@ else {
 
 $retailDirectory = Join-Path $outputDirectory 'retail'
 New-Item -ItemType Directory -Path $retailDirectory | Out-Null
+$drawArtifactDirectory = Join-Path $retailDirectory 'actor-draw-contract'
+if ($ActorDrawContractDiagnostic) {
+    New-Item -ItemType Directory -Path $drawArtifactDirectory | Out-Null
+}
 $jsonlPath = Join-Path $retailDirectory 'actor-observation.jsonl'
 $screensDirectory = Join-Path $retailDirectory 'native-d3d9-frames'
 $runtimeForm = ([string]$job.baseRuntimeFormId).ToUpperInvariant()
@@ -378,6 +437,38 @@ $oracleArguments = @{
     CaptureAnimation = $true
     TargetAnimationOnly = $true
     CompactActorTelemetry = $true
+    CaptureActorSkinPalettes = $true
+    ActorSkinPaletteMaximumBytesPerShape =
+        [int]$telemetryPolicy.skinPaletteMaximumBytesPerShape
+    CaptureActorSurfaceContract = $true
+    ActorSurfaceMaximumShaderBytes =
+        [int]$surfaceContractPolicy.maximumShaderBytes
+    ActorSurfaceTextureStageCount =
+        [int]$surfaceContractPolicy.textureStageCount
+    ActorSurfaceRenderFrameLead =
+        [int]$surfaceContractPolicy.renderFrameLead
+    CaptureActorDrawContract = [bool]$ActorDrawContractDiagnostic
+    ActorDrawMaximumRecordsPerSourceFrame = if ($ActorDrawContractDiagnostic) {
+        [int]$drawContractPolicy.maximumRecordsPerSourceFrame
+    } else { 0 }
+    ActorDrawVertexShaderRegisterCount = if ($ActorDrawContractDiagnostic) {
+        [int]$drawContractPolicy.vertexShaderRegisterCount
+    } else { 0 }
+    ActorDrawMaximumShaderBytes = if ($ActorDrawContractDiagnostic) {
+        [int]$drawContractPolicy.maximumShaderBytes
+    } else { 0 }
+    ActorDrawTextureStageCount = if ($ActorDrawContractDiagnostic) {
+        [int]$drawContractPolicy.textureStageCount
+    } else { 0 }
+    ActorDrawRenderFrameLead = if ($ActorDrawContractDiagnostic) {
+        [int]$drawContractPolicy.renderFrameLead
+    } else { 0 }
+    ActorDrawMaximumBufferBytesPerRecord = if ($ActorDrawContractDiagnostic) {
+        [int]$drawContractPolicy.maximumBufferBytesPerRecord
+    } else { 0 }
+    ActorDrawArtifactDirectory = if ($ActorDrawContractDiagnostic) {
+        $drawArtifactDirectory
+    } else { '' }
     PrepareActorFrame = [int]$policy.maxFrames
     EquipActorFrame = [int]$policy.maxFrames
     ScreenshotFrame = @($screenshotFrames | Sort-Object)
@@ -396,8 +487,20 @@ $events = @([IO.File]::ReadLines($jsonlPath) | ForEach-Object {
     if (-not [string]::IsNullOrWhiteSpace($_)) { $_ | ConvertFrom-Json }
 })
 $startEvents = @($events | Where-Object { [string]$_.event -eq 'start' })
-if ($startEvents.Count -ne 1 -or -not [bool]$startEvents[0].compactActorTelemetry) {
-    throw 'Retail actor observation did not confirm compact actor telemetry mode.'
+if ($startEvents.Count -ne 1 -or -not [bool]$startEvents[0].compactActorTelemetry -or
+    -not [bool]$startEvents[0].captureActorSkinPalettes -or
+    [int]$startEvents[0].actorSkinPaletteMaximumBytesPerShape -ne
+        [int]$telemetryPolicy.skinPaletteMaximumBytesPerShape -or
+    -not [bool]$startEvents[0].captureActorSurfaceContract -or
+    [int]$startEvents[0].actorSurfaceMaximumShaderBytes -ne
+        [int]$surfaceContractPolicy.maximumShaderBytes -or
+    [int]$startEvents[0].actorSurfaceTextureStageCount -ne
+        [int]$surfaceContractPolicy.textureStageCount -or
+    [int]$startEvents[0].actorSurfaceRenderFrameLead -ne
+        [int]$surfaceContractPolicy.renderFrameLead -or
+    [bool]$startEvents[0].captureActorDrawContract -ne
+        [bool]$ActorDrawContractDiagnostic) {
+    throw 'Retail actor observation did not confirm compact actor and configured skin-palette telemetry.'
 }
 $unexpectedDiagnosticEvents = @($events | Where-Object {
     [string]$_.event -in @($telemetryPolicy.forbiddenEvents)
@@ -442,15 +545,380 @@ if ($cameraEvents.Count -ne $orderedScreenshotFrames.Count) {
 for ($cameraIndex = 0; $cameraIndex -lt $cameraEvents.Count; ++$cameraIndex) {
     $cameraEvent = $cameraEvents[$cameraIndex]
     $expectedFrame = [int]$orderedScreenshotFrames[$cameraIndex]
+    $cameraWorld = $cameraEvent.cameraWorld
+    $viewMatrix = @($cameraEvent.viewMatrix)
+    $projectionMatrix = @($cameraEvent.projectionMatrix)
+    $frustum = @($cameraEvent.frustum)
+    $viewport = @($cameraEvent.viewport)
     if ([int]$cameraEvent.frame -ne $expectedFrame -or
         [string]$cameraEvent.shotKind -cne [string]$shotFrameKinds[$expectedFrame] -or
         -not [bool]$cameraEvent.readable -or
-        @($cameraEvent.viewMatrix).Count -ne [int]$telemetryPolicy.cameraMatrixElementCount -or
-        @($cameraEvent.projectionMatrix).Count -ne [int]$telemetryPolicy.cameraMatrixElementCount) {
+        -not [bool]$cameraEvent.projectionExact -or
+        $null -eq $cameraWorld -or
+        -not (Test-FiniteNumberArray @($cameraWorld.rotation) `
+            ([int]$telemetryPolicy.cameraWorldRotationElementCount)) -or
+        -not (Test-FiniteNumberArray @($cameraWorld.translation) `
+            ([int]$telemetryPolicy.cameraWorldTranslationElementCount)) -or
+        -not [double]::IsFinite([double]$cameraWorld.scale) -or
+        [double]$cameraWorld.scale -le 0.0 -or
+        -not (Test-FiniteNumberArray $viewMatrix `
+            ([int]$telemetryPolicy.cameraMatrixElementCount)) -or
+        -not (Test-FiniteNumberArray $projectionMatrix `
+            ([int]$telemetryPolicy.cameraMatrixElementCount)) -or
+        -not (Test-FiniteNumberArray $frustum `
+            ([int]$telemetryPolicy.cameraFrustumElementCount)) -or
+        -not (Test-FiniteNumberArray $viewport `
+            ([int]$telemetryPolicy.cameraViewportElementCount)) -or
+        -not [double]::IsFinite([double]$cameraEvent.fovYRadians) -or
+        [double]$cameraEvent.fovYRadians -le 0.0 -or
+        [double]$frustum[0] -ge [double]$frustum[1] -or
+        [double]$frustum[3] -ge [double]$frustum[2] -or
+        [double]$frustum[4] -le 0.0 -or
+        [double]$frustum[5] -le [double]$frustum[4] -or
+        [int]$frustum[6] -ne 0) {
         throw "Retail camera observation $cameraIndex does not match frame $expectedFrame and its configured shot."
     }
 }
 $spawnedReference = [uint32]$templateEvents[0].referenceForm
+$requestedRuntimeForm = [Convert]::ToUInt32($runtimeForm, 16)
+$snapshotFaults = @($events | Where-Object {
+    [string]$_.event -eq [string]$telemetryPolicy.visualSnapshotFaultEvent
+})
+if ($snapshotFaults.Count -ne 0) {
+    throw "Retail actor observation reported $($snapshotFaults.Count) visual-snapshot fault(s)."
+}
+$visualSnapshots = @($events | Where-Object {
+    [string]$_.event -eq [string]$telemetryPolicy.visualSnapshotEvent
+})
+$expectedSnapshotCount = $orderedScreenshotFrames.Count *
+    [int]$telemetryPolicy.requiredVisualSnapshotsPerSourceFrame
+if ($visualSnapshots.Count -ne $expectedSnapshotCount) {
+    throw "Retail capture retained $($visualSnapshots.Count) actor visual snapshots; expected $expectedSnapshotCount."
+}
+$appearanceSnapshots = [Collections.Generic.List[object]]::new()
+$snapshotSummaries = [Collections.Generic.List[object]]::new()
+foreach ($expectedFrame in $orderedScreenshotFrames) {
+    $frameSnapshots = @($visualSnapshots | Where-Object {
+        [int]$_.requestedFrame -eq [int]$expectedFrame
+    })
+    if ($frameSnapshots.Count -ne [int]$telemetryPolicy.requiredVisualSnapshotsPerSourceFrame) {
+        throw "Retail frame $expectedFrame does not have exactly one actor visual snapshot."
+    }
+    $snapshot = $frameSnapshots[0]
+    $nodes = @($snapshot.nodes)
+    if ([int]$snapshot.frame -ne [int]$expectedFrame -or
+        [uint32]$snapshot.refForm -ne $spawnedReference -or
+        [uint32]$snapshot.baseForm -ne $requestedRuntimeForm -or
+        $null -eq $snapshot.rootWorld -or
+        $nodes.Count -lt [int]$telemetryPolicy.minimumNamedNodesPerSnapshot) {
+        throw "Retail actor visual snapshot for frame $expectedFrame has invalid actor, root, or named-node identity."
+    }
+    foreach ($node in $nodes) {
+        if ([string]::IsNullOrWhiteSpace([string]$node.name) -or
+            [string]::IsNullOrWhiteSpace([string]$node.nodePath) -or
+            $null -eq $node.transform -or
+            @($node.transform.localRotation).Count -ne 9 -or
+            @($node.transform.localTranslation).Count -ne 3 -or
+            @($node.transform.worldRotation).Count -ne 9 -or
+            @($node.transform.worldTranslation).Count -ne 3) {
+            throw "Retail actor visual snapshot for frame $expectedFrame contains an incomplete named-node transform."
+        }
+    }
+    if (@($nodes.nodePath | Sort-Object -Unique).Count -ne $nodes.Count) {
+        throw "Retail actor visual snapshot for frame $expectedFrame contains duplicate node paths."
+    }
+    $skinPalettes = @($snapshot.skinPalettes)
+    $skinPaletteCapture = $snapshot.skinPaletteCapture
+    if ($null -eq $skinPaletteCapture -or [bool]$skinPaletteCapture.traversalTruncated -or
+        [int]$skinPaletteCapture.invalidPalettes -ne 0 -or
+        [int]$skinPaletteCapture.skinInstances -ne $skinPalettes.Count -or
+        [int]$skinPaletteCapture.capturedPalettes +
+            [int]$skinPaletteCapture.notRenderCached -ne $skinPalettes.Count) {
+        throw "Retail actor visual snapshot for frame $expectedFrame has incomplete skin-palette traversal."
+    }
+    foreach ($palette in $skinPalettes) {
+        if ([string]$palette.status -ceq 'not-render-cached') {
+            if ([int64]$palette.matrixCount -ne 0 -or
+                [int64]$palette.registersPerMatrix -ne 0 -or
+                [int64]$palette.allocatedBytes -ne 0 -or
+                [int64]$palette.matrixBytes -ne 0) {
+                throw "Retail actor visual snapshot for frame $expectedFrame has inconsistent uncached skin data at $($palette.nodePath)."
+            }
+            continue
+        }
+        $matrixFloatCount = [int64]$palette.matrixCount *
+            [int64]$palette.registersPerMatrix *
+            [int64]$telemetryPolicy.skinPaletteComponentsPerRegister
+        if ([string]$palette.status -cne 'captured' -or
+            [string]::IsNullOrWhiteSpace([string]$palette.nodePath) -or
+            [int]$palette.componentsPerRegister -ne
+                [int]$telemetryPolicy.skinPaletteComponentsPerRegister -or
+            [int64]$palette.matrixBytes -ne $matrixFloatCount *
+                [int64]$telemetryPolicy.skinPaletteBytesPerComponent -or
+            [int64]$palette.matrixBytes -gt
+                [int64]$telemetryPolicy.skinPaletteMaximumBytesPerShape -or
+            [int64]$palette.allocatedBytes -lt [int64]$palette.matrixBytes -or
+            @($palette.bones).Count -ne [int64]$palette.matrixCount -or
+            -not (Test-FiniteNumberArray @($palette.matrices) $matrixFloatCount)) {
+            throw "Retail actor visual snapshot for frame $expectedFrame contains an invalid skin palette at $($palette.nodePath)."
+        }
+    }
+    if (@($skinPalettes.nodePath | Sort-Object -Unique).Count -ne $skinPalettes.Count) {
+        throw "Retail actor visual snapshot for frame $expectedFrame contains duplicate skin-palette node paths."
+    }
+    if ($null -ne $snapshot.appearance) {
+        $appearanceSnapshots.Add($snapshot)
+    }
+    $snapshotSummaries.Add([pscustomobject][ordered]@{
+        frame = [int]$snapshot.frame
+        requestedFrame = [int]$snapshot.requestedFrame
+        shotKind = [string]$shotFrameKinds[[int]$expectedFrame]
+        namedNodeCount = $nodes.Count
+        geometryCandidateCount = [int]$skinPaletteCapture.geometryCandidates
+        skinPaletteCount = $skinPalettes.Count
+        cachedSkinPaletteCount = [int]$skinPaletteCapture.capturedPalettes
+        uncachedSkinInstanceCount = [int]$skinPaletteCapture.notRenderCached
+        appearanceRetained = $null -ne $snapshot.appearance
+        appearanceComplete = $null -ne $snapshot.appearance -and
+            [bool]$snapshot.appearance.complete
+        appearanceRenderPartCount = if ($null -ne $snapshot.appearance) {
+            @($snapshot.appearance.renderParts).Count
+        } else { 0 }
+    })
+}
+if ($appearanceSnapshots.Count -ne [int]$telemetryPolicy.requiredAppearanceSnapshots) {
+    throw "Retail capture retained $($appearanceSnapshots.Count) appearance snapshots; expected exactly one."
+}
+$appearanceSnapshot = $appearanceSnapshots[0].appearance
+if ([bool]$appearanceSnapshot.truncated -or
+    @($appearanceSnapshot.renderParts).Count -lt 1) {
+    throw 'Retail appearance snapshot is truncated or contains no resolved render parts.'
+}
+$appearanceEvidenceStatus = if ([bool]$appearanceSnapshot.complete) {
+    'complete'
+} else {
+    'incomplete-runtime-attachment-evidence'
+}
+$surfaceContractEvents = @($events | Where-Object {
+    [string]$_.event -eq [string]$surfaceContractPolicy.event
+})
+$drawTargetEvents = @($events | Where-Object {
+    [string]$_.event -eq [string]$surfaceContractPolicy.targetTexturesEvent
+})
+$drawTargetFaults = @($events | Where-Object {
+    [string]$_.event -eq 'actor-draw-contract-target-textures-fault'
+})
+if ($drawTargetFaults.Count -ne 0 -or $drawTargetEvents.Count -ne 1 -or
+    @($drawTargetEvents[0].textures).Count -lt 1) {
+    throw 'Actor surface capture did not retain one nonempty target-texture registry.'
+}
+if ($surfaceContractEvents.Count -ne $orderedScreenshotFrames.Count) {
+    throw "Actor surface capture retained $($surfaceContractEvents.Count) source-frame events; expected $($orderedScreenshotFrames.Count)."
+}
+$surfaceFrameSummaries = [Collections.Generic.List[object]]::new()
+$matrixTolerance = [double]$surfaceContractPolicy.matrixTolerance
+foreach ($expectedFrame in $orderedScreenshotFrames) {
+    $frameEvents = @($surfaceContractEvents | Where-Object {
+        [int]$_.sourceFrame -eq [int]$expectedFrame
+    })
+    if ($frameEvents.Count -ne 1) {
+        throw "Actor surface contract frame $expectedFrame is missing or duplicated."
+    }
+    $surfaceEvent = $frameEvents[0]
+    $surface = $surfaceEvent.surface
+    if ([int]$surfaceEvent.frame -ne [int]$expectedFrame -or
+        [int]$surfaceEvent.renderFrameLead -ne
+            [int]$surfaceContractPolicy.renderFrameLead -or
+        -not [bool]$surfaceEvent.targetTexturesReady -or
+        [int]$surfaceEvent.captureCount -ne 1 -or $null -eq $surface) {
+        throw "Actor surface contract frame $expectedFrame is missing one captured surface."
+    }
+    $transforms = $surface.fixedFunctionTransforms
+    $projection = @($transforms.projection)
+    $renderTarget = $surface.renderTarget
+    $targetDescription = $renderTarget.renderTargetDescription
+    $backBufferDescription = $renderTarget.backBufferDescription
+    $viewport = $renderTarget.viewport
+    $scissor = $renderTarget.scissor
+    $matrixElementCount = [int]$surfaceContractPolicy.matrixElementCount
+    $worldTransformFinite = Test-FiniteNumberArray `
+        -Values @($transforms.world) -ExpectedCount $matrixElementCount
+    $viewTransformFinite = Test-FiniteNumberArray `
+        -Values @($transforms.view) -ExpectedCount $matrixElementCount
+    $projectionTransformFinite = Test-FiniteNumberArray `
+        -Values $projection -ExpectedCount $matrixElementCount
+    if ([int]$surface.sourceFrame -ne [int]$expectedFrame -or
+        [int]$surface.renderFrame -ne [int]$expectedFrame -
+            [int]$surfaceContractPolicy.renderFrameLead -or
+        [string]::IsNullOrWhiteSpace([string]$surface.matchedTexture.path) -or
+        [int]$surface.vertexShader.getResult -ne 0 -or
+        [int]$surface.vertexShader.getFunctionResult -ne 0 -or
+        [int]$surface.vertexShader.byteCount -le 0 -or
+        [uint32]$surface.vertexShader.fnv1a32 -eq 0 -or
+        -not [bool]$surface.vertexShader.hasBonesParameter -or
+        -not [bool]$surface.vertexShader.hasSkinModelViewProjectionParameter -or
+        [int]$transforms.worldResult -ne 0 -or
+        [int]$transforms.viewResult -ne 0 -or
+        [int]$transforms.projectionResult -ne 0 -or
+        -not $worldTransformFinite -or
+        -not $viewTransformFinite -or
+        -not $projectionTransformFinite -or
+        [int]$renderTarget.renderTargetResult -ne 0 -or
+        [int]$renderTarget.renderTargetDescriptionResult -ne 0 -or
+        [int]$renderTarget.backBufferResult -ne 0 -or
+        [int]$renderTarget.backBufferDescriptionResult -ne 0 -or
+        [int]$renderTarget.renderTargetIdentityResult -ne 0 -or
+        [int]$renderTarget.backBufferIdentityResult -ne 0 -or
+        -not [bool]$renderTarget.matchesBackBufferDimensions -or
+        [int]$targetDescription.width -le 0 -or
+        [int]$targetDescription.height -le 0 -or
+        [int]$targetDescription.width -ne [int]$backBufferDescription.width -or
+        [int]$targetDescription.height -ne [int]$backBufferDescription.height -or
+        [int]$viewport.getResult -ne 0 -or
+        [int]$viewport.x -ne 0 -or [int]$viewport.y -ne 0 -or
+        [int]$viewport.width -ne [int]$targetDescription.width -or
+        [int]$viewport.height -ne [int]$targetDescription.height -or
+        [Math]::Abs([double]$viewport.minimumZ -
+            [double]$surfaceContractPolicy.normalizedDepthMinimum) -gt $matrixTolerance -or
+        [Math]::Abs([double]$viewport.maximumZ -
+            [double]$surfaceContractPolicy.normalizedDepthMaximum) -gt $matrixTolerance -or
+        [int]$scissor.getResult -ne 0 -or
+        [int]$scissor.left -ne 0 -or [int]$scissor.top -ne 0 -or
+        [int]$scissor.right -ne [int]$targetDescription.width -or
+        [int]$scissor.bottom -ne [int]$targetDescription.height -or
+        [double]$projection[0] -le 0 -or [double]$projection[5] -le 0 -or
+        [Math]::Abs([double]$projection[11] -
+            [double]$surfaceContractPolicy.perspectiveWTerm) -gt $matrixTolerance -or
+        [Math]::Abs([double]$projection[15] -
+            [double]$surfaceContractPolicy.homogeneousBottomRight) -gt $matrixTolerance) {
+        throw "Actor surface contract frame $expectedFrame is not one complete final-eye skinned source-resolution scene-color draw."
+    }
+    $surfaceFrameSummaries.Add([pscustomobject][ordered]@{
+        sourceFrame = [int]$expectedFrame
+        renderFrame = [int]$surface.renderFrame
+        texture = [string]$surface.matchedTexture.path
+        vertexShaderFnv1a32 = [uint32]$surface.vertexShader.fnv1a32
+        backBufferWidth = [int]$backBufferDescription.width
+        backBufferHeight = [int]$backBufferDescription.height
+        projection = @($projection)
+        verticalFovRadians = 2.0 * [Math]::Atan(1.0 / [double]$projection[5])
+    })
+}
+$surfaceContractSummary = [pscustomobject][ordered]@{
+    finalEyeSourceResolutionSceneColorRequired = $true
+    skinnedShaderRequired = $true
+    targetTextureCount = @($drawTargetEvents[0].textures).Count
+    renderFrameLead = [int]$surfaceContractPolicy.renderFrameLead
+    sourceFrames = @($surfaceFrameSummaries)
+}
+$drawContractSummary = $null
+$drawContractEvents = @($events | Where-Object {
+    [string]$_.event -eq [string]$drawContractPolicy.event
+})
+if ($ActorDrawContractDiagnostic) {
+    if ($drawContractEvents.Count -ne $orderedScreenshotFrames.Count) {
+        throw "Actor draw-contract diagnostic retained $($drawContractEvents.Count) source-frame events; expected $($orderedScreenshotFrames.Count)."
+    }
+    $drawFrameSummaries = [Collections.Generic.List[object]]::new()
+    foreach ($expectedFrame in $orderedScreenshotFrames) {
+        $frameEvents = @($drawContractEvents | Where-Object {
+            [int]$_.sourceFrame -eq [int]$expectedFrame
+        })
+        if ($frameEvents.Count -ne 1) {
+            throw "Actor draw-contract diagnostic frame $expectedFrame is missing or duplicated."
+        }
+        $drawEvent = $frameEvents[0]
+        $records = @($drawEvent.records)
+        if ([int]$drawEvent.frame -ne [int]$expectedFrame -or
+            [int]$drawEvent.renderFrameLead -ne
+                [int]$drawContractPolicy.renderFrameLead -or
+            -not [bool]$drawEvent.targetTexturesReady -or
+            [int]$drawEvent.maximumRecords -ne
+                [int]$drawContractPolicy.maximumRecordsPerSourceFrame -or
+            $records.Count -lt 1 -or $records.Count -gt
+                [int]$drawContractPolicy.maximumRecordsPerSourceFrame) {
+            throw "Actor draw-contract diagnostic frame $expectedFrame has invalid timing, registry, or record count."
+        }
+        $completeShaderRecords = 0
+        $sourceResolutionRecords = 0
+        $surfaceShaderRecords = 0
+        $surfaceShaderHash = [uint32](@($surfaceContractEvents | Where-Object {
+            [int]$_.sourceFrame -eq [int]$expectedFrame
+        })[0].surface.vertexShader.fnv1a32)
+        foreach ($record in $records) {
+            $constants = @($record.vertexConstants.values)
+            $recordTarget = $record.renderTarget
+            if ([int]$record.sourceFrame -ne [int]$expectedFrame -or
+                [int]$record.renderFrame -ne [int]$expectedFrame -
+                    [int]$drawContractPolicy.renderFrameLead -or
+                [string]::IsNullOrWhiteSpace([string]$record.matchedTexture.path) -or
+                [int]$record.vertexConstants.registerCount -ne
+                    [int]$drawContractPolicy.vertexShaderRegisterCount -or
+                $constants.Count -ne
+                    [int]$drawContractPolicy.vertexShaderRegisterCount * 4 -or
+                [int]$recordTarget.renderTargetResult -ne 0 -or
+                [int]$recordTarget.renderTargetDescriptionResult -ne 0 -or
+                [int]$recordTarget.backBufferResult -ne 0 -or
+                [int]$recordTarget.backBufferDescriptionResult -ne 0 -or
+                [int]$recordTarget.renderTargetIdentityResult -ne 0 -or
+                [int]$recordTarget.backBufferIdentityResult -ne 0) {
+                throw "Actor draw-contract diagnostic frame $expectedFrame contains an invalid draw record."
+            }
+            if ([bool]$recordTarget.matchesBackBufferDimensions) {
+                ++$sourceResolutionRecords
+                if ([uint32]$record.vertexShader.fnv1a32 -eq $surfaceShaderHash) {
+                    ++$surfaceShaderRecords
+                }
+            }
+            if ([int]$record.vertexShader.getResult -eq 0 -and
+                [int]$record.vertexShader.getFunctionResult -eq 0 -and
+                [int]$record.vertexShader.byteCount -gt 0 -and
+                [bool]$record.vertexShader.artifact.written -and
+                [int]$record.vertexConstants.getResult -eq 0 -and
+                @($record.vertexDeclaration.elements).Count -gt 0) {
+                $shaderPath = [IO.Path]::GetFullPath([string]$record.vertexShader.artifact.path)
+                if (-not (Test-Path -LiteralPath $shaderPath -PathType Leaf) -or
+                    -not $shaderPath.StartsWith(
+                        [IO.Path]::GetFullPath($drawArtifactDirectory) +
+                            [IO.Path]::DirectorySeparatorChar,
+                        [StringComparison]::OrdinalIgnoreCase) -or
+                    (Get-Item -LiteralPath $shaderPath).Length -ne
+                        [int64]$record.vertexShader.artifact.bytes) {
+                    throw "Actor draw-contract shader artifact is missing or outside its immutable directory: $shaderPath"
+                }
+                ++$completeShaderRecords
+            }
+        }
+        if ($completeShaderRecords -lt 1 -or $sourceResolutionRecords -lt 1 -or
+            $surfaceShaderRecords -lt 1) {
+            throw "Actor draw-contract diagnostic frame $expectedFrame contains no complete replayable copy of its final-eye surface draw."
+        }
+        $drawFrameSummaries.Add([pscustomobject][ordered]@{
+            sourceFrame = [int]$expectedFrame
+            renderFrame = [int]$expectedFrame -
+                [int]$drawContractPolicy.renderFrameLead
+            recordCount = $records.Count
+            completeShaderRecordCount = $completeShaderRecords
+            sourceResolutionRecordCount = $sourceResolutionRecords
+            surfaceShaderRecordCount = $surfaceShaderRecords
+            vertexBufferArtifacts = @($records | Where-Object {
+                [bool]$_.vertexBuffer.artifact.written
+            }).Count
+            indexBufferArtifacts = @($records | Where-Object {
+                [bool]$_.indexBuffer.artifact.written
+            }).Count
+        })
+    }
+    $drawContractSummary = [pscustomobject][ordered]@{
+        diagnosticOnly = $true
+        targetTextureCount = @($drawTargetEvents[0].textures).Count
+        renderFrameLead = [int]$drawContractPolicy.renderFrameLead
+        sourceFrames = @($drawFrameSummaries)
+    }
+}
+elseif ($drawContractEvents.Count -ne 0) {
+    throw 'Actor draw-contract events were retained without the explicit diagnostic switch.'
+}
 $actorFrames = @($events | Where-Object {
     [string]$_.event -eq [string]$telemetryPolicy.poseEvent -and
         [uint32]$_.refForm -eq $spawnedReference
@@ -469,7 +937,6 @@ if ($scheduledEvents.Count -ne $scheduledCommands.Count -or
 }
 
 $observedStableForms = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-$requestedRuntimeForm = [Convert]::ToUInt32($runtimeForm, 16)
 $leveledExtra = $templateEvents[0].leveledExtra
 foreach ($runtimeSourceForm in @(
     [uint32]$leveledExtra.form,
@@ -604,6 +1071,11 @@ foreach ($artifact in @($jsonlPath, [string]$oracleRun.runManifest) +
         $artifacts.Add((Get-FileEvidence $artifact 'retail-actor-observation'))
     }
 }
+if ($ActorDrawContractDiagnostic) {
+    foreach ($artifact in Get-ChildItem -LiteralPath $drawArtifactDirectory -File) {
+        $artifacts.Add((Get-FileEvidence $artifact.FullName 'retail-actor-draw-contract'))
+    }
+}
 $reportPath = Join-Path $retailDirectory 'actor-observation-report.json'
 $report = [ordered]@{
     schema = 'nikami-fnv-actor-observation/v1'
@@ -644,6 +1116,21 @@ $report = [ordered]@{
         animationFirstFrame = [int]$actorFrames[0].frame
         animationLastFrame = [int]$actorFrames[-1].frame
         animationTelemetry = [string]$telemetryPolicy.mode
+        visualSnapshotEvent = [string]$telemetryPolicy.visualSnapshotEvent
+        visualSnapshots = @($snapshotSummaries)
+        skinPalettePolicy = [ordered]@{
+            requiredForSkinnedGeometry =
+                [bool]$telemetryPolicy.requireSkinPalettesForSkinnedGeometry
+            componentsPerRegister =
+                [int]$telemetryPolicy.skinPaletteComponentsPerRegister
+            bytesPerComponent = [int]$telemetryPolicy.skinPaletteBytesPerComponent
+            maximumBytesPerShape =
+                [int]$telemetryPolicy.skinPaletteMaximumBytesPerShape
+        }
+        surfaceContract = $surfaceContractSummary
+        drawContractDiagnostic = $drawContractSummary
+        appearanceEvidenceStatus = $appearanceEvidenceStatus
+        appearanceSnapshot = $appearanceSnapshot
         telemetryBytes = $jsonlBytes
         telemetryMaximumBytes = [int64]$telemetryPolicy.maximumJsonlBytes
     }

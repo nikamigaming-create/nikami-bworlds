@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotActorReview", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -86,6 +86,10 @@ param(
     [string]$ActorOraclePluginDll = "",
     [string]$ActorSaveFixture = "",
     [string]$ActorGameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
+    [switch]$ActorDrawContractDiagnostic,
+    [string]$OpenNvRoot = "",
+    [string]$ActorReviewScene = "",
+    [string]$GodotBinary = "",
     # Opening captures may target an isolated runtime built under local/labs.
     # Leave empty to preserve the release runtime default used by existing
     # recipes and launcher invocations.
@@ -119,6 +123,7 @@ $realSaveRunner = Join-Path $PSScriptRoot "Invoke-FNVRealSaveCapture.ps1"
 $godotRouteRunner = Join-Path $PSScriptRoot "Invoke-OpenNVGodotShowcaseCapture.ps1"
 $godotCinematicRunner = Join-Path $PSScriptRoot "Invoke-OpenNVCinematicReelCapture.ps1"
 $godotPortraitRunner = Join-Path $PSScriptRoot "Invoke-OpenNVFamousPeopleCapture.ps1"
+$godotActorReviewRunner = Join-Path $PSScriptRoot "Invoke-OpenNVActorReviewCapture.ps1"
 $actorObservationRunner = Join-Path $PSScriptRoot "Invoke-FNVActorObservationCapture.ps1"
 $canonicalSave330Path = Join-Path $WorldsRoot "local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos"
 if ([string]::IsNullOrWhiteSpace($SavePath)) {
@@ -146,7 +151,7 @@ if ($Target -ne "Godot" -and $Scenario -ne "ActorObservation") {
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } elseif ($Scenario -eq "ActorObservation") { "fnv-actor-observation" } elseif ($Scenario -eq "GodotRoute") { "opennv-godot-route" } elseif ($Scenario -eq "GodotCinematics") { "opennv-godot-cinematics" } elseif ($Scenario -eq "GodotPortraits") { "opennv-godot-portraits" } else { "jam-background-$($Target.ToLowerInvariant())" }
+    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } elseif ($Scenario -eq "ActorObservation") { "fnv-actor-observation" } elseif ($Scenario -eq "GodotActorReview") { "opennv-godot-actor-review" } elseif ($Scenario -eq "GodotRoute") { "opennv-godot-route" } elseif ($Scenario -eq "GodotCinematics") { "opennv-godot-cinematics" } elseif ($Scenario -eq "GodotPortraits") { "opennv-godot-portraits" } else { "jam-background-$($Target.ToLowerInvariant())" }
     $OutputRoot = Join-Path $WorldsRoot "run\$outputPrefix-$stamp"
 }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
@@ -168,7 +173,7 @@ if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTran
 if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
     throw "The Honest Hearts canyon crawl is OpenMW-only. Use -Target OpenMW."
 }
-if (($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
+if (($Scenario -in @("GodotActorReview", "GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
     throw "GodotRoute and GodotCinematics are dedicated Godot lanes. Use -Target Godot."
 }
 
@@ -186,6 +191,9 @@ if ($Scenario -eq "RealSave" -and $Target -eq "Both") {
 }
 if ($Scenario -eq "ActorObservation" -and $Target -ne "Retail") {
     throw "ActorObservation is a sequential retail-only lane. Use -Target Retail."
+}
+if ($ActorDrawContractDiagnostic -and $Scenario -ne "ActorObservation") {
+    throw "ActorDrawContractDiagnostic is restricted to the retail ActorObservation lane."
 }
 if ($Scenario -eq "RealSave" -and $InteractiveHandoff -and $Target -eq "Retail") {
     throw "Interactive handoff is restricted to the playable OpenMW lane."
@@ -224,6 +232,9 @@ $preflightTarget = if ($Target -eq "Both") { "All" } else { $Target }
     -ActorOraclePluginDll $ActorOraclePluginDll `
     -ActorSaveFixture $ActorSaveFixture `
     -ActorGameRoot $ActorGameRoot `
+    -OpenNvRoot $OpenNvRoot `
+    -ActorReviewScene $ActorReviewScene `
+    -GodotBinary $GodotBinary `
     -OutputRoot $OutputRoot `
     -InteractiveHandoff:$InteractiveHandoff `
     -RuntimeReady `
@@ -246,6 +257,7 @@ $chetObservationResult = $null
 $chetPersistentResult = $null
 $canyonResult = $null
 $actorObservationResult = $null
+$actorReviewResult = $null
 
 if ($Scenario -eq "ActorObservation") {
     $actorCatalogPath = Join-Path $WorldsRoot "catalog\fnv-jam-background-capture-recipes.json"
@@ -269,12 +281,33 @@ if ($Scenario -eq "ActorObservation") {
         -OraclePluginDll $ActorOraclePluginDll `
         -SaveFixture $ActorSaveFixture `
         -GameRoot $ActorGameRoot `
+        -ActorDrawContractDiagnostic:$ActorDrawContractDiagnostic `
         -TimeoutSeconds $TimeoutSeconds
     if ([string]$actorObservationResult.status -cnotin $acceptedActorObservationStatuses -or
         [bool]$actorObservationResult.capture.windowsAppControlUsed -or
         [bool]$actorObservationResult.capture.foregroundActivationUsed -or
         [bool]$actorObservationResult.capture.foregroundInputInjected) {
         throw "Canonical retail actor observation did not pass its identity, native-evidence, or no-control gates."
+    }
+}
+
+if ($Scenario -eq "GodotActorReview") {
+    $actorReviewOutput = Join-Path $OutputRoot 'godot'
+    & $godotActorReviewRunner `
+        -OpenNvRoot $OpenNvRoot `
+        -ActorReviewScene $ActorReviewScene `
+        -OutputRoot $actorReviewOutput `
+        -Godot $GodotBinary `
+        -TimeoutSeconds $TimeoutSeconds
+    $actorReviewResult = Get-Content -Raw -LiteralPath `
+        (Join-Path $actorReviewOutput 'opennv-actor-review-report.json') |
+        ConvertFrom-Json
+    if ([string]$actorReviewResult.status -cne 'captured-pending-parity' -or
+        [bool]$actorReviewResult.engine.parityPassed -or
+        [bool]$actorReviewResult.capture.windowsAppControlUsed -or
+        [bool]$actorReviewResult.capture.foregroundActivationUsed -or
+        [bool]$actorReviewResult.capture.foregroundInputInjected) {
+        throw 'Canonical Godot actor review failed its capture, pending-parity, or no-control gate.'
     }
 }
 
@@ -933,6 +966,13 @@ if ($Scenario -eq "ActorObservation" -and $null -ne $actorObservationResult) {
         }
     }
 }
+if ($Scenario -eq "GodotActorReview" -and $null -ne $actorReviewResult) {
+    foreach ($artifact in @($actorReviewResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
 foreach ($artifact in $artifactPaths) {
     if (-not [string]::IsNullOrWhiteSpace([string]$artifact) -and
         (Test-Path -LiteralPath $artifact -PathType Leaf)) {
@@ -949,7 +989,11 @@ foreach ($artifact in $artifactPaths) {
 
 $summary = [ordered]@{
     schema = "nikami-fnv-jam-background-capture-run/v1"
-    status = "pass"
+    status = if ($Scenario -eq 'GodotActorReview') {
+        'captured-pending-parity'
+    } else {
+        'pass'
+    }
     target = $Target
     scenario = $Scenario
     recipeCatalog =
@@ -977,6 +1021,7 @@ $summary = [ordered]@{
     canyonCrawl = $canyonResult
     godotRoute = $godotRouteResult
     actorObservation = $actorObservationResult
+    actorReview = $actorReviewResult
     artifacts = @($artifacts)
 }
 $summaryPath = Join-Path $OutputRoot "background-capture-summary.json"

@@ -58,6 +58,20 @@ param(
     [switch]$CaptureAnimation,
     [switch]$TargetAnimationOnly,
     [switch]$CompactActorTelemetry,
+    [switch]$CaptureActorSkinPalettes,
+    [int]$ActorSkinPaletteMaximumBytesPerShape = 0,
+    [switch]$CaptureActorSurfaceContract,
+    [int]$ActorSurfaceMaximumShaderBytes = 0,
+    [int]$ActorSurfaceTextureStageCount = 0,
+    [int]$ActorSurfaceRenderFrameLead = 0,
+    [switch]$CaptureActorDrawContract,
+    [int]$ActorDrawMaximumRecordsPerSourceFrame = 0,
+    [int]$ActorDrawVertexShaderRegisterCount = 0,
+    [int]$ActorDrawMaximumShaderBytes = 0,
+    [int]$ActorDrawTextureStageCount = 0,
+    [int]$ActorDrawRenderFrameLead = 0,
+    [int]$ActorDrawMaximumBufferBytesPerRecord = 0,
+    [string]$ActorDrawArtifactDirectory = "",
     [int[]]$ScreenshotFrame = @(),
     [string]$ScreenshotDirectory = "",
     [switch]$MaterialShaderCapture,
@@ -460,6 +474,53 @@ if ($TargetAnimationOnly -and -not $CaptureAnimation) {
 if ($CompactActorTelemetry -and -not $CaptureAnimation) {
     throw "CompactActorTelemetry requires CaptureAnimation."
 }
+if ($CaptureActorSkinPalettes -and (-not $CompactActorTelemetry -or
+    $ActorSkinPaletteMaximumBytesPerShape -le 0)) {
+    throw "CaptureActorSkinPalettes requires CompactActorTelemetry and a positive ActorSkinPaletteMaximumBytesPerShape."
+}
+if (-not $CaptureActorSkinPalettes -and $ActorSkinPaletteMaximumBytesPerShape -ne 0) {
+    throw "ActorSkinPaletteMaximumBytesPerShape is valid only with CaptureActorSkinPalettes."
+}
+if ($CaptureActorSurfaceContract -and (-not $CompactActorTelemetry -or
+    -not $CaptureActorSkinPalettes -or $ScreenshotFrame.Count -eq 0 -or
+    $ActorSurfaceMaximumShaderBytes -le 0 -or
+    $ActorSurfaceTextureStageCount -le 0 -or $ActorSurfaceTextureStageCount -gt 16 -or
+    $ActorSurfaceRenderFrameLead -le 0)) {
+    throw "CaptureActorSurfaceContract requires compact actor, skin-palette, screenshot, shader, texture-stage, and render-lead policy."
+}
+if (-not $CaptureActorSurfaceContract -and
+    ($ActorSurfaceMaximumShaderBytes -ne 0 -or
+        $ActorSurfaceTextureStageCount -ne 0 -or
+        $ActorSurfaceRenderFrameLead -ne 0)) {
+    throw "Actor surface-contract settings are valid only with CaptureActorSurfaceContract."
+}
+if ($CaptureActorDrawContract -and (-not $CompactActorTelemetry -or
+    -not $CaptureActorSkinPalettes -or $ScreenshotFrame.Count -eq 0 -or
+    $ActorDrawMaximumRecordsPerSourceFrame -le 0 -or
+    $ActorDrawVertexShaderRegisterCount -le 0 -or
+    $ActorDrawVertexShaderRegisterCount -gt 256 -or
+    $ActorDrawMaximumShaderBytes -le 0 -or
+    $ActorDrawTextureStageCount -le 0 -or $ActorDrawTextureStageCount -gt 16 -or
+    $ActorDrawRenderFrameLead -le 0 -or
+    $ActorDrawMaximumBufferBytesPerRecord -le 0 -or
+    [string]::IsNullOrWhiteSpace($ActorDrawArtifactDirectory))) {
+    throw "CaptureActorDrawContract requires compact actor, skin-palette, screenshot, shader, texture-stage, render-lead, buffer, and artifact-directory policy."
+}
+if (-not $CaptureActorDrawContract -and
+    ($ActorDrawMaximumRecordsPerSourceFrame -ne 0 -or
+        $ActorDrawVertexShaderRegisterCount -ne 0 -or
+        $ActorDrawMaximumShaderBytes -ne 0 -or
+        $ActorDrawTextureStageCount -ne 0 -or
+        $ActorDrawRenderFrameLead -ne 0 -or
+        $ActorDrawMaximumBufferBytesPerRecord -ne 0 -or
+        -not [string]::IsNullOrWhiteSpace($ActorDrawArtifactDirectory))) {
+    throw "Actor draw-contract settings are valid only with CaptureActorDrawContract."
+}
+if ($CaptureActorSurfaceContract -and $CaptureActorDrawContract -and
+    ($ActorSurfaceTextureStageCount -ne $ActorDrawTextureStageCount -or
+        $ActorSurfaceRenderFrameLead -ne $ActorDrawRenderFrameLead)) {
+    throw "Actor surface and diagnostic draw contracts must use the same texture-stage and render-lead policy."
+}
 if ($CameraShotKind -eq 'front-full-body' -and -not $PortraitCamera -and
     $BatchTargetForm.Count -eq 0 -and -not $planMode) {
     throw "CameraShotKind front-full-body requires PortraitCamera or BatchTargetForm."
@@ -717,6 +778,15 @@ $gameRootPath = Resolve-AbsolutePath $GameRoot
 $runtimeRootPath = Resolve-AbsolutePath $RuntimeRoot
 $output = Resolve-AbsolutePath $OutputPath
 $runManifest = $output + '.manifest.json'
+$actorDrawArtifactDirectoryPath = if ($CaptureActorDrawContract) {
+    Resolve-AbsolutePath $ActorDrawArtifactDirectory
+} else { '' }
+if ($CaptureActorDrawContract -and
+    (-not (Test-Path -LiteralPath $actorDrawArtifactDirectoryPath -PathType Container) -or
+        -not (Test-PathWithinRoot -Path $actorDrawArtifactDirectoryPath `
+            -Root (Split-Path -Parent $output)))) {
+    throw "ActorDrawArtifactDirectory must be an existing directory beneath the output directory."
+}
 if (-not (Test-Path -LiteralPath $runtimeRootPath -PathType Container)) {
     throw "Missing repo-local isolated xNVSE RuntimeRoot: $runtimeRootPath"
 }
@@ -872,6 +942,20 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_ALL_HIGH_ACTORS = if ($CaptureAnimation -and -not $TargetAnimationOnly) { "1" } else { "0" }
     NIKAMI_ORACLE_CAPTURE_ANIMATION = if ($CaptureAnimation) { "1" } else { "0" }
     NIKAMI_ORACLE_COMPACT_ACTOR_TELEMETRY = if ($CompactActorTelemetry) { "1" } else { "0" }
+    NIKAMI_ORACLE_CAPTURE_ACTOR_SKIN_PALETTES = if ($CaptureActorSkinPalettes) { "1" } else { "0" }
+    NIKAMI_ORACLE_ACTOR_SKIN_PALETTE_MAXIMUM_BYTES_PER_SHAPE = [string]$ActorSkinPaletteMaximumBytesPerShape
+    NIKAMI_ORACLE_CAPTURE_ACTOR_SURFACE_CONTRACT = if ($CaptureActorSurfaceContract) { "1" } else { "0" }
+    NIKAMI_ORACLE_ACTOR_SURFACE_MAXIMUM_SHADER_BYTES = [string]$ActorSurfaceMaximumShaderBytes
+    NIKAMI_ORACLE_ACTOR_SURFACE_TEXTURE_STAGE_COUNT = [string]$ActorSurfaceTextureStageCount
+    NIKAMI_ORACLE_ACTOR_SURFACE_RENDER_FRAME_LEAD = [string]$ActorSurfaceRenderFrameLead
+    NIKAMI_ORACLE_CAPTURE_ACTOR_DRAW_CONTRACT = if ($CaptureActorDrawContract) { "1" } else { "0" }
+    NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_RECORDS_PER_SOURCE_FRAME = [string]$ActorDrawMaximumRecordsPerSourceFrame
+    NIKAMI_ORACLE_ACTOR_DRAW_VERTEX_SHADER_REGISTER_COUNT = [string]$ActorDrawVertexShaderRegisterCount
+    NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_SHADER_BYTES = [string]$ActorDrawMaximumShaderBytes
+    NIKAMI_ORACLE_ACTOR_DRAW_TEXTURE_STAGE_COUNT = [string]$ActorDrawTextureStageCount
+    NIKAMI_ORACLE_ACTOR_DRAW_RENDER_FRAME_LEAD = [string]$ActorDrawRenderFrameLead
+    NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_BUFFER_BYTES_PER_RECORD = [string]$ActorDrawMaximumBufferBytesPerRecord
+    NIKAMI_ORACLE_ACTOR_DRAW_ARTIFACT_DIRECTORY = $actorDrawArtifactDirectoryPath
     NIKAMI_ORACLE_CAPTURE_SESSION = if ($CaptureSession) { "1" } else { "0" }
     NIKAMI_ORACLE_PIPBOY_PROBE = if ($PipBoyProbe) { "1" } else { "0" }
     NIKAMI_ORACLE_SESSION_TARGET_FORM = $SessionTargetForm
@@ -987,6 +1071,20 @@ if ($DryRun) {
         spawnBaseCapture = [bool]$SpawnBaseCapture
         targetAnimationOnly = [bool]$TargetAnimationOnly
         compactActorTelemetry = [bool]$CompactActorTelemetry
+        captureActorSkinPalettes = [bool]$CaptureActorSkinPalettes
+        actorSkinPaletteMaximumBytesPerShape = $ActorSkinPaletteMaximumBytesPerShape
+        captureActorSurfaceContract = [bool]$CaptureActorSurfaceContract
+        actorSurfaceMaximumShaderBytes = $ActorSurfaceMaximumShaderBytes
+        actorSurfaceTextureStageCount = $ActorSurfaceTextureStageCount
+        actorSurfaceRenderFrameLead = $ActorSurfaceRenderFrameLead
+        captureActorDrawContract = [bool]$CaptureActorDrawContract
+        actorDrawMaximumRecordsPerSourceFrame = $ActorDrawMaximumRecordsPerSourceFrame
+        actorDrawVertexShaderRegisterCount = $ActorDrawVertexShaderRegisterCount
+        actorDrawMaximumShaderBytes = $ActorDrawMaximumShaderBytes
+        actorDrawTextureStageCount = $ActorDrawTextureStageCount
+        actorDrawRenderFrameLead = $ActorDrawRenderFrameLead
+        actorDrawMaximumBufferBytesPerRecord = $ActorDrawMaximumBufferBytesPerRecord
+        actorDrawArtifactDirectory = $actorDrawArtifactDirectoryPath
         batchExpectedBaseForms = @($BatchExpectedBaseForm)
         cameraShotKind = $CameraShotKind
         expectedCameraShotKinds = @($ExpectedCameraShotKind)
@@ -1906,6 +2004,20 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     setStageIndex = $SetStageIndex
     captureAnimation = [bool]$CaptureAnimation
     compactActorTelemetry = [bool]$CompactActorTelemetry
+    captureActorSkinPalettes = [bool]$CaptureActorSkinPalettes
+    actorSkinPaletteMaximumBytesPerShape = $ActorSkinPaletteMaximumBytesPerShape
+    captureActorSurfaceContract = [bool]$CaptureActorSurfaceContract
+    actorSurfaceMaximumShaderBytes = $ActorSurfaceMaximumShaderBytes
+    actorSurfaceTextureStageCount = $ActorSurfaceTextureStageCount
+    actorSurfaceRenderFrameLead = $ActorSurfaceRenderFrameLead
+    captureActorDrawContract = [bool]$CaptureActorDrawContract
+    actorDrawMaximumRecordsPerSourceFrame = $ActorDrawMaximumRecordsPerSourceFrame
+    actorDrawVertexShaderRegisterCount = $ActorDrawVertexShaderRegisterCount
+    actorDrawMaximumShaderBytes = $ActorDrawMaximumShaderBytes
+    actorDrawTextureStageCount = $ActorDrawTextureStageCount
+    actorDrawRenderFrameLead = $ActorDrawRenderFrameLead
+    actorDrawMaximumBufferBytesPerRecord = $ActorDrawMaximumBufferBytesPerRecord
+    actorDrawArtifactDirectory = $actorDrawArtifactDirectoryPath
     captureSession = [bool]$CaptureSession
     pipBoyProbe = [bool]$PipBoyProbe
     pipBoyProbeSnapshots = @($pipBoyProbeSnapshots)

@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotActorReview", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -27,6 +27,8 @@ param(
     [string]$ActorOraclePluginDll = "",
     [string]$ActorSaveFixture = "",
     [string]$ActorGameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
+    [string]$OpenNvRoot = "",
+    [string]$ActorReviewScene = "",
     [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")]
     [string]$RealSaveRouteId = "save330-cold-load-settle-v1",
     [ValidateRange(5, 600)]
@@ -106,7 +108,7 @@ if (-not [string]::IsNullOrWhiteSpace($OpeningNewVegasData)) {
     $OpeningNewVegasData = [IO.Path]::GetFullPath($OpeningNewVegasData)
 }
 
-if (($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
+if (($Scenario -in @("GodotActorReview", "GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
     throw "GodotRoute and GodotCinematics are dedicated Godot lanes. Use -Target Godot."
 }
 
@@ -195,6 +197,7 @@ $retailPipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailPipBoyS
 $realSaveRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRealSaveCapture.ps1"
 $actorObservationRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVActorObservationCapture.ps1"
 $actorObservationQueuePath = Join-Path $WorldsRoot "scripts\Invoke-FNVActorObservationQueue.ps1"
+$actorReviewRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVActorReviewCapture.ps1"
 $ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
 $newVegasInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-OpenNVBaseProfile.ps1"
 $oracleSourcePath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $null } else {
@@ -330,6 +333,51 @@ if ($Scenario -eq 'ActorObservation') {
                     [int]$recipes[0].capturePolicy.motionVideo.timelineFrameRate -gt 0 -and
                     [int]$recipes[0].capturePolicy.motionVideo.outputFrameRate -gt 0) `
                 ([string]$recipes[0].capturePolicy.motionVideo.file)
+            $telemetryPolicy = $recipes[0].telemetryPolicy
+            Add-Check 'ActorObservation recipe requires frame-bound skeleton, skin-palette, and appearance snapshots' `
+                ([string]$telemetryPolicy.visualSnapshotEvent -ceq 'actor-visual-snapshot' -and
+                    [string]$telemetryPolicy.visualSnapshotFaultEvent -ceq
+                        'actor-visual-snapshot-fault' -and
+                    [int]$telemetryPolicy.requiredVisualSnapshotsPerSourceFrame -eq 1 -and
+                    [int]$telemetryPolicy.requiredAppearanceSnapshots -eq 1 -and
+                    [bool]$telemetryPolicy.requireSkinPalettesForSkinnedGeometry -and
+                    [int]$telemetryPolicy.skinPaletteComponentsPerRegister -gt 0 -and
+                    [int]$telemetryPolicy.skinPaletteBytesPerComponent -gt 0 -and
+                    [int]$telemetryPolicy.skinPaletteMaximumBytesPerShape -gt 0 -and
+                    [string]$telemetryPolicy.surfaceContract.event -ceq
+                        'actor-surface-contract' -and
+                    [string]$telemetryPolicy.surfaceContract.targetTexturesEvent -ceq
+                        'actor-draw-contract-target-textures' -and
+                    [int]$telemetryPolicy.surfaceContract.renderFrameLead -gt 0 -and
+                    [int]$telemetryPolicy.surfaceContract.textureStageCount -gt 0 -and
+                    [int]$telemetryPolicy.surfaceContract.textureStageCount -le 16 -and
+                    [int]$telemetryPolicy.surfaceContract.maximumShaderBytes -gt 0 -and
+                    [int]$telemetryPolicy.surfaceContract.matrixElementCount -eq 16 -and
+                    [double]$telemetryPolicy.surfaceContract.matrixTolerance -gt 0 -and
+                    [bool]$telemetryPolicy.surfaceContract.requireBackBufferDimensions -and
+                    [double]$telemetryPolicy.surfaceContract.normalizedDepthMinimum -lt
+                        [double]$telemetryPolicy.surfaceContract.normalizedDepthMaximum -and
+                    [string]$telemetryPolicy.drawContractDiagnostic.event -ceq
+                        'actor-draw-contract' -and
+                    [string]$telemetryPolicy.drawContractDiagnostic.targetTexturesEvent -ceq
+                        'actor-draw-contract-target-textures' -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.renderFrameLead -gt 0 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.textureStageCount -gt 0 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.textureStageCount -le 16 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.maximumRecordsPerSourceFrame -gt 0 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.vertexShaderRegisterCount -gt 0 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.vertexShaderRegisterCount -le 256 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.maximumShaderBytes -gt 0 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.maximumBufferBytesPerRecord -gt 0 -and
+                    [int]$telemetryPolicy.minimumNamedNodesPerSnapshot -gt 0 -and
+                    [int]$telemetryPolicy.cameraMatrixElementCount -eq 16 -and
+                    [int]$telemetryPolicy.cameraWorldRotationElementCount -eq 9 -and
+                    [int]$telemetryPolicy.cameraWorldTranslationElementCount -eq 3 -and
+                    [int]$telemetryPolicy.cameraFrustumElementCount -eq 7 -and
+                    [int]$telemetryPolicy.cameraViewportElementCount -eq 4 -and
+                    [bool]$telemetryPolicy.requireExactPerspectiveProjection -and
+                    [int64]$telemetryPolicy.maximumJsonlBytes -gt 0) `
+                ([string]$telemetryPolicy.visualSnapshotEvent)
         }
     }
     catch {
@@ -413,6 +461,163 @@ if ($Scenario -eq 'ActorObservation') {
         throw "ActorObservation background-capture preflight failed $($failed.Count) check(s): " +
             (($failed | ForEach-Object name) -join '; ')
     }
+    return
+}
+
+if ($Scenario -eq 'GodotActorReview') {
+    $openNvDirectory = if ([string]::IsNullOrWhiteSpace($OpenNvRoot)) { '' } else {
+        [IO.Path]::GetFullPath($OpenNvRoot)
+    }
+    $reviewScenePath = if ([string]::IsNullOrWhiteSpace($ActorReviewScene)) { '' } else {
+        [IO.Path]::GetFullPath($ActorReviewScene)
+    }
+    $runtimeProjectPath = if ($openNvDirectory) {
+        Join-Path $openNvDirectory 'runtime\project.godot'
+    } else { '' }
+    $runtimeProjectFile = if ($openNvDirectory) {
+        Join-Path $openNvDirectory 'runtime\OpenNV.csproj'
+    } else { '' }
+    $GodotBinary = Resolve-NikamiPath `
+        -ParameterValue $GodotBinary `
+        -EnvName 'NIKAMI_GODOT_BINARY' `
+        -ConfigName 'godotBinary'
+    if ([string]::IsNullOrWhiteSpace($GodotBinary)) {
+        $godotCommand = Get-Command godot4, godot -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($null -ne $godotCommand) { $GodotBinary = $godotCommand.Source }
+    }
+
+    Add-Check 'GodotActorReview is restricted to Godot' ($Target -eq 'Godot') "target=$Target"
+    [void](Test-Directory 'OpenNV checkout exists' $openNvDirectory)
+    foreach ($path in @($actorReviewRunnerPath, $runtimeProjectPath, $runtimeProjectFile,
+            $reviewScenePath, $catalogPath, $runbookPath, $entryPointPath, $preflightPath)) {
+        [void](Test-File "GodotActorReview input exists: $([IO.Path]::GetFileName($path))" $path)
+    }
+    Add-Check 'GodotActorReview output does not already exist' `
+        ([string]::IsNullOrWhiteSpace($OutputRoot) -or -not (Test-Path -LiteralPath $OutputRoot)) `
+        $(if ($OutputRoot) { $OutputRoot } else { 'automatic unique output' })
+    foreach ($script in @($entryPointPath, $preflightPath, $actorReviewRunnerPath)) {
+        if (Test-Path -LiteralPath $script -PathType Leaf) { Test-PowerShellParse $script }
+    }
+    $runnerText = Get-Content -Raw -LiteralPath $actorReviewRunnerPath -ErrorAction SilentlyContinue
+    foreach ($forbidden in @('AppActivate', 'SetForegroundWindow', 'BringWindowToTop',
+            'SetFocus', 'SendInput', 'Computer Use')) {
+        Add-Check "GodotActorReview runner excludes $forbidden" `
+            ($runnerText -notmatch [regex]::Escape($forbidden)) $actorReviewRunnerPath
+    }
+    Add-Check 'GodotActorReview uses engine-owned viewport capture' `
+        ($runnerText -match 'Godot engine-owned viewport PNGs' -and
+            $runnerText -match '--actor-review-scene' -and
+            $runnerText -match '--capture-root') `
+        $actorReviewRunnerPath
+    try {
+        $catalog = Get-Content -Raw -LiteralPath $catalogPath | ConvertFrom-Json
+        $recipes = @($catalog.actorObservationRecipes | Where-Object {
+            [string]$_.id -eq 'opennv-godot-owned-actor-review-v1'
+        })
+        Add-Check 'GodotActorReview recipe is uniquely declared' ($recipes.Count -eq 1) $catalogPath
+        if ($recipes.Count -eq 1) {
+            Add-Check 'GodotActorReview recipe forbids app control and parity claims' `
+                (-not [bool]$recipes[0].windowsAppControlUsed -and
+                    -not [bool]$recipes[0].foregroundRequired -and
+                    [string]$recipes[0].acceptedCaptureStatus -ceq 'captured-pending-parity') `
+                ([string]$recipes[0].captureMethod)
+        }
+    }
+    catch {
+        Add-Check 'GodotActorReview recipe catalog parses' $false $_.Exception.Message
+    }
+    try {
+        $scene = Get-Content -Raw -LiteralPath $reviewScenePath | ConvertFrom-Json
+        Add-Check 'GodotActorReview scene is a compiled pending owned-data actor' `
+            ([string]$scene.schema -ceq 'opennv-actor-review-scene/v1' -and
+                [string]$scene.status -ceq
+                    'compiled-retail-observed-pending-godot-capture' -and
+                [string]$scene.recordType -cin @('NPC_', 'CREA')) `
+            ([string]$scene.reviewKey)
+        $contractPath = [IO.Path]::GetFullPath([string]$scene.retailContract.path)
+        $contractHash = if (Test-Path -LiteralPath $contractPath -PathType Leaf) {
+            (Get-FileHash -LiteralPath $contractPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        } else { '' }
+        Add-Check 'GodotActorReview retail contract matches its scene binding' `
+            ($contractHash -cne '' -and $contractHash -ceq [string]$scene.retailContract.sha256) `
+            $contractPath
+        if ($contractHash -cne '') {
+            $contract = Get-Content -Raw -LiteralPath $contractPath | ConvertFrom-Json
+            $shots = @($contract.retail.shots)
+            $samples = @($shots | ForEach-Object { @($_.samples) })
+            Add-Check 'GodotActorReview requires exact per-frame retail final-eye and skin-palette evidence' `
+                ([string]$contract.schema -ceq 'opennv-actor-review-contract/v4' -and
+                    [string]$scene.retailContract.projectionStatus -ceq
+                        'exact-retail-final-eye-d3d9-perspective' -and
+                    $shots.Count -gt 0 -and $samples.Count -gt 0 -and
+                    @($shots | Where-Object {
+                        -not [bool]$_.projection.exact -or
+                        [string]$_.projection.status -cne
+                            'exact-retail-final-eye-d3d9-perspective'
+                    }).Count -eq 0 -and
+                    @($samples | Where-Object {
+                        $null -eq $_.camera -or
+                        [string]$_.camera.eventSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+                        @($_.camera.frustum).Count -ne 7 -or
+                        @($_.camera.viewport).Count -ne 4 -or
+                        @($_.camera.worldToClipMatrix).Count -ne 16 -or
+                        @($_.camera.projectionMatrix).Count -ne 16 -or
+                        @($_.camera.world.rotation).Count -ne 9 -or
+                        @($_.camera.world.translation).Count -ne 3 -or
+                        [double]$_.camera.fovYRadians -le 0 -or
+                        $null -eq $_.camera.surfaceContract -or
+                        [string]$_.camera.surfaceContract.eventSha256 -cnotmatch
+                            '^[0-9a-f]{64}$' -or
+                        -not [bool]$_.camera.surfaceContract.renderTarget.matchesBackBufferDimensions -or
+                        @($_.camera.surfaceContract.frustum).Count -ne 7 -or
+                        @($_.camera.surfaceContract.worldMatrix).Count -ne 16 -or
+                        @($_.camera.surfaceContract.viewMatrix).Count -ne 16 -or
+                        @($_.camera.surfaceContract.projectionMatrix).Count -ne 16 -or
+                        @($_.camera.surfaceContract.worldToClipMatrix).Count -ne 16 -or
+                        $null -eq $_.camera.cullingObservation -or
+                        @($_.camera.cullingObservation.frustum).Count -ne 7 -or
+                        @($_.camera.cullingObservation.projectionMatrix).Count -ne 16 -or
+                        [string]$_.skinPalette.finalProjectionEventSha256 -cne
+                            [string]$_.camera.surfaceContract.eventSha256 -or
+                        -not [bool]$_.skinPalette.frameBoundToSourceBackbuffer -or
+                        [int]$_.skinPalette.summary.capturedPalettes -le 0 -or
+                        [int]$_.skinPalette.summary.invalidPalettes -ne 0 -or
+                        [bool]$_.skinPalette.summary.traversalTruncated -or
+                        @($_.skinPalette.instances | Where-Object {
+                            [string]$_.status -ceq 'captured'
+                        }).Count -ne [int]$_.skinPalette.summary.capturedPalettes
+                    }).Count -eq 0) `
+                $contractPath
+        }
+    }
+    catch {
+        Add-Check 'GodotActorReview scene parses' $false $_.Exception.Message
+    }
+    if ($RuntimeReady) {
+        [void](Test-File 'Godot .NET executable exists' $GodotBinary)
+        Add-Check 'dotnet is available' ($null -ne (Get-Command dotnet -ErrorAction SilentlyContinue)) `
+            'dotnet'
+    }
+    if ($RequireIdle) {
+        $active = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.ProcessName -match '^(Godot.*|openmw|FalloutNV|nvse_loader)$'
+        })
+        Add-Check 'GodotActorReview capture engines are idle' ($active.Count -eq 0) `
+            $(if ($active.Count -eq 0) { 'idle' } else { ($active.ProcessName -join ', ') })
+    }
+    $passed = @($checks | Where-Object { -not $_.passed }).Count -eq 0
+    $result = [ordered]@{
+        schema = 'nikami-fnv-jam-background-capture-preflight/v1'
+        passed = $passed
+        target = $Target
+        scenario = $Scenario
+        runtimeReadyChecked = [bool]$RuntimeReady
+        idleChecked = [bool]$RequireIdle
+        checks = @($checks)
+    }
+    $result | ConvertTo-Json -Depth 8
+    if (-not $passed) { throw 'GodotActorReview background-capture preflight failed.' }
     return
 }
 

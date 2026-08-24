@@ -416,7 +416,8 @@ checkpoints, exact-title video, audio stream, hashes, and no-control flags all p
 actor and creature review corpus. It consumes one immutable OpenNV capture-plan
 job, spawns that official runtime base inside retail, resolves the new reference,
 and retains runtime template identity, live bounds, compact pose samples, camera
-matrices, and native Direct3D 9 frames. One live reference supplies four still
+matrices, exact per-source-frame named NiNode local/world transforms, one resolved
+render-part and texture-binding snapshot, and native Direct3D 9 frames. One live reference supplies four still
 views plus an idle-motion clip: humanoids use front portrait, left profile,
 right profile, and front full body; creatures substitute front detail for front
 portrait. The recipe owns the shared timeline and declares only the record-type
@@ -450,7 +451,8 @@ observed runtime lineage selects exactly one declared review signature, then
 every required view must still be captured in retail and Godot and the matched
 visual review must pass. Dynamic roots remain pending until every expected
 signature has been observed. The compact JSONL ceiling, five camera-state
-sequence, per-shot camera matrix, source-frame hash, and encoded idle clip are
+sequence, per-shot camera matrix, frame-bound skeleton snapshot, non-truncated
+appearance inventory, source-frame hash, and encoded idle clip are
 validated before a run may enter the coverage ledger. A green retail probe is
 still only reference evidence; it never marks the Godot rendition or matched
 comparison as passed.
@@ -478,6 +480,37 @@ must pass the normal idle preflight and no-app-control gate. Dynamic jobs use
 the catalog-declared attempts-per-outcome sweep budget; exhausting one sweep
 leaves missing signatures pending and a later sweep resumes them. A capture
 error is retained as a ledger event and never converted into coverage.
+
+Run the paired Godot source-frame capture only after a classified retail report
+has been bound to one owned-data actor-review contract and compiled into one
+content-addressed review scene. The runtime resolves each retained
+NiSkinInstance render palette into the skeleton decoded from the player's NIF,
+applies the validated retail NiCamera world transform and the exact skinned-draw
+Direct3D 9 scene-color projection, and retains one engine-owned PNG for every
+retail source frame at the same dimensions. The NiCamera culling projection is
+retained separately and is not treated as final-eye evidence. Nonstandard
+skeleton roots are data, not record-type special cases.
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target Godot -Scenario GodotActorReview `
+  -OpenNvRoot '<clean OpenNV checkout>' `
+  -ActorReviewScene '<compiled owned-data review scene>' `
+  -GodotBinary '<Godot .NET executable>' `
+  -OutputRoot .\run\opennv-godot-actor-review-<unique> `
+  -RuntimeReady -RequireIdle
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target Godot -Scenario GodotActorReview `
+  -OpenNvRoot '<clean OpenNV checkout>' `
+  -ActorReviewScene '<compiled owned-data review scene>' `
+  -GodotBinary '<Godot .NET executable>' `
+  -OutputRoot .\run\opennv-godot-actor-review-<unique>
+```
+
+The capture status is deliberately `captured-pending-parity`, never `pass`,
+while the retail sun vector and matched-pixel comparison remain unresolved.
+Projection, pose, and native-frame gates may succeed without laundering those
+remaining renderer gaps into an appearance verdict.
 
 ## Provenance and recovery
 

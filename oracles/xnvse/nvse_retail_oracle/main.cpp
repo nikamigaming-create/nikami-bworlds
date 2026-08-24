@@ -25,6 +25,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -147,6 +148,21 @@ namespace
     bool gAllHighActors = true;
     bool gCaptureAnimation = true;
     bool gCompactActorTelemetry = false;
+    bool gCompactActorAppearanceLogged = false;
+    bool gCaptureActorSkinPalettes = false;
+    unsigned int gActorSkinPaletteMaximumBytesPerShape = 0;
+    bool gCaptureActorDrawContract = false;
+    bool gCaptureActorSurfaceContract = false;
+    unsigned int gActorDrawMaximumRecordsPerSourceFrame = 0;
+    unsigned int gActorDrawVertexShaderRegisterCount = 0;
+    unsigned int gActorDrawMaximumShaderBytes = 0;
+    unsigned int gActorDrawTextureStageCount = 0;
+    unsigned int gActorDrawRenderFrameLead = 0;
+    unsigned int gActorDrawMaximumBufferBytesPerRecord = 0;
+    std::string gActorDrawArtifactDirectory;
+    unsigned int gActorSurfaceMaximumShaderBytes = 0;
+    unsigned int gActorSurfaceTextureStageCount = 0;
+    unsigned int gActorSurfaceRenderFrameLead = 0;
     bool gCaptureSession = false;
     bool gPipBoyProbe = false;
     bool gHoldRetailPipBoyRenderedState = false;
@@ -324,13 +340,162 @@ namespace
         float constants[24][4] = {};
     } gImageSpaceShaderCapture;
 
+    struct ActorDrawTargetTexture
+    {
+        IDirect3DBaseTexture9* resource = nullptr;
+        UInt32 contentHash = 0;
+        UInt32 appearanceStage = 0;
+        std::string path;
+    };
+
+    struct ActorDrawBufferCapture
+    {
+        HRESULT getResult = E_FAIL;
+        HRESULT descriptionResult = E_FAIL;
+        HRESULT lockResult = E_FAIL;
+        UInt32 totalBytes = 0;
+        UInt32 rangeOffset = 0;
+        UInt32 rangeBytes = 0;
+        UInt32 stride = 0;
+        UInt32 format = 0;
+        UInt32 usage = 0;
+        UInt32 pool = 0;
+        UInt32 fnv1a32 = 0;
+        std::vector<UInt8> bytes;
+    };
+
+    struct ActorDrawRenderTargetCapture
+    {
+        HRESULT renderTargetResult = E_FAIL;
+        HRESULT renderTargetDescriptionResult = E_FAIL;
+        HRESULT backBufferResult = E_FAIL;
+        HRESULT backBufferDescriptionResult = E_FAIL;
+        HRESULT renderTargetIdentityResult = E_FAIL;
+        HRESULT backBufferIdentityResult = E_FAIL;
+        bool isBackBuffer = false;
+        bool matchesBackBufferDimensions = false;
+        D3DSURFACE_DESC renderTargetDescription = {};
+        D3DSURFACE_DESC backBufferDescription = {};
+        HRESULT viewportResult = E_FAIL;
+        D3DVIEWPORT9 viewport = {};
+        HRESULT scissorResult = E_FAIL;
+        RECT scissor = {};
+    };
+
+    struct ActorDrawContractCapture
+    {
+        UInt32 sourceFrame = 0;
+        UInt32 renderFrame = 0;
+        UInt32 ordinal = 0;
+        D3DPRIMITIVETYPE primitiveType = D3DPT_FORCE_DWORD;
+        INT baseVertexIndex = 0;
+        UINT minimumVertexIndex = 0;
+        UINT vertexCount = 0;
+        UINT startIndex = 0;
+        UINT primitiveCount = 0;
+        UInt32 matchedTextureStage = 0;
+        UInt32 matchedTextureHash = 0;
+        UInt32 matchedTextureAppearanceStage = 0;
+        std::string matchedTexturePath;
+        HRESULT vertexShaderResult = E_FAIL;
+        HRESULT vertexShaderFunctionResult = E_FAIL;
+        UInt32 vertexShaderByteCount = 0;
+        UInt32 vertexShaderHash = 0;
+        std::vector<UInt8> vertexShaderBytes;
+        HRESULT vertexConstantsResult = E_FAIL;
+        UInt32 vertexConstantRegisterCount = 0;
+        std::vector<float> vertexConstants;
+        HRESULT vertexDeclarationResult = E_FAIL;
+        HRESULT vertexDeclarationElementsResult = E_FAIL;
+        std::vector<D3DVERTEXELEMENT9> vertexDeclaration;
+        HRESULT fvfResult = E_FAIL;
+        UInt32 fvf = 0;
+        HRESULT worldTransformResult = E_FAIL;
+        HRESULT viewTransformResult = E_FAIL;
+        HRESULT projectionTransformResult = E_FAIL;
+        D3DMATRIX worldTransform = {};
+        D3DMATRIX viewTransform = {};
+        D3DMATRIX projectionTransform = {};
+        ActorDrawRenderTargetCapture renderTarget;
+        ActorDrawBufferCapture vertexBuffer;
+        ActorDrawBufferCapture indexBuffer;
+    };
+
+    struct ActorSurfaceContractCapture
+    {
+        UInt32 sourceFrame = 0;
+        UInt32 renderFrame = 0;
+        UInt32 matchedTextureStage = 0;
+        UInt32 matchedTextureHash = 0;
+        UInt32 matchedTextureAppearanceStage = 0;
+        std::string matchedTexturePath;
+        HRESULT vertexShaderResult = E_FAIL;
+        HRESULT vertexShaderFunctionResult = E_FAIL;
+        UInt32 vertexShaderByteCount = 0;
+        UInt32 vertexShaderHash = 0;
+        bool hasBonesParameter = false;
+        bool hasSkinModelViewProjectionParameter = false;
+        HRESULT worldTransformResult = E_FAIL;
+        HRESULT viewTransformResult = E_FAIL;
+        HRESULT projectionTransformResult = E_FAIL;
+        D3DMATRIX worldTransform = {};
+        D3DMATRIX viewTransform = {};
+        D3DMATRIX projectionTransform = {};
+        ActorDrawRenderTargetCapture renderTarget;
+    };
+
+    std::vector<ActorDrawTargetTexture> gActorDrawTargetTextures;
+    std::vector<ActorDrawContractCapture> gActorDrawCaptures;
+    std::vector<ActorSurfaceContractCapture> gActorSurfaceCaptures;
+    SRWLOCK gActorDrawCaptureLock = SRWLOCK_INIT;
+    volatile LONG gActorDrawTargetTexturesReady = 0;
+    volatile LONG gActorDrawOrdinal = 0;
+
     constexpr const char* sSchema = "nikami-retail-oracle/v4";
     constexpr const char* sSchemaJson = "\"nikami-retail-oracle/v4\"";
     constexpr std::size_t sNiAVObjectWorldBoundOffset = 0x20;
     constexpr std::size_t sNiAVObjectLocalTransformOffset = 0x34;
     constexpr std::size_t sNiAVObjectWorldTransformOffset = 0x68;
+    constexpr std::size_t sNiGeometryShaderPropertyOffset = 0xA8;
+    constexpr std::size_t sNiGeometryDataOffset = 0xB8;
+    constexpr std::size_t sNiGeometrySkinInstanceOffset = 0xBC;
+    constexpr UInt64 sD3DFloatRegisterComponents = 4;
+    constexpr UInt32 sD3DMaximumTextureStages = 16;
+    constexpr UInt32 sD3DMaximumVertexShaderFloatRegisters = 256;
+    constexpr UInt32 sSidecarAppearanceMaximumDepth = 64;
+    constexpr UInt32 sSidecarAppearanceMaximumChildrenPerNode = 2048;
+    constexpr UInt32 sSidecarAppearanceMaximumNodes = 8192;
+    constexpr UInt32 sSidecarAppearanceMaximumCandidates = 128;
+    constexpr UInt32 sSidecarAppearanceMaximumParts = 48;
+    constexpr std::size_t sSidecarAppearanceMaximumJsonBytes = 23000;
+    constexpr UInt64 sSidecarTextureMaximumCanonicalBytes = 64ull * 1024ull * 1024ull;
+    // FalloutNV 1.4.0.525's NiCamera layout differs from the historical
+    // xNVSE declaration after NiAVObject. These offsets are the decoded retail
+    // render-camera ABI used by the culling and world-to-camera paths.
+    constexpr std::size_t sNiCameraWorldToCameraOffset = 0x9C;
+    constexpr std::size_t sNiCameraFrustumOffset = 0xDC;
+    constexpr std::size_t sNiCameraMinimumNearOffset = 0xF8;
+    constexpr std::size_t sNiCameraMaximumFarNearRatioOffset = 0xFC;
+    constexpr std::size_t sNiCameraViewportOffset = 0x100;
+
+    struct SidecarCameraObservation
+    {
+        void* camera = nullptr;
+        NiTransform world = {};
+        std::array<float, 16> worldToCamera = {};
+        NiFrustum frustum = {};
+        float minimumNear = 0.f;
+        float maximumFarNearRatio = 0.f;
+        NiViewport viewport = {};
+        bool readable = false;
+        bool frustumValid = false;
+        bool perspective = false;
+    };
 
     bool runReferenceFloatCommand(TESObjectREFR* reference, const char* commandName, float value);
+    bool sidecarReadSceneCameraObservation(SidecarCameraObservation& observation);
+    bool sidecarBuildPerspectiveProjection(const SidecarCameraObservation& observation,
+        std::array<float, 16>& projection, float& fovYRadians);
 
     static_assert(sizeof(NiTransform) == 0x34);
 
@@ -356,6 +521,459 @@ namespace
             hash *= 16777619u;
         }
         return hash;
+    }
+
+    bool actorDrawSourceFrameForRenderFrame(UInt32 renderFrame, UInt32& sourceFrame)
+    {
+        if (!gCaptureActorDrawContract || gActorDrawRenderFrameLead == 0)
+            return false;
+        for (const UInt32 requested : gScreenshotFrames)
+        {
+            if (requested >= gActorDrawRenderFrameLead
+                && requested - gActorDrawRenderFrameLead == renderFrame)
+            {
+                sourceFrame = requested;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool actorSurfaceSourceFrameForRenderFrame(UInt32 renderFrame, UInt32& sourceFrame)
+    {
+        if (!gCaptureActorSurfaceContract || gActorSurfaceRenderFrameLead == 0)
+            return false;
+        for (const UInt32 requested : gScreenshotFrames)
+        {
+            if (requested >= gActorSurfaceRenderFrameLead
+                && requested - gActorSurfaceRenderFrameLead == renderFrame)
+            {
+                sourceFrame = requested;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool actorDrawFrameHasCapacity(UInt32 sourceFrame)
+    {
+        bool available = false;
+        AcquireSRWLockShared(&gActorDrawCaptureLock);
+        const std::size_t count = static_cast<std::size_t>(std::count_if(
+            gActorDrawCaptures.begin(), gActorDrawCaptures.end(),
+            [sourceFrame](const ActorDrawContractCapture& capture) {
+                return capture.sourceFrame == sourceFrame;
+            }));
+        available = count < gActorDrawMaximumRecordsPerSourceFrame;
+        ReleaseSRWLockShared(&gActorDrawCaptureLock);
+        return available;
+    }
+
+    bool actorDrawFindBoundTargetTexture(IDirect3DDevice9* device,
+        UInt32 textureStageCount, UInt32& boundStage, ActorDrawTargetTexture& matched)
+    {
+        if (device == nullptr
+            || InterlockedCompareExchange(&gActorDrawTargetTexturesReady, 0, 0) != 1)
+            return false;
+        for (UInt32 stage = 0; stage < textureStageCount; ++stage)
+        {
+            IDirect3DBaseTexture9* bound = nullptr;
+            const HRESULT result = device->GetTexture(stage, &bound);
+            if (FAILED(result) || bound == nullptr)
+                continue;
+            const auto found = std::find_if(gActorDrawTargetTextures.begin(),
+                gActorDrawTargetTextures.end(), [bound](const ActorDrawTargetTexture& target) {
+                    return target.resource == bound;
+                });
+            if (found != gActorDrawTargetTextures.end())
+            {
+                boundStage = stage;
+                matched = *found;
+                bound->Release();
+                return true;
+            }
+            bound->Release();
+        }
+        return false;
+    }
+
+    ActorDrawRenderTargetCapture actorDrawCaptureRenderTarget(IDirect3DDevice9* device)
+    {
+        ActorDrawRenderTargetCapture capture;
+        if (device == nullptr)
+            return capture;
+
+        IDirect3DSurface9* renderTarget = nullptr;
+        IDirect3DSurface9* backBuffer = nullptr;
+        capture.renderTargetResult = device->GetRenderTarget(0, &renderTarget);
+        capture.backBufferResult = device->GetBackBuffer(
+            0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer);
+        if (SUCCEEDED(capture.renderTargetResult) && renderTarget != nullptr)
+            capture.renderTargetDescriptionResult
+                = renderTarget->GetDesc(&capture.renderTargetDescription);
+        if (SUCCEEDED(capture.backBufferResult) && backBuffer != nullptr)
+            capture.backBufferDescriptionResult
+                = backBuffer->GetDesc(&capture.backBufferDescription);
+
+        IUnknown* renderTargetIdentity = nullptr;
+        IUnknown* backBufferIdentity = nullptr;
+        if (renderTarget != nullptr)
+            capture.renderTargetIdentityResult = renderTarget->QueryInterface(
+                IID_IUnknown, reinterpret_cast<void**>(&renderTargetIdentity));
+        if (backBuffer != nullptr)
+            capture.backBufferIdentityResult = backBuffer->QueryInterface(
+                IID_IUnknown, reinterpret_cast<void**>(&backBufferIdentity));
+        capture.isBackBuffer = SUCCEEDED(capture.renderTargetIdentityResult)
+            && SUCCEEDED(capture.backBufferIdentityResult)
+            && renderTargetIdentity == backBufferIdentity;
+        capture.matchesBackBufferDimensions
+            = SUCCEEDED(capture.renderTargetDescriptionResult)
+            && SUCCEEDED(capture.backBufferDescriptionResult)
+            && capture.renderTargetDescription.Width
+                == capture.backBufferDescription.Width
+            && capture.renderTargetDescription.Height
+                == capture.backBufferDescription.Height;
+        if (renderTargetIdentity != nullptr)
+            renderTargetIdentity->Release();
+        if (backBufferIdentity != nullptr)
+            backBufferIdentity->Release();
+        if (renderTarget != nullptr)
+            renderTarget->Release();
+        if (backBuffer != nullptr)
+            backBuffer->Release();
+
+        capture.viewportResult = device->GetViewport(&capture.viewport);
+        capture.scissorResult = device->GetScissorRect(&capture.scissor);
+        return capture;
+    }
+
+    bool actorSurfaceFrameCaptured(UInt32 sourceFrame)
+    {
+        bool captured = false;
+        AcquireSRWLockShared(&gActorDrawCaptureLock);
+        captured = std::any_of(gActorSurfaceCaptures.begin(), gActorSurfaceCaptures.end(),
+            [sourceFrame](const ActorSurfaceContractCapture& existing) {
+                return existing.sourceFrame == sourceFrame;
+            });
+        ReleaseSRWLockShared(&gActorDrawCaptureLock);
+        return captured;
+    }
+
+    void captureActorSurfaceContract(IDirect3DDevice9* device)
+    {
+        UInt32 sourceFrame = 0;
+        if (device == nullptr
+            || !actorSurfaceSourceFrameForRenderFrame(gFrame, sourceFrame)
+            || actorSurfaceFrameCaptured(sourceFrame))
+            return;
+
+        UInt32 boundTextureStage = 0;
+        ActorDrawTargetTexture matchedTexture;
+        if (!actorDrawFindBoundTargetTexture(
+                device, gActorSurfaceTextureStageCount, boundTextureStage, matchedTexture))
+            return;
+
+        ActorSurfaceContractCapture capture;
+        capture.sourceFrame = sourceFrame;
+        capture.renderFrame = gFrame;
+        capture.matchedTextureStage = boundTextureStage;
+        capture.matchedTextureHash = matchedTexture.contentHash;
+        capture.matchedTextureAppearanceStage = matchedTexture.appearanceStage;
+        capture.matchedTexturePath = matchedTexture.path;
+        capture.renderTarget = actorDrawCaptureRenderTarget(device);
+        if (!capture.renderTarget.matchesBackBufferDimensions)
+            return;
+
+        IDirect3DVertexShader9* shader = nullptr;
+        capture.vertexShaderResult = device->GetVertexShader(&shader);
+        if (SUCCEEDED(capture.vertexShaderResult) && shader != nullptr)
+        {
+            UINT byteCount = 0;
+            capture.vertexShaderFunctionResult = shader->GetFunction(nullptr, &byteCount);
+            if (SUCCEEDED(capture.vertexShaderFunctionResult) && byteCount > 0
+                && byteCount <= gActorSurfaceMaximumShaderBytes)
+            {
+                std::vector<UInt8> bytes(byteCount);
+                UINT actualByteCount = byteCount;
+                capture.vertexShaderFunctionResult
+                    = shader->GetFunction(bytes.data(), &actualByteCount);
+                if (SUCCEEDED(capture.vertexShaderFunctionResult))
+                {
+                    bytes.resize(actualByteCount);
+                    capture.vertexShaderByteCount = actualByteCount;
+                    capture.vertexShaderHash = fnv1a32(bytes.data(), bytes.size());
+                    capture.hasBonesParameter
+                        = containsAscii(bytes.data(), bytes.size(), "Bones");
+                    capture.hasSkinModelViewProjectionParameter = containsAscii(
+                        bytes.data(), bytes.size(), "SkinModelViewProj");
+                }
+            }
+            shader->Release();
+        }
+        if (!capture.hasBonesParameter
+            || !capture.hasSkinModelViewProjectionParameter)
+            return;
+
+        capture.worldTransformResult
+            = device->GetTransform(D3DTS_WORLD, &capture.worldTransform);
+        capture.viewTransformResult
+            = device->GetTransform(D3DTS_VIEW, &capture.viewTransform);
+        capture.projectionTransformResult
+            = device->GetTransform(D3DTS_PROJECTION, &capture.projectionTransform);
+
+        AcquireSRWLockExclusive(&gActorDrawCaptureLock);
+        const bool alreadyCaptured = std::any_of(
+            gActorSurfaceCaptures.begin(), gActorSurfaceCaptures.end(),
+            [sourceFrame](const ActorSurfaceContractCapture& existing) {
+                return existing.sourceFrame == sourceFrame;
+            });
+        if (!alreadyCaptured)
+            gActorSurfaceCaptures.push_back(std::move(capture));
+        ReleaseSRWLockExclusive(&gActorDrawCaptureLock);
+    }
+
+    bool actorDrawIndexCount(D3DPRIMITIVETYPE primitiveType,
+        UInt32 primitiveCount, UInt64& indexCount)
+    {
+        constexpr UInt64 pointIndicesPerPrimitive = 1;
+        constexpr UInt64 lineListIndicesPerPrimitive = 2;
+        constexpr UInt64 triangleListIndicesPerPrimitive = 3;
+        constexpr UInt64 stripAdditionalIndices = 2;
+        switch (primitiveType)
+        {
+            case D3DPT_POINTLIST:
+                indexCount = static_cast<UInt64>(primitiveCount)
+                    * pointIndicesPerPrimitive;
+                return true;
+            case D3DPT_LINELIST:
+                indexCount = static_cast<UInt64>(primitiveCount)
+                    * lineListIndicesPerPrimitive;
+                return true;
+            case D3DPT_LINESTRIP:
+                indexCount = primitiveCount > 0
+                    ? static_cast<UInt64>(primitiveCount) + 1u : 0u;
+                return true;
+            case D3DPT_TRIANGLELIST:
+                indexCount = static_cast<UInt64>(primitiveCount)
+                    * triangleListIndicesPerPrimitive;
+                return true;
+            case D3DPT_TRIANGLESTRIP:
+            case D3DPT_TRIANGLEFAN:
+                indexCount = primitiveCount > 0
+                    ? static_cast<UInt64>(primitiveCount) + stripAdditionalIndices : 0u;
+                return true;
+            default:
+                indexCount = 0;
+                return false;
+        }
+    }
+
+    void actorDrawCaptureVertexBuffer(IDirect3DDevice9* device,
+        ActorDrawContractCapture& capture)
+    {
+        IDirect3DVertexBuffer9* buffer = nullptr;
+        UINT streamOffset = 0;
+        UINT stride = 0;
+        capture.vertexBuffer.getResult
+            = device->GetStreamSource(0, &buffer, &streamOffset, &stride);
+        capture.vertexBuffer.stride = stride;
+        if (FAILED(capture.vertexBuffer.getResult) || buffer == nullptr)
+            return;
+
+        D3DVERTEXBUFFER_DESC description = {};
+        capture.vertexBuffer.descriptionResult = buffer->GetDesc(&description);
+        if (SUCCEEDED(capture.vertexBuffer.descriptionResult))
+        {
+            capture.vertexBuffer.totalBytes = description.Size;
+            capture.vertexBuffer.usage = description.Usage;
+            capture.vertexBuffer.pool = description.Pool;
+            const SInt64 firstVertex = static_cast<SInt64>(capture.baseVertexIndex)
+                + static_cast<SInt64>(capture.minimumVertexIndex);
+            const UInt64 firstByte = firstVertex >= 0
+                ? static_cast<UInt64>(streamOffset)
+                    + static_cast<UInt64>(firstVertex) * stride
+                : static_cast<UInt64>(description.Size) + 1u;
+            const UInt64 byteCount = static_cast<UInt64>(capture.vertexCount) * stride;
+            if (stride > 0 && firstByte <= description.Size
+                && byteCount <= description.Size - firstByte
+                && byteCount <= gActorDrawMaximumBufferBytesPerRecord)
+            {
+                capture.vertexBuffer.rangeOffset = static_cast<UInt32>(firstByte);
+                capture.vertexBuffer.rangeBytes = static_cast<UInt32>(byteCount);
+                void* bytes = nullptr;
+                capture.vertexBuffer.lockResult = buffer->Lock(
+                    capture.vertexBuffer.rangeOffset, capture.vertexBuffer.rangeBytes,
+                    &bytes, D3DLOCK_READONLY);
+                if (SUCCEEDED(capture.vertexBuffer.lockResult) && bytes != nullptr)
+                {
+                    const auto* begin = static_cast<const UInt8*>(bytes);
+                    capture.vertexBuffer.bytes.assign(
+                        begin, begin + capture.vertexBuffer.rangeBytes);
+                    capture.vertexBuffer.fnv1a32 = fnv1a32(
+                        capture.vertexBuffer.bytes.data(), capture.vertexBuffer.bytes.size());
+                    buffer->Unlock();
+                }
+            }
+        }
+        buffer->Release();
+    }
+
+    void actorDrawCaptureIndexBuffer(IDirect3DDevice9* device,
+        ActorDrawContractCapture& capture)
+    {
+        IDirect3DIndexBuffer9* buffer = nullptr;
+        capture.indexBuffer.getResult = device->GetIndices(&buffer);
+        if (FAILED(capture.indexBuffer.getResult) || buffer == nullptr)
+            return;
+
+        D3DINDEXBUFFER_DESC description = {};
+        capture.indexBuffer.descriptionResult = buffer->GetDesc(&description);
+        if (SUCCEEDED(capture.indexBuffer.descriptionResult))
+        {
+            capture.indexBuffer.totalBytes = description.Size;
+            capture.indexBuffer.format = description.Format;
+            capture.indexBuffer.usage = description.Usage;
+            capture.indexBuffer.pool = description.Pool;
+            const UInt32 indexBytes = description.Format == D3DFMT_INDEX16
+                ? sizeof(UInt16) : description.Format == D3DFMT_INDEX32
+                    ? sizeof(UInt32) : 0u;
+            UInt64 indexCount = 0;
+            const UInt64 firstByte = static_cast<UInt64>(capture.startIndex) * indexBytes;
+            const UInt64 byteCount = actorDrawIndexCount(
+                    capture.primitiveType, capture.primitiveCount, indexCount)
+                ? indexCount * indexBytes : 0u;
+            if (indexBytes > 0 && firstByte <= description.Size
+                && byteCount <= description.Size - firstByte
+                && byteCount <= gActorDrawMaximumBufferBytesPerRecord)
+            {
+                capture.indexBuffer.rangeOffset = static_cast<UInt32>(firstByte);
+                capture.indexBuffer.rangeBytes = static_cast<UInt32>(byteCount);
+                void* bytes = nullptr;
+                capture.indexBuffer.lockResult = buffer->Lock(
+                    capture.indexBuffer.rangeOffset, capture.indexBuffer.rangeBytes,
+                    &bytes, D3DLOCK_READONLY);
+                if (SUCCEEDED(capture.indexBuffer.lockResult) && bytes != nullptr)
+                {
+                    const auto* begin = static_cast<const UInt8*>(bytes);
+                    capture.indexBuffer.bytes.assign(
+                        begin, begin + capture.indexBuffer.rangeBytes);
+                    capture.indexBuffer.fnv1a32 = fnv1a32(
+                        capture.indexBuffer.bytes.data(), capture.indexBuffer.bytes.size());
+                    buffer->Unlock();
+                }
+            }
+        }
+        buffer->Release();
+    }
+
+    void captureActorDrawContract(IDirect3DDevice9* device,
+        D3DPRIMITIVETYPE primitiveType, INT baseVertexIndex, UINT minimumVertexIndex,
+        UINT vertexCount, UINT startIndex, UINT primitiveCount)
+    {
+        UInt32 sourceFrame = 0;
+        if (device == nullptr || !actorDrawSourceFrameForRenderFrame(gFrame, sourceFrame)
+            || !actorDrawFrameHasCapacity(sourceFrame))
+            return;
+
+        UInt32 boundTextureStage = 0;
+        ActorDrawTargetTexture matchedTexture;
+        if (!actorDrawFindBoundTargetTexture(
+                device, gActorDrawTextureStageCount, boundTextureStage, matchedTexture))
+            return;
+
+        ActorDrawContractCapture capture;
+        capture.sourceFrame = sourceFrame;
+        capture.renderFrame = gFrame;
+        capture.ordinal = static_cast<UInt32>(InterlockedIncrement(&gActorDrawOrdinal));
+        capture.primitiveType = primitiveType;
+        capture.baseVertexIndex = baseVertexIndex;
+        capture.minimumVertexIndex = minimumVertexIndex;
+        capture.vertexCount = vertexCount;
+        capture.startIndex = startIndex;
+        capture.primitiveCount = primitiveCount;
+        capture.matchedTextureStage = boundTextureStage;
+        capture.matchedTextureHash = matchedTexture.contentHash;
+        capture.matchedTextureAppearanceStage = matchedTexture.appearanceStage;
+        capture.matchedTexturePath = matchedTexture.path;
+
+        IDirect3DVertexShader9* shader = nullptr;
+        capture.vertexShaderResult = device->GetVertexShader(&shader);
+        if (SUCCEEDED(capture.vertexShaderResult) && shader != nullptr)
+        {
+            UINT byteCount = 0;
+            capture.vertexShaderFunctionResult = shader->GetFunction(nullptr, &byteCount);
+            if (SUCCEEDED(capture.vertexShaderFunctionResult) && byteCount > 0
+                && byteCount <= gActorDrawMaximumShaderBytes)
+            {
+                capture.vertexShaderBytes.resize(byteCount);
+                UINT actualByteCount = byteCount;
+                capture.vertexShaderFunctionResult = shader->GetFunction(
+                    capture.vertexShaderBytes.data(), &actualByteCount);
+                if (SUCCEEDED(capture.vertexShaderFunctionResult))
+                {
+                    capture.vertexShaderBytes.resize(actualByteCount);
+                    capture.vertexShaderByteCount = actualByteCount;
+                    capture.vertexShaderHash = fnv1a32(capture.vertexShaderBytes.data(),
+                        capture.vertexShaderBytes.size());
+                }
+                else
+                    capture.vertexShaderBytes.clear();
+            }
+            shader->Release();
+        }
+
+        D3DCAPS9 capabilities = {};
+        const UInt32 registerCount = SUCCEEDED(device->GetDeviceCaps(&capabilities))
+            ? (std::min)(static_cast<UInt32>(gActorDrawVertexShaderRegisterCount),
+                static_cast<UInt32>(capabilities.MaxVertexShaderConst))
+            : static_cast<UInt32>(gActorDrawVertexShaderRegisterCount);
+        capture.vertexConstantRegisterCount = registerCount;
+        capture.vertexConstants.resize(
+            static_cast<std::size_t>(registerCount) * sD3DFloatRegisterComponents);
+        capture.vertexConstantsResult = device->GetVertexShaderConstantF(
+            0, capture.vertexConstants.data(), registerCount);
+        if (FAILED(capture.vertexConstantsResult))
+            capture.vertexConstants.clear();
+
+        IDirect3DVertexDeclaration9* declaration = nullptr;
+        capture.vertexDeclarationResult = device->GetVertexDeclaration(&declaration);
+        if (SUCCEEDED(capture.vertexDeclarationResult) && declaration != nullptr)
+        {
+            UINT elementCount = 0;
+            capture.vertexDeclarationElementsResult
+                = declaration->GetDeclaration(nullptr, &elementCount);
+            if (SUCCEEDED(capture.vertexDeclarationElementsResult) && elementCount > 0)
+            {
+                capture.vertexDeclaration.resize(elementCount);
+                capture.vertexDeclarationElementsResult = declaration->GetDeclaration(
+                    capture.vertexDeclaration.data(), &elementCount);
+                if (SUCCEEDED(capture.vertexDeclarationElementsResult))
+                    capture.vertexDeclaration.resize(elementCount);
+                else
+                    capture.vertexDeclaration.clear();
+            }
+            declaration->Release();
+        }
+        capture.fvfResult = device->GetFVF(&capture.fvf);
+        capture.worldTransformResult
+            = device->GetTransform(D3DTS_WORLD, &capture.worldTransform);
+        capture.viewTransformResult
+            = device->GetTransform(D3DTS_VIEW, &capture.viewTransform);
+        capture.projectionTransformResult
+            = device->GetTransform(D3DTS_PROJECTION, &capture.projectionTransform);
+        capture.renderTarget = actorDrawCaptureRenderTarget(device);
+        actorDrawCaptureVertexBuffer(device, capture);
+        actorDrawCaptureIndexBuffer(device, capture);
+
+        AcquireSRWLockExclusive(&gActorDrawCaptureLock);
+        const std::size_t sourceFrameCount = static_cast<std::size_t>(std::count_if(
+            gActorDrawCaptures.begin(), gActorDrawCaptures.end(),
+            [sourceFrame](const ActorDrawContractCapture& existing) {
+                return existing.sourceFrame == sourceFrame;
+            }));
+        if (sourceFrameCount < gActorDrawMaximumRecordsPerSourceFrame)
+            gActorDrawCaptures.push_back(std::move(capture));
+        ReleaseSRWLockExclusive(&gActorDrawCaptureLock);
     }
 
     void captureImageSpaceShaderConstants(IDirect3DDevice9* device)
@@ -409,6 +1027,9 @@ namespace
         UINT startIndex, UINT primitiveCount)
     {
         captureImageSpaceShaderConstants(device);
+        captureActorSurfaceContract(device);
+        captureActorDrawContract(device, primitiveType, baseVertexIndex, minimumVertexIndex,
+            vertexCount, startIndex, primitiveCount);
         return gOriginalDrawIndexedPrimitive(device, primitiveType, baseVertexIndex, minimumVertexIndex,
             vertexCount, startIndex, primitiveCount);
     }
@@ -898,6 +1519,16 @@ namespace
         SIZE_T bytesRead = 0;
         return ReadProcessMemory(GetCurrentProcess(), address, &value, sizeof(T), &bytesRead) != FALSE
             && bytesRead == sizeof(T);
+    }
+
+    bool safeReadBytes(const void* address, void* destination, std::size_t byteCount)
+    {
+        if (address == nullptr || destination == nullptr || byteCount == 0)
+            return false;
+        SIZE_T bytesRead = 0;
+        return ReadProcessMemory(
+                   GetCurrentProcess(), address, destination, byteCount, &bytesRead) != FALSE
+            && bytesRead == byteCount;
     }
 
     bool readPlayerRayCastFilter(PlayerCharacter* player, UInt32& filter)
@@ -2027,6 +2658,32 @@ namespace
                     << (gHighProcessBoneLodPathHooked ? "true" : "false") << ','
                     << "\"compactActorTelemetry\":"
                     << (gCompactActorTelemetry ? "true" : "false") << ','
+                    << "\"captureActorSkinPalettes\":"
+                    << (gCaptureActorSkinPalettes ? "true" : "false") << ','
+                    << "\"actorSkinPaletteMaximumBytesPerShape\":"
+                    << gActorSkinPaletteMaximumBytesPerShape << ','
+                    << "\"captureActorSurfaceContract\":"
+                    << (gCaptureActorSurfaceContract ? "true" : "false") << ','
+                    << "\"actorSurfaceMaximumShaderBytes\":"
+                    << gActorSurfaceMaximumShaderBytes << ','
+                    << "\"actorSurfaceTextureStageCount\":"
+                    << gActorSurfaceTextureStageCount << ','
+                    << "\"actorSurfaceRenderFrameLead\":"
+                    << gActorSurfaceRenderFrameLead << ','
+                    << "\"captureActorDrawContract\":"
+                    << (gCaptureActorDrawContract ? "true" : "false") << ','
+                    << "\"actorDrawMaximumRecordsPerSourceFrame\":"
+                    << gActorDrawMaximumRecordsPerSourceFrame << ','
+                    << "\"actorDrawVertexShaderRegisterCount\":"
+                    << gActorDrawVertexShaderRegisterCount << ','
+                    << "\"actorDrawMaximumShaderBytes\":"
+                    << gActorDrawMaximumShaderBytes << ','
+                    << "\"actorDrawTextureStageCount\":"
+                    << gActorDrawTextureStageCount << ','
+                    << "\"actorDrawRenderFrameLead\":"
+                    << gActorDrawRenderFrameLead << ','
+                    << "\"actorDrawMaximumBufferBytesPerRecord\":"
+                    << gActorDrawMaximumBufferBytesPerRecord << ','
                     << "\"vatsControlBytesAddress\":9709312,"
                     << "\"vatsControlBytesReadable\":" << (vatsControlBytesReadable ? "true" : "false") << ','
                     << "\"vatsControlBytesHex\":" << jsonString(vatsControlHex.c_str()) << ','
@@ -2442,6 +3099,246 @@ namespace
     static_assert(sizeof(OracleGeometryData) == 0x40);
     static_assert(offsetof(OracleGeometryData, vertices) == 0x20);
 
+    // FalloutNV 1.4.0.525 runtime layout. The cache dimensions and allocation
+    // are emitted with every observation so the byte interpretation is proven
+    // by the running executable instead of inferred from a particular actor.
+    struct OracleSkinInstance
+    {
+        void* vtable;
+        UInt32 refCount;
+        NiObject* skinData;
+        NiObject* skinPartition;
+        NiAVObject* rootParent;
+        NiAVObject** bones;
+        UInt32 frameId;
+        UInt32 matrixCount;
+        UInt32 registersPerMatrix;
+        UInt32 allocatedBytes;
+        void* boneMatrices;
+        void* previousBoneMatrices;
+        void* skinToWorldWorldToSkinMatrix;
+    };
+
+    static_assert(sizeof(OracleSkinInstance) == 0x34);
+    static_assert(offsetof(OracleSkinInstance, skinData) == 0x08);
+    static_assert(offsetof(OracleSkinInstance, rootParent) == 0x10);
+    static_assert(offsetof(OracleSkinInstance, matrixCount) == 0x1C);
+    static_assert(offsetof(OracleSkinInstance, boneMatrices) == 0x28);
+
+    bool isOracleSkinInstanceType(const std::string& type)
+    {
+        return type == "NiSkinInstance" || type == "BSDismemberSkinInstance";
+    }
+
+    bool isOracleGeometryType(const std::string& type);
+
+    enum class ActorSkinPaletteResult
+    {
+        Captured,
+        NotRenderCached,
+        Invalid
+    };
+
+    struct ActorSkinPaletteCaptureStatus
+    {
+        UInt32 visitedNodes = 0;
+        UInt32 geometryCandidates = 0;
+        UInt32 skinInstances = 0;
+        UInt32 capturedPalettes = 0;
+        UInt32 notRenderCached = 0;
+        UInt32 invalidPalettes = 0;
+        bool traversalTruncated = false;
+    };
+
+    void writeFloatValues(std::ostream& out, const std::vector<float>& values)
+    {
+        out << '[';
+        for (std::size_t index = 0; index < values.size(); ++index)
+        {
+            if (index != 0)
+                out << ',';
+            out << values[index];
+        }
+        out << ']';
+    }
+
+    ActorSkinPaletteResult writeCompactActorSkinPalette(std::ostream& out, NiAVObject* geometry,
+        NiObject* skinAddress, const std::string& nodePath)
+    {
+        const std::string geometryName
+            = geometry != nullptr ? safeRuntimeString(geometry->m_pcName) : std::string();
+        const std::string skinType = safeRuntimeString(runtimeTypeName(skinAddress));
+        out << std::setprecision(9)
+            << "{\"nodePath\":" << jsonString(nodePath.c_str())
+            << ",\"geometryName\":"
+            << jsonString(geometryName.empty() ? nullptr : geometryName.c_str())
+            << ",\"skinInstanceType\":"
+            << jsonString(skinType.empty() ? nullptr : skinType.c_str())
+            << ",\"layout\":\"NiSkinInstance@geometry+0xbc/cache@skin+0x28\"";
+
+        OracleSkinInstance skin = {};
+        if (!isOracleSkinInstanceType(skinType) || !safeRead(skinAddress, skin))
+        {
+            out << ",\"status\":\"skin-instance-layout-unreadable\"}";
+            return ActorSkinPaletteResult::Invalid;
+        }
+
+        const UInt64 floatsPerMatrix
+            = static_cast<UInt64>(skin.registersPerMatrix) * sD3DFloatRegisterComponents;
+        const UInt64 matrixFloatCount = static_cast<UInt64>(skin.matrixCount) * floatsPerMatrix;
+        const UInt64 matrixBytes = matrixFloatCount * sizeof(float);
+        const bool dimensionsValid = skin.matrixCount > 0 && skin.registersPerMatrix > 0
+            && matrixBytes <= gActorSkinPaletteMaximumBytesPerShape
+            && matrixBytes <= skin.allocatedBytes;
+
+        out << ",\"frameId\":" << skin.frameId
+            << ",\"matrixCount\":" << skin.matrixCount
+            << ",\"registersPerMatrix\":" << skin.registersPerMatrix
+            << ",\"componentsPerRegister\":" << sD3DFloatRegisterComponents
+            << ",\"allocatedBytes\":" << skin.allocatedBytes
+            << ",\"matrixBytes\":" << matrixBytes
+            << ",\"configuredMaximumBytes\":" << gActorSkinPaletteMaximumBytesPerShape
+            << ",\"rootParentName\":"
+            << jsonString(skin.rootParent != nullptr
+                    ? safeRuntimeString(skin.rootParent->m_pcName).c_str() : nullptr)
+            << ",\"skinDataAddress\":"
+            << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(skin.skinData))
+            << ",\"skinPartitionAddress\":"
+            << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(skin.skinPartition))
+            << ",\"boneMatricesAddress\":"
+            << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(skin.boneMatrices))
+            << ",\"previousBoneMatricesAddress\":"
+            << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(skin.previousBoneMatrices))
+            << ",\"skinToWorldWorldToSkinMatrixAddress\":"
+            << static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(
+                   skin.skinToWorldWorldToSkinMatrix));
+
+        const bool notRenderCached = skin.matrixCount == 0 && skin.registersPerMatrix == 0
+            && skin.allocatedBytes == 0 && skin.boneMatrices == nullptr;
+        if (notRenderCached)
+        {
+            out << ",\"status\":\"not-render-cached\"}";
+            return ActorSkinPaletteResult::NotRenderCached;
+        }
+        if (!dimensionsValid || skin.boneMatrices == nullptr || skin.bones == nullptr)
+        {
+            out << ",\"status\":\"skin-palette-dimensions-invalid\"}";
+            return ActorSkinPaletteResult::Invalid;
+        }
+
+        std::vector<float> matrices(static_cast<std::size_t>(matrixFloatCount));
+        const bool matricesReadable
+            = safeReadBytes(skin.boneMatrices, matrices.data(), static_cast<std::size_t>(matrixBytes));
+        bool matricesFinite = matricesReadable;
+        if (matricesReadable)
+        {
+            for (float value : matrices)
+                matricesFinite = matricesFinite && std::isfinite(value);
+        }
+
+        out << ",\"bones\":[";
+        bool bonesReadable = true;
+        for (UInt32 index = 0; index < skin.matrixCount; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            NiAVObject* bone = nullptr;
+            const bool boneReadable = safeRead(skin.bones + index, bone) && bone != nullptr;
+            bonesReadable = bonesReadable && boneReadable;
+            out << "{\"index\":" << index << ",\"name\":"
+                << jsonString(boneReadable
+                        ? safeRuntimeString(bone->m_pcName).c_str() : nullptr)
+                << '}';
+        }
+        out << ']';
+
+        std::vector<float> skinWorldMatrix;
+        const UInt64 skinWorldBytes = floatsPerMatrix * sizeof(float);
+        const bool skinWorldReadable = skin.skinToWorldWorldToSkinMatrix != nullptr
+            && skinWorldBytes <= gActorSkinPaletteMaximumBytesPerShape;
+        if (skinWorldReadable)
+        {
+            skinWorldMatrix.resize(static_cast<std::size_t>(floatsPerMatrix));
+            if (!safeReadBytes(skin.skinToWorldWorldToSkinMatrix, skinWorldMatrix.data(),
+                    static_cast<std::size_t>(skinWorldBytes)))
+                skinWorldMatrix.clear();
+        }
+
+        out << ",\"status\":\""
+            << (matricesReadable && matricesFinite && bonesReadable
+                    ? "captured" : "skin-palette-read-incomplete")
+            << "\",\"matricesReadable\":" << (matricesReadable ? "true" : "false")
+            << ",\"matricesFinite\":" << (matricesFinite ? "true" : "false")
+            << ",\"bonesReadable\":" << (bonesReadable ? "true" : "false")
+            << ",\"fnv1a32\":"
+            << (matricesReadable
+                    ? fnv1a32(reinterpret_cast<const UInt8*>(matrices.data()),
+                        static_cast<std::size_t>(matrixBytes)) : 0)
+            << ",\"matrices\":";
+        if (matricesReadable)
+            writeFloatValues(out, matrices);
+        else
+            out << "null";
+        out << ",\"skinToWorldWorldToSkinMatrix\":";
+        if (!skinWorldMatrix.empty())
+            writeFloatValues(out, skinWorldMatrix);
+        else
+            out << "null";
+        out << '}';
+        return matricesReadable && matricesFinite && bonesReadable
+            ? ActorSkinPaletteResult::Captured : ActorSkinPaletteResult::Invalid;
+    }
+
+    void writeCompactActorSkinPalettes(std::ostream& out, NiAVObject* object,
+        bool& first, unsigned int depth, const std::string& nodePath,
+        ActorSkinPaletteCaptureStatus& status)
+    {
+        if (object == nullptr)
+            return;
+        if (depth > sSidecarAppearanceMaximumDepth)
+        {
+            status.traversalTruncated = true;
+            return;
+        }
+        ++status.visitedNodes;
+        const std::string runtimeType
+            = safeRuntimeString(runtimeTypeName(reinterpret_cast<NiObject*>(object)));
+        if (isOracleGeometryType(runtimeType))
+        {
+            ++status.geometryCandidates;
+            NiObject* skinAddress = nullptr;
+            if (safeRead(reinterpret_cast<const UInt8*>(object)
+                    + sNiGeometrySkinInstanceOffset, skinAddress)
+                && skinAddress != nullptr)
+            {
+                ++status.skinInstances;
+                if (!first)
+                    out << ',';
+                first = false;
+                const ActorSkinPaletteResult result
+                    = writeCompactActorSkinPalette(out, object, skinAddress, nodePath);
+                if (result == ActorSkinPaletteResult::Captured)
+                    ++status.capturedPalettes;
+                else if (result == ActorSkinPaletteResult::NotRenderCached)
+                    ++status.notRenderCached;
+                else
+                    ++status.invalidPalettes;
+            }
+        }
+
+        NiNode* node = object->GetAsNiNode();
+        if (node == nullptr || node->m_children.data == nullptr)
+            return;
+        const unsigned int count = (std::min)(
+            static_cast<unsigned int>(node->m_children.firstFreeEntry),
+            static_cast<unsigned int>(sSidecarAppearanceMaximumChildrenPerNode));
+        if (count != static_cast<unsigned int>(node->m_children.firstFreeEntry))
+            status.traversalTruncated = true;
+        for (unsigned int index = 0; index < count; ++index)
+            writeCompactActorSkinPalettes(out, node->m_children.data[index], first,
+                depth + 1, nodePath + '/' + std::to_string(index), status);
+    }
+
     bool isOracleGeometryType(const std::string& type)
     {
         return type == "NiGeometry" || type == "NiLines"
@@ -2511,11 +3408,14 @@ namespace
             NiObject* skinInstance = nullptr;
             OracleGeometryData* dataAddress = nullptr;
             const bool shaderPointerRead
-                = safeRead(reinterpret_cast<const UInt8*>(object) + 0xA8, shaderProperty);
+                = safeRead(reinterpret_cast<const UInt8*>(object)
+                    + sNiGeometryShaderPropertyOffset, shaderProperty);
             const bool dataPointerRead
-                = safeRead(reinterpret_cast<const UInt8*>(object) + 0xB8, dataAddress);
+                = safeRead(reinterpret_cast<const UInt8*>(object)
+                    + sNiGeometryDataOffset, dataAddress);
             const bool skinPointerRead
-                = safeRead(reinterpret_cast<const UInt8*>(object) + 0xBC, skinInstance);
+                = safeRead(reinterpret_cast<const UInt8*>(object)
+                    + sNiGeometrySkinInstanceOffset, skinInstance);
             if (!shaderPointerRead || !dataPointerRead || !skinPointerRead)
             {
                 ++status.pointerReadFailures;
@@ -3394,6 +4294,10 @@ namespace
             NiNode* root = actor->GetNiNode();
             if (gCompactActorTelemetry)
             {
+                if (root != nullptr
+                    && gActorGeometryLogged.find(actor->refID) == gActorGeometryLogged.end()
+                    && writeActorGeometry(actor, root))
+                    gActorGeometryLogged.insert(actor->refID);
                 writeCompactActorPose(actor, process, mhp, hp, weapon, root);
                 return;
             }
@@ -3447,21 +4351,11 @@ namespace
                 cameraDistance = std::sqrt(dx * dx + dy * dy + dz * dz);
             }
             actorScale = reinterpret_cast<float(__thiscall*)(Actor*)>(0x00567400)(actor);
-            void* sceneGraphOwner = reinterpret_cast<void*(__cdecl*)()>(0x0045C670)();
-            void* sceneCamera = sceneGraphOwner != nullptr
-                ? reinterpret_cast<void*(__thiscall*)(void*)>(0x006629F0)(sceneGraphOwner)
-                : nullptr;
-            NiFrustum sceneCameraFrustum = {};
-            NiViewport sceneCameraViewport = {};
-            float sceneCameraMinNearPlaneDistance = 0.f;
-            float sceneCameraMaxFarNearRatio = 0.f;
-            const bool hasSceneCameraProjection = sceneCamera != nullptr
-                && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0xEC, sceneCameraFrustum)
-                && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x108, sceneCameraMinNearPlaneDistance)
-                && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x10C, sceneCameraMaxFarNearRatio)
-                && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x110, sceneCameraViewport);
-            if (sceneCamera != nullptr)
-                cameraLodAdjust = reinterpret_cast<float(__thiscall*)(void*)>(0x00508070)(sceneCamera);
+            SidecarCameraObservation sceneCamera = {};
+            const bool hasSceneCameraProjection = sidecarReadSceneCameraObservation(sceneCamera);
+            if (sceneCamera.camera != nullptr)
+                cameraLodAdjust = reinterpret_cast<float(__thiscall*)(void*)>(0x00508070)(
+                    sceneCamera.camera);
             safeRead(reinterpret_cast<const void*>(0x011AD7C4), actorFadeMultiplier);
             OracleSetting boneLodDistanceSetting = {};
             if (safeRead(reinterpret_cast<const void*>(0x011CCF88), boneLodDistanceSetting))
@@ -3496,14 +4390,14 @@ namespace
                 << ",\"sceneCameraProjection\":";
             if (hasSceneCameraProjection)
             {
-                gOutput << "{\"frustum\":[" << sceneCameraFrustum.l << ',' << sceneCameraFrustum.r << ','
-                        << sceneCameraFrustum.t << ',' << sceneCameraFrustum.b << ',' << sceneCameraFrustum.n << ','
-                        << sceneCameraFrustum.f << ']'
-                        << ",\"orthographic\":" << (sceneCameraFrustum.o != 0 ? "true" : "false")
-                        << ",\"minNearPlaneDistance\":" << sceneCameraMinNearPlaneDistance
-                        << ",\"maxFarNearRatio\":" << sceneCameraMaxFarNearRatio
-                        << ",\"viewport\":[" << sceneCameraViewport.l << ',' << sceneCameraViewport.r << ','
-                        << sceneCameraViewport.t << ',' << sceneCameraViewport.b << "]}";
+                gOutput << "{\"frustum\":[" << sceneCamera.frustum.l << ',' << sceneCamera.frustum.r << ','
+                        << sceneCamera.frustum.t << ',' << sceneCamera.frustum.b << ',' << sceneCamera.frustum.n << ','
+                        << sceneCamera.frustum.f << ']'
+                        << ",\"orthographic\":" << (sceneCamera.perspective ? "false" : "true")
+                        << ",\"minNearPlaneDistance\":" << sceneCamera.minimumNear
+                        << ",\"maxFarNearRatio\":" << sceneCamera.maximumFarNearRatio
+                        << ",\"viewport\":[" << sceneCamera.viewport.l << ',' << sceneCamera.viewport.r << ','
+                        << sceneCamera.viewport.t << ',' << sceneCamera.viewport.b << "]}";
             }
             else
                 gOutput << "null";
@@ -8635,50 +9529,121 @@ namespace
         return result;
     }
 
+    bool sidecarReadSceneCameraObservation(SidecarCameraObservation& observation)
+    {
+        observation = {};
+        observation.camera = sidecarGetSceneCameraUnsafe();
+        if (observation.camera == nullptr)
+            return false;
+        const UInt8* address = reinterpret_cast<const UInt8*>(observation.camera);
+        if (!safeRead(address + sNiAVObjectWorldTransformOffset, observation.world)
+            || !safeRead(address + sNiCameraWorldToCameraOffset, observation.worldToCamera)
+            || !safeRead(address + sNiCameraFrustumOffset, observation.frustum)
+            || !safeRead(address + sNiCameraMinimumNearOffset, observation.minimumNear)
+            || !safeRead(address + sNiCameraMaximumFarNearRatioOffset,
+                observation.maximumFarNearRatio)
+            || !safeRead(address + sNiCameraViewportOffset, observation.viewport))
+            return false;
+
+        const float* rotation = observation.world.rotate.data;
+        const std::array<float, 18> values = {
+            rotation[0], rotation[1], rotation[2], rotation[3], rotation[4],
+            rotation[5], rotation[6], rotation[7], rotation[8],
+            observation.world.translate.x, observation.world.translate.y,
+            observation.world.translate.z, observation.world.scale,
+            observation.minimumNear, observation.maximumFarNearRatio,
+            observation.viewport.l, observation.viewport.r, observation.viewport.t,
+        };
+        if (std::any_of(values.begin(), values.end(), [](float value) {
+                return !std::isfinite(value);
+            }) || !std::isfinite(observation.viewport.b)
+            || std::any_of(observation.worldToCamera.begin(),
+                observation.worldToCamera.end(), [](float value) {
+                    return !std::isfinite(value);
+                })
+            || observation.world.scale <= 0.f || observation.minimumNear <= 0.f
+            || observation.maximumFarNearRatio <= 1.f
+            || observation.viewport.l == observation.viewport.r
+            || observation.viewport.t == observation.viewport.b)
+            return false;
+
+        const std::array<float, 6> frustumValues = {
+            observation.frustum.l, observation.frustum.r,
+            observation.frustum.t, observation.frustum.b,
+            observation.frustum.n, observation.frustum.f,
+        };
+        observation.frustumValid = std::all_of(
+            frustumValues.begin(), frustumValues.end(), [](float value) {
+                return std::isfinite(value);
+            })
+            && observation.frustum.l < observation.frustum.r
+            && observation.frustum.b < observation.frustum.t
+            && observation.frustum.n > 0.f
+            && observation.frustum.f > observation.frustum.n;
+        observation.perspective = observation.frustum.o == 0;
+        observation.readable = observation.frustumValid;
+        return observation.readable;
+    }
+
+    bool sidecarBuildPerspectiveProjection(const SidecarCameraObservation& camera,
+        std::array<float, 16>& projection, float& fovYRadians)
+    {
+        projection = {};
+        fovYRadians = 0.f;
+        if (!camera.readable || !camera.frustumValid || !camera.perspective)
+            return false;
+        fovYRadians = std::atan(camera.frustum.t) - std::atan(camera.frustum.b);
+        if (!std::isfinite(fovYRadians) || fovYRadians <= 0.f)
+            return false;
+        // Retail NiFrustum side extents are tangent slopes, not near-plane
+        // distances. The near value therefore only participates in depth.
+        projection[0] = 2.f / (camera.frustum.r - camera.frustum.l);
+        projection[5] = 2.f / (camera.frustum.t - camera.frustum.b);
+        projection[8] = (camera.frustum.l + camera.frustum.r)
+            / (camera.frustum.l - camera.frustum.r);
+        projection[9] = (camera.frustum.t + camera.frustum.b)
+            / (camera.frustum.b - camera.frustum.t);
+        projection[10] = camera.frustum.f
+            / (camera.frustum.f - camera.frustum.n);
+        projection[11] = 1.f;
+        projection[14] = -camera.frustum.n * camera.frustum.f
+            / (camera.frustum.f - camera.frustum.n);
+        return std::all_of(projection.begin(), projection.end(), [](float value) {
+            return std::isfinite(value);
+        });
+    }
+
     void writeReviewCameraObservation()
     {
-        void* sceneCamera = sidecarGetSceneCameraUnsafe();
-        NiTransform world = {};
-        NiFrustum frustum = {};
-        NiViewport viewport = {};
-        const bool readable = sceneCamera != nullptr
-            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera)
-                    + sNiAVObjectWorldTransformOffset, world)
-            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0xEC, frustum)
-            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x110, viewport);
+        SidecarCameraObservation camera = {};
+        const bool readable = sidecarReadSceneCameraObservation(camera);
         float view[16] = {};
-        float projection[16] = {};
+        std::array<float, 16> projection = {};
+        float fovYRadians = 0.f;
+        const bool projectionExact = sidecarBuildPerspectiveProjection(
+            camera, projection, fovYRadians);
         if (readable)
         {
-            const float viewRotation[16] = {
-                world.rotate.data[0], world.rotate.data[3], world.rotate.data[6], 0.f,
-                world.rotate.data[1], world.rotate.data[4], world.rotate.data[7], 0.f,
-                world.rotate.data[2], world.rotate.data[5], world.rotate.data[8], 0.f,
-                0.f, 0.f, 0.f, 1.f
-            };
-            std::copy(std::begin(viewRotation), std::end(viewRotation), std::begin(view));
-            view[12] = -(view[0] * world.translate.x + view[4] * world.translate.y
-                + view[8] * world.translate.z);
-            view[13] = -(view[1] * world.translate.x + view[5] * world.translate.y
-                + view[9] * world.translate.z);
-            view[14] = -(view[2] * world.translate.x + view[6] * world.translate.y
-                + view[10] * world.translate.z);
-            if (frustum.r != frustum.l && frustum.t != frustum.b && frustum.f != frustum.n)
-            {
-                projection[0] = 2.f * frustum.n / (frustum.r - frustum.l);
-                projection[5] = 2.f * frustum.n / (frustum.t - frustum.b);
-                projection[8] = (frustum.l + frustum.r) / (frustum.l - frustum.r);
-                projection[9] = (frustum.t + frustum.b) / (frustum.b - frustum.t);
-                projection[10] = frustum.f / (frustum.f - frustum.n);
-                projection[11] = 1.f;
-                projection[14] = -frustum.n * frustum.f / (frustum.f - frustum.n);
-            }
+            std::copy(camera.worldToCamera.begin(), camera.worldToCamera.end(),
+                std::begin(view));
         }
         gOutput << "{\"schema\":" << sSchemaJson
                 << ",\"event\":\"review-camera-observation\""
                 << ",\"frame\":" << gFrame
                 << ",\"shotKind\":" << jsonString(gCameraShotKind.c_str())
                 << ",\"readable\":" << (readable ? "true" : "false")
+                << ",\"projectionExact\":" << (projectionExact ? "true" : "false")
+                << ",\"fovYRadians\":" << fovYRadians
+                << ",\"cameraWorld\":{\"rotation\":[";
+        for (UInt32 index = 0; index < 9; ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            gOutput << camera.world.rotate.data[index];
+        }
+        gOutput << "],\"translation\":[" << camera.world.translate.x << ','
+                << camera.world.translate.y << ',' << camera.world.translate.z
+                << "],\"scale\":" << camera.world.scale << '}'
                 << ",\"viewMatrix\":[";
         for (UInt32 index = 0; index < 16; ++index)
         {
@@ -8693,11 +9658,13 @@ namespace
                 gOutput << ',';
             gOutput << projection[index];
         }
-        gOutput << "],\"frustum\":[" << frustum.l << ',' << frustum.r << ','
-                << frustum.t << ',' << frustum.b << ',' << frustum.n << ',' << frustum.f
-                << ',' << static_cast<UInt32>(frustum.o) << ']'
-                << ",\"viewport\":[" << viewport.l << ',' << viewport.r << ','
-                << viewport.t << ',' << viewport.b << "]}\n";
+        gOutput << "],\"frustum\":[" << camera.frustum.l << ',' << camera.frustum.r << ','
+                << camera.frustum.t << ',' << camera.frustum.b << ',' << camera.frustum.n << ','
+                << camera.frustum.f << ',' << static_cast<UInt32>(camera.frustum.o) << ']'
+                << ",\"minimumNear\":" << camera.minimumNear
+                << ",\"maximumFarNearRatio\":" << camera.maximumFarNearRatio
+                << ",\"viewport\":[" << camera.viewport.l << ',' << camera.viewport.r << ','
+                << camera.viewport.t << ',' << camera.viewport.b << "]}\n";
         gOutput.flush();
     }
 
@@ -8894,16 +9861,12 @@ namespace
     }
 
     constexpr UInt32 sSidecarNoSourceSlot = 0xFFFFFFFFu;
-    constexpr UInt32 sSidecarAppearanceMaximumNodes = 8192;
-    constexpr UInt32 sSidecarAppearanceMaximumCandidates = 128;
-    constexpr UInt32 sSidecarAppearanceMaximumParts = 48;
-    constexpr std::size_t sSidecarAppearanceMaximumJsonBytes = 23000;
-    constexpr UInt64 sSidecarTextureMaximumCanonicalBytes = 64ull * 1024ull * 1024ull;
     const std::string sSidecarEmptyNodePath;
 
     struct SidecarTextureResource
     {
         bool valid = false;
+        IDirect3DBaseTexture9* resource = nullptr;
         UInt32 width = 0;
         UInt32 height = 0;
         D3DFORMAT format = D3DFMT_UNKNOWN;
@@ -8968,6 +9931,7 @@ namespace
         SidecarAppearanceSources sources;
         std::vector<SidecarAppearanceAttachment> attachments;
         std::vector<SidecarRenderPart> parts;
+        std::vector<ActorDrawTargetTexture> drawTextures;
         std::map<const NiTexture*, SidecarTextureResource> textureCache;
         std::set<const NiAVObject*> visitedObjects;
         UInt32 visitedNodes = 0;
@@ -9322,6 +10286,7 @@ namespace
             || textureData == nullptr
             || !safeRead(textureData + 0x64, resource) || resource == nullptr)
             return false;
+        observed.resource = resource;
         switch (resource->GetType())
         {
             case D3DRTYPE_TEXTURE:
@@ -9463,6 +10428,20 @@ namespace
             || binding.path.rfind("runtime/falloutnv/", 0) == 0;
         binding.sourceKind = generated ? "generated" : pathSourceKind;
         binding.stage = stage;
+        const auto registered = std::find_if(capture.drawTextures.begin(),
+            capture.drawTextures.end(), [resource = observed.resource](
+                const ActorDrawTargetTexture& value) {
+                return value.resource == resource;
+            });
+        if (observed.resource != nullptr && registered == capture.drawTextures.end())
+        {
+            ActorDrawTargetTexture target;
+            target.resource = observed.resource;
+            target.contentHash = observed.contentHash;
+            target.appearanceStage = stage;
+            target.path = binding.path;
+            capture.drawTextures.push_back(std::move(target));
+        }
         part.textureBindings.push_back(std::move(binding));
     }
 
@@ -9722,7 +10701,8 @@ namespace
     {
         if (object == nullptr)
             return;
-        if (depth > 64 || capture.visitedNodes >= sSidecarAppearanceMaximumNodes)
+        if (depth > sSidecarAppearanceMaximumDepth
+            || capture.visitedNodes >= sSidecarAppearanceMaximumNodes)
         {
             capture.traversalTruncated = true;
             return;
@@ -9762,8 +10742,10 @@ namespace
                 NiObject* shaderProperty = nullptr;
                 OracleGeometryData* geometryDataAddress = nullptr;
                 safeRead(reinterpret_cast<const UInt8*>(object) + 0xA4, materialProperty);
-                safeRead(reinterpret_cast<const UInt8*>(object) + 0xA8, shaderProperty);
-                safeRead(reinterpret_cast<const UInt8*>(object) + 0xB8, geometryDataAddress);
+                safeRead(reinterpret_cast<const UInt8*>(object)
+                    + sNiGeometryShaderPropertyOffset, shaderProperty);
+                safeRead(reinterpret_cast<const UInt8*>(object)
+                    + sNiGeometryDataOffset, geometryDataAddress);
                 OracleGeometryData geometryData = {};
                 const bool geometryReadable = geometryDataAddress != nullptr
                     && safeRead(geometryDataAddress, geometryData)
@@ -9881,7 +10863,8 @@ namespace
         }
         const UInt32 count = (std::min)(
             (std::min)(static_cast<UInt32>(children.firstFreeEntry),
-                static_cast<UInt32>(children.capacity)), static_cast<UInt32>(2048));
+                static_cast<UInt32>(children.capacity)),
+            sSidecarAppearanceMaximumChildrenPerNode);
         if (count > 0 && children.data == nullptr)
         {
             capture.evidenceComplete = false;
@@ -10060,6 +11043,515 @@ namespace
             out << serialized[index];
         }
         out << "]}";
+    }
+
+    void sidecarPrimeActorDrawTexturesUnsafe(Actor* actor)
+    {
+        if ((!gCaptureActorDrawContract && !gCaptureActorSurfaceContract) || actor == nullptr
+            || InterlockedCompareExchange(&gActorDrawTargetTexturesReady, 0, 0) != 0)
+            return;
+        SidecarAppearanceCapture capture;
+        sidecarCollectAppearanceSourcesAndAttachments(actor, capture);
+        NiNode* root = sidecarActorRootUnsafe(actor);
+        if (root == nullptr || !sidecarCollectAppearanceSafely(capture, root)
+            || capture.drawTextures.empty())
+            return;
+        std::sort(capture.drawTextures.begin(), capture.drawTextures.end(),
+            [](const ActorDrawTargetTexture& left, const ActorDrawTargetTexture& right) {
+                if (left.path != right.path) return left.path < right.path;
+                if (left.contentHash != right.contentHash)
+                    return left.contentHash < right.contentHash;
+                if (left.appearanceStage != right.appearanceStage)
+                    return left.appearanceStage < right.appearanceStage;
+                return left.resource < right.resource;
+            });
+        gActorDrawTargetTextures = std::move(capture.drawTextures);
+        MemoryBarrier();
+        InterlockedExchange(&gActorDrawTargetTexturesReady, 1);
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"actor-draw-contract-target-textures\""
+                << ",\"frame\":" << gFrame
+                << ",\"refForm\":" << actor->refID
+                << ",\"baseForm\":"
+                << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
+                << ",\"textures\":[";
+        for (std::size_t index = 0; index < gActorDrawTargetTextures.size(); ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            const ActorDrawTargetTexture& texture = gActorDrawTargetTextures[index];
+            gOutput << "{\"path\":" << jsonString(texture.path.c_str())
+                    << ",\"contentHash\":"
+                    << jsonString(sidecarHashLabel(
+                           "d3d9-fnv1a32:", texture.contentHash).c_str())
+                    << ",\"appearanceStage\":" << texture.appearanceStage << '}';
+        }
+        gOutput << "]}\n";
+        gOutput.flush();
+    }
+
+    void sidecarPrimeActorDrawTextures(Actor* actor)
+    {
+        __try
+        {
+            sidecarPrimeActorDrawTexturesUnsafe(actor);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"actor-draw-contract-target-textures-fault\""
+                    << ",\"frame\":" << gFrame << "}\n";
+            gOutput.flush();
+        }
+    }
+
+    struct ActorDrawArtifactEvidence
+    {
+        bool written = false;
+        std::string path;
+        UInt64 bytes = 0;
+        UInt32 hash = 0;
+    };
+
+    ActorDrawArtifactEvidence writeActorDrawArtifact(
+        const ActorDrawContractCapture& capture, const char* suffix,
+        const std::vector<UInt8>& bytes)
+    {
+        ActorDrawArtifactEvidence evidence;
+        if (bytes.empty() || gActorDrawArtifactDirectory.empty())
+            return evidence;
+        std::ostringstream name;
+        name << "source-" << std::setfill('0') << std::setw(6) << capture.sourceFrame
+             << "-render-" << std::setw(6) << capture.renderFrame
+             << "-draw-" << std::setw(6) << capture.ordinal << '-' << suffix << ".bin";
+        const std::filesystem::path path
+            = std::filesystem::path(gActorDrawArtifactDirectory) / name.str();
+        if (std::filesystem::exists(path))
+            return evidence;
+        std::ofstream stream(path, std::ios::out | std::ios::binary);
+        if (!stream)
+            return evidence;
+        stream.write(reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+        stream.flush();
+        if (!stream)
+            return evidence;
+        evidence.written = true;
+        evidence.path = path.string();
+        evidence.bytes = bytes.size();
+        evidence.hash = fnv1a32(bytes.data(), bytes.size());
+        return evidence;
+    }
+
+    void writeActorDrawFloatArray(std::ostream& out, const float* values, std::size_t count)
+    {
+        out << '[';
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            if (std::isfinite(values[index]))
+                out << values[index];
+            else
+                out << "null";
+        }
+        out << ']';
+    }
+
+    void writeActorDrawSurfaceDescription(
+        std::ostream& out, const D3DSURFACE_DESC& description)
+    {
+        out << "{\"format\":" << static_cast<UInt32>(description.Format)
+            << ",\"type\":" << static_cast<UInt32>(description.Type)
+            << ",\"usage\":" << description.Usage
+            << ",\"pool\":" << static_cast<UInt32>(description.Pool)
+            << ",\"multiSampleType\":"
+            << static_cast<UInt32>(description.MultiSampleType)
+            << ",\"multiSampleQuality\":" << description.MultiSampleQuality
+            << ",\"width\":" << description.Width
+            << ",\"height\":" << description.Height << '}';
+    }
+
+    void writeActorDrawRenderTarget(
+        std::ostream& out, const ActorDrawRenderTargetCapture& capture)
+    {
+        out << "{\"renderTargetResult\":"
+            << static_cast<long>(capture.renderTargetResult)
+            << ",\"renderTargetDescriptionResult\":"
+            << static_cast<long>(capture.renderTargetDescriptionResult)
+            << ",\"backBufferResult\":"
+            << static_cast<long>(capture.backBufferResult)
+            << ",\"backBufferDescriptionResult\":"
+            << static_cast<long>(capture.backBufferDescriptionResult)
+            << ",\"renderTargetIdentityResult\":"
+            << static_cast<long>(capture.renderTargetIdentityResult)
+            << ",\"backBufferIdentityResult\":"
+            << static_cast<long>(capture.backBufferIdentityResult)
+            << ",\"isBackBuffer\":"
+            << (capture.isBackBuffer ? "true" : "false")
+            << ",\"matchesBackBufferDimensions\":"
+            << (capture.matchesBackBufferDimensions ? "true" : "false")
+            << ",\"renderTargetDescription\":";
+        writeActorDrawSurfaceDescription(out, capture.renderTargetDescription);
+        out << ",\"backBufferDescription\":";
+        writeActorDrawSurfaceDescription(out, capture.backBufferDescription);
+        out << ",\"viewport\":{"
+            << "\"getResult\":" << static_cast<long>(capture.viewportResult)
+            << ",\"x\":" << capture.viewport.X
+            << ",\"y\":" << capture.viewport.Y
+            << ",\"width\":" << capture.viewport.Width
+            << ",\"height\":" << capture.viewport.Height
+            << ",\"minimumZ\":" << capture.viewport.MinZ
+            << ",\"maximumZ\":" << capture.viewport.MaxZ
+            << "},\"scissor\":{"
+            << "\"getResult\":" << static_cast<long>(capture.scissorResult)
+            << ",\"left\":" << capture.scissor.left
+            << ",\"top\":" << capture.scissor.top
+            << ",\"right\":" << capture.scissor.right
+            << ",\"bottom\":" << capture.scissor.bottom << "}}";
+    }
+
+    void writeActorDrawArtifactJson(std::ostream& out,
+        const ActorDrawArtifactEvidence& artifact)
+    {
+        out << "{\"written\":" << (artifact.written ? "true" : "false")
+            << ",\"path\":" << jsonString(
+                   artifact.written ? artifact.path.c_str() : nullptr)
+            << ",\"bytes\":" << artifact.bytes
+            << ",\"fnv1a32\":" << artifact.hash << '}';
+    }
+
+    void writeActorDrawBufferJson(std::ostream& out,
+        const ActorDrawBufferCapture& buffer,
+        const ActorDrawArtifactEvidence& artifact)
+    {
+        out << "{\"getResult\":" << static_cast<long>(buffer.getResult)
+            << ",\"descriptionResult\":" << static_cast<long>(buffer.descriptionResult)
+            << ",\"lockResult\":" << static_cast<long>(buffer.lockResult)
+            << ",\"totalBytes\":" << buffer.totalBytes
+            << ",\"rangeOffset\":" << buffer.rangeOffset
+            << ",\"rangeBytes\":" << buffer.rangeBytes
+            << ",\"stride\":" << buffer.stride
+            << ",\"format\":" << buffer.format
+            << ",\"usage\":" << buffer.usage
+            << ",\"pool\":" << buffer.pool
+            << ",\"fnv1a32\":" << buffer.fnv1a32
+            << ",\"artifact\":";
+        writeActorDrawArtifactJson(out, artifact);
+        out << '}';
+    }
+
+    void writeActorSurfaceContract(UInt32 sourceFrame)
+    {
+        if (!gCaptureActorSurfaceContract || !gOutput.is_open())
+            return;
+        std::vector<ActorSurfaceContractCapture> captures;
+        AcquireSRWLockExclusive(&gActorDrawCaptureLock);
+        for (auto current = gActorSurfaceCaptures.begin();
+            current != gActorSurfaceCaptures.end();)
+        {
+            if (current->sourceFrame == sourceFrame)
+            {
+                captures.push_back(std::move(*current));
+                current = gActorSurfaceCaptures.erase(current);
+            }
+            else
+                ++current;
+        }
+        ReleaseSRWLockExclusive(&gActorDrawCaptureLock);
+
+        gOutput << std::setprecision(9)
+                << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"actor-surface-contract\""
+                << ",\"frame\":" << gFrame
+                << ",\"sourceFrame\":" << sourceFrame
+                << ",\"renderFrameLead\":" << gActorSurfaceRenderFrameLead
+                << ",\"targetTexturesReady\":"
+                << (InterlockedCompareExchange(
+                        &gActorDrawTargetTexturesReady, 0, 0) == 1 ? "true" : "false")
+                << ",\"captureCount\":" << captures.size()
+                << ",\"surface\":";
+        if (captures.size() == 1)
+        {
+            const ActorSurfaceContractCapture& capture = captures[0];
+            gOutput << "{\"sourceFrame\":" << capture.sourceFrame
+                    << ",\"renderFrame\":" << capture.renderFrame
+                    << ",\"matchedTexture\":{"
+                    << "\"boundStage\":" << capture.matchedTextureStage
+                    << ",\"appearanceStage\":"
+                    << capture.matchedTextureAppearanceStage
+                    << ",\"path\":" << jsonString(capture.matchedTexturePath.c_str())
+                    << ",\"contentHash\":"
+                    << jsonString(sidecarHashLabel(
+                           "d3d9-fnv1a32:", capture.matchedTextureHash).c_str())
+                    << "},\"vertexShader\":{"
+                    << "\"getResult\":"
+                    << static_cast<long>(capture.vertexShaderResult)
+                    << ",\"getFunctionResult\":"
+                    << static_cast<long>(capture.vertexShaderFunctionResult)
+                    << ",\"byteCount\":" << capture.vertexShaderByteCount
+                    << ",\"fnv1a32\":" << capture.vertexShaderHash
+                    << ",\"hasBonesParameter\":"
+                    << (capture.hasBonesParameter ? "true" : "false")
+                    << ",\"hasSkinModelViewProjectionParameter\":"
+                    << (capture.hasSkinModelViewProjectionParameter ? "true" : "false")
+                    << "},\"fixedFunctionTransforms\":{"
+                    << "\"worldResult\":"
+                    << static_cast<long>(capture.worldTransformResult)
+                    << ",\"world\":";
+            writeActorDrawFloatArray(gOutput,
+                reinterpret_cast<const float*>(&capture.worldTransform), 16);
+            gOutput << ",\"viewResult\":"
+                    << static_cast<long>(capture.viewTransformResult)
+                    << ",\"view\":";
+            writeActorDrawFloatArray(gOutput,
+                reinterpret_cast<const float*>(&capture.viewTransform), 16);
+            gOutput << ",\"projectionResult\":"
+                    << static_cast<long>(capture.projectionTransformResult)
+                    << ",\"projection\":";
+            writeActorDrawFloatArray(gOutput,
+                reinterpret_cast<const float*>(&capture.projectionTransform), 16);
+            gOutput << "},\"renderTarget\":";
+            writeActorDrawRenderTarget(gOutput, capture.renderTarget);
+            gOutput << '}';
+        }
+        else
+            gOutput << "null";
+        gOutput << "}\n";
+        gOutput.flush();
+    }
+
+    void writeActorDrawContract(UInt32 sourceFrame)
+    {
+        if (!gCaptureActorDrawContract || !gOutput.is_open())
+            return;
+        std::vector<ActorDrawContractCapture> captures;
+        AcquireSRWLockExclusive(&gActorDrawCaptureLock);
+        for (auto current = gActorDrawCaptures.begin(); current != gActorDrawCaptures.end();)
+        {
+            if (current->sourceFrame == sourceFrame)
+            {
+                captures.push_back(std::move(*current));
+                current = gActorDrawCaptures.erase(current);
+            }
+            else
+                ++current;
+        }
+        ReleaseSRWLockExclusive(&gActorDrawCaptureLock);
+
+        gOutput << std::setprecision(9)
+                << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"actor-draw-contract\""
+                << ",\"frame\":" << gFrame
+                << ",\"sourceFrame\":" << sourceFrame
+                << ",\"renderFrameLead\":" << gActorDrawRenderFrameLead
+                << ",\"targetTexturesReady\":"
+                << (InterlockedCompareExchange(
+                        &gActorDrawTargetTexturesReady, 0, 0) == 1 ? "true" : "false")
+                << ",\"maximumRecords\":"
+                << gActorDrawMaximumRecordsPerSourceFrame
+                << ",\"records\":[";
+        for (std::size_t index = 0; index < captures.size(); ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            const ActorDrawContractCapture& capture = captures[index];
+            const ActorDrawArtifactEvidence shaderArtifact
+                = writeActorDrawArtifact(capture, "vertex-shader", capture.vertexShaderBytes);
+            const ActorDrawArtifactEvidence vertexArtifact
+                = writeActorDrawArtifact(capture, "vertex-buffer", capture.vertexBuffer.bytes);
+            const ActorDrawArtifactEvidence indexArtifact
+                = writeActorDrawArtifact(capture, "index-buffer", capture.indexBuffer.bytes);
+            gOutput << "{\"ordinal\":" << capture.ordinal
+                    << ",\"sourceFrame\":" << capture.sourceFrame
+                    << ",\"renderFrame\":" << capture.renderFrame
+                    << ",\"primitiveType\":" << static_cast<UInt32>(capture.primitiveType)
+                    << ",\"baseVertexIndex\":" << capture.baseVertexIndex
+                    << ",\"minimumVertexIndex\":" << capture.minimumVertexIndex
+                    << ",\"vertexCount\":" << capture.vertexCount
+                    << ",\"startIndex\":" << capture.startIndex
+                    << ",\"primitiveCount\":" << capture.primitiveCount
+                    << ",\"matchedTexture\":{\"boundStage\":"
+                    << capture.matchedTextureStage
+                    << ",\"appearanceStage\":"
+                    << capture.matchedTextureAppearanceStage
+                    << ",\"path\":" << jsonString(capture.matchedTexturePath.c_str())
+                    << ",\"contentHash\":"
+                    << jsonString(sidecarHashLabel(
+                           "d3d9-fnv1a32:", capture.matchedTextureHash).c_str())
+                    << "},\"vertexShader\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexShaderResult)
+                    << ",\"getFunctionResult\":"
+                    << static_cast<long>(capture.vertexShaderFunctionResult)
+                    << ",\"byteCount\":" << capture.vertexShaderByteCount
+                    << ",\"fnv1a32\":" << capture.vertexShaderHash
+                    << ",\"artifact\":";
+            writeActorDrawArtifactJson(gOutput, shaderArtifact);
+            gOutput << "},\"vertexConstants\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexConstantsResult)
+                    << ",\"registerCount\":"
+                    << capture.vertexConstantRegisterCount << ",\"values\":";
+            writeActorDrawFloatArray(gOutput, capture.vertexConstants.data(),
+                capture.vertexConstants.size());
+            gOutput << "},\"vertexDeclaration\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexDeclarationResult)
+                    << ",\"getElementsResult\":"
+                    << static_cast<long>(capture.vertexDeclarationElementsResult)
+                    << ",\"elements\":[";
+            for (std::size_t elementIndex = 0;
+                elementIndex < capture.vertexDeclaration.size(); ++elementIndex)
+            {
+                if (elementIndex != 0)
+                    gOutput << ',';
+                const D3DVERTEXELEMENT9& element
+                    = capture.vertexDeclaration[elementIndex];
+                gOutput << "{\"stream\":" << element.Stream
+                        << ",\"offset\":" << element.Offset
+                        << ",\"type\":" << static_cast<UInt32>(element.Type)
+                        << ",\"method\":" << static_cast<UInt32>(element.Method)
+                        << ",\"usage\":" << static_cast<UInt32>(element.Usage)
+                        << ",\"usageIndex\":"
+                        << static_cast<UInt32>(element.UsageIndex) << '}';
+            }
+            gOutput << "]},\"fvf\":{\"getResult\":"
+                    << static_cast<long>(capture.fvfResult)
+                    << ",\"value\":" << capture.fvf
+                    << "},\"fixedFunctionTransforms\":{\"worldResult\":"
+                    << static_cast<long>(capture.worldTransformResult)
+                    << ",\"world\":";
+            writeActorDrawFloatArray(gOutput,
+                reinterpret_cast<const float*>(&capture.worldTransform), 16);
+            gOutput << ",\"viewResult\":"
+                    << static_cast<long>(capture.viewTransformResult)
+                    << ",\"view\":";
+            writeActorDrawFloatArray(gOutput,
+                reinterpret_cast<const float*>(&capture.viewTransform), 16);
+            gOutput << ",\"projectionResult\":"
+                    << static_cast<long>(capture.projectionTransformResult)
+                    << ",\"projection\":";
+            writeActorDrawFloatArray(gOutput,
+                reinterpret_cast<const float*>(&capture.projectionTransform), 16);
+            gOutput << "},\"renderTarget\":";
+            writeActorDrawRenderTarget(gOutput, capture.renderTarget);
+            gOutput << ",\"vertexBuffer\":";
+            writeActorDrawBufferJson(gOutput, capture.vertexBuffer, vertexArtifact);
+            gOutput << ",\"indexBuffer\":";
+            writeActorDrawBufferJson(gOutput, capture.indexBuffer, indexArtifact);
+            gOutput << '}';
+        }
+        gOutput << "]}\n";
+        gOutput.flush();
+    }
+
+    void writeCompactActorNodes(
+        std::ostream& out, NiAVObject* object, bool& first, unsigned int depth,
+        const std::string& nodePath)
+    {
+        if (object == nullptr || depth > sSidecarAppearanceMaximumDepth)
+            return;
+        NiNode* node = object->GetAsNiNode();
+        const char* name = object->m_pcName;
+        if (node != nullptr && name != nullptr && name[0] != '\0')
+        {
+            if (!first)
+                out << ',';
+            first = false;
+            out << "{\"name\":" << jsonString(name)
+                << ",\"nodePath\":" << jsonString(nodePath.c_str())
+                << ",\"depth\":" << depth
+                << ",\"parentName\":"
+                << jsonString(object->m_parent != nullptr ? object->m_parent->m_pcName : nullptr)
+                << ",\"transform\":";
+            writeTransform(out, *object);
+            out << '}';
+        }
+        if (node == nullptr || node->m_children.data == nullptr)
+            return;
+        const unsigned int count = (std::min)(
+            static_cast<unsigned int>(node->m_children.firstFreeEntry),
+            static_cast<unsigned int>(sSidecarAppearanceMaximumChildrenPerNode));
+        for (unsigned int index = 0; index < count; ++index)
+            writeCompactActorNodes(out, node->m_children.data[index], first, depth + 1,
+                nodePath + '/' + std::to_string(index));
+    }
+
+    void writeCompactActorVisualSnapshotUnsafe(Actor* actor, UInt32 requestedFrame)
+    {
+        NiNode* root = actor->GetNiNode();
+        std::ostringstream out;
+        out << std::setprecision(9)
+            << "{\"schema\":" << sSchemaJson
+            << ",\"event\":\"actor-visual-snapshot\""
+            << ",\"frame\":" << gFrame
+            << ",\"requestedFrame\":" << requestedFrame
+            << ",\"refForm\":" << actor->refID
+            << ",\"baseForm\":"
+            << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
+            << ",\"rootWorld\":";
+        if (root != nullptr)
+        {
+            const NiTransform& world = runtimeTransform(
+                *root, sNiAVObjectWorldTransformOffset);
+            out << "{\"rotation\":";
+            writeMatrix(out, world.rotate);
+            out << ",\"translation\":";
+            writeVector(out, world.translate);
+            out << ",\"scale\":" << world.scale << '}';
+        }
+        else
+            out << "null";
+        out << ",\"nodes\":[";
+        bool firstNode = true;
+        writeCompactActorNodes(out, root, firstNode, 0, "root");
+        out << "],\"skinPalettes\":";
+        if (gCaptureActorSkinPalettes)
+        {
+            out << '[';
+            bool firstPalette = true;
+            ActorSkinPaletteCaptureStatus paletteStatus;
+            writeCompactActorSkinPalettes(out, root, firstPalette, 0, "root", paletteStatus);
+            out << "],\"skinPaletteCapture\":{\"visitedNodes\":"
+                << paletteStatus.visitedNodes
+                << ",\"geometryCandidates\":" << paletteStatus.geometryCandidates
+                << ",\"skinInstances\":" << paletteStatus.skinInstances
+                << ",\"capturedPalettes\":" << paletteStatus.capturedPalettes
+                << ",\"notRenderCached\":" << paletteStatus.notRenderCached
+                << ",\"invalidPalettes\":" << paletteStatus.invalidPalettes
+                << ",\"traversalTruncated\":"
+                << (paletteStatus.traversalTruncated ? "true" : "false") << '}';
+        }
+        else
+            out << "null,\"skinPaletteCapture\":null";
+        if (!gCompactActorAppearanceLogged)
+        {
+            std::ostringstream appearance;
+            sidecarWriteAppearanceTelemetry(appearance, actor);
+            out << appearance.str();
+            gCompactActorAppearanceLogged = true;
+        }
+        else
+            out << ",\"appearance\":null";
+        out << "}\n";
+        gOutput << out.str();
+    }
+
+    void writeCompactActorVisualSnapshot(UInt32 requestedFrame)
+    {
+        Actor* actor = gScheduledSpawnedActor != nullptr
+            ? gScheduledSpawnedActor : gDrivenActor;
+        if (!gCompactActorTelemetry || actor == nullptr || !gOutput.is_open())
+            return;
+        __try
+        {
+            writeCompactActorVisualSnapshotUnsafe(actor, requestedFrame);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"actor-visual-snapshot-fault\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"requestedFrame\":" << requestedFrame << "}\n";
+        }
     }
 
     void sidecarWriteTransformBits(std::ostream& out, const NiTransform& transform)
@@ -10454,14 +11946,8 @@ namespace
             && safeRead(reinterpret_cast<const UInt8*>(player) + 0x7E8, fly[2])
             && safeRead(reinterpret_cast<const UInt8*>(player) + 0x7EC, fly[3])
             && safeRead(reinterpret_cast<const UInt8*>(player) + 0x7F0, fly[4]);
-        void* sceneCamera = sidecarGetSceneCameraUnsafe();
-        NiTransform world = {};
-        NiFrustum frustum = {};
-        NiViewport viewport = {};
-        const bool hasCamera = sceneCamera != nullptr
-            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + sNiAVObjectWorldTransformOffset, world)
-            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0xEC, frustum)
-            && safeRead(reinterpret_cast<const UInt8*>(sceneCamera) + 0x110, viewport);
+        SidecarCameraObservation camera = {};
+        const bool hasCamera = sidecarReadSceneCameraObservation(camera);
         out << ",\"camera\":{\"fly\":";
         if (hasFly)
             out << '[' << fly[0] << ',' << fly[1] << ',' << fly[2] << ',' << fly[3] << ',' << fly[4] << ']';
@@ -10469,44 +11955,33 @@ namespace
             out << "null";
         if (hasCamera)
         {
-            const float height = std::fabs(frustum.t - frustum.b);
-            const float fovY = frustum.n > 0.f ? 2.f * std::atan(height / (2.f * frustum.n)) : 0.f;
-            float view[16] = { world.rotate.data[0], world.rotate.data[3], world.rotate.data[6], 0.f,
-                world.rotate.data[1], world.rotate.data[4], world.rotate.data[7], 0.f,
-                world.rotate.data[2], world.rotate.data[5], world.rotate.data[8], 0.f, 0.f, 0.f, 0.f, 1.f };
-            view[12] = -(view[0] * world.translate.x + view[4] * world.translate.y + view[8] * world.translate.z);
-            view[13] = -(view[1] * world.translate.x + view[5] * world.translate.y + view[9] * world.translate.z);
-            view[14] = -(view[2] * world.translate.x + view[6] * world.translate.y + view[10] * world.translate.z);
-            float projection[16] = {};
-            if (frustum.r != frustum.l && frustum.t != frustum.b && frustum.f != frustum.n)
-            {
-                projection[0] = 2.f * frustum.n / (frustum.r - frustum.l);
-                projection[5] = 2.f * frustum.n / (frustum.t - frustum.b);
-                projection[8] = (frustum.l + frustum.r) / (frustum.l - frustum.r);
-                projection[9] = (frustum.t + frustum.b) / (frustum.b - frustum.t);
-                projection[10] = frustum.f / (frustum.f - frustum.n);
-                projection[11] = 1.f;
-                projection[14] = -frustum.n * frustum.f / (frustum.f - frustum.n);
-            }
+            std::array<float, 16> projection = {};
+            float fovY = 0.f;
+            const bool projectionExact = sidecarBuildPerspectiveProjection(
+                camera, projection, fovY);
             out << ",\"fovYRadians\":" << fovY
+                << ",\"projectionExact\":" << (projectionExact ? "true" : "false")
                 << ",\"world\":{\"rotation\":[";
             for (UInt32 i = 0; i < 9; ++i)
             {
                 if (i != 0)
                     out << ',';
-                out << world.rotate.data[i];
+                out << camera.world.rotate.data[i];
             }
-            out << "],\"translation\":[" << world.translate.x << ',' << world.translate.y << ','
-                << world.translate.z << "],\"scale\":" << world.scale << "}"
-                << ",\"frustum\":[" << frustum.l << ',' << frustum.r << ',' << frustum.t << ','
-                << frustum.b << ',' << frustum.n << ',' << frustum.f << ',' << static_cast<UInt32>(frustum.o) << ']'
-                << ",\"viewport\":[" << viewport.l << ',' << viewport.r << ',' << viewport.t << ',' << viewport.b << ']'
+            out << "],\"translation\":[" << camera.world.translate.x << ','
+                << camera.world.translate.y << ',' << camera.world.translate.z
+                << "],\"scale\":" << camera.world.scale << "}"
+                << ",\"frustum\":[" << camera.frustum.l << ',' << camera.frustum.r << ','
+                << camera.frustum.t << ',' << camera.frustum.b << ',' << camera.frustum.n << ','
+                << camera.frustum.f << ',' << static_cast<UInt32>(camera.frustum.o) << ']'
+                << ",\"viewport\":[" << camera.viewport.l << ',' << camera.viewport.r << ','
+                << camera.viewport.t << ',' << camera.viewport.b << ']'
                 << ",\"viewMatrix\":[";
             for (UInt32 i = 0; i < 16; ++i)
             {
                 if (i != 0)
                     out << ',';
-                out << view[i];
+                out << camera.worldToCamera[i];
             }
             out << "],\"projectionMatrix\":[";
             for (UInt32 i = 0; i < 16; ++i)
@@ -11757,6 +13232,8 @@ namespace
         captureTargetAppearance();
         captureAppearanceBatch();
         driveScheduledConsoleCommands();
+        sidecarPrimeActorDrawTextures(gScheduledSpawnedActor != nullptr
+                ? gScheduledSpawnedActor : gDrivenActor);
         holdRetailPipBoyRenderedState();
         driveJamSprintMovement();
         if (gPipBoyProbe && gFrame % gSampleEvery == 0)
@@ -11783,6 +13260,9 @@ namespace
             && gFrame >= gScreenshotFrames[gScreenshotFrameIndex])
         {
             const UInt32 requestedFrame = gScreenshotFrames[gScreenshotFrameIndex++];
+            writeActorSurfaceContract(requestedFrame);
+            writeActorDrawContract(requestedFrame);
+            writeCompactActorVisualSnapshot(requestedFrame);
             const bool accepted = scheduledCaptureBackBuffer();
             gOutput << "{\"schema\":" << sSchemaJson
                     << ",\"event\":\"screenshot-request\""
@@ -11975,6 +13455,65 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gAllHighActors = envUInt("NIKAMI_ORACLE_ALL_HIGH_ACTORS", 1) != 0;
     gCaptureAnimation = envUInt("NIKAMI_ORACLE_CAPTURE_ANIMATION", 1) != 0;
     gCompactActorTelemetry = envUInt("NIKAMI_ORACLE_COMPACT_ACTOR_TELEMETRY", 0) != 0;
+    gCaptureActorSkinPalettes
+        = envUInt("NIKAMI_ORACLE_CAPTURE_ACTOR_SKIN_PALETTES", 0) != 0;
+    gActorSkinPaletteMaximumBytesPerShape
+        = envUInt("NIKAMI_ORACLE_ACTOR_SKIN_PALETTE_MAXIMUM_BYTES_PER_SHAPE", 0);
+    if (gCaptureActorSkinPalettes
+        && (!gCompactActorTelemetry || gActorSkinPaletteMaximumBytesPerShape == 0))
+        return false;
+    gCaptureActorSurfaceContract
+        = envUInt("NIKAMI_ORACLE_CAPTURE_ACTOR_SURFACE_CONTRACT", 0) != 0;
+    gActorSurfaceMaximumShaderBytes
+        = envUInt("NIKAMI_ORACLE_ACTOR_SURFACE_MAXIMUM_SHADER_BYTES", 0);
+    gActorSurfaceTextureStageCount
+        = envUInt("NIKAMI_ORACLE_ACTOR_SURFACE_TEXTURE_STAGE_COUNT", 0);
+    gActorSurfaceRenderFrameLead
+        = envUInt("NIKAMI_ORACLE_ACTOR_SURFACE_RENDER_FRAME_LEAD", 0);
+    if (gCaptureActorSurfaceContract
+        && (!gCompactActorTelemetry || !gCaptureActorSkinPalettes
+            || gActorSurfaceMaximumShaderBytes == 0
+            || gActorSurfaceTextureStageCount == 0
+            || gActorSurfaceTextureStageCount > sD3DMaximumTextureStages
+            || gActorSurfaceRenderFrameLead == 0))
+        return false;
+    gCaptureActorDrawContract
+        = envUInt("NIKAMI_ORACLE_CAPTURE_ACTOR_DRAW_CONTRACT", 0) != 0;
+    gActorDrawMaximumRecordsPerSourceFrame
+        = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_RECORDS_PER_SOURCE_FRAME", 0);
+    gActorDrawVertexShaderRegisterCount
+        = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_VERTEX_SHADER_REGISTER_COUNT", 0);
+    gActorDrawMaximumShaderBytes
+        = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_SHADER_BYTES", 0);
+    gActorDrawTextureStageCount
+        = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_TEXTURE_STAGE_COUNT", 0);
+    gActorDrawRenderFrameLead
+        = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_RENDER_FRAME_LEAD", 0);
+    gActorDrawMaximumBufferBytesPerRecord
+        = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_BUFFER_BYTES_PER_RECORD", 0);
+    gActorDrawArtifactDirectory
+        = envString("NIKAMI_ORACLE_ACTOR_DRAW_ARTIFACT_DIRECTORY");
+    const DWORD actorDrawArtifactAttributes = gActorDrawArtifactDirectory.empty()
+        ? INVALID_FILE_ATTRIBUTES
+        : GetFileAttributesA(gActorDrawArtifactDirectory.c_str());
+    if (gCaptureActorDrawContract
+        && (!gCompactActorTelemetry || !gCaptureActorSkinPalettes
+            || gActorDrawMaximumRecordsPerSourceFrame == 0
+            || gActorDrawVertexShaderRegisterCount == 0
+            || gActorDrawVertexShaderRegisterCount
+                > sD3DMaximumVertexShaderFloatRegisters
+            || gActorDrawMaximumShaderBytes == 0
+            || gActorDrawTextureStageCount == 0
+            || gActorDrawTextureStageCount > sD3DMaximumTextureStages
+            || gActorDrawRenderFrameLead == 0
+            || gActorDrawMaximumBufferBytesPerRecord == 0
+            || actorDrawArtifactAttributes == INVALID_FILE_ATTRIBUTES
+            || (actorDrawArtifactAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0))
+        return false;
+    if (gCaptureActorSurfaceContract && gCaptureActorDrawContract
+        && (gActorSurfaceRenderFrameLead != gActorDrawRenderFrameLead
+            || gActorSurfaceTextureStageCount != gActorDrawTextureStageCount))
+        return false;
     gCaptureSession = envUInt("NIKAMI_ORACLE_CAPTURE_SESSION", 0) != 0;
     gPipBoyProbe = envUInt("NIKAMI_ORACLE_PIPBOY_PROBE", 0) != 0;
     gSessionTargetForm = envUInt("NIKAMI_ORACLE_SESSION_TARGET_FORM", 0);
