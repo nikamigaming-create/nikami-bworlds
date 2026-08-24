@@ -43,6 +43,24 @@ function Get-LowerSha256([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+function Assert-BoundFile([object]$Entry, [string]$Label) {
+    $path = [string]$Entry.path
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+        (Get-LowerSha256 $path) -cne [string]$Entry.sha256) {
+        throw "Actor queue $Label changed after the immutable binding was created: $path"
+    }
+}
+
+function Assert-QueueBinding([object]$Binding) {
+    foreach ($property in @('planManifest', 'corpusManifest', 'jobs', 'batches', 'catalog',
+            'oracleSeedManifest', 'oraclePlugin', 'saveFixture', 'gameExecutable')) {
+        Assert-BoundFile $Binding.$property $property
+    }
+    foreach ($source in @($Binding.captureSources)) {
+        Assert-BoundFile $source 'capture source'
+    }
+}
+
 function Write-ImmutableJson([string]$Path, [object]$Value, [int]$Depth = 20) {
     if (Test-Path -LiteralPath $Path) { throw "Refusing to overwrite immutable JSON: $Path" }
     [IO.File]::WriteAllText(
@@ -253,14 +271,24 @@ $gameDirectory = Resolve-QueuePath $GameRoot
 $catalogPath = Join-Path $WorldsRoot 'catalog\fnv-jam-background-capture-recipes.json'
 $entryPoint = Join-Path $PSScriptRoot 'Invoke-FNVJamBackgroundCapture.ps1'
 $seedManifestPath = Join-Path $seedDirectory 'oracle-runtime-manifest.json'
+$captureSourcePaths = @(
+    (Join-Path $PSScriptRoot 'Invoke-FNVActorObservationQueue.ps1'),
+    $entryPoint,
+    (Join-Path $PSScriptRoot 'Test-FNVJamBackgroundCapture.ps1'),
+    (Join-Path $PSScriptRoot 'Invoke-FNVActorObservationCapture.ps1'),
+    (Join-Path $PSScriptRoot 'Invoke-FNVRetailOracle.ps1'),
+    (Join-Path $PSScriptRoot 'FNVRetailOracleEvidence.ps1'),
+    (Join-Path $PSScriptRoot 'WorldViewerPaths.ps1')
+)
 
 foreach ($directory in @($planDirectory, $corpusDirectory, $seedDirectory, $gameDirectory)) {
     if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
         throw "Missing actor queue directory: $directory"
     }
 }
-foreach ($file in @($pluginPath, $savePath, $seedManifestPath, $catalogPath, $entryPoint,
-        (Join-Path $gameDirectory 'FalloutNV.exe'))) {
+$requiredFiles = @($pluginPath, $savePath, $seedManifestPath, $catalogPath,
+    (Join-Path $gameDirectory 'FalloutNV.exe')) + $captureSourcePaths
+foreach ($file in $requiredFiles) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
         throw "Missing actor queue file: $file"
     }
@@ -329,6 +357,12 @@ $binding = [ordered]@{
         path = Join-Path $gameDirectory 'FalloutNV.exe'
         sha256 = Get-LowerSha256 (Join-Path $gameDirectory 'FalloutNV.exe')
     }
+    captureSources = @($captureSourcePaths | ForEach-Object {
+        [ordered]@{
+            path = [IO.Path]::GetFullPath($_)
+            sha256 = Get-LowerSha256 $_
+        }
+    })
     eventLedger = 'observation-events.jsonl'
     proofDirectory = 'proofs'
     checkpointDirectory = 'coverage-checkpoints'
@@ -350,7 +384,26 @@ else {
             throw "Queue binding changed for '$property'; create a new queue root."
         }
     }
+    $existingSources = @(
+        if ($null -ne $existingBinding.PSObject.Properties['captureSources']) {
+            $existingBinding.captureSources
+        }
+    )
+    $boundSources = @($binding.captureSources)
+    if ($existingSources.Count -ne $boundSources.Count) {
+        throw 'Queue capture-source binding count changed; create a new queue root.'
+    }
+    for ($index = 0; $index -lt $boundSources.Count; ++$index) {
+        if ([string]$existingSources[$index].path -cne
+                [string]$boundSources[$index].path -or
+            [string]$existingSources[$index].sha256 -cne
+                [string]$boundSources[$index].sha256) {
+            throw "Queue capture-source binding changed at index $index; create a new queue root."
+        }
+    }
 }
+$queueManifestHash = Get-LowerSha256 $manifestPath
+Assert-QueueBinding $binding
 
 $proofDirectory = Join-Path $queueDirectory 'proofs'
 $checkpointDirectory = Join-Path $queueDirectory 'coverage-checkpoints'
@@ -427,6 +480,11 @@ try {
                 $attemptNumber++
                 $attemptDirectory = Join-Path $jobDirectory "attempt-$attemptNumber"
             }
+
+            if ((Get-LowerSha256 $manifestPath) -cne $queueManifestHash) {
+                throw 'Actor queue manifest changed during the active run.'
+            }
+            Assert-QueueBinding $binding
 
             $resultStatus = 'capture-error'
             $classifiedReviewKey = $null
