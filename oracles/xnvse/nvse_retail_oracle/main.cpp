@@ -9894,7 +9894,16 @@ namespace
     constexpr UInt8 sSidecarMiddleHighMaximumProcessLevel = 1u;
     constexpr UInt8 sSidecarUnreadableProcessLevel = 0xFFu;
     constexpr const char* sSidecarAppearanceSchema
-        = "nikami-fnv-sidecar-appearance/v2";
+        = "nikami-fnv-sidecar-appearance/v3";
+    constexpr const char* sSidecarWeaponStateUnreadable = "unreadable";
+    constexpr const char* sSidecarWeaponStateNone = "none";
+    constexpr const char* sSidecarWeaponStateEquipped = "equipped";
+    constexpr const char* sSidecarWeaponRenderStateUnreadable = "unreadable";
+    constexpr const char* sSidecarWeaponRenderStateNotApplicable = "not-applicable";
+    constexpr const char* sSidecarWeaponRenderStateVisibleSourceBound
+        = "visible-source-bound";
+    constexpr const char* sSidecarWeaponRenderStateNotVisibleAtFrame
+        = "not-visible-at-frame";
     const std::string sSidecarEmptyNodePath;
 
     struct SidecarTextureResource
@@ -9973,10 +9982,12 @@ namespace
         std::set<std::string> evidenceFaults;
         UInt32 visitedNodes = 0;
         UInt32 geometryCandidates = 0;
-        std::string equippedWeaponState = "unreadable";
+        std::string equippedWeaponState = sSidecarWeaponStateUnreadable;
+        std::string equippedWeaponRenderState = sSidecarWeaponRenderStateUnreadable;
         UInt32 equippedWeaponForm = 0;
         std::string equippedWeaponModelPath;
         bool equippedWeaponNodePresent = false;
+        bool equippedWeaponOut = false;
         bool traversalTruncated = false;
         bool evidenceComplete = true;
     };
@@ -10663,6 +10674,11 @@ namespace
         }
 
         MiddleHighProcess* middleHigh = static_cast<MiddleHighProcess*>(process);
+        if (!safeRead(&middleHigh->isWeaponOut, capture.equippedWeaponOut))
+        {
+            sidecarAppearanceFault(capture, "equipped-weapon-out-state-unreadable");
+            return;
+        }
         MiddleHighProcess::WeaponInfo* weaponInfo = nullptr;
         if (!safeRead(&middleHigh->weaponInfo, weaponInfo))
         {
@@ -10671,7 +10687,8 @@ namespace
         }
         if (weaponInfo == nullptr)
         {
-            capture.equippedWeaponState = "none";
+            capture.equippedWeaponState = sSidecarWeaponStateNone;
+            capture.equippedWeaponRenderState = sSidecarWeaponRenderStateNotApplicable;
             return;
         }
 
@@ -10683,7 +10700,8 @@ namespace
         }
         if (weapon == nullptr)
         {
-            capture.equippedWeaponState = "none";
+            capture.equippedWeaponState = sSidecarWeaponStateNone;
+            capture.equippedWeaponRenderState = sSidecarWeaponRenderStateNotApplicable;
             return;
         }
 
@@ -10696,13 +10714,16 @@ namespace
             sidecarAppearanceFault(capture, "equipped-weapon-identity-invalid");
             return;
         }
+        capture.equippedWeaponState = sSidecarWeaponStateEquipped;
 
         char* modelAddress = nullptr;
-        if (safeRead(&weapon->textureSwap.nifPath.m_data, modelAddress))
+        if (!safeRead(&weapon->textureSwap.nifPath.m_data, modelAddress))
         {
-            capture.equippedWeaponModelPath
-                = sidecarNormalizeAssetPath(safeRuntimeString(modelAddress));
+            sidecarAppearanceFault(capture, "equipped-weapon-model-path-unreadable");
+            return;
         }
+        capture.equippedWeaponModelPath
+            = sidecarNormalizeAssetPath(safeRuntimeString(modelAddress));
 
         if (capture.sources.actorBaseType == kFormType_TESNPC)
         {
@@ -10714,7 +10735,6 @@ namespace
                     continue;
                 if (weaponAttachment != nullptr)
                 {
-                    capture.equippedWeaponState = "equipped-unrendered";
                     sidecarAppearanceFault(capture,
                         "npc-equipped-weapon-biped-attachment-ambiguous");
                     return;
@@ -10724,20 +10744,20 @@ namespace
 
             capture.equippedWeaponNodePresent
                 = weaponAttachment != nullptr && weaponAttachment->root != nullptr;
-            if (!capture.equippedWeaponNodePresent)
+            if (weaponAttachment == nullptr)
             {
-                capture.equippedWeaponState = "equipped-unrendered";
-                sidecarAppearanceFault(capture,
-                    "npc-equipped-weapon-biped-attachment-missing");
+                if (capture.equippedWeaponOut
+                    && !capture.equippedWeaponModelPath.empty())
+                {
+                    sidecarAppearanceFault(capture,
+                        "npc-equipped-weapon-biped-attachment-missing");
+                }
                 return;
             }
 
-            capture.equippedWeaponState = "equipped";
             weaponAttachment->role = "weapon";
             weaponAttachment->modelPath = capture.equippedWeaponModelPath;
-            weaponAttachment->required = true;
-            if (capture.equippedWeaponModelPath.empty())
-                sidecarAppearanceFault(capture, "equipped-weapon-model-path-missing");
+            weaponAttachment->required = capture.equippedWeaponOut;
             return;
         }
 
@@ -10748,16 +10768,14 @@ namespace
             return;
         }
         capture.equippedWeaponNodePresent = weaponNode != nullptr;
+        if (capture.equippedWeaponModelPath.empty())
+            return;
         if (weaponNode == nullptr)
         {
-            capture.equippedWeaponState = "equipped-unrendered";
-            sidecarAppearanceFault(capture, "equipped-weapon-node-missing");
+            if (capture.equippedWeaponOut)
+                sidecarAppearanceFault(capture, "equipped-weapon-node-missing");
             return;
         }
-
-        capture.equippedWeaponState = "equipped";
-        if (capture.equippedWeaponModelPath.empty())
-            sidecarAppearanceFault(capture, "equipped-weapon-model-path-missing");
 
         capture.attachments.erase(
             std::remove_if(capture.attachments.begin(), capture.attachments.end(),
@@ -10772,7 +10790,7 @@ namespace
         attachment.sourceSlot = sSidecarEquippedWeaponSlot;
         attachment.role = "weapon";
         attachment.modelPath = capture.equippedWeaponModelPath;
-        attachment.required = true;
+        attachment.required = capture.equippedWeaponOut;
         capture.attachments.push_back(std::move(attachment));
     }
 
@@ -11144,26 +11162,52 @@ namespace
 
     void sidecarValidateEquippedWeaponAppearance(SidecarAppearanceCapture& capture)
     {
+        const bool hasVisibleWeapon = std::any_of(
+            capture.parts.begin(), capture.parts.end(),
+            [](const SidecarRenderPart& part) {
+                return part.role == "weapon" && part.visible;
+            });
         const bool hasAttributedVisibleWeapon = std::any_of(
             capture.parts.begin(), capture.parts.end(),
             [&capture](const SidecarRenderPart& part) {
-                return part.role == "weapon"
+                return !capture.equippedWeaponModelPath.empty()
+                    && part.role == "weapon"
                     && part.sourceForm == capture.equippedWeaponForm
                     && part.modelPath == capture.equippedWeaponModelPath
                     && part.required && part.attached && part.drawable && part.visible;
             });
-        if (capture.equippedWeaponState == "equipped" && !hasAttributedVisibleWeapon)
+        if (capture.equippedWeaponState == sSidecarWeaponStateNone)
         {
-            sidecarAppearanceFault(capture, "equipped-weapon-render-part-missing");
+            capture.equippedWeaponRenderState = sSidecarWeaponRenderStateNotApplicable;
+            if (capture.equippedWeaponForm != 0 || capture.equippedWeaponOut
+                || !capture.equippedWeaponModelPath.empty()
+                || capture.equippedWeaponNodePresent || hasVisibleWeapon)
+            {
+                sidecarAppearanceFault(capture,
+                    "no-weapon-state-disagrees-with-runtime-render-state");
+            }
         }
-        else if (capture.equippedWeaponState != "equipped")
+        else if (capture.equippedWeaponState == sSidecarWeaponStateEquipped)
         {
-            const bool hasUnexpectedVisibleWeapon = std::any_of(
-                capture.parts.begin(), capture.parts.end(),
-                [](const SidecarRenderPart& part) {
-                    return part.role == "weapon" && part.visible;
-                });
-            if (hasUnexpectedVisibleWeapon)
+            if (hasAttributedVisibleWeapon)
+            {
+                capture.equippedWeaponRenderState
+                    = sSidecarWeaponRenderStateVisibleSourceBound;
+            }
+            else
+            {
+                capture.equippedWeaponRenderState
+                    = sSidecarWeaponRenderStateNotVisibleAtFrame;
+                if (hasVisibleWeapon)
+                    sidecarAppearanceFault(capture, "visible-weapon-source-mismatch");
+                if (capture.equippedWeaponOut)
+                    sidecarAppearanceFault(capture, "equipped-weapon-render-part-missing");
+            }
+        }
+        else
+        {
+            capture.equippedWeaponRenderState = sSidecarWeaponRenderStateUnreadable;
+            if (hasVisibleWeapon)
                 sidecarAppearanceFault(capture, "visible-weapon-without-runtime-source");
         }
     }
@@ -11286,6 +11330,10 @@ namespace
         out << ']'
             << ",\"equippedWeapon\":{\"state\":"
             << jsonString(capture.equippedWeaponState.c_str())
+            << ",\"renderState\":"
+            << jsonString(capture.equippedWeaponRenderState.c_str())
+            << ",\"weaponOut\":"
+            << (capture.equippedWeaponOut ? "true" : "false")
             << ",\"sourceFormId\":"
             << jsonString(sidecarFormatFormId(capture.equippedWeaponForm).c_str())
             << ",\"modelPath\":"

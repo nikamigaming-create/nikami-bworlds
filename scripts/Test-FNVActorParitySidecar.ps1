@@ -6,7 +6,9 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $coordinator = Join-Path $PSScriptRoot 'Invoke-FNVActorParitySidecar.ps1'
 $openMwRunner = Join-Path $PSScriptRoot 'Invoke-OpenMWFNVLoadedActorSweep.ps1'
+$actorObservationRunner = Join-Path $PSScriptRoot 'Invoke-FNVActorObservationCapture.ps1'
 $retailOracle = Join-Path $repoRoot 'oracles\xnvse\nvse_retail_oracle\main.cpp'
+$captureRecipes = Join-Path $repoRoot 'catalog\fnv-jam-background-capture-recipes.json'
 $fixture = Join-Path $repoRoot 'catalog\fnv-actor-parity-sidecar.sunny-smiles.example.json'
 $schema = Join-Path $repoRoot 'catalog\fnv-actor-parity-sidecar.schema.json'
 $failures = [System.Collections.Generic.List[string]]::new()
@@ -79,7 +81,7 @@ function New-TestRenderPart(
 }
 
 try {
-    foreach ($scriptPath in @($coordinator, $openMwRunner)) {
+    foreach ($scriptPath in @($coordinator, $openMwRunner, $actorObservationRunner)) {
         $tokens = $null
         $parseErrors = $null
         [void][Management.Automation.Language.Parser]::ParseFile(
@@ -110,6 +112,22 @@ try {
         'OPENMW_PROOF_ACTOR_PHASE_TIMEOUT_FRAMES[\s\S]*complete-with-failures') `
         'OpenMW actor sweep cannot advance and report bounded per-actor failures.'
     $retailOracleSource = Get-Content -LiteralPath $retailOracle -Raw
+    $actorObservationRunnerSource = Get-Content -LiteralPath $actorObservationRunner -Raw
+    $captureRecipeDocument = Get-Content -LiteralPath $captureRecipes -Raw | ConvertFrom-Json
+    $actorObservationRecipe = @($captureRecipeDocument.actorObservationRecipes | Where-Object {
+        [string]$_.target -ceq 'Retail'
+    })
+    Assert-Contract ($actorObservationRecipe.Count -eq 1 -and
+        [string]$actorObservationRecipe[0].telemetryPolicy.appearanceSchema -ceq
+            'nikami-fnv-sidecar-appearance/v3') `
+        'ActorObservation recipe does not require appearance v3.'
+    Assert-Contract ($retailOracleSource -match
+        'nikami-fnv-sidecar-appearance/v3') `
+        'Retail oracle does not emit appearance v3.'
+    Assert-Contract ($retailOracleSource -notmatch 'equipped-unrendered') `
+        'Retail oracle still conflates logical equip state with per-frame render visibility.'
+    Assert-Contract ($actorObservationRunnerSource -notmatch 'equipped-unrendered') `
+        'ActorObservation runner still accepts the transitional equipped-unrendered state.'
     $loadProofVolume = [regex]::Match($retailOracleSource,
         'case SidecarPhase::LoadProofVolume:[\s\S]*?case SidecarPhase::WaitProofVolume:').Value
     $waitProofVolume = [regex]::Match($retailOracleSource,
@@ -163,6 +181,24 @@ try {
             [StringComparison]::Ordinal) -lt
         $weaponCollector.IndexOf('middleHigh->weaponNode', [StringComparison]::Ordinal)) `
         'Retail appearance reaches the broad process weapon node before applying the NPC biped rule.'
+    Assert-Contract ($weaponCollector -match
+        'safeRead\(&middleHigh->isWeaponOut, capture\.equippedWeaponOut\)') `
+        'Retail appearance does not bind equipped-weapon visibility to the same-frame weapon-out state.'
+    Assert-Contract ($weaponCollector -match
+        'weaponAttachment->required = capture\.equippedWeaponOut') `
+        'Retail NPC weapon attachment still treats every logical equip as required visible geometry.'
+    Assert-Contract ($weaponCollector -match
+        'capture\.equippedWeaponModelPath\.empty\(\)\)\s*return;') `
+        'Retail creature weapon collection still fabricates attachments for model-less WEAP records.'
+    $weaponValidator = [regex]::Match($retailOracleSource,
+        'void sidecarValidateEquippedWeaponAppearance[\s\S]*?void sidecarAssignAppearanceOrdinals').Value
+    Assert-Contract ($weaponValidator -match 'sSidecarWeaponRenderStateVisibleSourceBound' -and
+        $weaponValidator -match 'sSidecarWeaponRenderStateNotVisibleAtFrame') `
+        'Retail appearance does not distinguish source-bound visible weapons from nonvisible equipped state.'
+    Assert-Contract ($actorObservationRunnerSource -match "'visible-source-bound'" -and
+        $actorObservationRunnerSource -match "'not-visible-at-frame'" -and
+        $actorObservationRunnerSource -match '\$equippedWeaponOut -ne \$poseWeaponOut') `
+        'ActorObservation runner does not enforce the v3 same-frame weapon render contract.'
     Assert-Contract ($retailOracleSource -notmatch 'visible-skin-body-color-missing') `
         'Retail appearance still rejects authored unbound bodyColor stages.'
     $textureBindingCollector = [regex]::Match($retailOracleSource,

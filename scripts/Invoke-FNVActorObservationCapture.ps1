@@ -740,11 +740,22 @@ if ($null -eq $equippedWeapon) {
     throw 'Retail appearance snapshot has no equipped-weapon contract.'
 }
 $equippedWeaponState = [string]$equippedWeapon.state
+$equippedWeaponRenderState = [string]$equippedWeapon.renderState
+if ($null -eq $equippedWeapon.PSObject.Properties['weaponOut'] -or
+    $equippedWeapon.weaponOut -isnot [bool]) {
+    throw 'Retail equipped-weapon contract has no Boolean weaponOut state.'
+}
+$equippedWeaponOut = [bool]$equippedWeapon.weaponOut
 $equippedWeaponFormText = [string]$equippedWeapon.sourceFormId
 if ($equippedWeaponFormText -notmatch '^0x[0-9A-F]{8}$') {
     throw "Retail equipped-weapon FormID '$equippedWeaponFormText' is not canonical."
 }
 $equippedWeaponForm = [Convert]::ToUInt32($equippedWeaponFormText.Substring(2), 16)
+$poseWeaponOutProperty = $appearancePoseEvents[0].PSObject.Properties['weaponOut']
+if ($null -eq $poseWeaponOutProperty -or $poseWeaponOutProperty.Value -isnot [bool]) {
+    throw "Retail pose at appearance frame $appearanceFrame has no Boolean weaponOut state."
+}
+$poseWeaponOut = [bool]$poseWeaponOutProperty.Value
 $poseWeaponForm = [uint32]$appearancePoseEvents[0].weaponForm
 $visibleWeaponParts = @($appearanceSnapshot.renderParts | Where-Object {
     [string]$_.role -ceq 'weapon' -and [bool]$_.visible
@@ -752,34 +763,50 @@ $visibleWeaponParts = @($appearanceSnapshot.renderParts | Where-Object {
 switch -CaseSensitive ($equippedWeaponState) {
     'none' {
         if ($equippedWeaponForm -ne 0 -or $poseWeaponForm -ne 0 -or
+            $equippedWeaponRenderState -cne 'not-applicable' -or
+            $equippedWeaponOut -or $poseWeaponOut -or
             [bool]$equippedWeapon.nodePresent -or
             -not [string]::IsNullOrEmpty([string]$equippedWeapon.modelPath) -or
             $visibleWeaponParts.Count -ne 0) {
             throw 'Retail no-weapon appearance state disagrees with the live pose or render parts.'
         }
     }
-    'equipped-unrendered' {
-        if ($equippedWeaponForm -eq 0 -or $poseWeaponForm -ne $equippedWeaponForm -or
-            [bool]$equippedWeapon.nodePresent -or $visibleWeaponParts.Count -ne 0 -or
-            [bool]$appearanceSnapshot.complete) {
-            throw 'Retail unrendered equipped-weapon state disagrees with the live pose or render parts.'
-        }
-    }
     'equipped' {
-        $matchingWeaponParts = @($visibleWeaponParts | Where-Object {
-            [string]$_.sourceFormId -ceq $equippedWeaponFormText -and
-            [string]$_.modelPath -ceq [string]$equippedWeapon.modelPath -and
-            [bool]$_.required -and [bool]$_.attached -and [bool]$_.drawable
-        })
         if ($equippedWeaponForm -eq 0 -or $poseWeaponForm -ne $equippedWeaponForm -or
-            -not [bool]$equippedWeapon.nodePresent -or
-            [string]::IsNullOrWhiteSpace([string]$equippedWeapon.modelPath) -or
-            ([bool]$appearanceSnapshot.complete -and $matchingWeaponParts.Count -lt 1)) {
-            throw 'Retail equipped-weapon appearance does not have one authoritative visible runtime attachment.'
+            $equippedWeaponOut -ne $poseWeaponOut) {
+            throw 'Retail equipped-weapon appearance disagrees with the same-frame live pose.'
+        }
+        switch -CaseSensitive ($equippedWeaponRenderState) {
+            'visible-source-bound' {
+                $matchingWeaponParts = @($visibleWeaponParts | Where-Object {
+                    [string]$_.sourceFormId -ceq $equippedWeaponFormText -and
+                    [string]$_.modelPath -ceq [string]$equippedWeapon.modelPath -and
+                    [bool]$_.required -and [bool]$_.attached -and [bool]$_.drawable
+                })
+                if (-not [bool]$equippedWeapon.nodePresent -or
+                    [string]::IsNullOrWhiteSpace([string]$equippedWeapon.modelPath) -or
+                    $matchingWeaponParts.Count -lt 1) {
+                    throw 'Retail equipped-weapon appearance does not have one authoritative visible runtime attachment.'
+                }
+            }
+            'not-visible-at-frame' {
+                if ($equippedWeaponOut -or $visibleWeaponParts.Count -ne 0) {
+                    throw 'Retail nonvisible equipped-weapon state disagrees with the same-frame pose or render parts.'
+                }
+            }
+            'unreadable' {
+                if ([bool]$appearanceSnapshot.complete) {
+                    throw 'Retail appearance cannot be complete when equipped-weapon render state is unreadable.'
+                }
+            }
+            default {
+                throw "Retail appearance has unknown equipped-weapon render state '$equippedWeaponRenderState'."
+            }
         }
     }
     'unreadable' {
-        if ([bool]$appearanceSnapshot.complete) {
+        if ($equippedWeaponRenderState -cne 'unreadable' -or
+            [bool]$appearanceSnapshot.complete) {
             throw 'Retail appearance cannot be complete when equipped-weapon state is unreadable.'
         }
     }

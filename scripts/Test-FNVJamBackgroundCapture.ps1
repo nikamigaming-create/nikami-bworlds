@@ -340,6 +340,8 @@ if ($Scenario -eq 'ActorObservation') {
                         'actor-visual-snapshot-fault' -and
                     [int]$telemetryPolicy.requiredVisualSnapshotsPerSourceFrame -eq 1 -and
                     [int]$telemetryPolicy.requiredAppearanceSnapshots -eq 1 -and
+                    [string]$telemetryPolicy.appearanceSchema -ceq
+                        'nikami-fnv-sidecar-appearance/v3' -and
                     [bool]$telemetryPolicy.requireSkinPalettesForSkinnedGeometry -and
                     [int]$telemetryPolicy.skinPaletteComponentsPerRegister -gt 0 -and
                     [int]$telemetryPolicy.skinPaletteBytesPerComponent -gt 0 -and

@@ -107,7 +107,7 @@ the protocol completion contract passes.
 ### Retail post-frame appearance evidence
 
 The retail ready/captured payload now adds
-`appearance.schema = nikami-fnv-sidecar-appearance/v2`. Its bounded
+`appearance.schema = nikami-fnv-sidecar-appearance/v3`. Its bounded
 `renderParts` projection is collected from the settled actor scene graph, not
 from a screenshot or an actor-specific override. A part's only comparison
 identity is `role/sourceFormId/sourceSlot/ordinal`; node addresses and child
@@ -119,20 +119,24 @@ The retail role vocabulary is `face`, `leftHand`, `rightHand`, `exposedBody`,
 `hair`, `eyes`, `headPart`, `equipment`, `weapon`, and `actor`. Every record
 reports `required`, `attached`, `drawable`, and `visible`, plus raw effective
 `alphaBits` and the normalized owned-data `modelPath` when a runtime attachment
-has one. The v2 effective alpha is
+has one. The v3 effective alpha is
 `clamp(material.alpha * shader.alpha * shader.fadeAlpha, 0, 1)` and
 `alphaBits` is the raw IEEE-754 bit pattern of that result. `modelHash`,
 `nodeHash`, `materialId`, and `shaderId` remain absent from the wire projection until both
 engines share canonical algorithms for those optional fields; retail wrapper
 or scene-node paths are not treated as cross-engine identity.
 
-V2 also binds `equippedWeapon` to the live middle/high process. A rendered
-weapon is complete only when the same nonzero FormID appears in the pose sample,
-its WEAP record supplies the normalized NIF path, the live `weaponNode` exists,
-and at least one required, attached, drawable, visible `weapon` part carries
-that FormID and model path. A known equipped weapon with no render node is
-reported as `equipped-unrendered`; unreadable state or a missing rendered
-attachment keeps the appearance evidence incomplete.
+V3 separately records logical equip state and same-frame render state. An
+`equipped` weapon must carry the same nonzero FormID and `weaponOut` value as
+the pose sample. `visible-source-bound` additionally requires a normalized NIF
+path, a live source node, and at least one required, attached, drawable, visible
+`weapon` part with that exact FormID and model path. `not-visible-at-frame`
+requires `weaponOut = false` and no visible weapon part; it preserves legitimate
+holstered state and model-less weapons embedded in actor or creature geometry
+without inventing an attachment. `none` pairs with `not-applicable` and a zero
+pose FormID. Unreadable state, a drawn weapon without exact source-bound
+geometry, or any disagreement with the same-frame pose keeps the appearance
+evidence incomplete.
 
 The actor observation separately retains stable-to-runtime lineage. A stable
 NPC_/CREA base may spawn directly, or retail may materialize a temporary
