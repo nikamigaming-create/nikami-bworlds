@@ -165,6 +165,9 @@ try {
         'Retail appearance reaches the broad process weapon node before applying the NPC biped rule.'
     Assert-Contract ($retailOracleSource -notmatch 'visible-skin-body-color-missing') `
         'Retail appearance still rejects authored unbound bodyColor stages.'
+    Assert-Contract ($retailOracleSource -match
+        'texture-path-or-runtime-object-mismatch:role=[\s\S]*sidecarFormatFormId\(part\.sourceForm\)[\s\S]*:stage=') `
+        'Retail appearance texture faults omit the exact render-part source and stage.'
     $schemaDocument = Get-Content -LiteralPath $schema -Raw | ConvertFrom-Json
     Assert-Contract ($null -ne $schemaDocument.'$defs'.appearance) `
         'Schema does not declare generic post-frame appearance evidence.'

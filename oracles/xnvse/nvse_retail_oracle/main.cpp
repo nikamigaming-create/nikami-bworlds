@@ -10445,8 +10445,15 @@ namespace
         if (!sidecarLooksLikeAssetPath(path) || texture == nullptr)
         {
             if (!path.empty() || texture != nullptr)
-                sidecarAppearanceFault(capture,
-                    "texture-path-or-runtime-object-mismatch");
+            {
+                std::ostringstream fault;
+                fault << "texture-path-or-runtime-object-mismatch:role=" << part.role
+                    << ":source=" << sidecarFormatFormId(part.sourceForm)
+                    << ":slot=" << part.sourceSlot << ":stage=" << stage
+                    << ":path=" << (path.empty() ? "empty" : sidecarHashText(path))
+                    << ":object=" << (texture == nullptr ? "missing" : "present");
+                sidecarAppearanceFault(capture, fault.str().c_str());
+            }
             return;
         }
 
