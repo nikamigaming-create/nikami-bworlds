@@ -135,6 +135,7 @@
         "drawable": { "type": "boolean" },
         "visible": { "type": "boolean" },
         "alphaBits": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "modelPath": { "type": "string" },
         "materialId": {
           "oneOf": [
             { "type": "string", "minLength": 1 },

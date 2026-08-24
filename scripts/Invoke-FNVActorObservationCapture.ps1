@@ -690,9 +690,72 @@ if ($appearanceSnapshots.Count -ne [int]$telemetryPolicy.requiredAppearanceSnaps
     throw "Retail capture retained $($appearanceSnapshots.Count) appearance snapshots; expected exactly one."
 }
 $appearanceSnapshot = $appearanceSnapshots[0].appearance
+$appearanceFrame = [int]$appearanceSnapshots[0].frame
+if ([string]$appearanceSnapshot.schema -cne [string]$telemetryPolicy.appearanceSchema) {
+    throw "Retail appearance snapshot schema '$($appearanceSnapshot.schema)' does not match '$($telemetryPolicy.appearanceSchema)'."
+}
 if ([bool]$appearanceSnapshot.truncated -or
     @($appearanceSnapshot.renderParts).Count -lt 1) {
     throw 'Retail appearance snapshot is truncated or contains no resolved render parts.'
+}
+$appearancePoseEvents = @($events | Where-Object {
+    [string]$_.event -ceq [string]$telemetryPolicy.poseEvent -and
+    [int]$_.frame -eq $appearanceFrame
+})
+if ($appearancePoseEvents.Count -ne 1) {
+    throw "Retail appearance frame $appearanceFrame does not have exactly one pose sample."
+}
+$equippedWeapon = $appearanceSnapshot.equippedWeapon
+if ($null -eq $equippedWeapon) {
+    throw 'Retail appearance snapshot has no equipped-weapon contract.'
+}
+$equippedWeaponState = [string]$equippedWeapon.state
+$equippedWeaponFormText = [string]$equippedWeapon.sourceFormId
+if ($equippedWeaponFormText -notmatch '^0x[0-9A-F]{8}$') {
+    throw "Retail equipped-weapon FormID '$equippedWeaponFormText' is not canonical."
+}
+$equippedWeaponForm = [Convert]::ToUInt32($equippedWeaponFormText.Substring(2), 16)
+$poseWeaponForm = [uint32]$appearancePoseEvents[0].weaponForm
+$visibleWeaponParts = @($appearanceSnapshot.renderParts | Where-Object {
+    [string]$_.role -ceq 'weapon' -and [bool]$_.visible
+})
+switch -CaseSensitive ($equippedWeaponState) {
+    'none' {
+        if ($equippedWeaponForm -ne 0 -or $poseWeaponForm -ne 0 -or
+            [bool]$equippedWeapon.nodePresent -or
+            -not [string]::IsNullOrEmpty([string]$equippedWeapon.modelPath) -or
+            $visibleWeaponParts.Count -ne 0) {
+            throw 'Retail no-weapon appearance state disagrees with the live pose or render parts.'
+        }
+    }
+    'equipped-unrendered' {
+        if ($equippedWeaponForm -eq 0 -or $poseWeaponForm -ne $equippedWeaponForm -or
+            [bool]$equippedWeapon.nodePresent -or $visibleWeaponParts.Count -ne 0 -or
+            [bool]$appearanceSnapshot.complete) {
+            throw 'Retail unrendered equipped-weapon state disagrees with the live pose or render parts.'
+        }
+    }
+    'equipped' {
+        $matchingWeaponParts = @($visibleWeaponParts | Where-Object {
+            [string]$_.sourceFormId -ceq $equippedWeaponFormText -and
+            [string]$_.modelPath -ceq [string]$equippedWeapon.modelPath -and
+            [bool]$_.required -and [bool]$_.attached -and [bool]$_.drawable
+        })
+        if ($equippedWeaponForm -eq 0 -or $poseWeaponForm -ne $equippedWeaponForm -or
+            -not [bool]$equippedWeapon.nodePresent -or
+            [string]::IsNullOrWhiteSpace([string]$equippedWeapon.modelPath) -or
+            ([bool]$appearanceSnapshot.complete -and $matchingWeaponParts.Count -lt 1)) {
+            throw 'Retail equipped-weapon appearance does not have one authoritative visible runtime attachment.'
+        }
+    }
+    'unreadable' {
+        if ([bool]$appearanceSnapshot.complete) {
+            throw 'Retail appearance cannot be complete when equipped-weapon state is unreadable.'
+        }
+    }
+    default {
+        throw "Retail appearance has unknown equipped-weapon state '$equippedWeaponState'."
+    }
 }
 $appearanceFaults = @($appearanceSnapshot.faults | ForEach-Object { [string]$_ })
 if (($appearanceFaults.Count -eq 0) -ne [bool]$appearanceSnapshot.complete -or

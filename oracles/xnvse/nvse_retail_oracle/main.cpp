@@ -9903,6 +9903,14 @@ namespace
     }
 
     constexpr UInt32 sSidecarNoSourceSlot = 0xFFFFFFFFu;
+    constexpr UInt32 sSidecarBipedSlotCount = 20u;
+    constexpr UInt32 sSidecarEquippedWeaponSlot = 5u;
+    constexpr UInt32 sSidecarRaceGeometryFirstSlot = 2u;
+    constexpr UInt32 sSidecarRaceGeometryLastSlot = 4u;
+    constexpr UInt8 sSidecarMiddleHighMaximumProcessLevel = 1u;
+    constexpr UInt8 sSidecarUnreadableProcessLevel = 0xFFu;
+    constexpr const char* sSidecarAppearanceSchema
+        = "nikami-fnv-sidecar-appearance/v2";
     const std::string sSidecarEmptyNodePath;
 
     struct SidecarTextureResource
@@ -9961,6 +9969,7 @@ namespace
         bool visible = false;
         bool skinSurface = false;
         UInt32 alphaBits = 0x3F800000u;
+        std::string modelPath;
         std::string modelHash;
         std::string nodeHash;
         std::string geometryHash;
@@ -9980,6 +9989,10 @@ namespace
         std::set<std::string> evidenceFaults;
         UInt32 visitedNodes = 0;
         UInt32 geometryCandidates = 0;
+        std::string equippedWeaponState = "unreadable";
+        UInt32 equippedWeaponForm = 0;
+        std::string equippedWeaponModelPath;
+        bool equippedWeaponNodePresent = false;
         bool traversalTruncated = false;
         bool evidenceComplete = true;
     };
@@ -10626,7 +10639,7 @@ namespace
 
     std::string sidecarAttachmentRole(UInt8 formType, UInt32 slot)
     {
-        if (formType == kFormType_TESObjectWEAP || slot == 5)
+        if (formType == kFormType_TESObjectWEAP || slot == sSidecarEquippedWeaponSlot)
             return "weapon";
         if (formType == kFormType_TESObjectARMO || formType == kFormType_TESObjectCLOT)
             return "equipment";
@@ -10647,6 +10660,96 @@ namespace
         }
     }
 
+    void sidecarCollectEquippedWeaponAttachment(
+        Actor* actor, SidecarAppearanceCapture& capture)
+    {
+        BaseProcess* process = nullptr;
+        UInt8 processLevel = sSidecarUnreadableProcessLevel;
+        if (actor == nullptr || !safeRead(&actor->baseProcess, process) || process == nullptr
+            || !safeRead(&process->processLevel, processLevel)
+            || processLevel > sSidecarMiddleHighMaximumProcessLevel)
+        {
+            sidecarAppearanceFault(capture, "equipped-weapon-process-unreadable");
+            return;
+        }
+
+        MiddleHighProcess* middleHigh = static_cast<MiddleHighProcess*>(process);
+        MiddleHighProcess::WeaponInfo* weaponInfo = nullptr;
+        if (!safeRead(&middleHigh->weaponInfo, weaponInfo))
+        {
+            sidecarAppearanceFault(capture, "equipped-weapon-info-unreadable");
+            return;
+        }
+        if (weaponInfo == nullptr)
+        {
+            capture.equippedWeaponState = "none";
+            return;
+        }
+
+        TESObjectWEAP* weapon = nullptr;
+        if (!safeRead(&weaponInfo->weapon, weapon))
+        {
+            sidecarAppearanceFault(capture, "equipped-weapon-form-unreadable");
+            return;
+        }
+        if (weapon == nullptr)
+        {
+            capture.equippedWeaponState = "none";
+            return;
+        }
+
+        UInt8 weaponType = kFormType_None;
+        if (!safeRead(&weapon->typeID, weaponType)
+            || weaponType != kFormType_TESObjectWEAP
+            || !safeRead(&weapon->refID, capture.equippedWeaponForm)
+            || capture.equippedWeaponForm == 0)
+        {
+            sidecarAppearanceFault(capture, "equipped-weapon-identity-invalid");
+            return;
+        }
+
+        char* modelAddress = nullptr;
+        if (safeRead(&weapon->textureSwap.nifPath.m_data, modelAddress))
+        {
+            capture.equippedWeaponModelPath
+                = sidecarNormalizeAssetPath(safeRuntimeString(modelAddress));
+        }
+
+        NiNode* weaponNode = nullptr;
+        if (!safeRead(&middleHigh->weaponNode, weaponNode))
+        {
+            sidecarAppearanceFault(capture, "equipped-weapon-node-unreadable");
+            return;
+        }
+        capture.equippedWeaponNodePresent = weaponNode != nullptr;
+        if (weaponNode == nullptr)
+        {
+            capture.equippedWeaponState = "equipped-unrendered";
+            sidecarAppearanceFault(capture, "equipped-weapon-node-missing");
+            return;
+        }
+
+        capture.equippedWeaponState = "equipped";
+        if (capture.equippedWeaponModelPath.empty())
+            sidecarAppearanceFault(capture, "equipped-weapon-model-path-missing");
+
+        capture.attachments.erase(
+            std::remove_if(capture.attachments.begin(), capture.attachments.end(),
+                [weaponNode](const SidecarAppearanceAttachment& existing) {
+                    return existing.root == weaponNode;
+                }),
+            capture.attachments.end());
+        SidecarAppearanceAttachment attachment;
+        attachment.root = weaponNode;
+        attachment.sourceForm = capture.equippedWeaponForm;
+        attachment.sourceType = weaponType;
+        attachment.sourceSlot = sSidecarEquippedWeaponSlot;
+        attachment.role = "weapon";
+        attachment.modelPath = capture.equippedWeaponModelPath;
+        attachment.required = true;
+        capture.attachments.push_back(std::move(attachment));
+    }
+
     void sidecarCollectAppearanceSourcesAndAttachments(
         Actor* actor, SidecarAppearanceCapture& capture)
     {
@@ -10654,59 +10757,71 @@ namespace
         UInt8 actorBaseType = kFormType_None;
         if (actor == nullptr || !safeRead(&actor->baseForm, actorBase) || actorBase == nullptr
             || !safeRead(&actorBase->typeID, actorBaseType))
+        {
+            sidecarAppearanceFault(capture, "actor-base-identity-unreadable");
             return;
+        }
         safeRead(&actorBase->refID, capture.sources.actorBaseForm);
         capture.sources.actorBaseType = actorBaseType;
-        if (actorBaseType != kFormType_TESNPC)
-            return;
-
-        TESNPC* npc = static_cast<TESNPC*>(actorBase);
-        TESRace* race = nullptr;
-        TESHair* hair = nullptr;
-        TESEyes* eyes = nullptr;
-        safeRead(&npc->race.race, race);
-        safeRead(&npc->hair, hair);
-        safeRead(&npc->eyes, eyes);
-        if (race != nullptr)
-            safeRead(&race->refID, capture.sources.raceForm);
-        if (hair != nullptr)
-            safeRead(&hair->refID, capture.sources.hairForm);
-        if (eyes != nullptr)
-            safeRead(&eyes->refID, capture.sources.eyesForm);
-
-        ValidBip01Names* slots = nullptr;
-        if (!safeRead(&static_cast<Character*>(actor)->validBip01Names, slots) || slots == nullptr)
-            return;
-        for (UInt32 slot = 0; slot < 20; ++slot)
+        if (actorBaseType == kFormType_TESNPC)
         {
-            ValidBip01Names::Data data = {};
-            if (!safeRead(&slots->unk002C[slot], data)
-                || (data.model == nullptr && data.texture == nullptr && data.bones == nullptr))
-                continue;
-            SidecarAppearanceAttachment attachment;
-            attachment.root = data.bones;
-            attachment.sourceSlot = slot;
-            attachment.required = data.model != nullptr || data.texture != nullptr;
-            if (data.model != nullptr)
+            TESNPC* npc = static_cast<TESNPC*>(actorBase);
+            TESRace* race = nullptr;
+            TESHair* hair = nullptr;
+            TESEyes* eyes = nullptr;
+            safeRead(&npc->race.race, race);
+            safeRead(&npc->hair, hair);
+            safeRead(&npc->eyes, eyes);
+            if (race != nullptr)
+                safeRead(&race->refID, capture.sources.raceForm);
+            if (hair != nullptr)
+                safeRead(&hair->refID, capture.sources.hairForm);
+            if (eyes != nullptr)
+                safeRead(&eyes->refID, capture.sources.eyesForm);
+
+            ValidBip01Names* slots = nullptr;
+            if (!safeRead(&static_cast<Character*>(actor)->validBip01Names, slots)
+                || slots == nullptr)
             {
-                safeRead(&data.model->refID, attachment.sourceForm);
-                safeRead(&data.model->typeID, attachment.sourceType);
+                sidecarAppearanceFault(capture, "npc-biped-slots-unreadable");
             }
-            if (attachment.sourceForm == 0)
+            else
             {
-                attachment.sourceForm = slot >= 2 && slot <= 4
-                    ? capture.sources.raceForm : capture.sources.actorBaseForm;
+                for (UInt32 slot = 0; slot < sSidecarBipedSlotCount; ++slot)
+                {
+                    ValidBip01Names::Data data = {};
+                    if (!safeRead(&slots->unk002C[slot], data)
+                        || (data.model == nullptr && data.texture == nullptr
+                            && data.bones == nullptr))
+                        continue;
+                    SidecarAppearanceAttachment attachment;
+                    attachment.root = data.bones;
+                    attachment.sourceSlot = slot;
+                    attachment.required = data.model != nullptr || data.texture != nullptr;
+                    if (data.model != nullptr)
+                    {
+                        safeRead(&data.model->refID, attachment.sourceForm);
+                        safeRead(&data.model->typeID, attachment.sourceType);
+                    }
+                    if (attachment.sourceForm == 0)
+                    {
+                        attachment.sourceForm = slot >= sSidecarRaceGeometryFirstSlot
+                                && slot <= sSidecarRaceGeometryLastSlot
+                            ? capture.sources.raceForm : capture.sources.actorBaseForm;
+                    }
+                    attachment.role = sidecarAttachmentRole(attachment.sourceType, slot);
+                    if (data.texture != nullptr)
+                    {
+                        char* modelAddress = nullptr;
+                        if (safeRead(&data.texture->nifPath.m_data, modelAddress))
+                            attachment.modelPath = sidecarNormalizeAssetPath(
+                                safeRuntimeString(modelAddress));
+                    }
+                    capture.attachments.push_back(std::move(attachment));
+                }
             }
-            attachment.role = sidecarAttachmentRole(attachment.sourceType, slot);
-            if (data.texture != nullptr)
-            {
-                char* modelAddress = nullptr;
-                if (safeRead(&data.texture->nifPath.m_data, modelAddress))
-                    attachment.modelPath
-                        = sidecarNormalizeAssetPath(safeRuntimeString(modelAddress));
-            }
-            capture.attachments.push_back(std::move(attachment));
         }
+        sidecarCollectEquippedWeaponAttachment(actor, capture);
         std::sort(capture.attachments.begin(), capture.attachments.end(),
             [](const SidecarAppearanceAttachment& left,
                 const SidecarAppearanceAttachment& right) {
@@ -10884,7 +10999,10 @@ namespace
                 part.visible = part.drawable && !hidden && effectiveAlpha > 0.f;
                 part.required = part.visible;
                 if (attachment != nullptr && !attachment->modelPath.empty())
+                {
+                    part.modelPath = attachment->modelPath;
                     part.modelHash = sidecarHashText(attachment->modelPath);
+                }
                 part.nodeHash = sidecarHashText(nodePath);
                 if (geometryReadable)
                 {
@@ -10994,7 +11112,10 @@ namespace
             if (attachment.required)
                 sidecarAppearanceFault(capture, "required-attachment-missing");
             if (!attachment.modelPath.empty())
+            {
+                part.modelPath = attachment.modelPath;
                 part.modelHash = sidecarHashText(attachment.modelPath);
+            }
             const std::string missingIdentity = "missing/" + part.role + '/'
                 + sidecarFormatFormId(part.sourceForm) + '/'
                 + std::to_string(part.sourceSlot);
@@ -11002,6 +11123,32 @@ namespace
             part.stableKey = sidecarRenderPartStableKey(part);
             part.deterministicKey = sidecarRenderPartDeterministicKey(part);
             capture.parts.push_back(std::move(part));
+        }
+    }
+
+    void sidecarValidateEquippedWeaponAppearance(SidecarAppearanceCapture& capture)
+    {
+        const bool hasAttributedVisibleWeapon = std::any_of(
+            capture.parts.begin(), capture.parts.end(),
+            [&capture](const SidecarRenderPart& part) {
+                return part.role == "weapon"
+                    && part.sourceForm == capture.equippedWeaponForm
+                    && part.modelPath == capture.equippedWeaponModelPath
+                    && part.required && part.attached && part.drawable && part.visible;
+            });
+        if (capture.equippedWeaponState == "equipped" && !hasAttributedVisibleWeapon)
+        {
+            sidecarAppearanceFault(capture, "equipped-weapon-render-part-missing");
+        }
+        else if (capture.equippedWeaponState != "equipped")
+        {
+            const bool hasUnexpectedVisibleWeapon = std::any_of(
+                capture.parts.begin(), capture.parts.end(),
+                [](const SidecarRenderPart& part) {
+                    return part.role == "weapon" && part.visible;
+                });
+            if (hasUnexpectedVisibleWeapon)
+                sidecarAppearanceFault(capture, "visible-weapon-without-runtime-source");
         }
     }
 
@@ -11032,7 +11179,8 @@ namespace
             << ",\"attached\":" << (part.attached ? "true" : "false")
             << ",\"drawable\":" << (part.drawable ? "true" : "false")
             << ",\"visible\":" << (part.visible ? "true" : "false")
-            << ",\"alphaBits\":" << part.alphaBits;
+            << ",\"alphaBits\":" << part.alphaBits
+            << ",\"modelPath\":" << jsonString(part.modelPath.c_str());
         out << ",\"textureBindings\":[";
         for (std::size_t index = 0; index < part.textureBindings.size(); ++index)
         {
@@ -11060,6 +11208,7 @@ namespace
         if (root != nullptr)
             sidecarCollectAppearanceSafely(capture, root);
         sidecarAddMissingAttachmentParts(capture);
+        sidecarValidateEquippedWeaponAppearance(capture);
         if (capture.parts.empty())
         {
             SidecarRenderPart fallback;
@@ -11105,7 +11254,7 @@ namespace
         const bool truncated = capture.traversalTruncated
             || serialized.size() != capture.parts.size();
         const bool complete = capture.evidenceComplete && !truncated && root != nullptr;
-        out << ",\"appearance\":{\"schema\":\"nikami-fnv-sidecar-appearance/v1\""
+        out << ",\"appearance\":{\"schema\":" << jsonString(sSidecarAppearanceSchema)
             << ",\"complete\":" << (complete ? "true" : "false")
             << ",\"truncated\":" << (truncated ? "true" : "false")
             << ",\"visitedNodes\":" << capture.visitedNodes
@@ -11119,6 +11268,14 @@ namespace
             out << jsonString(fault.c_str());
         }
         out << ']'
+            << ",\"equippedWeapon\":{\"state\":"
+            << jsonString(capture.equippedWeaponState.c_str())
+            << ",\"sourceFormId\":"
+            << jsonString(sidecarFormatFormId(capture.equippedWeaponForm).c_str())
+            << ",\"modelPath\":"
+            << jsonString(capture.equippedWeaponModelPath.c_str())
+            << ",\"nodePresent\":"
+            << (capture.equippedWeaponNodePresent ? "true" : "false") << '}'
             << ",\"renderParts\":[";
         for (std::size_t index = 0; index < serialized.size(); ++index)
         {

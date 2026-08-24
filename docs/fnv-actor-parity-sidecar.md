@@ -107,7 +107,7 @@ the protocol completion contract passes.
 ### Retail post-frame appearance evidence
 
 The retail ready/captured payload now adds
-`appearance.schema = nikami-fnv-sidecar-appearance/v1`. Its bounded
+`appearance.schema = nikami-fnv-sidecar-appearance/v2`. Its bounded
 `renderParts` projection is collected from the settled actor scene graph, not
 from a screenshot or an actor-specific override. A part's only comparison
 identity is `role/sourceFormId/sourceSlot/ordinal`; node addresses and child
@@ -118,12 +118,21 @@ sentinel `4294967295`.
 The retail role vocabulary is `face`, `leftHand`, `rightHand`, `exposedBody`,
 `hair`, `eyes`, `headPart`, `equipment`, `weapon`, and `actor`. Every record
 reports `required`, `attached`, `drawable`, and `visible`, plus raw effective
-`alphaBits`. The v1 effective alpha is
+`alphaBits` and the normalized owned-data `modelPath` when a runtime attachment
+has one. The v2 effective alpha is
 `clamp(material.alpha * shader.alpha * shader.fadeAlpha, 0, 1)` and
 `alphaBits` is the raw IEEE-754 bit pattern of that result. `modelHash`,
-`nodeHash`, `materialId`, and `shaderId` remain absent from v1 until both
+`nodeHash`, `materialId`, and `shaderId` remain absent from the wire projection until both
 engines share canonical algorithms for those optional fields; retail wrapper
 or scene-node paths are not treated as cross-engine identity.
+
+V2 also binds `equippedWeapon` to the live middle/high process. A rendered
+weapon is complete only when the same nonzero FormID appears in the pose sample,
+its WEAP record supplies the normalized NIF path, the live `weaponNode` exists,
+and at least one required, attached, drawable, visible `weapon` part carries
+that FormID and model path. A known equipped weapon with no render node is
+reported as `equipped-unrendered`; unreadable state or a missing rendered
+attachment keeps the appearance evidence incomplete.
 
 Resolved shader bindings are ordered by stage and carry semantic, normalized
 `textures/...` path, dimensions, D3D9 format, source kind, and
