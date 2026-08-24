@@ -10440,20 +10440,18 @@ namespace
         const char* pathSourceKind)
     {
         path = sidecarNormalizeTexturePath(std::move(path));
+        if (texture == nullptr)
+            return;
         if (path.empty())
             path = sidecarRuntimeTexturePath(texture);
-        if (!sidecarLooksLikeAssetPath(path) || texture == nullptr)
+        if (!sidecarLooksLikeAssetPath(path))
         {
-            if (!path.empty() || texture != nullptr)
-            {
-                std::ostringstream fault;
-                fault << "texture-path-or-runtime-object-mismatch:role=" << part.role
-                    << ":source=" << sidecarFormatFormId(part.sourceForm)
-                    << ":slot=" << part.sourceSlot << ":stage=" << stage
-                    << ":path=" << (path.empty() ? "empty" : sidecarHashText(path))
-                    << ":object=" << (texture == nullptr ? "missing" : "present");
-                sidecarAppearanceFault(capture, fault.str().c_str());
-            }
+            std::ostringstream fault;
+            fault << "texture-runtime-object-path-unreadable:role=" << part.role
+                << ":source=" << sidecarFormatFormId(part.sourceForm)
+                << ":slot=" << part.sourceSlot << ":stage=" << stage
+                << ":path=" << (path.empty() ? "empty" : sidecarHashText(path));
+            sidecarAppearanceFault(capture, fault.str().c_str());
             return;
         }
 

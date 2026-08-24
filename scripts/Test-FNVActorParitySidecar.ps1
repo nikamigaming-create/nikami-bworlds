@@ -165,8 +165,13 @@ try {
         'Retail appearance reaches the broad process weapon node before applying the NPC biped rule.'
     Assert-Contract ($retailOracleSource -notmatch 'visible-skin-body-color-missing') `
         'Retail appearance still rejects authored unbound bodyColor stages.'
-    Assert-Contract ($retailOracleSource -match
-        'texture-path-or-runtime-object-mismatch:role=[\s\S]*sidecarFormatFormId\(part\.sourceForm\)[\s\S]*:stage=') `
+    $textureBindingCollector = [regex]::Match($retailOracleSource,
+        'void sidecarAppendTextureBinding[\s\S]*?void sidecarCollectShaderTextures').Value
+    Assert-Contract ($textureBindingCollector -match
+        'if \(texture == nullptr\)\s*return;') `
+        'Retail appearance does not preserve path-only texture slots as unbound.'
+    Assert-Contract ($textureBindingCollector -match
+        'texture-runtime-object-path-unreadable:role=[\s\S]*sidecarFormatFormId\(part\.sourceForm\)[\s\S]*:stage=') `
         'Retail appearance texture faults omit the exact render-part source and stage.'
     $schemaDocument = Get-Content -LiteralPath $schema -Raw | ConvertFrom-Json
     Assert-Contract ($null -ne $schemaDocument.'$defs'.appearance) `

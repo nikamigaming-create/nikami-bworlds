@@ -154,6 +154,9 @@ and weapon stages use role-prefixed color/normal semantics.
 Only stages actually bound by the settled retail shader are emitted. An
 authored unbound skin stage remains an explicit absence: collection does not
 synthesize a neutral `bodyColor` binding or mark that absence unreadable.
+Likewise, an authored texture-set path without a live runtime `NiTexture` is an
+unbound stage, not a resolved binding. A live texture object without a valid
+path or readable D3D9 resource remains an evidence fault.
 Parity still compares the complete binding set, so a stage present in only one
 engine is a mismatch.
 
