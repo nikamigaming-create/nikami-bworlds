@@ -6,15 +6,15 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `41dbd127b10575f14ecafd6c8eea8c2e53b0f389`;
-- tree: `521165afb9cd7ade2e7f00986e5d62c412d09bc4`;
+- commit: `e1546e87117b2fcecbd7abfb9dd68b07cd97d0e7`;
+- tree: `3a046ff3c4f38709a1de9dcb7dcfd06a3bb058ba`;
 - official OpenMW base: `03e02d034fed3e3c1d65f0ba09767df64c58b78e`;
 - local upstream sync merge: `a67cb2ef47916fce2d300b1a50de5b9fe969c9e3`;
 - public remote topology: only `main`; no temporary topic refs remain.
 
-The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, and `AMEF`
-contracts on top of the data-owned UI/game identity and collision seams. The
-weather contract records the complete metadata currently supported by the
+The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`, and
+`TERM` contracts on top of the data-owned UI/game identity and collision seams.
+The weather contract records the complete metadata currently supported by the
 clean loader: image-space
 references, cloud textures/layers/speeds/colors, fog distances, the fixed
 304-byte unused image-space block, named `DATA` offsets, and exact `SNAM`
@@ -56,23 +56,30 @@ The AMEF topic and its post-push `main` workflow also passed all four legs:
 - post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32770688961;
 - Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
 
-Focused local checks passed for the WTHR, CLMT, AVIF, REPU, and AMEF translation
+The TERM topic and its post-push `main` workflow passed all four legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32777455756;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32781270416;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
+Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, and TERM translation
 units and `git diff --check`. The local full MSVC build reaches the changed ESM4 sources
 but is blocked later by the host's unrelated OSG header mismatch:
 `GL_COMPRESSED_SRGB_S3TC_DXT{1,3,5}_EXT` is absent from the installed headers.
 This is not a failure of the promoted slice; CI is authoritative.
 
 The published history keeps each bounded contract reviewable: CLMT climate,
-AVIF actor-value metadata, REPU reputation metadata, and AMEF ammo effects are
-separate commits. Their synthetic tests cover valid fields, null-preserving
-FormIDs, fixed-size validation, enum/range checks, and unknown/malformed input.
+AVIF actor-value metadata, REPU reputation metadata, AMEF ammo effects, and TERM
+terminal records are separate commits. Their synthetic tests cover valid fields,
+null-preserving FormIDs, fixed-size validation, enum/range checks, exact menu/script
+retention, and unknown/malformed input.
 
 ## Recovery and provenance
 
 The current main/recovery bundle is:
 
-- bundle: `D:\code\archives\nikami-openmw-lab-main-amef-20260824-v10.bundle`;
-- SHA-256: `220C6C83A52B0FC4D5F171D219C8C7E73FB0566A41D928B12355A6A1D2AC4BDE`;
+- bundle: `D:\code\archives\nikami-openmw-lab-main-term-20260824-v11.bundle`;
+- SHA-256: `76A2A26FDB648B08941EBE0964C2BFE97E94F823FE1A56DDBAF8BDB36637193E`;
 - `git bundle verify`: passed; complete history recorded.
 
 Earlier recovery bundles remain preserved:
@@ -83,10 +90,10 @@ Earlier recovery bundles remain preserved:
   `00FF010B8F9BA17DCBA90FF0E3D78D3939DD9D3EA89510CE4E96516E06A9803A`;
 - the pre-clean bundle and all local recovery/product heads remain intact.
 
-The public weather, metadata, and AMEF topic refs were deleted only after
-their post-push `main` runs (`32749407011`, `32762033204`, and `32770688961`)
-were green. No private retail binary or evidence is present in any public ref
-or bundle.
+The public weather, metadata, AMEF, and TERM topic refs were deleted only after
+their post-push `main` runs (`32749407011`, `32762033204`, `32770688961`, and
+`32781270416`) were green. No private retail binary or evidence is present in any
+public ref or bundle.
 
 ## Fresh pull / exact resume
 
@@ -96,7 +103,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: 41dbd127b10575f14ecafd6c8eea8c2e53b0f389
+# expected: e1546e87117b2fcecbd7abfb9dd68b07cd97d0e7
 ```
 
 The public lane is at a clean stopping point for new feature work. Continue
