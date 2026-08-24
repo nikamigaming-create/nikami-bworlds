@@ -618,6 +618,8 @@
         "requiredVisualSnapshotsPerSourceFrame": 1,
         "requiredAppearanceSnapshots": 1,
         "appearanceSchema": "nikami-fnv-sidecar-appearance/v2",
+        "recordTypeRuntimeFormTypes": { "NPC_": 42, "CREA": 43 },
+        "temporaryRuntimeFormIndex": 255,
         "requireSkinPalettesForSkinnedGeometry": true,
         "skinPaletteComponentsPerRegister": 4,
         "skinPaletteBytesPerComponent": 4,

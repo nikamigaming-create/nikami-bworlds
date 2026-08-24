@@ -581,6 +581,36 @@ for ($cameraIndex = 0; $cameraIndex -lt $cameraEvents.Count; ++$cameraIndex) {
 }
 $spawnedReference = [uint32]$templateEvents[0].referenceForm
 $requestedRuntimeForm = [Convert]::ToUInt32($runtimeForm, 16)
+$templateObservation = $templateEvents[0]
+$runtimeBaseFormTypeProperty =
+    $telemetryPolicy.recordTypeRuntimeFormTypes.PSObject.Properties[[string]$job.recordType]
+if ($null -eq $runtimeBaseFormTypeProperty) {
+    throw "Retail telemetry policy has no runtime form type for '$($job.recordType)'."
+}
+$expectedRuntimeBaseType = [int]$runtimeBaseFormTypeProperty.Value
+$observedRuntimeBase = [uint32]$templateObservation.runtimeBaseForm
+$runtimeBaseTemporary = [bool]$templateObservation.runtimeBaseTemporary
+$temporaryRuntimeFormIndex = [int]$telemetryPolicy.temporaryRuntimeFormIndex
+$runtimeLineage = $templateObservation.leveledExtra
+if (-not [bool]$templateObservation.baseReadable -or
+    [uint32]$templateObservation.requestedBaseForm -ne $requestedRuntimeForm -or
+    [uint32]$templateObservation.referenceForm -ne $spawnedReference -or
+    $observedRuntimeBase -eq 0 -or
+    [int]$templateObservation.runtimeBaseType -ne $expectedRuntimeBaseType) {
+    throw 'Retail actor template observation does not bind the requested base, spawned reference, and runtime base.'
+}
+if ($runtimeBaseTemporary) {
+    if ([int]$templateObservation.runtimeBaseModIndex -ne $temporaryRuntimeFormIndex -or
+        $null -eq $runtimeLineage -or -not [bool]$runtimeLineage.readable -or
+        [uint32]$runtimeLineage.baseForm -ne $requestedRuntimeForm -or
+        [uint32]$runtimeLineage.form -eq 0) {
+        throw 'Retail temporary actor base has no complete stable leveled lineage.'
+    }
+}
+elseif ($observedRuntimeBase -ne $requestedRuntimeForm -or
+    [int]$templateObservation.runtimeBaseModIndex -eq $temporaryRuntimeFormIndex) {
+    throw 'Retail stable actor base differs from the requested base.'
+}
 $snapshotFaults = @($events | Where-Object {
     [string]$_.event -eq [string]$telemetryPolicy.visualSnapshotFaultEvent
 })
@@ -608,7 +638,7 @@ foreach ($expectedFrame in $orderedScreenshotFrames) {
     $nodes = @($snapshot.nodes)
     if ([int]$snapshot.frame -ne [int]$expectedFrame -or
         [uint32]$snapshot.refForm -ne $spawnedReference -or
-        [uint32]$snapshot.baseForm -ne $requestedRuntimeForm -or
+        [uint32]$snapshot.baseForm -ne $observedRuntimeBase -or
         $null -eq $snapshot.rootWorld -or
         $nodes.Count -lt [int]$telemetryPolicy.minimumNamedNodesPerSnapshot) {
         throw "Retail actor visual snapshot for frame $expectedFrame has invalid actor, root, or named-node identity."
@@ -994,6 +1024,11 @@ $actorFrames = @($events | Where-Object {
 })
 if ($actorFrames.Count -lt [int]$telemetryPolicy.minimumPoseSamples) {
     throw 'Retail capture did not retain enough spawned-actor animation frames.'
+}
+if (@($actorFrames | Where-Object {
+        [uint32]$_.baseForm -ne $observedRuntimeBase
+    }).Count -ne 0) {
+    throw 'Retail spawned-actor pose samples changed runtime base identity.'
 }
 $jsonlBytes = (Get-Item -LiteralPath $jsonlPath).Length
 if ($jsonlBytes -gt [int64]$telemetryPolicy.maximumJsonlBytes) {

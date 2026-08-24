@@ -134,6 +134,14 @@ that FormID and model path. A known equipped weapon with no render node is
 reported as `equipped-unrendered`; unreadable state or a missing rendered
 attachment keeps the appearance evidence incomplete.
 
+The actor observation separately retains stable-to-runtime lineage. A stable
+NPC_/CREA base may spawn directly, or retail may materialize a temporary
+`FF......` actor base for a leveled/template outcome. Temporary identity is
+accepted only when the same `actor-template-observation` binds the requested
+stable base, spawned reference, runtime form type, temporary mod index, and
+readable `ExtraLeveledCreature` base/form lineage. Every visual snapshot and
+pose sample must then retain that exact observed runtime base for the run.
+
 Resolved shader bindings are ordered by stage and carry semantic, normalized
 `textures/...` path, dimensions, D3D9 format, source kind, and
 `d3d9-fnv1a32:%08x`. That content hash covers canonical D3D9 subresource bytes

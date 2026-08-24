@@ -489,6 +489,7 @@ namespace
     constexpr UInt32 sSidecarAppearanceMaximumParts = 48;
     constexpr std::size_t sSidecarAppearanceMaximumJsonBytes = 23000;
     constexpr UInt64 sSidecarTextureMaximumCanonicalBytes = 64ull * 1024ull * 1024ull;
+    constexpr float sPortraitMinimumSemanticForwardLength = 0.25f;
     // FalloutNV 1.4.0.525's NiCamera layout differs from the historical
     // xNVSE declaration after NiAVObject. These offsets are the decoded retail
     // render-camera ABI used by the culling and world-to-camera paths.
@@ -5562,29 +5563,12 @@ namespace
         if (gBatchProofStaging)
             focusFallbackReason = "proof-volume-canonical-yaw";
         float forwardLength = std::sqrt(forwardX * forwardX + forwardY * forwardY);
-        if (forwardLength < 0.25f)
+        if (forwardLength < sPortraitMinimumSemanticForwardLength)
         {
-            if (gFullBodyCamera)
-            {
-                forwardX = std::sin(actor->rotZ);
-                forwardY = std::cos(actor->rotZ);
-                forwardLength = 1.f;
-                focusFallbackReason = "semantic-forward-degenerate";
-            }
-            else
-            {
-                if (!gPortraitCameraWaitingLogged)
-                {
-                    gPortraitCameraWaitingLogged = true;
-                    gOutput << "{\"schema\":" << sSchemaJson
-                            << ",\"event\":\"portrait-camera-waiting\""
-                            << ",\"frame\":" << gFrame
-                            << ",\"refForm\":" << actor->refID
-                            << ",\"reason\":\"semantic-forward-degenerate\"}\n";
-                    gOutput.flush();
-                }
-                return;
-            }
+            forwardX = std::sin(actor->rotZ);
+            forwardY = std::cos(actor->rotZ);
+            forwardLength = std::sqrt(forwardX * forwardX + forwardY * forwardY);
+            focusFallbackReason = "semantic-forward-degenerate";
         }
         forwardX /= forwardLength;
         forwardY /= forwardLength;
