@@ -553,6 +553,7 @@
         "every native source frame has one same-frame actor visual snapshot with the actor root and complete named NiNode local/world transforms for later owned-skeleton intersection",
         "every native source frame retains each live skinned geometry's runtime bone order, cache dimensions, exact palette floats, and palette hash",
         "exactly one visual snapshot retains the resolved render-part, source-form, source-slot, and texture-binding appearance inventory",
+        "the retained appearance snapshot has an empty fault ledger when complete and explicit unique fault codes when incomplete",
         "evidence status remains captured-unclassified-runtime-observation until an expected review signature is correlated",
         "a classified outcome remains captured-classified-incomplete-appearance-evidence until its retained runtime attachment snapshot is complete",
         "capture.windowsAppControlUsed=false",

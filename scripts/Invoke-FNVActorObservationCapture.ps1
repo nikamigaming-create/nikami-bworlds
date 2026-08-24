@@ -694,6 +694,12 @@ if ([bool]$appearanceSnapshot.truncated -or
     @($appearanceSnapshot.renderParts).Count -lt 1) {
     throw 'Retail appearance snapshot is truncated or contains no resolved render parts.'
 }
+$appearanceFaults = @($appearanceSnapshot.faults | ForEach-Object { [string]$_ })
+if (($appearanceFaults.Count -eq 0) -ne [bool]$appearanceSnapshot.complete -or
+    @($appearanceFaults | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -ne 0 -or
+    @($appearanceFaults | Sort-Object -Unique).Count -ne $appearanceFaults.Count) {
+    throw 'Retail appearance snapshot completeness and fault codes disagree.'
+}
 $appearanceEvidenceStatus = if ([bool]$appearanceSnapshot.complete) {
     'complete'
 } else {
@@ -1133,6 +1139,7 @@ $report = [ordered]@{
         surfaceContract = $surfaceContractSummary
         drawContractDiagnostic = $drawContractSummary
         appearanceEvidenceStatus = $appearanceEvidenceStatus
+        appearanceEvidenceFaults = $appearanceFaults
         appearanceSnapshot = $appearanceSnapshot
         telemetryBytes = $jsonlBytes
         telemetryMaximumBytes = [int64]$telemetryPolicy.maximumJsonlBytes

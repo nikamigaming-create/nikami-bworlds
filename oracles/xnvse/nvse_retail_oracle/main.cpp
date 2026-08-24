@@ -454,11 +454,31 @@ namespace
     constexpr const char* sSchema = "nikami-retail-oracle/v4";
     constexpr const char* sSchemaJson = "\"nikami-retail-oracle/v4\"";
     constexpr std::size_t sNiAVObjectWorldBoundOffset = 0x20;
+    constexpr std::size_t sNiAVObjectFlagsOffset = 0x30;
     constexpr std::size_t sNiAVObjectLocalTransformOffset = 0x34;
     constexpr std::size_t sNiAVObjectWorldTransformOffset = 0x68;
+    constexpr UInt32 sNiAVObjectAppCulledFlag = 1u << 0;
+    constexpr std::size_t sNiGeometryMaterialPropertyOffset = 0xA4;
     constexpr std::size_t sNiGeometryShaderPropertyOffset = 0xA8;
     constexpr std::size_t sNiGeometryDataOffset = 0xB8;
     constexpr std::size_t sNiGeometrySkinInstanceOffset = 0xBC;
+    constexpr std::size_t sNiMaterialPropertyAlphaOffset = 0x3C;
+    constexpr std::size_t sBsShaderPropertyTypeOffset = 0x1C;
+    constexpr std::size_t sBsShaderPropertyFlags1Offset = 0x20;
+    constexpr std::size_t sBsShaderPropertyAlphaOffset = 0x28;
+    constexpr std::size_t sBsShaderPropertyFadeAlphaOffset = 0x2C;
+    constexpr UInt32 sBsShaderPropertySkinTintFlag = 1u << 10;
+    constexpr std::size_t sBsPpLightingTextureSetOffset = 0xA4;
+    constexpr std::size_t sBsPpLightingTexturePointerArrayOffset = 0xAC;
+    constexpr std::size_t sBsShaderTextureSetPathArrayOffset = 0x08;
+    constexpr std::size_t sBsNoLightingTextureOffset = 0x60;
+    constexpr std::size_t sBsNoLightingTexturePathOffset = 0x64;
+    constexpr UInt32 sBsShaderTextureStageCount = 6;
+    constexpr std::array<UInt32, 3> sBsTextureSetShaderTypes = { 8, 9, 12 };
+    constexpr UInt32 sBsNoLightingShaderType = 0x15;
+    constexpr std::array<std::size_t, 3> sNiTextureRuntimePathOffsets
+        = { 0x30, 0x34, 0x38 };
+    constexpr UInt32 sNiRttiMaximumAncestorCount = 64;
     constexpr UInt64 sD3DFloatRegisterComponents = 4;
     constexpr UInt32 sD3DMaximumTextureStages = 16;
     constexpr UInt32 sD3DMaximumVertexShaderFloatRegisters = 256;
@@ -3128,6 +3148,28 @@ namespace
     bool isOracleSkinInstanceType(const std::string& type)
     {
         return type == "NiSkinInstance" || type == "BSDismemberSkinInstance";
+    }
+
+    bool runtimeTypeDerivesFrom(NiObject* object, const char* expectedType)
+    {
+        if (object == nullptr || expectedType == nullptr || expectedType[0] == '\0')
+            return false;
+        __try
+        {
+            NiRTTI* type = object->GetType();
+            for (UInt32 depth = 0;
+                type != nullptr && depth < sNiRttiMaximumAncestorCount;
+                ++depth, type = type->parent)
+            {
+                if (type->name != nullptr && std::strcmp(type->name, expectedType) == 0)
+                    return true;
+            }
+            return false;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            return false;
+        }
     }
 
     bool isOracleGeometryType(const std::string& type);
@@ -9901,6 +9943,7 @@ namespace
     struct SidecarAppearanceSources
     {
         UInt32 actorBaseForm = 0;
+        UInt8 actorBaseType = kFormType_None;
         UInt32 raceForm = 0;
         UInt32 hairForm = 0;
         UInt32 eyesForm = 0;
@@ -9934,11 +9977,20 @@ namespace
         std::vector<ActorDrawTargetTexture> drawTextures;
         std::map<const NiTexture*, SidecarTextureResource> textureCache;
         std::set<const NiAVObject*> visitedObjects;
+        std::set<std::string> evidenceFaults;
         UInt32 visitedNodes = 0;
         UInt32 geometryCandidates = 0;
         bool traversalTruncated = false;
         bool evidenceComplete = true;
     };
+
+    void sidecarAppearanceFault(
+        SidecarAppearanceCapture& capture, const char* fault)
+    {
+        capture.evidenceComplete = false;
+        if (fault != nullptr && fault[0] != '\0')
+            capture.evidenceFaults.insert(fault);
+    }
 
     NiNode* sidecarActorRootUnsafe(Actor* actor);
 
@@ -10353,8 +10405,7 @@ namespace
     {
         if (texture == nullptr)
             return {};
-        for (const std::size_t offset : { std::size_t(0x30), std::size_t(0x34),
-                 std::size_t(0x38) })
+        for (const std::size_t offset : sNiTextureRuntimePathOffsets)
         {
             char* address = nullptr;
             if (!safeRead(reinterpret_cast<const UInt8*>(texture) + offset, address))
@@ -10397,7 +10448,8 @@ namespace
         if (!sidecarLooksLikeAssetPath(path) || texture == nullptr)
         {
             if (!path.empty() || texture != nullptr)
-                capture.evidenceComplete = false;
+                sidecarAppearanceFault(capture,
+                    "texture-path-or-runtime-object-mismatch");
             return;
         }
 
@@ -10411,7 +10463,7 @@ namespace
         const SidecarTextureResource& observed = found->second;
         if (!observed.valid)
         {
-            capture.evidenceComplete = false;
+            sidecarAppearanceFault(capture, "texture-resource-unreadable");
             return;
         }
 
@@ -10448,26 +10500,33 @@ namespace
     void sidecarCollectShaderTextures(SidecarAppearanceCapture& capture,
         SidecarRenderPart& part, NiObject* shaderProperty, const std::string& shaderRuntimeType)
     {
-        if (shaderProperty == nullptr)
+        if (shaderProperty == nullptr
+            || !runtimeTypeDerivesFrom(shaderProperty, "BSShaderProperty"))
             return;
         UInt32 shaderType = 0;
-        safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x1C, shaderType);
+        safeRead(reinterpret_cast<const UInt8*>(shaderProperty)
+            + sBsShaderPropertyTypeOffset, shaderType);
         const bool textureSetShader
             = shaderRuntimeType.find("PPLighting") != std::string::npos
             || shaderRuntimeType.find("Lighting30") != std::string::npos
-            || shaderType == 8 || shaderType == 9 || shaderType == 12;
+            || std::find(sBsTextureSetShaderTypes.begin(),
+                sBsTextureSetShaderTypes.end(), shaderType)
+                    != sBsTextureSetShaderTypes.end();
         if (textureSetShader)
         {
             UInt8* textureSet = nullptr;
-            safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0xA4, textureSet);
-            for (UInt32 stage = 0; stage < 6; ++stage)
+            safeRead(reinterpret_cast<const UInt8*>(shaderProperty)
+                + sBsPpLightingTextureSetOffset, textureSet);
+            for (UInt32 stage = 0; stage < sBsShaderTextureStageCount; ++stage)
             {
                 char* pathAddress = nullptr;
                 NiTexture** textureAddress = nullptr;
                 NiTexture* texture = nullptr;
                 if (textureSet != nullptr)
-                    safeRead(textureSet + 0x08 + stage * sizeof(String), pathAddress);
-                safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0xAC
+                    safeRead(textureSet + sBsShaderTextureSetPathArrayOffset
+                        + stage * sizeof(String), pathAddress);
+                safeRead(reinterpret_cast<const UInt8*>(shaderProperty)
+                        + sBsPpLightingTexturePointerArrayOffset
                         + stage * sizeof(NiTexture**), textureAddress);
                 if (textureAddress != nullptr)
                     safeRead(textureAddress, texture);
@@ -10479,12 +10538,15 @@ namespace
             return;
         }
 
-        if (shaderRuntimeType.find("NoLighting") != std::string::npos || shaderType == 0x15)
+        if (shaderRuntimeType.find("NoLighting") != std::string::npos
+            || shaderType == sBsNoLightingShaderType)
         {
             NiTexture* texture = nullptr;
             char* pathAddress = nullptr;
-            safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x60, texture);
-            safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x64, pathAddress);
+            safeRead(reinterpret_cast<const UInt8*>(shaderProperty)
+                + sBsNoLightingTextureOffset, texture);
+            safeRead(reinterpret_cast<const UInt8*>(shaderProperty)
+                + sBsNoLightingTexturePathOffset, pathAddress);
             const std::string path = sidecarNormalizeAssetPath(safeRuntimeString(pathAddress));
             if (!path.empty() || texture != nullptr)
                 sidecarAppendTextureBinding(capture, part, 0, path, texture,
@@ -10594,6 +10656,7 @@ namespace
             || !safeRead(&actorBase->typeID, actorBaseType))
             return;
         safeRead(&actorBase->refID, capture.sources.actorBaseForm);
+        capture.sources.actorBaseType = actorBaseType;
         if (actorBaseType != kFormType_TESNPC)
             return;
 
@@ -10727,10 +10790,10 @@ namespace
         const std::string nodePath = parentPath.empty() ? token : parentPath + '/' + token;
 
         UInt32 flags = 0;
-        const bool flagsReadable
-            = safeRead(reinterpret_cast<const UInt8*>(object) + 0x30, flags);
+        const bool flagsReadable = safeRead(
+            reinterpret_cast<const UInt8*>(object) + sNiAVObjectFlagsOffset, flags);
         const bool hidden = ancestorHidden || !flagsReadable
-            || (flags & (0x00000001u | 0x00100000u)) != 0;
+            || (flags & sNiAVObjectAppCulledFlag) != 0;
         if (isOracleGeometryType(runtimeType))
         {
             ++capture.geometryCandidates;
@@ -10741,7 +10804,8 @@ namespace
                 NiObject* materialProperty = nullptr;
                 NiObject* shaderProperty = nullptr;
                 OracleGeometryData* geometryDataAddress = nullptr;
-                safeRead(reinterpret_cast<const UInt8*>(object) + 0xA4, materialProperty);
+                safeRead(reinterpret_cast<const UInt8*>(object)
+                    + sNiGeometryMaterialPropertyOffset, materialProperty);
                 safeRead(reinterpret_cast<const UInt8*>(object)
                     + sNiGeometryShaderPropertyOffset, shaderProperty);
                 safeRead(reinterpret_cast<const UInt8*>(object)
@@ -10760,48 +10824,60 @@ namespace
                 part.sourceSlot
                     = attachment != nullptr ? attachment->sourceSlot : sSidecarNoSourceSlot;
                 UInt32 shaderFlags1 = 0;
-                if (shaderProperty != nullptr)
-                    safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x20, shaderFlags1);
+                const bool isBsShaderProperty
+                    = runtimeTypeDerivesFrom(shaderProperty, "BSShaderProperty");
+                if (isBsShaderProperty)
+                    safeRead(reinterpret_cast<const UInt8*>(shaderProperty)
+                        + sBsShaderPropertyFlags1Offset, shaderFlags1);
                 const std::string lowerNodePath = sidecarLowerAscii(nodePath);
-                part.skinSurface = part.role == "face" || part.role == "leftHand"
-                    || part.role == "rightHand" || part.role == "exposedBody"
-                    || (part.role == "equipment"
-                        && ((shaderFlags1 & 0x400u) != 0
+                const bool usesNpcFaceGenSkin
+                    = capture.sources.actorBaseType == kFormType_TESNPC;
+                part.skinSurface = usesNpcFaceGenSkin
+                    && (part.role == "face" || part.role == "leftHand"
+                        || part.role == "rightHand" || part.role == "exposedBody"
+                        || (part.role == "equipment"
+                        && ((shaderFlags1 & sBsShaderPropertySkinTintFlag) != 0
                             || lowerNodePath.find("skin") != std::string::npos
-                            || lowerNodePath.find("arms") != std::string::npos));
+                            || lowerNodePath.find("arms") != std::string::npos)));
                 part.attached = true;
                 part.drawable = geometryReadable && flagsReadable
-                    && (flags & 0x00000020u) != 0 && shaderProperty != nullptr;
+                    && shaderProperty != nullptr;
+                const std::string shaderRuntimeType
+                    = safeRuntimeString(runtimeTypeName(shaderProperty));
 
                 float effectiveAlpha = 1.f;
                 if (materialProperty != nullptr)
                 {
                     float materialAlpha = 1.f;
-                    if (safeRead(reinterpret_cast<const UInt8*>(materialProperty) + 0x3C,
+                    if (safeRead(reinterpret_cast<const UInt8*>(materialProperty)
+                            + sNiMaterialPropertyAlphaOffset,
                             materialAlpha) && std::isfinite(materialAlpha))
                         effectiveAlpha *= materialAlpha;
                     else
-                        capture.evidenceComplete = false;
+                        sidecarAppearanceFault(capture, "material-alpha-unreadable");
                 }
-                if (shaderProperty != nullptr)
+                if (isBsShaderProperty)
                 {
                     float shaderAlpha = 1.f;
                     float fadeAlpha = 1.f;
-                    if (safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x28,
+                    if (safeRead(reinterpret_cast<const UInt8*>(shaderProperty)
+                            + sBsShaderPropertyAlphaOffset,
                             shaderAlpha) && std::isfinite(shaderAlpha))
                         effectiveAlpha *= shaderAlpha;
                     else
-                        capture.evidenceComplete = false;
-                    if (safeRead(reinterpret_cast<const UInt8*>(shaderProperty) + 0x2C,
+                        sidecarAppearanceFault(capture, "shader-alpha-unreadable");
+                    if (safeRead(reinterpret_cast<const UInt8*>(shaderProperty)
+                            + sBsShaderPropertyFadeAlphaOffset,
                             fadeAlpha) && std::isfinite(fadeAlpha))
                         effectiveAlpha *= fadeAlpha;
                     else
-                        capture.evidenceComplete = false;
+                        sidecarAppearanceFault(capture, "shader-fade-alpha-unreadable");
                 }
                 if (!std::isfinite(effectiveAlpha))
                 {
                     effectiveAlpha = 0.f;
-                    capture.evidenceComplete = false;
+                    sidecarAppearanceFault(capture,
+                        ("effective-alpha-nonfinite:" + shaderRuntimeType).c_str());
                 }
                 effectiveAlpha = (std::min)(1.f, (std::max)(0.f, effectiveAlpha));
                 part.alphaBits = sidecarFloatBits(effectiveAlpha);
@@ -10822,11 +10898,9 @@ namespace
                                 * sizeof(OracleVector3), geometryBytes))
                         part.geometryHash = sidecarHashLabel("fnv1a32:", geometryHash);
                     else
-                        capture.evidenceComplete = false;
+                        sidecarAppearanceFault(capture, "geometry-vertices-unreadable");
                 }
 
-                const std::string shaderRuntimeType
-                    = safeRuntimeString(runtimeTypeName(shaderProperty));
                 sidecarCollectShaderTextures(
                     capture, part, shaderProperty, shaderRuntimeType);
                 std::sort(part.textureBindings.begin(), part.textureBindings.end(),
@@ -10842,7 +10916,8 @@ namespace
                             return binding.semantic == "bodyColor";
                         });
                     if (!hasBodyColor)
-                        capture.evidenceComplete = false;
+                        sidecarAppearanceFault(capture,
+                            "visible-skin-body-color-missing");
                 }
                 part.stableKey = sidecarRenderPartStableKey(part);
                 part.deterministicKey = sidecarRenderPartDeterministicKey(part);
@@ -10858,7 +10933,7 @@ namespace
         NiTArray<NiAVObject*> children = {};
         if (!safeRead(&node->m_children, children))
         {
-            capture.evidenceComplete = false;
+            sidecarAppearanceFault(capture, "child-array-unreadable");
             return;
         }
         const UInt32 count = (std::min)(
@@ -10867,7 +10942,7 @@ namespace
             sSidecarAppearanceMaximumChildrenPerNode);
         if (count > 0 && children.data == nullptr)
         {
-            capture.evidenceComplete = false;
+            sidecarAppearanceFault(capture, "child-array-data-missing");
             return;
         }
         for (UInt32 index = 0; index < count; ++index)
@@ -10875,7 +10950,7 @@ namespace
             NiAVObject* child = nullptr;
             if (!safeRead(children.data + index, child))
             {
-                capture.evidenceComplete = false;
+                sidecarAppearanceFault(capture, "child-pointer-unreadable");
                 continue;
             }
             sidecarCollectAppearanceRecursive(capture, child, attachment,
@@ -10895,7 +10970,7 @@ namespace
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
-            capture.evidenceComplete = false;
+            sidecarAppearanceFault(capture, "traversal-exception");
             capture.traversalTruncated = true;
             complete = false;
         }
@@ -10917,7 +10992,7 @@ namespace
             part.drawable = false;
             part.visible = false;
             if (attachment.required)
-                capture.evidenceComplete = false;
+                sidecarAppearanceFault(capture, "required-attachment-missing");
             if (!attachment.modelPath.empty())
                 part.modelHash = sidecarHashText(attachment.modelPath);
             const std::string missingIdentity = "missing/" + part.role + '/'
@@ -10997,7 +11072,7 @@ namespace
             fallback.stableKey = sidecarRenderPartStableKey(fallback);
             fallback.deterministicKey = sidecarRenderPartDeterministicKey(fallback);
             capture.parts.push_back(std::move(fallback));
-            capture.evidenceComplete = false;
+            sidecarAppearanceFault(capture, "render-parts-empty");
         }
         sidecarAssignAppearanceOrdinals(capture.parts);
 
@@ -11035,6 +11110,15 @@ namespace
             << ",\"truncated\":" << (truncated ? "true" : "false")
             << ",\"visitedNodes\":" << capture.visitedNodes
             << ",\"candidateCount\":" << capture.geometryCandidates
+            << ",\"faults\":[";
+        std::size_t faultIndex = 0;
+        for (const std::string& fault : capture.evidenceFaults)
+        {
+            if (faultIndex++ != 0)
+                out << ',';
+            out << jsonString(fault.c_str());
+        }
+        out << ']'
             << ",\"renderParts\":[";
         for (std::size_t index = 0; index < serialized.size(); ++index)
         {

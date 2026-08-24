@@ -464,6 +464,12 @@ The queue only advances an expected outcome for
 `captured-classified-runtime-observation`. Classified-but-incomplete attempts
 remain in the append-only ledger and increment `incompleteAppearanceAttempts`;
 they cannot reduce the pending denominator.
+Incomplete appearance snapshots also retain unique fault codes so importer work
+targets an observed missing contract instead of guessing why a classified actor
+failed the queue gate.
+Shader alpha fields are read only from runtime `BSShaderProperty` descendants,
+and FaceGen body-tint requirements apply only to `NPC_` bases. `CREA` surfaces
+retain creature material semantics instead of inheriting human skin assumptions.
 
 Run a resumable retail sweep through the queue wrapper. The queue root owns an
 immutable source-binding manifest, an append-only event ledger, immutable
