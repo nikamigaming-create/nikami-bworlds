@@ -123,6 +123,12 @@ not lab additions. Future public work must use one bounded Fallout typed/API
 slice per commit, with named data-layout constants, synthetic tests, and a
 green four-platform gate before fast-forwarding `main`.
 
+The mixed recovery trigger-volume commit `9112e6bfe4` is intentionally still
+private. Only its standalone `REFR.XPRM` data contract was extracted. Its Lua
+event plumbing, world/runtime dispatch, and authored trigger behavior are not
+part of public main; they require a separate native API contract and retail
+evidence before they can be considered feature work.
+
 ## Feature-mode guardrails
 
 The recovery experiment is closed as a public-history practice once a slice
