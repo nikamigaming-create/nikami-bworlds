@@ -6,14 +6,15 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `b86ed5bd5f0786faa655bfecabe76d96da2909a6`;
-- tree: `79a2f1b9d652e9631a34a6d59f3706b8161b6668`;
+- commit: `1b15260c3dcbc74203c3400886d91303ab253b48`;
+- tree: `0035e6cad1afb9239efe282c77d97673911e7c5c`;
 - official OpenMW base: `03e02d034fed3e3c1d65f0ba09767df64c58b78e`;
 - local upstream sync merge: `a67cb2ef47916fce2d300b1a50de5b9fe969c9e3`;
 - public remote topology: only `main`; no open PRs or temporary topic refs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
-`TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, `RACE`, `FACT`, and `NOTE`
+`TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, `RACE`, `FACT`, `NOTE`, and
+`RCCT`
 contracts on top of the data-owned UI/game identity
 and collision seams. `MGEF` and `SPEL` provide strict Fallout actor-effect
 record loaders, fixed native DATA/SPIT/EFIT layouts, null-preserving FormID
@@ -77,6 +78,14 @@ TNAM/XNAM/FormID payload shape; EDID/DATA ordering, duplicate/unknown fields,
 FormID widths, null sentinels, quest-reference bounds, and malformed records
 are tested atomically. This is Fallout note metadata only; UI presentation and
 runtime note behavior remain outside the slice.
+
+The `RCCT` contract is FNV-only and decodes the recipe-category record as the
+smallest independent crafting-data seam: `EDID` Z-string, `FULL` Z-string,
+and the exact one-byte authored `DATA` value in that order. Duplicate,
+unknown, reordered, empty, truncated, or oversized fields fail closed before
+the typed store is mutated; the raw `DATA` byte is preserved for a later native
+crafting API. `RCPE`, workbench activation, crafting UI, Lua/MyGUI presentation,
+transactions, and retail parity remain separate scope.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -174,9 +183,21 @@ The NOTE topic and its post-push `main` workflow passed all four platform legs:
 - post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32845678839;
 - Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
 
+The RCCT recipe-category topic and its post-push `main` workflow passed all
+four platform legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32851192054;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32855446251;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
+The first two Ubuntu attempts of the post-push run were transient Launchpad
+`GPGKeyTemporarilyNotFoundError` HTTP 500 responses before compilation; the
+Ubuntu-only retry completed successfully without any source or workflow
+change.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, and TERM
 translation units and `git diff --check`; the MGEF/SPEL, LIP, RACE, CLAS, FACT,
-and NOTE fixtures were exercised by green four-platform CI runs. The local full MSVC
+and NOTE/RCCT fixtures were exercised by green four-platform CI runs. The local full MSVC
 build reaches the
 changed ESM4 sources
 but is blocked later by the host's unrelated OSG header mismatch:
@@ -186,8 +207,8 @@ This is not a failure of the promoted slice; CI is authoritative.
 The published history keeps each bounded contract reviewable: CLMT climate,
 AVIF actor-value metadata, REPU reputation metadata, AMEF ammo effects, TERM
 terminal records, MGEF/SPEL actor effects, LIP animation decoding, RACE
-body-part metadata, CLAS/RACE class-and-race data, FACT faction data, and NOTE
-note metadata are
+body-part metadata, CLAS/RACE class-and-race data, FACT faction data, NOTE
+note metadata, and RCCT recipe-category data are
 separate commits. Their
 synthetic tests cover valid fields, null-preserving FormIDs, fixed-size
 validation, enum/range checks, exact menu/script retention, and
@@ -234,11 +255,17 @@ rollback point.
 
 The current main/recovery bundle is:
 
+- bundle: `D:/code/archives/nikami-openmw-lab-main-recipe-category-20260825-v20.bundle`;
+- SHA-256: `C114362F2DDDB05F97743CD192D9721A814B5E92BB566EAA6AB28C8F42A2988F`;
+- `git bundle verify`: passed; complete history recorded at `1b15260c3d`.
+
+The immediately preceding main bundle remains preserved:
+
 - bundle: `D:/code/archives/nikami-openmw-lab-main-note-data-20260825-v19.bundle`;
 - SHA-256: `C6D5A115474AF1105AF8CAEA9F4D4ED2822C064DE1CF82967CC069DA12AC55BB`;
 - `git bundle verify`: passed; complete history recorded at `b86ed5bd5f`.
 
-The immediately preceding main bundle remains preserved:
+The preceding faction main bundle remains preserved:
 
 - bundle: `D:\code\archives\nikami-openmw-lab-main-faction-data-20260825-v18.bundle`;
 - SHA-256: `CB7259CF7D355C0B336534211B7D2B7F8B2017259BF99357F90B33904B5989BF`;
@@ -284,13 +311,14 @@ Earlier recovery bundles remain preserved:
 - the pre-clean bundle and all local recovery/product heads remain intact.
 
 The public weather, metadata, AMEF, TERM, actor-effect, patrol-reference,
-primitive, LIP, RACE, CLAS/RACE, FACT, and NOTE topic refs were deleted only after their
+primitive, LIP, RACE, CLAS/RACE, FACT, NOTE, and RCCT topic refs were deleted only after their
 topic and post-push `main` runs were green. The post-push `main` runs are
 (`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
-`32795208280`, `32800267449`, `32806400610`, `32812037770`, and
-`32818383821`, `32828347705`, and `32845678839`); the CLAS/RACE topic run was
-`32815337608`, the FACT topic run was `32824274960`, and the NOTE topic run was
-`32841961351`. The remote now exposes only `main`;
+`32795208280`, `32800267449`, `32806400610`, `32812037770`,
+`32818383821`, `32828347705`, `32845678839`, and `32855446251`); the
+CLAS/RACE topic run was `32815337608`, the FACT topic run was `32824274960`,
+the NOTE topic run was `32841961351`, and the RCCT topic run was
+`32851192054`. The remote now exposes only `main`;
 there are no open PRs or temporary public refs. No private retail binary or
 evidence is present in any public ref or bundle.
 
@@ -302,14 +330,15 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: b86ed5bd5f0786faa655bfecabe76d96da2909a6
+# expected: 1b15260c3dcbc74203c3400886d91303ab253b48
 ```
 
 The public lane is at a clean stopping point for new Fallout feature work.
 The remaining FNV feature-ready lane is five larger gates—combat/loot,
 crafting, generic Pip-Boy/HUD, physical terminals/lockpicking, and one natural
-quest/persistence/AI path—split into roughly 8–13 reviewable slices after the
-published NOTE slice (roughly 9–14 including NOTE). This is a
+quest/persistence/AI path—split into roughly 7–12 reviewable slices after the
+published NOTE and RCCT slices (roughly 9–14 in the original estimate when
+counting those two closed slices). This is a
 cleanup estimate, not a retail-parity percentage: FO3, TTW, JAM, VR, visual
 parity, and the 144 currently open differential cases remain separate scope.
 Continue using one bounded typed/API contract per commit for that inventory;
