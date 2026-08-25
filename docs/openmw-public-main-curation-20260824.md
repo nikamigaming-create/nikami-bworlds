@@ -6,14 +6,14 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `7c7f258847c8fc41b268b3bfc99604241a04a51a`;
-- tree: `81f52db98c6c56e43f25c5d52a25c3bd637a307a`;
+- commit: `01787c27d405e6954005f17d56ff5fdcb9528b2a`;
+- tree: `4f01eb1c8fc49179dd152ab5ff95f94a457d2113`;
 - official OpenMW base: `03e02d034fed3e3c1d65f0ba09767df64c58b78e`;
 - local upstream sync merge: `a67cb2ef47916fce2d300b1a50de5b9fe969c9e3`;
 - public remote topology: only `main`; no open PRs or temporary topic refs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
-`TERM`, `MGEF`, `SPEL`, `REFR`, and `LIP` contracts on top of the data-owned UI/game identity
+`TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, and `RACE` contracts on top of the data-owned UI/game identity
 and collision seams. `MGEF` and `SPEL` provide strict Fallout actor-effect
 record loaders, fixed native DATA/SPIT/EFIT layouts, null-preserving FormID
 adjustment, and shared CTDA target-condition decoding with synthetic fixtures.
@@ -43,6 +43,12 @@ authored target names, 30-fps voice-clock sampling, interpolation, and
 fail-closed malformed/truncated input. Decode-size, duration, and target-value
 limits are named policy inputs; dialogue, sound playback, and runtime animation
 publication remain outside this parser slice.
+
+The `RACE` contract preserves the FO3/FNV `GNAM` body-part-data FormID through
+the existing typed Reader/FormID load-order adjustment. A valid four-byte
+payload is retained; a malformed payload is skipped so the following subrecord
+boundary remains intact. This is Fallout metadata only; VATS body-part
+selection and runtime hit behavior remain outside the slice.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -114,8 +120,15 @@ The LIP topic and its post-push `main` workflow passed all four platform legs:
 - post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32806400610;
 - Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
 
+The RACE body-part metadata topic and its post-push `main` workflow passed all
+four platform legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32809341998;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32812037770;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, and TERM
-translation units and `git diff --check`; the MGEF/SPEL and LIP fixtures were
+translation units and `git diff --check`; the MGEF/SPEL, LIP, and RACE fixtures were
 exercised by both green four-platform CI runs. The local full MSVC build reaches the
 changed ESM4 sources
 but is blocked later by the host's unrelated OSG header mismatch:
@@ -124,7 +137,8 @@ This is not a failure of the promoted slice; CI is authoritative.
 
 The published history keeps each bounded contract reviewable: CLMT climate,
 AVIF actor-value metadata, REPU reputation metadata, AMEF ammo effects, TERM
-terminal records, MGEF/SPEL actor effects, and LIP animation decoding are separate
+terminal records, MGEF/SPEL actor effects, LIP animation decoding, and RACE
+body-part metadata are separate
 commits. Their
 synthetic tests cover valid fields, null-preserving FormIDs, fixed-size
 validation, enum/range checks, exact menu/script retention, and
@@ -171,6 +185,10 @@ rollback point.
 
 The current main/recovery bundle is:
 
+- bundle: `D:\code\archives\nikami-openmw-lab-main-race-body-part-20260825-v16.bundle`;
+- SHA-256: `A9C8C1C8EA0B7D33F2C502159A97793C5A21A9F6FE1D327BC1C44D2CA81443E4`;
+- `git bundle verify`: passed; complete history recorded.
+
 - bundle: `D:\code\archives\nikami-openmw-lab-main-lip-data-20260825-v15.bundle`;
 - SHA-256: `0A9C632BFEFE1711DBE66BD91E284A81B3B73A19EACCD569589E881EE94C0514`;
 - `git bundle verify`: passed; complete history recorded.
@@ -203,9 +221,9 @@ Earlier recovery bundles remain preserved:
 - the pre-clean bundle and all local recovery/product heads remain intact.
 
 The public weather, metadata, AMEF, TERM, actor-effect, patrol-reference,
-primitive, and LIP topic refs were deleted only after their post-push `main` runs
+primitive, LIP, and RACE topic refs were deleted only after their post-push `main` runs
 (`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
-`32795208280`, `32800267449`, and `32806400610`) were green. The remote now exposes only
+`32795208280`, `32800267449`, `32806400610`, and `32812037770`) were green. The remote now exposes only
 `main`; there are no open PRs or temporary public refs. No private retail binary
 or evidence is present in any public ref or bundle.
 
@@ -217,7 +235,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: 7c7f258847c8fc41b268b3bfc99604241a04a51a
+# expected: 01787c27d405e6954005f17d56ff5fdcb9528b2a
 ```
 
 The public lane is at a clean stopping point for new Fallout feature work.
