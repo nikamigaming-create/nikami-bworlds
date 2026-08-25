@@ -6,14 +6,14 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `982b6f13fd6ac17d30425739420b39d6f6286cb0`;
-- tree: `478683ee36abe38bda2c4f01ecf92619048eecea`;
+- commit: `f4cdb06b8f370e10b4b4c728da5ba14da383838b`;
+- tree: `215273197a8589923001a1ad00be0ce133adf62c`;
 - official OpenMW base: `03e02d034fed3e3c1d65f0ba09767df64c58b78e`;
 - local upstream sync merge: `a67cb2ef47916fce2d300b1a50de5b9fe969c9e3`;
 - public remote topology: only `main`; no open PRs or temporary topic refs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
-`TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, and `RACE` contracts on top of the data-owned UI/game identity
+`TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, `RACE`, and `FACT` contracts on top of the data-owned UI/game identity
 and collision seams. `MGEF` and `SPEL` provide strict Fallout actor-effect
 record loaders, fixed native DATA/SPIT/EFIT layouts, null-preserving FormID
 adjustment, and shared CTDA target-condition decoding with synthetic fixtures.
@@ -61,6 +61,13 @@ are retained through typed ESM4 fields, duplicate or malformed payloads fail
 closed, and non-Fallout ESM versions keep their legacy skip behavior. This is
 Fallout class metadata only; skill progression and gameplay class behavior
 remain outside the slice.
+
+The `FACT` contract is FNV-only and decodes typed faction flags, group
+reactions, relation entries, ranks, localized titles, crime-gold multiplier,
+and reputation through the existing ESM4 store API. Its exact XNAM/DATA/CNAM/
+RNAM/WMI1 widths, short/long DATA forms, subrecord ordering, duplicate rules,
+and required EDID/DATA fields are named and tested; malformed, unknown, or
+non-FNV records fail closed without changing runtime policy.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -146,9 +153,16 @@ passed all four platform legs:
 - post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32818383821;
 - Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
 
+The FACT topic and its post-push `main` workflow passed all four platform legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32824274960;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32828347705;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, and TERM
-translation units and `git diff --check`; the MGEF/SPEL, LIP, RACE, and CLAS fixtures were
-exercised by both green four-platform CI runs. The local full MSVC build reaches the
+translation units and `git diff --check`; the MGEF/SPEL, LIP, RACE, CLAS, and
+FACT fixtures were exercised by green four-platform CI runs. The local full MSVC
+build reaches the
 changed ESM4 sources
 but is blocked later by the host's unrelated OSG header mismatch:
 `GL_COMPRESSED_SRGB_S3TC_DXT{1,3,5}_EXT` is absent from the installed headers.
@@ -157,8 +171,8 @@ This is not a failure of the promoted slice; CI is authoritative.
 The published history keeps each bounded contract reviewable: CLMT climate,
 AVIF actor-value metadata, REPU reputation metadata, AMEF ammo effects, TERM
 terminal records, MGEF/SPEL actor effects, LIP animation decoding, RACE
-body-part metadata, and CLAS/RACE class-and-race data are separate
-commits. Their
+body-part metadata, CLAS/RACE class-and-race data, and FACT faction data are
+separate commits. Their
 synthetic tests cover valid fields, null-preserving FormIDs, fixed-size
 validation, enum/range checks, exact menu/script retention, and
 unknown/malformed input.
@@ -204,6 +218,10 @@ rollback point.
 
 The current main/recovery bundle is:
 
+- bundle: `D:\code\archives\nikami-openmw-lab-main-faction-data-20260825-v18.bundle`;
+- SHA-256: `CB7259CF7D355C0B336534211B7D2B7F8B2017259BF99357F90B33904B5989BF`;
+- `git bundle verify`: passed; complete history recorded at `f4cdb06b8f`.
+
 - bundle: `D:/code/archives/nikami-openmw-lab-main-class-race-data-20260825-v17.bundle`;
 - SHA-256: `8CAC1CA141A2D3F701E60B96A5D34FAEABDDC7A8A7238E0CADBEA823BAC5D06C`;
 - `git bundle verify`: passed; complete history recorded.
@@ -244,13 +262,14 @@ Earlier recovery bundles remain preserved:
 - the pre-clean bundle and all local recovery/product heads remain intact.
 
 The public weather, metadata, AMEF, TERM, actor-effect, patrol-reference,
-primitive, LIP, RACE, and CLAS/RACE topic refs were deleted only after their
+primitive, LIP, RACE, CLAS/RACE, and FACT topic refs were deleted only after their
 topic and post-push `main` runs were green. The post-push `main` runs are
 (`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
 `32795208280`, `32800267449`, `32806400610`, `32812037770`, and
-`32818383821`); the CLAS/RACE topic run was `32815337608`. The remote now exposes only
-`main`; there are no open PRs or temporary public refs. No private retail binary
-or evidence is present in any public ref or bundle.
+`32818383821`, and `32828347705`); the CLAS/RACE topic run was `32815337608`
+and the FACT topic run was `32824274960`. The remote now exposes only `main`;
+there are no open PRs or temporary public refs. No private retail binary or
+evidence is present in any public ref or bundle.
 
 ## Fresh pull / exact resume
 
@@ -260,13 +279,18 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: 982b6f13fd6ac17d30425739420b39d6f6286cb0
+# expected: f4cdb06b8f370e10b4b4c728da5ba14da383838b
 ```
 
 The public lane is at a clean stopping point for new Fallout feature work.
-Continue using one bounded typed/API contract per commit for the remaining
-recovery inventory; do not merge the mixed recovery branch wholesale. The next
-evidence gate remains private retail camera/placement/animation telemetry.
+The remaining FNV feature-ready lane is five larger gates—combat/loot,
+crafting, generic Pip-Boy/HUD, physical terminals/lockpicking, and one natural
+quest/persistence/AI path—split into roughly 9–14 reviewable slices. This is a
+cleanup estimate, not a retail-parity percentage: FO3, TTW, JAM, VR, visual
+parity, and the 144 currently open differential cases remain separate scope.
+Continue using one bounded typed/API contract per commit for that inventory;
+do not merge the mixed recovery branch wholesale. The next evidence gate
+remains private retail camera/placement/animation telemetry.
 
 Actor identity/export/runtime parity is already merged, but visual parity is not
 claimed.
