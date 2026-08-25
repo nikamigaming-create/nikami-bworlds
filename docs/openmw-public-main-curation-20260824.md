@@ -1,4 +1,4 @@
-# OpenMW lab public-main curation — 2026-08-24
+# OpenMW lab public-main curation — 2026-08-25
 
 ## Published result
 
@@ -6,14 +6,14 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `a0dcaf6a289291edf8bce36e205cc7302fe81f7c`;
-- tree: `a7d43170b0977545ef40eaa26a6485cdaa21f7de`;
+- commit: `7c7f258847c8fc41b268b3bfc99604241a04a51a`;
+- tree: `81f52db98c6c56e43f25c5d52a25c3bd637a307a`;
 - official OpenMW base: `03e02d034fed3e3c1d65f0ba09767df64c58b78e`;
 - local upstream sync merge: `a67cb2ef47916fce2d300b1a50de5b9fe969c9e3`;
 - public remote topology: only `main`; no open PRs or temporary topic refs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
-`TERM`, `MGEF`, `SPEL`, and `REFR` contracts on top of the data-owned UI/game identity
+`TERM`, `MGEF`, `SPEL`, `REFR`, and `LIP` contracts on top of the data-owned UI/game identity
 and collision seams. `MGEF` and `SPEL` provide strict Fallout actor-effect
 record loaders, fixed native DATA/SPIT/EFIT layouts, null-preserving FormID
 adjustment, and shared CTDA target-condition decoding with synthetic fixtures.
@@ -36,6 +36,13 @@ three bounds floats, four color floats, and the named Fallout primitive type
 enum. The loader accepts only the exact 32-byte layout and leaves malformed
 payloads absent while retaining following-record alignment. This is metadata
 only; trigger-volume dispatch remains outside public main.
+
+The `LIP` contract decodes the tested Fallout 3/New Vegas version-1 compressed
+and uncompressed animation containers, including zero-run expansion, the 33
+authored target names, 30-fps voice-clock sampling, interpolation, and
+fail-closed malformed/truncated input. Decode-size, duration, and target-value
+limits are named policy inputs; dialogue, sound playback, and runtime animation
+publication remain outside this parser slice.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -101,9 +108,15 @@ the existing POD serializer):
 - post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32800267449;
 - Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
 
+The LIP topic and its post-push `main` workflow passed all four platform legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32803780778;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32806400610;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, and TERM
-translation units and `git diff --check`; the MGEF/SPEL fixtures were exercised
-by both green four-platform CI runs. The local full MSVC build reaches the
+translation units and `git diff --check`; the MGEF/SPEL and LIP fixtures were
+exercised by both green four-platform CI runs. The local full MSVC build reaches the
 changed ESM4 sources
 but is blocked later by the host's unrelated OSG header mismatch:
 `GL_COMPRESSED_SRGB_S3TC_DXT{1,3,5}_EXT` is absent from the installed headers.
@@ -111,7 +124,8 @@ This is not a failure of the promoted slice; CI is authoritative.
 
 The published history keeps each bounded contract reviewable: CLMT climate,
 AVIF actor-value metadata, REPU reputation metadata, AMEF ammo effects, TERM
-terminal records, and MGEF/SPEL actor effects are separate commits. Their
+terminal records, MGEF/SPEL actor effects, and LIP animation decoding are separate
+commits. Their
 synthetic tests cover valid fields, null-preserving FormIDs, fixed-size
 validation, enum/range checks, exact menu/script retention, and
 unknown/malformed input.
@@ -157,6 +171,10 @@ rollback point.
 
 The current main/recovery bundle is:
 
+- bundle: `D:\code\archives\nikami-openmw-lab-main-lip-data-20260825-v15.bundle`;
+- SHA-256: `0A9C632BFEFE1711DBE66BD91E284A81B3B73A19EACCD569589E881EE94C0514`;
+- `git bundle verify`: passed; complete history recorded.
+
 - bundle: `D:\code\archives\nikami-openmw-lab-main-reference-primitives-20260825-v14.bundle`;
 - SHA-256: `39B46F1944CAA17B698A451741CCB95CEC8F7C3EDF2F0E19F6D94A731E4DE5A4`;
 - `git bundle verify`: passed; complete history recorded.
@@ -184,10 +202,10 @@ Earlier recovery bundles remain preserved:
   `00FF010B8F9BA17DCBA90FF0E3D78D3939DD9D3EA89510CE4E96516E06A9803A`;
 - the pre-clean bundle and all local recovery/product heads remain intact.
 
-The public weather, metadata, AMEF, TERM, actor-effect, patrol-reference, and
-primitive topic refs were deleted only after their post-push `main` runs
+The public weather, metadata, AMEF, TERM, actor-effect, patrol-reference,
+primitive, and LIP topic refs were deleted only after their post-push `main` runs
 (`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
-`32795208280`, and `32800267449`) were green. The remote now exposes only
+`32795208280`, `32800267449`, and `32806400610`) were green. The remote now exposes only
 `main`; there are no open PRs or temporary public refs. No private retail binary
 or evidence is present in any public ref or bundle.
 
@@ -199,7 +217,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: a0dcaf6a289291edf8bce36e205cc7302fe81f7c
+# expected: 7c7f258847c8fc41b268b3bfc99604241a04a51a
 ```
 
 The public lane is at a clean stopping point for new Fallout feature work.
