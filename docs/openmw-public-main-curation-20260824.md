@@ -6,12 +6,11 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `d1899ba748b731fce019cf796dc8d2b924a212f9`;
-- tree: `fc1fd3819c242685008733abe8468ca13848ca1e`;
+- commit: `a0dcaf6a289291edf8bce36e205cc7302fe81f7c`;
+- tree: `a7d43170b0977545ef40eaa26a6485cdaa21f7de`;
 - official OpenMW base: `03e02d034fed3e3c1d65f0ba09767df64c58b78e`;
 - local upstream sync merge: `a67cb2ef47916fce2d300b1a50de5b9fe969c9e3`;
-- public remote topology: `main` plus the active `REFR.XPRM` topic
-  `codex/openmw-fallout-reference-primitive-20260825`; no open PRs.
+- public remote topology: only `main`; no open PRs or temporary topic refs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
 `TERM`, `MGEF`, `SPEL`, and `REFR` contracts on top of the data-owned UI/game identity
@@ -31,6 +30,12 @@ null FormID preserved), `XPRD` is the authored idle time, and an empty `XPPA`
 is the patrol-idle/script marker. Exact-size malformed payloads are skipped
 without losing the following subrecord boundary. Synthetic tests cover valid,
 malformed, and null-link records.
+
+It also preserves the authored `XPRM` primitive used by model-less references:
+three bounds floats, four color floats, and the named Fallout primitive type
+enum. The loader accepts only the exact 32-byte layout and leaves malformed
+payloads absent while retaining following-record alignment. This is metadata
+only; trigger-volume dispatch remains outside public main.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -87,6 +92,15 @@ all four legs:
 - post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32795208280;
 - Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
 
+The follow-up REFR primitive topic and its post-push `main` workflow passed
+all four legs after one fixture-only correction (the first attempt passed an
+`ESM::Position` directly to a `string_view` helper; the amended commit used
+the existing POD serializer):
+
+- corrected topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32797607992;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/32800267449;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, and TERM
 translation units and `git diff --check`; the MGEF/SPEL fixtures were exercised
 by both green four-platform CI runs. The local full MSVC build reaches the
@@ -137,11 +151,16 @@ rollback point.
 
 The current main/recovery bundle is:
 
-- bundle: `D:\code\archives\nikami-openmw-lab-main-patrol-reference-20260825-v13.bundle`;
-- SHA-256: `A204047B920B4479C5281BB570E3A17C7D15476A7DC74DF9DCEFF2BBA1C4AAC8`;
+- bundle: `D:\code\archives\nikami-openmw-lab-main-reference-primitives-20260825-v14.bundle`;
+- SHA-256: `39B46F1944CAA17B698A451741CCB95CEC8F7C3EDF2F0E19F6D94A731E4DE5A4`;
 - `git bundle verify`: passed; complete history recorded.
 
 The immediately preceding main bundle remains preserved:
+
+- bundle: `D:\code\archives\nikami-openmw-lab-main-patrol-reference-20260825-v13.bundle`;
+- SHA-256: `A204047B920B4479C5281BB570E3A17C7D15476A7DC74DF9DCEFF2BBA1C4AAC8`;
+
+The preceding actor-effects main bundle remains preserved:
 
 - bundle: `D:\code\archives\nikami-openmw-lab-main-actor-effects-20260824-v12.bundle`;
 - SHA-256: `586418582D4E2E53C7F802EB0050AA3150AF4ECFE4FD5E6FDE3776F691E85837`;
@@ -159,12 +178,12 @@ Earlier recovery bundles remain preserved:
   `00FF010B8F9BA17DCBA90FF0E3D78D3939DD9D3EA89510CE4E96516E06A9803A`;
 - the pre-clean bundle and all local recovery/product heads remain intact.
 
-The public weather, metadata, AMEF, TERM, actor-effect, and patrol-reference
-topic refs were deleted only after their post-push `main` runs (`32749407011`,
-`32762033204`, `32770688961`, `32781270416`, `32788636108`, and `32795208280`)
-were green. The patrol topic was deleted; the next bounded XPRM topic remains
-public only while its own gate runs. There are no open PRs. No private retail
-binary or evidence is present in any public ref or bundle.
+The public weather, metadata, AMEF, TERM, actor-effect, patrol-reference, and
+primitive topic refs were deleted only after their post-push `main` runs
+(`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
+`32795208280`, and `32800267449`) were green. The remote now exposes only
+`main`; there are no open PRs or temporary public refs. No private retail binary
+or evidence is present in any public ref or bundle.
 
 ## Fresh pull / exact resume
 
@@ -174,7 +193,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: d1899ba748b731fce019cf796dc8d2b924a212f9
+# expected: a0dcaf6a289291edf8bce36e205cc7302fe81f7c
 ```
 
 The public lane is at a clean stopping point for new Fallout feature work.
