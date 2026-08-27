@@ -6,13 +6,13 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `c4fc98a04509df65708dec7a654f16988ba6c5c1`;
-- tree: `43a64e98cf6d4b419b4a06a03edb9f2a44f28847`;
+- commit: `f7976c3795a01ebc683f0432df220723999f37f2`;
+- tree: `2e8889d2e47ba4f3be59fa2525112533bbc392fa`;
 - official OpenMW base: `7d6273776b3e6fc05cb58c0b1453faf6e199d44a`;
 - local upstream sync merge: `2f5e87fd797a5be8b137337b8ec297dbfb43b68f`;
 - public remote topology: `main` only; the consolidated candidate, inventory,
   crafting-station, crafting-session, zero-magic-LIP, zero-magic-CTDA, and
-  zero-magic-WTHR topic refs were deleted after their topic and post-push main
+  zero-magic-WTHR, and zero-magic-CLMT topic refs were deleted after their topic and post-push main
   gates passed. There are no open PRs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
@@ -144,6 +144,13 @@ width and all fifteen byte offsets in `falloutformat.hpp`, then routes the
 weather loader through those names. The typed weather contract is unchanged;
 this is a format-ownership cleanup with no runtime policy, UI path, or visual
 parity claim.
+
+The zero-magic CLMT follow-up centralizes the Fallout climate weather-list and
+`TNAM` timing widths, byte offsets, moon-phase mask, and Masser/Secunda flags
+in `falloutformat.hpp`, then routes the climate loader through those names.
+Loader behavior and typed climate fields are unchanged; this is a
+format-ownership cleanup with no runtime policy, UI path, or visual parity
+claim.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -315,6 +322,18 @@ platform legs:
 
 The final published zero-magic-WTHR SHA is `c4fc98a045`.
 
+The zero-magic CLMT topic and its post-push `main` workflow passed all four
+platform legs. The first post-push attempt encountered the Intel macOS CPack
+DMG step's transient `hdiutil: create failed - Resource busy` runner error;
+the failed Intel job was rerun in place with no source change and completed
+successfully:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33093381698;
+- post-push `main` run (failed-job-only retry): https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33098391105;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on the final run.
+
+The final published zero-magic-CLMT SHA is `f7976c3795a`.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, TERM, and
 crafting-catalog/session translation units and `git diff --check`; the MGEF/SPEL,
 LIP, RACE, CLAS, FACT,
@@ -377,6 +396,12 @@ rollback point.
 ## Recovery and provenance
 
 The current main/recovery bundle is:
+
+- bundle: `D:/code/archives/nikami-openmw-lab-main-zero-magic-clmt-20260827-v28.bundle`;
+- SHA-256: `8BC0D498E7B5103AC30B470B8ED04FCF2C473EC1C801E71E2AA5C6AD1434D5DE`;
+- `git bundle verify`: passed; complete history recorded at `f7976c3795`.
+
+The immediately preceding zero-magic-WTHR main bundle remains preserved:
 
 - bundle: `D:/code/archives/nikami-openmw-lab-main-zero-magic-wthr-20260827-v27.bundle`;
 - SHA-256: `7818903091080D989474BC1C13F64BD44ECBD0A32283217F6BF14B053663A89C`;
@@ -472,21 +497,23 @@ Earlier recovery bundles remain preserved:
 
 The public weather, metadata, AMEF, TERM, actor-effect, patrol-reference,
 primitive, LIP, RACE, CLAS/RACE, FACT, NOTE, RCCT, RCPE, crafting-station, and
-crafting-session, zero-magic-LIP, zero-magic-CTDA, and zero-magic-WTHR topic refs were
+crafting-session, zero-magic-LIP, zero-magic-CTDA, zero-magic-WTHR, and
+zero-magic-CLMT topic refs were
 deleted only after their topic and post-push `main` runs were green. The
 post-push `main` runs are
 (`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
 `32795208280`, `32800267449`, `32806400610`, `32812037770`,
 `32818383821`, `32828347705`, `32845678839`, `32855446251`, `33029970571`,
 `33047983858`, `33055029474`, `33066923395`, `33073719855`, `33081276352`,
-and `33089398031`); the
+`33089398031`, and `33098391105`); the
 CLAS/RACE topic run was `32815337608`, the FACT topic run was `32824274960`,
 the NOTE topic run was `32841961351`, the RCCT topic run was
 `32851192054`, and the RCPE topic run was `32873877733`. The consolidated
 candidate run was `33045391257`; the crafting-station topic run was
 `33051910830`; the crafting-session topic run was `33063850253`; the
 zero-magic-LIP topic run was `33070454177`; the zero-magic-CTDA topic run was
-`33077264065`; and the zero-magic-WTHR topic run was `33085868363`. The remote
+`33077264065`; the zero-magic-WTHR topic run was `33085868363`; and the
+zero-magic-CLMT topic run was `33093381698`. The remote
 now exposes `main` only; there are
 no open PRs. No private retail binary or evidence is present in any public ref
 or bundle.
@@ -499,7 +526,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: c4fc98a04509df65708dec7a654f16988ba6c5c1
+# expected: f7976c3795a01ebc683f0432df220723999f37f2
 ```
 
 The public `main` lane is at a clean upstream-synchronized Fallout contract
