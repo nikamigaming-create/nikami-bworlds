@@ -390,6 +390,53 @@ completion are proven, and character-generation overlay suppression is active
 after the handoff. Keep other desktop audio quiet during this run because Stereo
 Mix records audible system output.
 
+## Retail actor portrait oracle
+
+`RetailPortraits` is the canonical appearance baseline for a data-declared
+actor such as Trudy. The xNVSE oracle selects the exact authored ACHR/NPC
+identity in-process and captures a front portrait and a front full-body shot
+sequentially. It retains native Direct3D 9 backbuffer BMPs, derived proof
+crops, camera and appearance telemetry, hashes, and the authored-to-retail
+validator report. The report also retains the live reference transform,
+source-labelled Direct3D 9 projection state, active idle phase, arm-bone
+transforms, and final `FaceGenFace`/`FaceGenHairNoHat` vertex hashes and bounds.
+The Trudy contract also names the expected live Goodsprings Settler reference;
+the capture retains every live non-player context actor in the cell with its
+reference/base identity, furniture state, active sequences, complete skeleton
+pose, and final geometry summary. Context actors are discovered from the retail
+process lists and validated against the data declaration, never hand-placed.
+This is `opennv-retail-actor-state-contract/v2`; the large per-bone/per-shape
+payload lives only in the contract artifact, while console and top-level reports
+carry compact state counts and paths.
+If fixed-function projection state is unavailable, the contract retains an
+explicitly provisional vertical-FOV derivation from live
+`fDefaultWorldFOV:Display`, a 4:3 reference-aspect hypothesis, and the native
+backbuffer aspect. The current 75-degree setting derives to 59.840 degrees
+vertical and 91.309 degrees horizontal at 16:9; that fallback does not close the
+exact-projection parity gate. The compact consumer artifact is
+`retail/retail-state-contract.json`; full vertex arrays remain only in the
+immutable forensic JSONL.
+It sends no host input and uses no Windows app control.
+
+Run the mandatory preflight and then the single entry point with a fresh output
+directory:
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target Retail -Scenario RetailPortraits `
+  -RetailPortraitTargetId trudy -RuntimeReady -RequireIdle
+
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target Retail -Scenario RetailPortraits `
+  -RetailPortraitTargetId trudy `
+  -OutputRoot .\run\fnv-retail-trudy-portraits-<unique>
+```
+
+Run the matching Godot capture only after the retail process has exited. Compare
+normalized identities, transforms, camera parameters, animation time, material
+inputs, and native pixels; raw process addresses and heap layouts are not a
+cross-engine compatibility contract.
+
 ## Godot Goodsprings-to-Strip route
 
 The Godot route is a third declared lane. It uses the same no-control policy:

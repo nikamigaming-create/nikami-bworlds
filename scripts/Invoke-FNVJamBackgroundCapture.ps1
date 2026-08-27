@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotActorReview", "GodotGallery", "GodotGalleryVideo", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "RetailPortraits", "ActorObservation", "GodotActorReview", "GodotGallery", "GodotGalleryVideo", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -20,6 +20,8 @@ param(
     [switch]$EnableSound,
     [ValidateRange(1, 30)]
     [int]$RetailVideoFrameStep = 3,
+    [ValidatePattern('^[a-z0-9_-]+$')]
+    [string]$RetailPortraitTargetId = "trudy",
     [ValidateRange(5, 600)]
     [int]$OpenMwCaptureSeconds = 160,
     [ValidateRange(10, 120)]
@@ -125,6 +127,7 @@ $pipBoyRunner = Join-Path $PSScriptRoot "Invoke-OpenNVPipBoyShowcaseCapture.ps1"
 $pipBoyVrRunner = Join-Path $PSScriptRoot "Invoke-OpenNVPipBoyVRCapture.ps1"
 $terminalRunner = Join-Path $PSScriptRoot "Invoke-OpenNVTerminalCapture.ps1"
 $retailPipBoyRunner = Join-Path $PSScriptRoot "Invoke-FNVRetailPipBoyStateCapture.ps1"
+$retailPortraitRunner = Join-Path $PSScriptRoot "Invoke-FNVGoodspringsAppearanceMatrix.ps1"
 $realSaveRunner = Join-Path $PSScriptRoot "Invoke-FNVRealSaveCapture.ps1"
 $godotRouteRunner = Join-Path $PSScriptRoot "Invoke-OpenNVGodotShowcaseCapture.ps1"
 $godotCinematicRunner = Join-Path $PSScriptRoot "Invoke-OpenNVCinematicReelCapture.ps1"
@@ -141,9 +144,12 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence")) {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
+    elseif ($Scenario -eq "RetailPortraits") {
+        $canonicalSave330Path
+    }
     else { "" }
 }
-if ($Target -ne "Godot" -and $Scenario -ne "ActorObservation" -and
+if ($Target -ne "Godot" -and $Scenario -notin @("ActorObservation", "RetailPortraits") -and
     [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
     $pipBoyRuntimeRoot = Join-Path $WorldsRoot "local\openmw-testmap-fnv-clean-20260801-080000"
     if ($Scenario -eq "PipBoy" -and (Test-Path -LiteralPath (Join-Path $pipBoyRuntimeRoot "openmw.exe") -PathType Leaf)) {
@@ -153,13 +159,13 @@ if ($Target -ne "Godot" -and $Scenario -ne "ActorObservation" -and
         $OpeningRuntimeRoot = Resolve-NikamiOpenMWRuntimeRoot
     }
 }
-if ($Target -ne "Godot" -and $Scenario -ne "ActorObservation") {
+if ($Target -ne "Godot" -and $Scenario -notin @("ActorObservation", "RetailPortraits")) {
     $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } elseif ($Scenario -eq "ActorObservation") { "fnv-actor-observation" } elseif ($Scenario -eq "GodotActorReview") { "opennv-godot-actor-review" } elseif ($Scenario -eq "GodotGallery") { "opennv-godot-gallery" } elseif ($Scenario -eq "GodotGalleryVideo") { "opennv-godot-gallery-video" } elseif ($Scenario -eq "GodotRoute") { "opennv-godot-route" } elseif ($Scenario -eq "GodotCinematics") { "opennv-godot-cinematics" } elseif ($Scenario -eq "GodotPortraits") { "opennv-godot-portraits" } else { "jam-background-$($Target.ToLowerInvariant())" }
+    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } elseif ($Scenario -eq "RetailPortraits") { "fnv-retail-portraits" } elseif ($Scenario -eq "ActorObservation") { "fnv-actor-observation" } elseif ($Scenario -eq "GodotActorReview") { "opennv-godot-actor-review" } elseif ($Scenario -eq "GodotGallery") { "opennv-godot-gallery" } elseif ($Scenario -eq "GodotGalleryVideo") { "opennv-godot-gallery-video" } elseif ($Scenario -eq "GodotRoute") { "opennv-godot-route" } elseif ($Scenario -eq "GodotCinematics") { "opennv-godot-cinematics" } elseif ($Scenario -eq "GodotPortraits") { "opennv-godot-portraits" } else { "jam-background-$($Target.ToLowerInvariant())" }
     $OutputRoot = Join-Path $WorldsRoot "run\$outputPrefix-$stamp"
 }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
@@ -190,6 +196,9 @@ if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
 }
 if ($Scenario -eq "PipBoy" -and $Target -eq "Both") {
     throw "Pip-Boy state captures are intentionally single-engine. Run Retail first, then OpenMW."
+}
+if ($Scenario -eq "RetailPortraits" -and $Target -ne "Retail") {
+    throw "RetailPortraits is a retail-only native D3D9 oracle lane. Use -Target Retail."
 }
 if ($Scenario -eq "PipBoyVR" -and $Target -ne "OpenMW") {
     throw "PipBoyVR is an OpenMW-only native OpenXR capture. Use -Target OpenMW."
@@ -227,6 +236,7 @@ $preflightTarget = if ($Target -eq "Both") { "All" } else { $Target }
 & $preflight `
     -Target $preflightTarget `
     -Scenario $Scenario `
+    -RetailPortraitTargetId $RetailPortraitTargetId `
     -OpeningCampaign $OpeningCampaign `
     -OpeningRuntimeRoot $OpeningRuntimeRoot `
     -SavePath $SavePath `
@@ -267,6 +277,7 @@ $terminalResult = $null
 $realSaveResult = $null
 $godotRouteResult = $null
 $firstSmokeResult = $null
+$retailPortraitResult = $null
 $chetObservationResult = $null
 $chetPersistentResult = $null
 $canyonResult = $null
@@ -617,6 +628,142 @@ if ($Scenario -eq "GodotPortraits") {
     if ($godotRouteResult.status -ne "pass" -or [bool]$godotRouteResult.capture.windowsAppControlUsed) {
         throw "Canonical Godot famous-people capture failed."
     }
+}
+
+if ($Scenario -eq "RetailPortraits") {
+    $retailOutput = Join-Path $OutputRoot "retail"
+    $shotRuns = @()
+    foreach ($shot in @(
+        [pscustomobject]@{ id = "front-portrait"; distance = 70.0; fullBodyScale = 2.9 },
+        [pscustomobject]@{ id = "front-full-body"; distance = 110.0; fullBodyScale = 2.9 }
+    )) {
+        $pipelineOutput = @(& $retailPortraitRunner `
+            -SaveFixture $SavePath `
+            -OutputRoot $retailOutput `
+            -RunId "$RetailPortraitTargetId-$($shot.id)" `
+            -TargetId $RetailPortraitTargetId `
+            -StageReferences `
+            -CameraShotKind $shot.id `
+            -PortraitDistance $shot.distance `
+            -FullBodyDistanceScale $shot.fullBodyScale)
+        $runObjects = @($pipelineOutput | Where-Object {
+            $_ -is [psobject] -and $_.PSObject.Properties.Name -contains 'schema' -and
+            [string]$_.schema -eq 'nikami-fnv-goodsprings-appearance-run/v1'
+        })
+        if ($runObjects.Count -ne 1) {
+            throw "Retail portrait runner did not return one structured result for $($shot.id)."
+        }
+        $shotRun = $runObjects[0]
+        if ([string]$shotRun.status -ne 'retail-traits-passed-pixels-captured-review-required' -or
+            [int]$shotRun.targetCount -ne 1 -or [int]$shotRun.passed -ne 1 -or
+            [string]$shotRun.cameraShotKind -ne [string]$shot.id) {
+            throw "Retail portrait shot $($shot.id) failed its identity, telemetry, or pixel validator."
+        }
+        foreach ($group in @($shotRun.groups)) {
+            $manifest = Get-Content -Raw -LiteralPath ([string]$group.runManifest) | ConvertFrom-Json
+            if ([string]$manifest.status -ne 'passed' -or
+                $null -eq $manifest.evidence.capture -or
+                @($manifest.evidence.screenshots).Count -lt 1 -or
+                @($manifest.evidence.portraitProofCrops).Count -lt 1 -or
+                [int]$manifest.validation.eventCount -lt 1) {
+                throw "Retail portrait shot $($shot.id) did not retain validated native frames and telemetry."
+            }
+        }
+        $shotRuns += $shotRun
+    }
+
+    $matrix = Get-Content -Raw -LiteralPath (Join-Path $WorldsRoot "catalog\fnv-goodsprings-retail-matrix.json") | ConvertFrom-Json
+    $targetRows = @($matrix.targets | Where-Object { [string]$_.id -eq $RetailPortraitTargetId })
+    if ($targetRows.Count -ne 1) {
+        throw "Retail portrait target '$RetailPortraitTargetId' is not uniquely declared in the appearance matrix."
+    }
+    $retailShotStates = @($shotRuns | ForEach-Object {
+        $shotStateContract = Get-Content -Raw -LiteralPath ([string]$_.stateContract) |
+            ConvertFrom-Json
+        @($shotStateContract.states)
+    })
+    if ($retailShotStates.Count -ne $shotRuns.Count -or
+        @($retailShotStates | Where-Object {
+            [string]$_.target.id -ne $RetailPortraitTargetId
+        }).Count -ne 0) {
+        throw 'Retail portrait state contracts are not one-to-one with the requested shots.'
+    }
+    $exactProjectionCount = @($retailShotStates | Where-Object {
+        [bool]$_.camera.projection.exact
+    }).Count
+    $retailStateContractPath = Join-Path $retailOutput 'retail-state-contract.json'
+    $retailStateContract = [ordered]@{
+        schema = 'opennv-retail-actor-state-contract/v2'
+        target = [ordered]@{
+            id = $RetailPortraitTargetId
+            referenceForm = [string]$targetRows[0].reference.form
+            baseForm = [string]$targetRows[0].base.form
+        }
+        exactProjectionCount = $exactProjectionCount
+        exactProjectionResolved = $exactProjectionCount -eq $retailShotStates.Count
+        shots = $retailShotStates
+    }
+    [IO.File]::WriteAllText(
+        $retailStateContractPath,
+        ($retailStateContract | ConvertTo-Json -Depth 24),
+        [Text.UTF8Encoding]::new($false))
+    $retailPortraitArtifactPaths = @()
+    foreach ($shotRun in $shotRuns) {
+        $retailPortraitArtifactPaths += [string]$shotRun.report
+        $retailPortraitArtifactPaths += [string]$shotRun.stateContract
+        $retailPortraitArtifactPaths += [string]$shotRun.contactSheet
+        foreach ($group in @($shotRun.groups)) {
+            $retailPortraitArtifactPaths += [string]$group.output
+            $retailPortraitArtifactPaths += [string]$group.runManifest
+            foreach ($path in @($group.screenshots) + @($group.proofCrops)) {
+                $retailPortraitArtifactPaths += [string]$path
+            }
+        }
+    }
+    $retailPortraitResult = [ordered]@{
+        schema = 'opennv-retail-actor-portrait-capture/v1'
+        status = 'pass'
+        target = [ordered]@{
+            id = $RetailPortraitTargetId
+            referenceForm = [string]$targetRows[0].reference.form
+            baseForm = [string]$targetRows[0].base.form
+            raceForm = [string]$targetRows[0].appearance.effectiveTraits.race.form
+            hairForm = [string]$targetRows[0].appearance.effectiveTraits.hair.form
+            eyesForm = [string]$targetRows[0].appearance.effectiveTraits.eyes.form
+        }
+        capture = [ordered]@{
+            method = 'xNVSE in-process schedule plus native Direct3D 9 GetRenderTargetData backbuffer frames'
+            windowsAppControlUsed = $false
+            foregroundActivationUsed = $false
+            foregroundInputInjected = $false
+            sourceFramesRetained = $true
+            telemetryRetained = $true
+            shotsRanSequentially = $true
+        }
+        assertions = [ordered]@{
+            sameAuthoredReferenceUsed = $true
+            appearanceTelemetryValidated = $true
+            cameraProjectionTelemetryRetained = $true
+            exactCameraProjectionResolved = $exactProjectionCount -eq $retailShotStates.Count
+            finalHeadHairGeometryValidated = $true
+            nativeFrameCount = @($shotRuns | ForEach-Object { @($_.groups.proofCrops).Count } | Measure-Object -Sum).Sum
+            shotCount = $shotRuns.Count
+            humanVisualVerdictRequired = $true
+        }
+        stateContract = $retailStateContractPath
+        shots = $shotRuns
+        artifacts = @($retailPortraitArtifactPaths | Sort-Object -Unique | ForEach-Object {
+            [pscustomobject][ordered]@{ path = [IO.Path]::GetFullPath($_) }
+        })
+    }
+    $retailPortraitReportPath = Join-Path $retailOutput "retail-portrait-report.json"
+    [IO.File]::WriteAllText(
+        $retailPortraitReportPath,
+        ($retailPortraitResult | ConvertTo-Json -Depth 16),
+        [Text.UTF8Encoding]::new($false))
+    $retailPortraitResult.artifacts += [pscustomobject][ordered]@{ path = $retailPortraitReportPath }
+    $retailPortraitResult.artifacts += [pscustomobject][ordered]@{ path = $retailStateContractPath }
+    $retailResult = [pscustomobject]$retailPortraitResult
 }
 
 if ($Scenario -eq "Opening") {
@@ -1041,6 +1188,13 @@ if ($Scenario -eq "ActorObservation" -and $null -ne $actorObservationResult) {
         }
     }
 }
+if ($Scenario -eq "RetailPortraits" -and $null -ne $retailPortraitResult) {
+    foreach ($artifact in @($retailPortraitResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
 if ($Scenario -eq "GodotActorReview" -and $null -ne $actorReviewResult) {
     foreach ($artifact in @($actorReviewResult.artifacts)) {
         if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
@@ -1122,6 +1276,7 @@ $summary = [ordered]@{
     terminalCapture = $terminalResult
     realSave = $realSaveResult
     firstSmoke = $firstSmokeResult
+    retailPortraits = $retailPortraitResult
     chetPersistent = $chetPersistentResult
     canyonCrawl = $canyonResult
     godotRoute = $godotRouteResult
