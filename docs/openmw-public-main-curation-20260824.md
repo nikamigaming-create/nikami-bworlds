@@ -6,13 +6,13 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `72e46eddfc31f09d6e5ac232df6c485c008d97ff`;
-- tree: `f1a2de4f21b4f4eeb7bcdfd0e1b8a186a1348d56`;
+- commit: `5b22b49243e4f4d708d2b6684a56302387d85783`;
+- tree: `266b7749e89acb418593161faf1fa69aff3e173f`;
 - official OpenMW base: `7d6273776b3e6fc05cb58c0b1453faf6e199d44a`;
 - local upstream sync merge: `2f5e87fd797a5be8b137337b8ec297dbfb43b68f`;
-- public remote topology: `main` only; the consolidated candidate,
-  inventory, and crafting-station topic refs were deleted after their topic
-  and post-push main gates passed. There are no open PRs.
+- public remote topology: `main` only; the consolidated candidate, inventory,
+  crafting-station, and crafting-session topic refs were deleted after their
+  topic and post-push main gates passed. There are no open PRs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
 `TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, `RACE`, `FACT`, `NOTE`, `RCCT`,
@@ -116,6 +116,14 @@ explicit preparation errors, and records authored names and quantities. It
 does not embed retail IDs, mutate inventory, activate workbenches, or choose a
 Lua/MyGUI presentation path; activation and presentation remain separate
 contracts.
+
+The crafting-session slice adds a toolkit-neutral controller over that frozen
+catalog. Page navigation, blocked-entry notices, explicit craft confirmation,
+backend invocation, result notices, cancellation, invalid selections, and
+redraw exhaustion are typed seams with injected policy and presenter/backend
+interfaces. It adds no MyGUI or Lua dependency, retail IDs, localization text,
+or inventory side effect; station activation and production presentation remain
+separate contracts.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -251,9 +259,18 @@ all four platform legs:
 
 The final published station-catalog SHA is `72e46eddfc`.
 
+The crafting-session controller topic and its post-push `main` workflow passed
+all four platform legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33063850253;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33066923395;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
+The final published crafting-session SHA is `5b22b49243`.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, TERM, and
-crafting-catalog translation units and `git diff --check`; the MGEF/SPEL, LIP,
-RACE, CLAS, FACT,
+crafting-catalog/session translation units and `git diff --check`; the MGEF/SPEL,
+LIP, RACE, CLAS, FACT,
 and NOTE/RCCT fixtures were exercised by green four-platform CI runs. The local full MSVC
 build reaches the
 changed ESM4 sources
@@ -314,9 +331,9 @@ rollback point.
 
 The current main/recovery bundle is:
 
-- bundle: `D:/code/archives/nikami-openmw-lab-main-crafting-station-catalog-20260827-v23.bundle`;
-- SHA-256: `2285E6128A01FAB99F4E89C06BB6895CE779BBF29D0B28690F2591CA13E7DB53`;
-- `git bundle verify`: passed; complete history recorded at `72e46eddfc`.
+- bundle: `D:/code/archives/nikami-openmw-lab-main-crafting-session-20260827-v24.bundle`;
+- SHA-256: `09394BFB08637031463D5324138CEE1965A47D45A8DE6664D05B6A2A751786AA`;
+- `git bundle verify`: passed; complete history recorded at `5b22b49243`.
 
 The immediately preceding upstream/crafting/inventory main bundle remains
 preserved:
@@ -389,18 +406,20 @@ Earlier recovery bundles remain preserved:
 - the pre-clean bundle and all local recovery/product heads remain intact.
 
 The public weather, metadata, AMEF, TERM, actor-effect, patrol-reference,
-primitive, LIP, RACE, CLAS/RACE, FACT, NOTE, RCCT, and RCPE topic refs were
+primitive, LIP, RACE, CLAS/RACE, FACT, NOTE, RCCT, RCPE, crafting-station, and
+crafting-session topic refs were
 deleted only after their topic and post-push `main` runs were green. The
 post-push `main` runs are
 (`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
 `32795208280`, `32800267449`, `32806400610`, `32812037770`,
 `32818383821`, `32828347705`, `32845678839`, `32855446251`, `33029970571`,
-`33047983858`, and `33055029474`); the
+`33047983858`, `33055029474`, and `33066923395`); the
 CLAS/RACE topic run was `32815337608`, the FACT topic run was `32824274960`,
 the NOTE topic run was `32841961351`, the RCCT topic run was
 `32851192054`, and the RCPE topic run was `32873877733`. The consolidated
 candidate run was `33045391257`; the crafting-station topic run was
-`33051910830`. The remote now exposes `main` only; there are
+`33051910830`; the crafting-session topic run was `33063850253`. The remote
+now exposes `main` only; there are
 no open PRs. No private retail binary or evidence is present in any public ref
 or bundle.
 
@@ -412,7 +431,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: 72e46eddfc31f09d6e5ac232df6c485c008d97ff
+# expected: 5b22b49243e4f4d708d2b6684a56302387d85783
 ```
 
 The public `main` lane is at a clean upstream-synchronized Fallout contract
