@@ -6,15 +6,13 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `fafc908066732a95e446170c0cc6d34888c9b242`;
-- tree: `ce0c6c2429196cea2a41a2be80720f72ef1ece70`;
-- official OpenMW base: `03e02d034fed3e3c1d65f0ba09767df64c58b78e`;
-- local upstream sync merge: `a67cb2ef47916fce2d300b1a50de5b9fe969c9e3`;
-- public remote topology: `main` plus the two active candidate topics
-  `codex/openmw-upstream-sync-20260826` and
-  `codex/openmw-fnv-inventory-storage-20260826`; no open PRs. Candidate topics
-  are not part of published `main` and will be deleted only after their
-  consolidated main gate is green.
+- commit: `f8aeeab300f7f640f54c20db57456416dfcf468e`;
+- tree: `1a42b92fd08b55235a4f0a5cd17ed49fa36f156d`;
+- official OpenMW base: `7d6273776b3e6fc05cb58c0b1453faf6e199d44a`;
+- local upstream sync merge: `2f5e87fd797a5be8b137337b8ec297dbfb43b68f`;
+- public remote topology: `main` only; the consolidated candidate and
+  standalone inventory topic refs were deleted after the candidate and
+  post-push main gates passed. There are no open PRs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
 `TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, `RACE`, `FACT`, `NOTE`, `RCCT`,
@@ -95,8 +93,21 @@ The `RCPE` contract is FNV-only and decodes exact recipe EDID/FULL/CTDA*/DATA
 and RCIL/RCQY plus RCOD/RCQY rows. FormIDs are adjusted through the typed
 reader, null category links are preserved, and malformed ordering, widths,
 duplicates, and unsupported condition forms fail closed before store mutation.
-This is recipe data only; the native transaction, station action, inventory
-adapter, UI, and retail parity remain separate scope.
+The native transaction contract now lives in `fnvcraftingruntime`; workbench
+activation, station action, inventory ownership, UI, and retail parity remain
+separate scope.
+
+The current consolidated promotion adds five bounded Fallout-only slices. The
+crafting runtime is a headless, data-driven transaction over typed `RCCT` and
+`RCPE` records with injected station/category/skill providers and one
+all-or-none inventory mutation. `ContainerStore` now owns all supported ESM4
+item families, including weight, lookup, save/read state, cell/manual-ref
+registration, and the Fallout special `CHIP`/`CCRD`/`CMNY` aliases. Authored
+weapon and armor condition is exposed through the native class API. The
+supporting tests use environment-independent iteration/count assertions, and
+macOS dependency setup removes a stale Homebrew tap before updates. These are
+native C++/ESM4 contracts only: no Lua, MyGUI, UI, VR, quest scripting, or
+visual parity claim is implied.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -213,6 +224,16 @@ The first two Ubuntu attempts of the post-push run were transient Launchpad
 Ubuntu-only retry completed successfully without any source or workflow
 change.
 
+The consolidated upstream/crafting/inventory candidate and its post-push
+`main` workflow both passed all four platform legs:
+
+- candidate run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33045391257;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33047983858;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
+The candidate run was repeated once after a documentation-only trailing-blank
+line correction; the final tested and published SHA is `f8aeeab300`.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, and TERM
 translation units and `git diff --check`; the MGEF/SPEL, LIP, RACE, CLAS, FACT,
 and NOTE/RCCT fixtures were exercised by green four-platform CI runs. The local full MSVC
@@ -226,10 +247,11 @@ The published history keeps each bounded contract reviewable: CLMT climate,
 AVIF actor-value metadata, REPU reputation metadata, AMEF ammo effects, TERM
 terminal records, MGEF/SPEL actor effects, LIP animation decoding, RACE
 body-part metadata, CLAS/RACE class-and-race data, FACT faction data, NOTE
-note metadata, and RCCT recipe-category data are
-separate commits. Their
-synthetic tests cover valid fields, null-preserving FormIDs, fixed-size
-validation, enum/range checks, exact menu/script retention, and
+note metadata, RCCT recipe-category data, the native crafting transaction,
+ESM4 inventory storage, Fallout special-inventory aliases, and authored item
+condition are separate commits. Their synthetic tests cover valid fields,
+null-preserving FormIDs, fixed-size validation, enum/range checks, exact
+menu/script retention, environment-independent container iteration, and
 unknown/malformed input.
 
 The public scope is Fallout-only. Starfield/OpenXR/OpenNV/Godot/VR/runtime
@@ -272,6 +294,12 @@ rollback point.
 ## Recovery and provenance
 
 The current main/recovery bundle is:
+
+- bundle: `D:/code/archives/nikami-openmw-lab-main-upstream-crafting-inventory-20260826-v22.bundle`;
+- SHA-256: `2A0F488D57AE5C66B84DBD363852D24793F4533DEE48A615C48B0C94DF4706EC`;
+- `git bundle verify`: passed; complete history recorded at `f8aeeab300`.
+
+The immediately preceding RCPE main bundle remains preserved:
 
 - bundle: `D:/code/archives/nikami-openmw-lab-main-recipe-records-20260826-v21.bundle`;
 - SHA-256: `CC9E6D9F2856038D146130FF4F2B2EF738533A05C71F62222960797309641B58`;
@@ -341,13 +369,13 @@ post-push `main` runs are
 (`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
 `32795208280`, `32800267449`, `32806400610`, `32812037770`,
 `32818383821`, `32828347705`, `32845678839`, `32855446251`, and
-`33029970571`); the
+`33029970571`, and `33047983858`); the
 CLAS/RACE topic run was `32815337608`, the FACT topic run was `32824274960`,
 the NOTE topic run was `32841961351`, the RCCT topic run was
-`32851192054`, and the RCPE topic run was `32873877733`. The remote currently
-exposes `main` plus the two active candidate topics listed above; there are no
-open PRs. No private retail binary or evidence is present in any public ref or
-bundle.
+`32851192054`, and the RCPE topic run was `32873877733`. The consolidated
+candidate run was `33045391257`. The remote now exposes `main` only; there are
+no open PRs. No private retail binary or evidence is present in any public ref
+or bundle.
 
 ## Fresh pull / exact resume
 
@@ -357,15 +385,16 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: fafc908066732a95e446170c0cc6d34888c9b242
+# expected: f8aeeab300f7f640f54c20db57456416dfcf468e
 ```
 
-The public `main` lane is at a clean RCPE stopping point; the two candidate
-topics are the next consolidated delivery and are not yet published. The
-remaining FNV feature-ready lane is five larger gates—combat/loot, crafting,
-generic Pip-Boy/HUD, physical terminals/lockpicking, and one natural
-quest/persistence/AI path—split into roughly 6–11 reviewable slices after the
-published NOTE, RCCT, and RCPE slices. This is a
+The public `main` lane is at a clean upstream-synchronized Fallout contract
+stopping point; the candidate/topic refs have been removed after promotion.
+The remaining FNV feature-ready lane is five larger gates—combat/loot,
+crafting ownership/activation, generic Pip-Boy/HUD, physical
+terminals/lockpicking, and one natural quest/persistence/AI path—split into
+roughly 5–10 reviewable slices after the published NOTE, RCCT, RCPE, crafting,
+and inventory contracts. This is a
 cleanup estimate, not a retail-parity percentage: FO3, TTW, JAM, VR, visual
 parity, and the 144 currently open differential cases remain separate scope.
 Continue using one bounded typed/API contract per commit for that inventory;
