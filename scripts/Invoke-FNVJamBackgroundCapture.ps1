@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotActorReview", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotActorReview", "GodotGallery", "GodotGalleryVideo", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -85,10 +85,16 @@ param(
     [string]$ActorOracleSeedRoot = "",
     [string]$ActorOraclePluginDll = "",
     [string]$ActorSaveFixture = "",
+    [string]$ActorGalleryShot = "",
     [string]$ActorGameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
     [switch]$ActorDrawContractDiagnostic,
     [string]$OpenNvRoot = "",
     [string]$ActorReviewScene = "",
+    [string]$ActorReviewBackgroundCell = "",
+    [string]$GalleryCellScene = "",
+    [string]$GalleryActorScene = "",
+    [string]$GalleryShot = "",
+    [string]$GalleryManifest = "",
     [string]$GodotBinary = "",
     # Opening captures may target an isolated runtime built under local/labs.
     # Leave empty to preserve the release runtime default used by existing
@@ -124,6 +130,8 @@ $godotRouteRunner = Join-Path $PSScriptRoot "Invoke-OpenNVGodotShowcaseCapture.p
 $godotCinematicRunner = Join-Path $PSScriptRoot "Invoke-OpenNVCinematicReelCapture.ps1"
 $godotPortraitRunner = Join-Path $PSScriptRoot "Invoke-OpenNVFamousPeopleCapture.ps1"
 $godotActorReviewRunner = Join-Path $PSScriptRoot "Invoke-OpenNVActorReviewCapture.ps1"
+$godotGalleryRunner = Join-Path $PSScriptRoot "Invoke-OpenNVGalleryCapture.ps1"
+$godotGalleryVideoRunner = Join-Path $PSScriptRoot "Invoke-OpenNVGalleryVideoCapture.ps1"
 $actorObservationRunner = Join-Path $PSScriptRoot "Invoke-FNVActorObservationCapture.ps1"
 $canonicalSave330Path = Join-Path $WorldsRoot "local\retail-real-save-fixtures\NikamiRealWorldSave330-20260802.fos"
 if ([string]::IsNullOrWhiteSpace($SavePath)) {
@@ -151,7 +159,7 @@ if ($Target -ne "Godot" -and $Scenario -ne "ActorObservation") {
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } elseif ($Scenario -eq "ActorObservation") { "fnv-actor-observation" } elseif ($Scenario -eq "GodotActorReview") { "opennv-godot-actor-review" } elseif ($Scenario -eq "GodotRoute") { "opennv-godot-route" } elseif ($Scenario -eq "GodotCinematics") { "opennv-godot-cinematics" } elseif ($Scenario -eq "GodotPortraits") { "opennv-godot-portraits" } else { "jam-background-$($Target.ToLowerInvariant())" }
+    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } elseif ($Scenario -eq "ActorObservation") { "fnv-actor-observation" } elseif ($Scenario -eq "GodotActorReview") { "opennv-godot-actor-review" } elseif ($Scenario -eq "GodotGallery") { "opennv-godot-gallery" } elseif ($Scenario -eq "GodotGalleryVideo") { "opennv-godot-gallery-video" } elseif ($Scenario -eq "GodotRoute") { "opennv-godot-route" } elseif ($Scenario -eq "GodotCinematics") { "opennv-godot-cinematics" } elseif ($Scenario -eq "GodotPortraits") { "opennv-godot-portraits" } else { "jam-background-$($Target.ToLowerInvariant())" }
     $OutputRoot = Join-Path $WorldsRoot "run\$outputPrefix-$stamp"
 }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
@@ -173,8 +181,8 @@ if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTran
 if ($Scenario -eq "Canyon" -and $Target -ne "OpenMW") {
     throw "The Honest Hearts canyon crawl is OpenMW-only. Use -Target OpenMW."
 }
-if (($Scenario -in @("GodotActorReview", "GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
-    throw "GodotRoute and GodotCinematics are dedicated Godot lanes. Use -Target Godot."
+if (($Scenario -in @("GodotActorReview", "GodotGallery", "GodotGalleryVideo", "GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
+    throw "Godot scenarios are dedicated Godot lanes. Use -Target Godot."
 }
 
 if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
@@ -231,9 +239,15 @@ $preflightTarget = if ($Target -eq "Both") { "All" } else { $Target }
     -ActorOracleSeedRoot $ActorOracleSeedRoot `
     -ActorOraclePluginDll $ActorOraclePluginDll `
     -ActorSaveFixture $ActorSaveFixture `
+    -ActorGalleryShot $ActorGalleryShot `
     -ActorGameRoot $ActorGameRoot `
     -OpenNvRoot $OpenNvRoot `
     -ActorReviewScene $ActorReviewScene `
+    -ActorReviewBackgroundCell $ActorReviewBackgroundCell `
+    -GalleryCellScene $GalleryCellScene `
+    -GalleryActorScene $GalleryActorScene `
+    -GalleryShot $GalleryShot `
+    -GalleryManifest $GalleryManifest `
     -GodotBinary $GodotBinary `
     -OutputRoot $OutputRoot `
     -InteractiveHandoff:$InteractiveHandoff `
@@ -258,6 +272,8 @@ $chetPersistentResult = $null
 $canyonResult = $null
 $actorObservationResult = $null
 $actorReviewResult = $null
+$galleryResult = $null
+$galleryVideoResult = $null
 
 if ($Scenario -eq "ActorObservation") {
     $actorCatalogPath = Join-Path $WorldsRoot "catalog\fnv-jam-background-capture-recipes.json"
@@ -280,6 +296,8 @@ if ($Scenario -eq "ActorObservation") {
         -OracleSeedRoot $ActorOracleSeedRoot `
         -OraclePluginDll $ActorOraclePluginDll `
         -SaveFixture $ActorSaveFixture `
+        -GalleryShotPath $ActorGalleryShot `
+        -OpenNvRoot $OpenNvRoot `
         -GameRoot $ActorGameRoot `
         -ActorDrawContractDiagnostic:$ActorDrawContractDiagnostic `
         -TimeoutSeconds $TimeoutSeconds
@@ -296,6 +314,7 @@ if ($Scenario -eq "GodotActorReview") {
     & $godotActorReviewRunner `
         -OpenNvRoot $OpenNvRoot `
         -ActorReviewScene $ActorReviewScene `
+        -ActorReviewBackgroundCell $ActorReviewBackgroundCell `
         -OutputRoot $actorReviewOutput `
         -Godot $GodotBinary `
         -TimeoutSeconds $TimeoutSeconds
@@ -308,6 +327,62 @@ if ($Scenario -eq "GodotActorReview") {
         [bool]$actorReviewResult.capture.foregroundActivationUsed -or
         [bool]$actorReviewResult.capture.foregroundInputInjected) {
         throw 'Canonical Godot actor review failed its capture, pending-parity, or no-control gate.'
+    }
+}
+
+if ($Scenario -eq "GodotGallery") {
+    $galleryOutput = Join-Path $OutputRoot 'godot'
+    & $godotGalleryRunner `
+        -OpenNvRoot $OpenNvRoot `
+        -CellScene $GalleryCellScene `
+        -ActorScene $GalleryActorScene `
+        -GalleryShot $GalleryShot `
+        -OutputRoot $galleryOutput `
+        -Godot $GodotBinary `
+        -TimeoutSeconds $TimeoutSeconds
+    $galleryResult = Get-Content -Raw -LiteralPath `
+        (Join-Path $galleryOutput 'opennv-gallery-capture-report.json') |
+        ConvertFrom-Json
+    if ([string]$galleryResult.status -cne
+            'captured-gallery-retail-bound-pending-parity' -or
+        [bool]$galleryResult.engine.parity -or
+        [bool]$galleryResult.engine.parityClaimed -or
+        [bool]$galleryResult.capture.retailCaptureUsed -or
+        -not [bool]$galleryResult.capture.retailEvidenceUsed -or
+        [bool]$galleryResult.capture.windowsAppControlUsed -or
+        [bool]$galleryResult.capture.foregroundActivationUsed -or
+        [bool]$galleryResult.capture.foregroundInputInjected) {
+        throw 'Canonical Godot gallery shot failed its authored, non-parity, or no-control gate.'
+    }
+}
+
+if ($Scenario -eq "GodotGalleryVideo") {
+    $galleryVideoOutput = Join-Path $OutputRoot 'godot'
+    & $godotGalleryVideoRunner `
+        -OpenNvRoot $OpenNvRoot `
+        -GalleryManifest $GalleryManifest `
+        -OutputRoot $galleryVideoOutput `
+        -Godot $GodotBinary `
+        -TimeoutSeconds $TimeoutSeconds | Out-Null
+    $runtimeConfigurationPath = Join-Path `
+        ([IO.Path]::GetFullPath($OpenNvRoot)) `
+        'runtime\config\open-nv-runtime-v1.json'
+    $runtimeConfiguration =
+        Get-Content -Raw -LiteralPath $runtimeConfigurationPath | ConvertFrom-Json
+    $galleryVideoReportPath = Join-Path $galleryVideoOutput `
+        ([string]$runtimeConfiguration.capture.gallery.video.reportFileName)
+    $galleryVideoResult = Get-Content -Raw -LiteralPath $galleryVideoReportPath |
+        ConvertFrom-Json
+    if ([string]$galleryVideoResult.status -cne
+            'captured-gallery-video-retail-bound-pending-parity' -or
+        -not [bool]$galleryVideoResult.gallery.allAuthoredMotionPassed -or
+        [bool]$galleryVideoResult.capture.retailCaptureUsed -or
+        -not [bool]$galleryVideoResult.capture.retailEvidenceUsed -or
+        [bool]$galleryVideoResult.capture.windowsAppControlUsed -or
+        [bool]$galleryVideoResult.capture.foregroundActivationUsed -or
+        [bool]$galleryVideoResult.capture.foregroundInputInjected -or
+        [bool]$galleryVideoResult.capture.parityClaimed) {
+        throw 'Canonical Godot gallery video failed its authored-motion, non-parity, or no-control gate.'
     }
 }
 
@@ -973,6 +1048,32 @@ if ($Scenario -eq "GodotActorReview" -and $null -ne $actorReviewResult) {
         }
     }
 }
+if ($Scenario -eq "GodotGallery" -and $null -ne $galleryResult) {
+    foreach ($artifact in @($galleryResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
+if ($Scenario -eq "GodotGalleryVideo" -and $null -ne $galleryVideoResult) {
+    if (-not [string]::IsNullOrWhiteSpace([string]$galleryVideoReportPath)) {
+        $artifactPaths.Add([string]$galleryVideoReportPath)
+    }
+    foreach ($artifact in @($galleryVideoResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+    foreach ($segment in @($galleryVideoResult.segments)) {
+        foreach ($artifact in @($segment.sourceCaptureReport, $segment.sourceMovie,
+                $segment.segment)) {
+            if ($null -ne $artifact -and
+                -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+                $artifactPaths.Add([string]$artifact.path)
+            }
+        }
+    }
+}
 foreach ($artifact in $artifactPaths) {
     if (-not [string]::IsNullOrWhiteSpace([string]$artifact) -and
         (Test-Path -LiteralPath $artifact -PathType Leaf)) {
@@ -991,6 +1092,10 @@ $summary = [ordered]@{
     schema = "nikami-fnv-jam-background-capture-run/v1"
     status = if ($Scenario -eq 'GodotActorReview') {
         'captured-pending-parity'
+    } elseif ($Scenario -eq 'GodotGallery') {
+        'captured-gallery-retail-bound-pending-parity'
+    } elseif ($Scenario -eq 'GodotGalleryVideo') {
+        'captured-gallery-video-non-parity'
     } else {
         'pass'
     }
@@ -1022,6 +1127,8 @@ $summary = [ordered]@{
     godotRoute = $godotRouteResult
     actorObservation = $actorObservationResult
     actorReview = $actorReviewResult
+    gallery = $galleryResult
+    galleryVideo = $galleryVideoResult
     artifacts = @($artifacts)
 }
 $summaryPath = Join-Path $OutputRoot "background-capture-summary.json"

@@ -107,26 +107,34 @@ the protocol completion contract passes.
 ### Retail post-frame appearance evidence
 
 The retail ready/captured payload now adds
-`appearance.schema = nikami-fnv-sidecar-appearance/v3`. Its bounded
+`appearance.schema = nikami-fnv-sidecar-appearance/v4`. Its bounded
 `renderParts` projection is collected from the settled actor scene graph, not
 from a screenshot or an actor-specific override. A part's only comparison
 identity is `role/sourceFormId/sourceSlot/ordinal`; node addresses and child
-traversal order are not emitted or used as identity. Retail FormIDs use fixed
+traversal order are not used as comparison identity. Retail FormIDs use fixed
 `0x%08X` strings and a part without a biped source slot uses the unsigned
 sentinel `4294967295`.
+
+V4 binds every live render part to its exact runtime `geometryName` and numeric
+`visualNodePath`. The same path is emitted for both container nodes and geometry
+objects in every per-frame `actor-visual-snapshot`, so rigid hair, eyes, mouth
+parts, and weapons consume their observed draw transform instead of an inferred
+parent-bone transform. Required visible parts without that binding make the
+appearance snapshot incomplete. The `skinned` flag comes directly from the
+live geometry's `NiSkinInstance`; it is not inferred from role or material.
 
 The retail role vocabulary is `face`, `leftHand`, `rightHand`, `exposedBody`,
 `hair`, `eyes`, `headPart`, `equipment`, `weapon`, and `actor`. Every record
 reports `required`, `attached`, `drawable`, and `visible`, plus raw effective
 `alphaBits` and the normalized owned-data `modelPath` when a runtime attachment
-has one. The v3 effective alpha is
+has one. The v4 effective alpha is
 `clamp(material.alpha * shader.alpha * shader.fadeAlpha, 0, 1)` and
 `alphaBits` is the raw IEEE-754 bit pattern of that result. `modelHash`,
 `nodeHash`, `materialId`, and `shaderId` remain absent from the wire projection until both
 engines share canonical algorithms for those optional fields; retail wrapper
 or scene-node paths are not treated as cross-engine identity.
 
-V3 separately records logical equip state and same-frame render state. An
+V4 separately records logical equip state and same-frame render state. An
 `equipped` weapon must carry the same nonzero FormID and `weaponOut` value as
 the pose sample. `visible-source-bound` additionally requires a normalized NIF
 path, a live source node, and at least one required, attached, drawable, visible
@@ -165,8 +173,8 @@ Parity still compares the complete binding set, so a stage present in only one
 engine is a mismatch.
 
 Collection is capped at 8,192 scene nodes, 128 geometry candidates, 48 emitted
-parts, 64 MiB of canonical bytes per texture, and a dynamically reduced
-23,000-byte render-part budget inside the existing NKSC payload. The payload
+parts, 64 MiB of canonical bytes per texture, and a render-part budget derived
+from the remaining NKSC payload after its named envelope and tail reservations. The payload
 reports `complete`, `truncated`, `visitedNodes`, and `candidateCount`, so a
 limit or unreadable runtime resource cannot silently become parity evidence.
 

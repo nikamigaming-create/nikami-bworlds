@@ -4,6 +4,7 @@ param(
     [string]$OpenNvRoot,
     [Parameter(Mandatory)]
     [string]$ActorReviewScene,
+    [string]$ActorReviewBackgroundCell = '',
     [Parameter(Mandatory)]
     [string]$OutputRoot,
     [Parameter(Mandatory)]
@@ -30,6 +31,11 @@ function Get-FileEvidence([string]$Path) {
 
 $openNvDirectory = Resolve-CapturePath $OpenNvRoot
 $scenePath = Resolve-CapturePath $ActorReviewScene
+$backgroundCellPath = if ([string]::IsNullOrWhiteSpace($ActorReviewBackgroundCell)) {
+    $null
+} else {
+    Resolve-CapturePath $ActorReviewBackgroundCell
+}
 $outputDirectory = Resolve-CapturePath $OutputRoot
 $godotPath = Resolve-CapturePath $Godot
 $runtimeDirectory = Join-Path $openNvDirectory 'runtime'
@@ -39,6 +45,10 @@ foreach ($path in @($scenePath, $godotPath, $projectPath, $projectFile)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Missing OpenNV actor-review input: $path"
     }
+}
+if ($null -ne $backgroundCellPath -and
+    -not (Test-Path -LiteralPath $backgroundCellPath -PathType Leaf)) {
+    throw "Missing OpenNV actor-review owned CELL background: $backgroundCellPath"
 }
 if (Test-Path -LiteralPath $outputDirectory) {
     throw "Refusing to overwrite OpenNV actor-review capture: $outputDirectory"
@@ -57,6 +67,18 @@ if ([string]$scene.schema -cne 'opennv-actor-review-scene/v1' -or
 }
 if ([string]$scene.recordType -cnotin @('NPC_', 'CREA')) {
     throw "ActorReviewScene has unsupported record type: $($scene.recordType)"
+}
+$backgroundCell = $null
+$backgroundCellSha256 = ''
+if ($null -ne $backgroundCellPath) {
+    $backgroundCell = Get-Content -Raw -LiteralPath $backgroundCellPath | ConvertFrom-Json
+    if ([string]$backgroundCell.schema -cne 'opennv-cell-scene/v10' -or
+        [string]$backgroundCell.status -cne 'geometry-structure' -or
+        [string]$backgroundCell.cell.formId -cnotmatch '^[0-9a-f]{8}$') {
+        throw 'ActorReviewBackgroundCell is not a compiled OpenNV CELL scene.'
+    }
+    $backgroundCellSha256 =
+        (Get-FileHash -LiteralPath $backgroundCellPath -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 $retailContractPath = Resolve-CapturePath ([string]$scene.retailContract.path)
 if (-not (Test-Path -LiteralPath $retailContractPath -PathType Leaf) -or
@@ -88,6 +110,9 @@ try {
         '--capture-root', $nativeRoot,
         '--report', $engineReport
     )
+    if ($null -ne $backgroundCellPath) {
+        $arguments += @('--actor-review-background-cell', $backgroundCellPath)
+    }
     $process = Start-Process `
         -FilePath $godotPath `
         -ArgumentList $arguments `
@@ -116,6 +141,17 @@ if (-not (Test-Path -LiteralPath $engineReport -PathType Leaf)) {
 $engine = Get-Content -Raw -LiteralPath $engineReport | ConvertFrom-Json
 $nativeFrames = @(Get-ChildItem -LiteralPath $nativeRoot -Filter '*.png' -File | Sort-Object Name)
 $expectedSamples = @($engine.samples).Count
+$backgroundMatched = if ($null -eq $backgroundCellPath) {
+    $null -eq $engine.presentation.background
+} else {
+    $null -ne $engine.presentation.background -and
+        [string]$engine.presentation.background.mode -ceq 'owned-cell-content' -and
+        [IO.Path]::GetFullPath([string]$engine.presentation.background.scene) -ceq
+            $backgroundCellPath -and
+        [string]$engine.presentation.background.sceneSha256 -ceq $backgroundCellSha256 -and
+        [string]$engine.presentation.background.cellFormId -ceq
+            [string]$backgroundCell.cell.formId
+}
 $captured = [string]$engine.status -ceq 'captured-provisional-light-direction' -and
     -not [bool]$engine.parityPassed -and
     [bool]$engine.pose.allSkinPaletteGatesPassed -and
@@ -125,6 +161,7 @@ $captured = [string]$engine.status -ceq 'captured-provisional-light-direction' -
     [bool]$engine.presentation.exactRetailFinalSceneColorProjectionAppliedPerSourceFrame -and
     [bool]$engine.presentation.retailNiCameraCullingProjectionRetainedSeparately -and
     [bool]$engine.allVisualGatesPassed -and
+    $backgroundMatched -and
     $expectedSamples -gt 0 -and $nativeFrames.Count -eq $expectedSamples -and
     -not [bool]$engine.windowsAppControlUsed -and
     -not [bool]$engine.foregroundActivationUsed -and
@@ -133,7 +170,9 @@ if (-not $captured) {
     throw "OpenNV actor-review capture failed its native-frame, skin-palette, or no-control gate: $engineReport"
 }
 
-$artifactPaths = @($scenePath, $retailContractPath, $engineReport, $stdoutPath, $stderrPath, $godotLog) +
+$artifactPaths = @($scenePath, $retailContractPath)
+if ($null -ne $backgroundCellPath) { $artifactPaths += $backgroundCellPath }
+$artifactPaths += @($engineReport, $stdoutPath, $stderrPath, $godotLog) +
     @($nativeFrames.FullName)
 $artifacts = @($artifactPaths | Where-Object {
     Test-Path -LiteralPath $_ -PathType Leaf
@@ -152,6 +191,7 @@ $report = [ordered]@{
         foregroundActivationUsed = $false
         foregroundInputInjected = $false
         outputOverwritten = $false
+        ownedCellBackground = $null -ne $backgroundCellPath
     }
     engine = $engine
     evidencePolicy = [ordered]@{
@@ -160,6 +200,8 @@ $report = [ordered]@{
         exactRetailProjectionRequired = $true
         exactRetailSkinPaletteRequired = $true
         unresolvedLightDirectionCannotPass = $true
+        ownedCellBackgroundRequired = $null -ne $backgroundCellPath
+        ownedCellBackgroundMatched = $backgroundMatched
     }
     artifacts = $artifacts
 }

@@ -66,11 +66,14 @@ function New-TestRenderPart(
         attached = $true
         drawable = $true
         visible = $true
+        skinned = $false
         alphaBits = [uint32]1065353216
         materialId = 'lighting-material'
         shaderId = 'default-shader'
         modelHash = "model-$Role"
         nodeHash = "node-$Role"
+        geometryName = "$Role-geometry"
+        visualNodePath = "root/$TraversalOrder"
         textureBindings = @(
             New-TestTextureBinding -Semantic $TextureSemantic -Path $TexturePath
         )
@@ -119,11 +122,23 @@ try {
     })
     Assert-Contract ($actorObservationRecipe.Count -eq 1 -and
         [string]$actorObservationRecipe[0].telemetryPolicy.appearanceSchema -ceq
-            'nikami-fnv-sidecar-appearance/v3') `
-        'ActorObservation recipe does not require appearance v3.'
+            'nikami-fnv-sidecar-appearance/v4') `
+        'ActorObservation recipe does not require appearance v4.'
     Assert-Contract ($retailOracleSource -match
-        'nikami-fnv-sidecar-appearance/v3') `
-        'Retail oracle does not emit appearance v3.'
+        'nikami-fnv-sidecar-appearance/v4') `
+        'Retail oracle does not emit appearance v4.'
+    Assert-Contract ($retailOracleSource -match
+        'part\.geometryName = safeRuntimeString\(nameAddress\)' -and
+        $retailOracleSource -match
+        'part\.visualNodePath = visualNodePath' -and
+        $retailOracleSource -match
+        'part\.skinned = skinInstanceReadable && skinInstance != nullptr') `
+        'Retail appearance does not bind render parts to exact runtime geometry paths.'
+    $compactNodeWriter = [regex]::Match($retailOracleSource,
+        'void writeCompactActorNodes[\s\S]*?void writeCompactActorVisualSnapshotUnsafe').Value
+    Assert-Contract ($compactNodeWriter -match
+        'if \(name != nullptr && name\[0\] !=') `
+        'Retail visual snapshots still omit named geometry objects.'
     Assert-Contract ($retailOracleSource -notmatch 'equipped-unrendered') `
         'Retail oracle still conflates logical equip state with per-frame render visibility.'
     Assert-Contract ($actorObservationRunnerSource -notmatch 'equipped-unrendered') `
@@ -198,7 +213,7 @@ try {
     Assert-Contract ($actorObservationRunnerSource -match "'visible-source-bound'" -and
         $actorObservationRunnerSource -match "'not-visible-at-frame'" -and
         $actorObservationRunnerSource -match '\$equippedWeaponOut -ne \$poseWeaponOut') `
-        'ActorObservation runner does not enforce the v3 same-frame weapon render contract.'
+        'ActorObservation runner does not enforce the v4 same-frame weapon render contract.'
     Assert-Contract ($retailOracleSource -notmatch 'visible-skin-body-color-missing') `
         'Retail appearance still rejects authored unbound bodyColor stages.'
     $textureBindingCollector = [regex]::Match($retailOracleSource,

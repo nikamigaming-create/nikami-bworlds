@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotActorReview", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "ActorObservation", "GodotActorReview", "GodotGallery", "GodotGalleryVideo", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -26,9 +26,15 @@ param(
     [string]$ActorOracleSeedRoot = "",
     [string]$ActorOraclePluginDll = "",
     [string]$ActorSaveFixture = "",
+    [string]$ActorGalleryShot = "",
     [string]$ActorGameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
     [string]$OpenNvRoot = "",
     [string]$ActorReviewScene = "",
+    [string]$ActorReviewBackgroundCell = "",
+    [string]$GalleryCellScene = "",
+    [string]$GalleryActorScene = "",
+    [string]$GalleryShot = "",
+    [string]$GalleryManifest = "",
     [ValidateSet("save330-cold-load-settle-v1", "save330-reload-idempotence-v1", "save330-pipboy-map-selection-v1", "save330-pipboy-map-travel-v1", "save330-pipboy-rejection-matrix-v1", "save330-travel-persistence-v1", "save330-pipboy-inventory-v1", "save330-pipboy-weapon-selection-v1", "save330-pipboy-radio-stations-v1")]
     [string]$RealSaveRouteId = "save330-cold-load-settle-v1",
     [ValidateRange(5, 600)]
@@ -108,8 +114,8 @@ if (-not [string]::IsNullOrWhiteSpace($OpeningNewVegasData)) {
     $OpeningNewVegasData = [IO.Path]::GetFullPath($OpeningNewVegasData)
 }
 
-if (($Scenario -in @("GodotActorReview", "GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
-    throw "GodotRoute and GodotCinematics are dedicated Godot lanes. Use -Target Godot."
+if (($Scenario -in @("GodotActorReview", "GodotGallery", "GodotGalleryVideo", "GodotRoute", "GodotCinematics", "GodotPortraits")) -ne ($Target -eq "Godot")) {
+    throw "Godot scenarios are dedicated Godot lanes. Use -Target Godot."
 }
 
 if ($Scenario -eq "RealSave" -and $Target -eq "All") {
@@ -198,6 +204,8 @@ $realSaveRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRealSaveCapture.p
 $actorObservationRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVActorObservationCapture.ps1"
 $actorObservationQueuePath = Join-Path $WorldsRoot "scripts\Invoke-FNVActorObservationQueue.ps1"
 $actorReviewRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVActorReviewCapture.ps1"
+$galleryRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVGalleryCapture.ps1"
+$galleryVideoRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVGalleryVideoCapture.ps1"
 $ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
 $newVegasInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-OpenNVBaseProfile.ps1"
 $oracleSourcePath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $null } else {
@@ -208,6 +216,37 @@ $oracleRuntimeManifestPath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $n
 }
 $oracleDllPath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $null } else {
     Join-Path $ParityRoot "local\xnvse-retail-oracle\plugins\nvse_retail_oracle.dll"
+}
+
+function Test-ExactStringSequence([object[]]$Actual, [object[]]$Expected) {
+    $actualValues = @($Actual | ForEach-Object { [string]$_ })
+    $expectedValues = @($Expected | ForEach-Object { [string]$_ })
+    if ($actualValues.Count -ne $expectedValues.Count) { return $false }
+    for ($index = 0; $index -lt $actualValues.Count; $index++) {
+        if ($actualValues[$index] -cne $expectedValues[$index]) { return $false }
+    }
+    return $true
+}
+
+function Normalize-GalleryFormId([string]$Value) {
+    $normalized = $Value.Trim().ToLowerInvariant()
+    if ($normalized.StartsWith('0x')) { $normalized = $normalized.Substring(2) }
+    if ($normalized -cnotmatch '^[0-9a-f]{1,8}$') {
+        throw "Invalid Fallout FormID: $Value"
+    }
+    return $normalized.PadLeft(8, [char]'0')
+}
+
+function Get-CanonicalJsonSha256([object]$Document) {
+    $json = $Document | ConvertTo-Json -Depth 100 -Compress
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes($json)
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        return [Convert]::ToHexString($hasher.ComputeHash($bytes)).ToLowerInvariant()
+    }
+    finally {
+        $hasher.Dispose()
+    }
 }
 
 if ($Scenario -eq 'ActorObservation') {
@@ -222,7 +261,9 @@ if ($Scenario -eq 'ActorObservation') {
     $actorSeedDirectory = Resolve-ActorPreflightPath $ActorOracleSeedRoot
     $actorPluginPath = Resolve-ActorPreflightPath $ActorOraclePluginDll
     $actorSavePath = Resolve-ActorPreflightPath $ActorSaveFixture
+    $actorGalleryShotPath = Resolve-ActorPreflightPath $ActorGalleryShot
     $actorGameDirectory = Resolve-ActorPreflightPath $ActorGameRoot
+    $actorOpenNvDirectory = Resolve-ActorPreflightPath $OpenNvRoot
     $actorPlanManifestPath = if ($actorPlanDirectory) {
         Join-Path $actorPlanDirectory 'manifest.json'
     } else { '' }
@@ -260,6 +301,9 @@ if ($Scenario -eq 'ActorObservation') {
             $(if ($actorGameDirectory) { Join-Path $actorGameDirectory 'FalloutNV.exe' } else { '' }))) {
         [void](Test-File "ActorObservation input exists: $([IO.Path]::GetFileName($file))" $file)
     }
+    if (-not [string]::IsNullOrWhiteSpace($actorGalleryShotPath)) {
+        [void](Test-File 'ActorObservation authored gallery shot exists' $actorGalleryShotPath)
+    }
     foreach ($script in @($entryPointPath, $preflightPath, $actorObservationRunnerPath,
             $actorObservationQueuePath)) {
         if (Test-Path -LiteralPath $script -PathType Leaf) { Test-PowerShellParse $script }
@@ -293,6 +337,38 @@ if ($Scenario -eq 'ActorObservation') {
                 ([string]$recipes[0].queueRunner -ceq
                     'scripts/Invoke-FNVActorObservationQueue.ps1') `
                 ([string]$recipes[0].queueRunner)
+            $activeRuntimePolicy = $recipes[0].capturePolicy.activeRuntime
+            $activeRuntimeRelative = [string]$activeRuntimePolicy.relativeDirectory
+            $activeRuntimePath = if (
+                [string]::IsNullOrWhiteSpace($activeRuntimeRelative) -or
+                [IO.Path]::IsPathRooted($activeRuntimeRelative)) {
+                ''
+            } else {
+                [IO.Path]::GetFullPath((Join-Path $WorldsRoot $activeRuntimeRelative))
+            }
+            $worldsPrefix = $WorldsRoot.TrimEnd(
+                [IO.Path]::DirectorySeparatorChar,
+                [IO.Path]::AltDirectorySeparatorChar) +
+                [IO.Path]::DirectorySeparatorChar
+            Add-Check 'ActorObservation recipe declares one contained active runtime' `
+                ([string]$activeRuntimePolicy.schema -ceq
+                        'nikami-xnvse-active-runtime/v1' -and
+                    $activeRuntimePath.StartsWith(
+                        $worldsPrefix,
+                        [StringComparison]::OrdinalIgnoreCase) -and
+                    [IO.Path]::GetFileName(
+                        [string]$activeRuntimePolicy.manifestFile) -ceq
+                        [string]$activeRuntimePolicy.manifestFile -and
+                    [IO.Path]::GetFileName(
+                        [string]$activeRuntimePolicy.pluginDirectory) -ceq
+                        [string]$activeRuntimePolicy.pluginDirectory -and
+                    [IO.Path]::GetFileName(
+                        [string]$activeRuntimePolicy.pluginFile) -ceq
+                        [string]$activeRuntimePolicy.pluginFile -and
+                    [IO.Path]::GetFileName(
+                        [string]$activeRuntimePolicy.evidenceDirectory) -ceq
+                        [string]$activeRuntimePolicy.evidenceDirectory) `
+                $activeRuntimePath
             $timeline = @($recipes[0].capturePolicy.shotTimeline)
             $timelineSlots = @($timeline | ForEach-Object { [string]$_.slot })
             $shotFrames = @($timeline | ForEach-Object { @($_.screenshotFrames) })
@@ -324,6 +400,19 @@ if ($Scenario -eq 'ActorObservation') {
                 (($resolvedShotSets | ForEach-Object {
                     "$($_.recordType)=[$($_.kinds -join ',')]"
                 }) -join '; ')
+            $authoredReferencePolicy = $recipes[0].capturePolicy.authoredReferenceCapture
+            Add-Check 'ActorObservation recipe declares authored-reference streaming policy' `
+                ($null -ne $authoredReferencePolicy -and
+                    [int]$authoredReferencePolicy.enableFrame -gt 0 -and
+                    [int]$authoredReferencePolicy.loadFrame -gt
+                        [int]$authoredReferencePolicy.enableFrame -and
+                    [int]$authoredReferencePolicy.minimumStreamingSettleFrames -gt 0 -and
+                    [double]$recipes[0].capturePolicy.cameraCorridorClearanceGameUnits -gt 0.0 -and
+                    -not [string]::IsNullOrWhiteSpace(
+                        [string]$authoredReferencePolicy.settleProvenance) -and
+                    -not [string]::IsNullOrWhiteSpace(
+                        [string]$authoredReferencePolicy.captureMethod)) `
+                ([string]$authoredReferencePolicy.settleProvenance)
             Add-Check 'ActorObservation recipe declares a bounded motion-video policy' `
                 (@($resolvedShotSets | Where-Object {
                     @($_.kinds | Where-Object {
@@ -341,7 +430,7 @@ if ($Scenario -eq 'ActorObservation') {
                     [int]$telemetryPolicy.requiredVisualSnapshotsPerSourceFrame -eq 1 -and
                     [int]$telemetryPolicy.requiredAppearanceSnapshots -eq 1 -and
                     [string]$telemetryPolicy.appearanceSchema -ceq
-                        'nikami-fnv-sidecar-appearance/v3' -and
+                        'nikami-fnv-sidecar-appearance/v4' -and
                     [bool]$telemetryPolicy.requireSkinPalettesForSkinnedGeometry -and
                     [int]$telemetryPolicy.skinPaletteComponentsPerRegister -gt 0 -and
                     [int]$telemetryPolicy.skinPaletteBytesPerComponent -gt 0 -and
@@ -363,14 +452,19 @@ if ($Scenario -eq 'ActorObservation') {
                         'actor-draw-contract' -and
                     [string]$telemetryPolicy.drawContractDiagnostic.targetTexturesEvent -ceq
                         'actor-draw-contract-target-textures' -and
+                    [string]$telemetryPolicy.drawContractDiagnostic.boundTextureArtifactsEvent -ceq
+                        'actor-draw-contract-bound-textures' -and
                     [int]$telemetryPolicy.drawContractDiagnostic.renderFrameLead -gt 0 -and
                     [int]$telemetryPolicy.drawContractDiagnostic.textureStageCount -gt 0 -and
                     [int]$telemetryPolicy.drawContractDiagnostic.textureStageCount -le 16 -and
                     [int]$telemetryPolicy.drawContractDiagnostic.maximumRecordsPerSourceFrame -gt 0 -and
                     [int]$telemetryPolicy.drawContractDiagnostic.vertexShaderRegisterCount -gt 0 -and
                     [int]$telemetryPolicy.drawContractDiagnostic.vertexShaderRegisterCount -le 256 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.pixelShaderRegisterCount -gt 0 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.pixelShaderRegisterCount -le 224 -and
                     [int]$telemetryPolicy.drawContractDiagnostic.maximumShaderBytes -gt 0 -and
                     [int]$telemetryPolicy.drawContractDiagnostic.maximumBufferBytesPerRecord -gt 0 -and
+                    [int]$telemetryPolicy.drawContractDiagnostic.maximumTextureBytesPerArtifact -gt 0 -and
                     [int]$telemetryPolicy.minimumNamedNodesPerSnapshot -gt 0 -and
                     [int]$telemetryPolicy.cameraMatrixElementCount -eq 16 -and
                     [int]$telemetryPolicy.cameraWorldRotationElementCount -eq 9 -and
@@ -411,15 +505,151 @@ if ($Scenario -eq 'ActorObservation') {
                 ($actualBytes -eq [int64]$binding.Entry.bytes -and
                     $actualHash -ceq [string]$binding.Entry.sha256) $binding.Path
         }
-        $jobCount = if (Test-Path -LiteralPath $actorJobsPath -PathType Leaf) {
-            @([IO.File]::ReadLines($actorJobsPath) | Where-Object {
-                $_ -match ('"captureJobKey":"' + [regex]::Escape($ActorCaptureJobKey) + '"')
-            }).Count
-        } else { 0 }
-        Add-Check 'ActorObservation job key resolves exactly once' ($jobCount -eq 1) $ActorCaptureJobKey
+        $jobRows = if (Test-Path -LiteralPath $actorJobsPath -PathType Leaf) {
+            @([IO.File]::ReadLines($actorJobsPath) | ForEach-Object {
+                if (-not [string]::IsNullOrWhiteSpace($_)) { $_ | ConvertFrom-Json }
+            } | Where-Object { [string]$_.captureJobKey -ceq $ActorCaptureJobKey })
+        } else { @() }
+        Add-Check 'ActorObservation job key resolves exactly once' `
+            ($jobRows.Count -eq 1) $ActorCaptureJobKey
+        if (-not [string]::IsNullOrWhiteSpace($actorGalleryShotPath) -and
+            (Test-Path -LiteralPath $actorGalleryShotPath -PathType Leaf)) {
+            $actorGalleryShotDocument = Get-Content -Raw -LiteralPath $actorGalleryShotPath |
+                ConvertFrom-Json
+            $galleryShotValid = [string]$actorGalleryShotDocument.schema -ceq
+                    'opennv-gallery-capture-shot/v1' -and
+                [string]$actorGalleryShotDocument.status -ceq
+                    'owned-authored-capture-request' -and
+                -not [string]::IsNullOrWhiteSpace(
+                    [string]$actorGalleryShotDocument.locationId) -and
+                [string]$actorGalleryShotDocument.referenceFormId -match '^[0-9a-fA-F]{8}$' -and
+                [string]$actorGalleryShotDocument.baseFormId -match '^[0-9a-fA-F]{8}$' -and
+                [string]$actorGalleryShotDocument.actor.cellFormId -match
+                    '^[0-9a-fA-F]{8}$' -and
+                [string]$actorGalleryShotDocument.scene.cellFormId -match
+                    '^[0-9a-fA-F]{8}$' -and
+                [string]$actorGalleryShotDocument.locationClass -cin
+                    @('interior', 'exterior') -and
+                [bool]$actorGalleryShotDocument.scene.interior -eq
+                    ([string]$actorGalleryShotDocument.locationClass -ceq 'interior') -and
+                (([bool]$actorGalleryShotDocument.scene.interior -and
+                        $null -eq $actorGalleryShotDocument.scene.worldspaceFormId) -or
+                    (-not [bool]$actorGalleryShotDocument.scene.interior -and
+                        [string]$actorGalleryShotDocument.scene.worldspaceFormId -match
+                            '^[0-9a-fA-F]{8}$')) -and
+                [string]$actorGalleryShotDocument.enableState.mode -cin
+                    @('authored', 'proof-enable-initially-disabled')
+            Add-Check 'ActorObservation pre-evidence gallery capture shot is canonical' `
+                $galleryShotValid $actorGalleryShotPath
+            $galleryIdentityMatches = $jobRows.Count -eq 1 -and
+                [string]$actorGalleryShotDocument.baseFormId -ceq
+                    [string]$jobRows[0].baseRuntimeFormId -and
+                [string]$actorGalleryShotDocument.recordType -ceq
+                    [string]$jobRows[0].recordType
+            Add-Check 'ActorObservation gallery shot matches the immutable capture job' `
+                $galleryIdentityMatches ([string]$actorGalleryShotDocument.id)
+            [void](Test-Directory `
+                'ActorObservation gallery OpenNV checkout exists' `
+                $actorOpenNvDirectory)
+            $actorRuntimeConfigurationPath = if ($actorOpenNvDirectory) {
+                Join-Path $actorOpenNvDirectory `
+                    'runtime\config\open-nv-runtime-v1.json'
+            } else { '' }
+            [void](Test-File `
+                'ActorObservation gallery runtime configuration exists' `
+                $actorRuntimeConfigurationPath)
+            $actorRuntimeConfiguration = if (
+                Test-Path -LiteralPath $actorRuntimeConfigurationPath -PathType Leaf
+            ) {
+                Get-Content -Raw -LiteralPath $actorRuntimeConfigurationPath |
+                    ConvertFrom-Json
+            } else { $null }
+            $declaredRuntimePath = [IO.Path]::GetFullPath(
+                [string]$actorGalleryShotDocument.runtimeConfiguration.path)
+            $declaredRuntimeValid =
+                Test-Path -LiteralPath $declaredRuntimePath -PathType Leaf
+            if ($declaredRuntimeValid) {
+                $declaredRuntimeItem = Get-Item -LiteralPath $declaredRuntimePath
+                $declaredRuntimeValid =
+                    $declaredRuntimeItem.Length -eq
+                        [int64]$actorGalleryShotDocument.runtimeConfiguration.bytes -and
+                    (Get-FileHash -LiteralPath $declaredRuntimePath -Algorithm SHA256).
+                        Hash.ToLowerInvariant() -ceq
+                            [string]$actorGalleryShotDocument.runtimeConfiguration.sha256 -and
+                    $declaredRuntimePath -ceq
+                        [IO.Path]::GetFullPath($actorRuntimeConfigurationPath)
+            }
+            Add-Check 'ActorObservation capture shot binds the current runtime configuration' `
+                $declaredRuntimeValid $declaredRuntimePath
+            $declaredGalleryPath = [IO.Path]::GetFullPath(
+                [string]$actorGalleryShotDocument.gallery.path)
+            $expectedGalleryPath = if ($null -ne $actorRuntimeConfiguration) {
+                Join-Path $actorOpenNvDirectory (
+                    'content\recipes\' +
+                    [string]$actorRuntimeConfiguration.tooling.recipeFiles.gallery)
+            } else { '' }
+            $declaredGalleryValid =
+                Test-Path -LiteralPath $declaredGalleryPath -PathType Leaf
+            if ($declaredGalleryValid) {
+                $declaredGalleryItem = Get-Item -LiteralPath $declaredGalleryPath
+                $declaredGalleryValid =
+                    $declaredGalleryItem.Length -eq
+                        [int64]$actorGalleryShotDocument.gallery.bytes -and
+                    (Get-FileHash -LiteralPath $declaredGalleryPath -Algorithm SHA256).
+                        Hash.ToLowerInvariant() -ceq
+                            [string]$actorGalleryShotDocument.gallery.sha256 -and
+                    $declaredGalleryPath -ceq
+                        [IO.Path]::GetFullPath($expectedGalleryPath)
+            }
+            Add-Check 'ActorObservation capture shot binds the declarative gallery recipe' `
+                $declaredGalleryValid $declaredGalleryPath
+            if ([string]$actorGalleryShotDocument.locationClass -ceq 'exterior') {
+                if ($null -ne $actorRuntimeConfiguration) {
+                    $grass = $actorRuntimeConfiguration.contentCompiler.retailGrass
+                    $grassCapture = $grass.capture
+                    $presentationSelection =
+                        $actorRuntimeConfiguration.capture.gallery.retailPresentationSelection
+                    $presentationShotKinds = @(
+                        $presentationSelection.candidateShotKinds |
+                            ForEach-Object { [string]$_ })
+                    $configuredActorShotKinds = @(
+                        $actorRuntimeConfiguration.capture.actorShotKinds |
+                            ForEach-Object { [string]$_ }
+                    )
+                    $grassContractValid =
+                        [string]$actorRuntimeConfiguration.schema -ceq
+                            'opennv-runtime-configuration/v1' -and
+                        [string]$grass.schema -ceq
+                            'opennv-retail-grass-compiler-contract/v1' -and
+                        [string]$grassCapture.schema -ceq
+                            'opennv-retail-grass-capture-contract/v1' -and
+                        [string]$grassCapture.event -ceq 'texture-sampler-contract' -and
+                        [string]$presentationSelection.schema -ceq
+                            'opennv-gallery-presentation-selection/v1' -and
+                        $presentationShotKinds.Count -gt 0 -and
+                        @($presentationShotKinds | Where-Object {
+                            $configuredActorShotKinds -cnotcontains $_
+                        }).Count -eq 0 -and
+                        [uint32]$grass.texture.d3d9Format -gt 0 -and
+                        [int]$grassCapture.textureStageCount -gt 0 -and
+                        [int]$grassCapture.maximumCandidates -gt 0 -and
+                        [int]$grassCapture.maximumRecords -gt 0 -and
+                        [int]$grassCapture.maximumShaderBytes -gt 0 -and
+                        [int]$grassCapture.maximumVertexBufferBytes -gt 0 -and
+                        [int]$grassCapture.minimumMatchingRecords -gt 0 -and
+                        [int]$grassCapture.requiredMatchedResourceCount -gt 0 -and
+                        [bool]$grassCapture.requireEveryObservedMesh -and
+                        @($grass.meshes).Count -gt 0
+                    Add-Check `
+                        'ActorObservation exterior gallery grass capture is runtime-configured' `
+                        $grassContractValid $actorRuntimeConfigurationPath
+                }
+            }
+        }
     }
     catch {
-        Add-Check 'ActorObservation plan and corpus parse' $false $_.Exception.Message
+        Add-Check 'ActorObservation plan and corpus parse' $false `
+            ($_.Exception.Message + ' at ' + $_.InvocationInfo.ScriptLineNumber)
     }
 
     if ($RuntimeReady -and (Test-Path -LiteralPath $actorSeedManifestPath -PathType Leaf)) {
@@ -461,8 +691,868 @@ if ($Scenario -eq 'ActorObservation') {
     $result
     if ($failed.Count -ne 0) {
         throw "ActorObservation background-capture preflight failed $($failed.Count) check(s): " +
-            (($failed | ForEach-Object name) -join '; ')
+            (($failed | ForEach-Object { "$($_.name): $($_.detail)" }) -join '; ')
     }
+    return
+}
+
+if ($Scenario -eq 'GodotGalleryVideo') {
+    $openNvDirectory = if ([string]::IsNullOrWhiteSpace($OpenNvRoot)) { '' } else {
+        [IO.Path]::GetFullPath($OpenNvRoot)
+    }
+    $galleryManifestPath = if ([string]::IsNullOrWhiteSpace($GalleryManifest)) { '' } else {
+        [IO.Path]::GetFullPath($GalleryManifest)
+    }
+    $runtimeDirectory = if ($openNvDirectory) {
+        Join-Path $openNvDirectory 'runtime'
+    } else { '' }
+    $runtimeProjectPath = if ($runtimeDirectory) {
+        Join-Path $runtimeDirectory 'project.godot'
+    } else { '' }
+    $runtimeProjectFile = if ($runtimeDirectory) {
+        Join-Path $runtimeDirectory 'OpenNV.csproj'
+    } else { '' }
+    $runtimeConfigurationPath = if ($runtimeDirectory) {
+        Join-Path $runtimeDirectory 'config\open-nv-runtime-v1.json'
+    } else { '' }
+    $GodotBinary = Resolve-NikamiPath `
+        -ParameterValue $GodotBinary `
+        -EnvName 'NIKAMI_GODOT_BINARY' `
+        -ConfigName 'godotBinary'
+    if ([string]::IsNullOrWhiteSpace($GodotBinary)) {
+        $godotCommand = Get-Command godot4, godot -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($null -ne $godotCommand) { $GodotBinary = $godotCommand.Source }
+    }
+
+    Add-Check 'GodotGalleryVideo is restricted to Godot' ($Target -eq 'Godot') "target=$Target"
+    [void](Test-Directory 'OpenNV checkout exists' $openNvDirectory)
+    foreach ($path in @($galleryVideoRunnerPath, $galleryRunnerPath,
+            $runtimeProjectPath, $runtimeProjectFile, $runtimeConfigurationPath,
+            $galleryManifestPath, $catalogPath, $runbookPath, $entryPointPath,
+            $preflightPath)) {
+        [void](Test-File "GodotGalleryVideo input exists: $([IO.Path]::GetFileName($path))" $path)
+    }
+    Add-Check 'GodotGalleryVideo output does not already exist' `
+        ([string]::IsNullOrWhiteSpace($OutputRoot) -or -not (Test-Path -LiteralPath $OutputRoot)) `
+        $(if ($OutputRoot) { $OutputRoot } else { 'automatic unique output' })
+    foreach ($script in @($entryPointPath, $preflightPath, $galleryVideoRunnerPath,
+            $galleryRunnerPath)) {
+        if (Test-Path -LiteralPath $script -PathType Leaf) { Test-PowerShellParse $script }
+    }
+    $runnerText = @($galleryVideoRunnerPath, $galleryRunnerPath) | ForEach-Object {
+        Get-Content -Raw -LiteralPath $_ -ErrorAction SilentlyContinue
+    }
+    $runnerText = $runnerText -join [Environment]::NewLine
+    foreach ($forbidden in @('AppActivate', 'SetForegroundWindow', 'BringWindowToTop',
+            'SetFocus', 'SendInput', 'Computer Use', 'Invoke-FNVRetailJamInput')) {
+        Add-Check "GodotGalleryVideo runners exclude $forbidden" `
+            ($runnerText -notmatch [regex]::Escape($forbidden)) $galleryVideoRunnerPath
+    }
+    Add-Check 'GodotGalleryVideo uses sequential engine-owned fixed-step movies' `
+        ($runnerText -match '--write-movie' -and
+            $runnerText -match '--fixed-fps' -and
+            $runnerText -match 'Invoke-OpenNVGalleryCapture.ps1' -and
+            $runnerText -match 'manifest.jobs') `
+        $galleryVideoRunnerPath
+    foreach ($tool in @('dotnet', 'ffmpeg', 'ffprobe')) {
+        $toolCommand = Get-Command $tool -ErrorAction SilentlyContinue | Select-Object -First 1
+        Add-Check "GodotGalleryVideo tool is available: $tool" ($null -ne $toolCommand) `
+            $(if ($null -ne $toolCommand) { $toolCommand.Source } else { 'missing' })
+    }
+
+    try {
+        $catalog = Get-Content -Raw -LiteralPath $catalogPath | ConvertFrom-Json
+        $recipes = @($catalog.godotRecipes | Where-Object {
+            [string]$_.id -eq 'opennv-godot-owned-gallery-video-v1'
+        })
+        Add-Check 'GodotGalleryVideo recipe is uniquely declared' ($recipes.Count -eq 1) $catalogPath
+        if ($recipes.Count -eq 1) {
+            Add-Check 'GodotGalleryVideo recipe is canonical and makes no retail or parity claim' `
+                ([string]$recipes[0].runner -ceq
+                    'scripts/Invoke-OpenNVGalleryVideoCapture.ps1' -and
+                    [string]$recipes[0].acceptedCaptureStatus -ceq
+                    'captured-gallery-video-non-parity' -and
+                    -not [bool]$recipes[0].windowsAppControlUsed -and
+                    -not [bool]$recipes[0].foregroundRequired -and
+                    -not [bool]$recipes[0].retailCaptureUsed -and
+                    -not [bool]$recipes[0].parityClaimed) `
+                ([string]$recipes[0].captureMethod)
+        }
+    }
+    catch {
+        Add-Check 'GodotGalleryVideo recipe catalog parses' $false $_.Exception.Message
+    }
+
+    try {
+        $runtimeConfiguration =
+            Get-Content -Raw -LiteralPath $runtimeConfigurationPath | ConvertFrom-Json
+        $runtimeConfigurationSha256 =
+            (Get-FileHash -LiteralPath $runtimeConfigurationPath -Algorithm SHA256).
+            Hash.ToLowerInvariant()
+        $galleryPolicy = $runtimeConfiguration.capture.gallery
+        $videoPolicy = $galleryPolicy.video
+        Add-Check 'GodotGalleryVideo policy is fully declared by current configuration' `
+            ([int]$galleryPolicy.framesPerSubject -gt 0 -and
+                [int]$galleryPolicy.framesPerSecond -gt 0 -and
+                [double]$galleryPolicy.minimumMotionProgressFraction -gt 0 -and
+                [double]$galleryPolicy.minimumMotionProgressFraction -le 1 -and
+                [IO.Path]::GetFileName([string]$videoPolicy.deliveryFileName) -ceq
+                    [string]$videoPolicy.deliveryFileName -and
+                [IO.Path]::GetFileName([string]$videoPolicy.reportFileName) -ceq
+                    [string]$videoPolicy.reportFileName -and
+                [int]$videoPolicy.durationToleranceFrames -ge 0 -and
+                -not [string]::IsNullOrWhiteSpace(
+                    [string]$videoPolicy.provenance.classification) -and
+                -not [string]::IsNullOrWhiteSpace(
+                    [string]$videoPolicy.provenance.status) -and
+                -not [string]::IsNullOrWhiteSpace(
+                    [string]$videoPolicy.provenance.source) -and
+                -not [string]::IsNullOrWhiteSpace(
+                    [string]$videoPolicy.provenance.evidence)) `
+            $runtimeConfigurationPath
+
+        $manifest = Get-Content -Raw -LiteralPath $galleryManifestPath | ConvertFrom-Json
+        $jobs = @($manifest.jobs | Sort-Object { [int]$_.ordinal })
+        $archiveStackSha256 = Get-CanonicalJsonSha256 $manifest.ownedData.archiveStack
+        Add-Check 'GodotGalleryVideo manifest is current, complete, and configuration-bound' `
+            ([string]$manifest.schema -ceq 'opennv-owned-gallery-compiled/v5' -and
+                [string]$manifest.status -ceq
+                    'compiled-owned-authored-gallery-retail-bound' -and
+                -not [bool]$manifest.retailCaptureUsed -and
+                [bool]$manifest.retailEvidenceUsed -and
+                -not [bool]$manifest.parityClaimed -and
+                $jobs.Count -gt 0 -and
+                [int]$manifest.shotCount -eq $jobs.Count -and
+                [string]$manifest.ownedData.archiveStack.schema -ceq
+                    'opennv-owned-visual-archive-stack/v1' -and
+                [string]$manifest.ownedData.archiveStack.resolutionPolicy -ceq
+                    'last-declared-containing-member-wins' -and
+                @($manifest.ownedData.archiveStack.archives).Count -gt 0 -and
+                $archiveStackSha256 -cmatch '^[0-9a-f]{64}$' -and
+                [string]$manifest.configuration.sha256 -ceq
+                    $runtimeConfigurationSha256) `
+            $galleryManifestPath
+        $ids = @($jobs | ForEach-Object { [string]$_.id })
+        $ordered = $true
+        for ($index = 0; $index -lt $jobs.Count; $index++) {
+            if ([int]$jobs[$index].ordinal -ne $index + 1) { $ordered = $false }
+        }
+        $interiorCount = @($jobs | Where-Object {
+            [string]$_.locationClass -ceq 'interior'
+        }).Count
+        $exteriorCount = @($jobs | Where-Object {
+            [string]$_.locationClass -ceq 'exterior'
+        }).Count
+        Add-Check 'GodotGalleryVideo manifest has unique linear ordering and exact class totals' `
+            ($ordered -and
+                @($ids | Sort-Object -Unique).Count -eq $ids.Count -and
+                $interiorCount -eq [int]$manifest.interiorShots -and
+                $exteriorCount -eq [int]$manifest.exteriorShots -and
+                $interiorCount + $exteriorCount -eq $jobs.Count) `
+            "jobs=$($jobs.Count) interior=$interiorCount exterior=$exteriorCount"
+
+        $locationByScene = @{}
+        foreach ($locationProperty in @($manifest.locations.PSObject.Properties)) {
+            $locationKey = [string]$locationProperty.Name
+            $location = $locationProperty.Value
+            $scenePath = [IO.Path]::GetFullPath([string]$location.scene)
+            $recipePath = [IO.Path]::GetFullPath([string]$location.recipeContract)
+            $sceneHash = if (Test-Path -LiteralPath $scenePath -PathType Leaf) {
+                (Get-FileHash -LiteralPath $scenePath -Algorithm SHA256).
+                Hash.ToLowerInvariant()
+            } else { '' }
+            $recipeHash = if (Test-Path -LiteralPath $recipePath -PathType Leaf) {
+                (Get-FileHash -LiteralPath $recipePath -Algorithm SHA256).
+                Hash.ToLowerInvariant()
+            } else { '' }
+            $scene = Get-Content -Raw -LiteralPath $scenePath | ConvertFrom-Json
+            $sceneArchiveStackSha256 =
+                Get-CanonicalJsonSha256 $scene.source.ownedArchiveStack
+            $unresolvedBindings = @($scene.unresolvedTextureBindings)
+            $invalidUnresolvedBindings = @($unresolvedBindings | Where-Object {
+                [string]$_.schema -cne
+                    'opennv-unresolved-owned-texture-binding/v1' -or
+                [string]$_.status -cne
+                    'authored-binding-has-no-owned-member' -or
+                [string]$_.disposition -cne 'unbound-no-substitution' -or
+                [int]$_.ownedMemberSources -ne 0
+            })
+            $galleryLocationContract = $scene.galleryLocationContract
+            $locationJobs = @($jobs | Where-Object {
+                [string]$_.locationSceneKey -ceq $locationKey
+            })
+            $isExteriorLocation = $null -ne $galleryLocationContract.subjectId
+            $grassObservation = $galleryLocationContract.retailGrassObservation
+            $grassPath = if ($isExteriorLocation) {
+                [IO.Path]::GetFullPath([string]$grassObservation.path)
+            } else { '' }
+            $grassHash = if ($grassPath -and
+                (Test-Path -LiteralPath $grassPath -PathType Leaf)) {
+                (Get-FileHash -LiteralPath $grassPath -Algorithm SHA256).
+                    Hash.ToLowerInvariant()
+            } else { '' }
+            $sceneGrassProperty = @($scene.source.PSObject.Properties |
+                Where-Object { [string]$_.Name -ceq 'retailGrassObservation' })
+            $sceneGrass = if ($sceneGrassProperty.Count -eq 1) {
+                $sceneGrassProperty[0].Value
+            } else { $null }
+            $grassOverlaysProperty = @($scene.PSObject.Properties |
+                Where-Object { [string]$_.Name -ceq 'grassOverlays' })
+            $grassOverlays = @(
+                if ($grassOverlaysProperty.Count -eq 1) {
+                    $grassOverlaysProperty[0].Value
+                }
+            )
+            $grassBound = if ($isExteriorLocation) {
+                $locationJobs.Count -eq 1 -and
+                [string]$locationJobs[0].id -ceq
+                    [string]$galleryLocationContract.subjectId -and
+                $grassOverlays.Count -gt 0 -and
+                [string]$sceneGrass.sha256 -ceq [string]$grassObservation.sha256 -and
+                [int64]$sceneGrass.bytes -eq [int64]$grassObservation.bytes -and
+                $grassHash -ceq [string]$grassObservation.sha256
+            } else {
+                $locationJobs.Count -gt 0 -and
+                $null -eq $grassObservation -and
+                $grassOverlays.Count -eq 0
+            }
+            Add-Check "GodotGalleryVideo location $locationKey is sealed to current owned data" `
+                ($sceneHash -ceq [string]$location.sceneSha256 -and
+                    $recipeHash -ceq [string]$location.recipeContractSha256 -and
+                    [string]$scene.schema -ceq 'opennv-cell-scene/v10' -and
+                    [string]$scene.status -ceq 'geometry-structure' -and
+                    [string]$scene.configuration.sha256 -ceq
+                        $runtimeConfigurationSha256 -and
+                    [string]$scene.galleryLocationContract.schema -ceq
+                        'opennv-gallery-location-contract/v2' -and
+                    [string]$scene.galleryLocationContract.manifestKey -ceq
+                        $locationKey -and
+                    [string]$scene.galleryLocationContract.runtimeConfigurationSha256 -ceq
+                        $runtimeConfigurationSha256 -and
+                    [string]$scene.galleryLocationContract.galleryCompilerSha256 -ceq
+                        [string]$manifest.compiler.gallerySha256 -and
+                    [string]$scene.galleryLocationContract.ownedArchiveStackSha256 -ceq
+                        $archiveStackSha256 -and
+                    $sceneArchiveStackSha256 -ceq $archiveStackSha256 -and
+                    $grassBound -and
+                    $invalidUnresolvedBindings.Count -eq 0) `
+                "scene=$scenePath unresolvedOptional=$($unresolvedBindings.Count)"
+            if ($locationByScene.ContainsKey($scenePath)) {
+                Add-Check "GodotGalleryVideo location scene is unique: $locationKey" $false $scenePath
+            }
+            else {
+                $locationByScene[$scenePath] = $locationKey
+            }
+        }
+
+        foreach ($job in $jobs) {
+            $jobId = [string]$job.id
+            $jobPaths = @(
+                [pscustomobject]@{
+                    label = 'cell scene'; path = [string]$job.cellScene
+                    sha256 = [string]$job.cellSceneSha256
+                },
+                [pscustomobject]@{
+                    label = 'actor scene'; path = [string]$job.actorScene
+                    sha256 = [string]$job.actorSceneSha256
+                },
+                [pscustomobject]@{
+                    label = 'shot contract'; path = [string]$job.shotContract
+                    sha256 = [string]$job.shotContractSha256
+                }
+            )
+            foreach ($jobPath in $jobPaths) {
+                $actualHash = if (Test-Path -LiteralPath $jobPath.path -PathType Leaf) {
+                    (Get-FileHash -LiteralPath $jobPath.path -Algorithm SHA256).
+                    Hash.ToLowerInvariant()
+                } else { '' }
+                Add-Check "GodotGalleryVideo $jobId $($jobPath.label) is hash-bound" `
+                    ($jobPath.sha256 -cmatch '^[0-9a-f]{64}$' -and
+                        $actualHash -ceq $jobPath.sha256) `
+                    $jobPath.path
+            }
+            $cell = Get-Content -Raw -LiteralPath ([string]$job.cellScene) | ConvertFrom-Json
+            $actor = Get-Content -Raw -LiteralPath ([string]$job.actorScene) | ConvertFrom-Json
+            $shot = Get-Content -Raw -LiteralPath ([string]$job.shotContract) | ConvertFrom-Json
+            $actorDirectory = Split-Path -Parent ([string]$job.actorScene)
+            $sidecarPath = Join-Path $actorDirectory ([string]$actor.outputs.sidecar)
+            $gltfPath = Join-Path $actorDirectory ([string]$actor.outputs.gltf)
+            $sidecarHash = if (Test-Path -LiteralPath $sidecarPath -PathType Leaf) {
+                (Get-FileHash -LiteralPath $sidecarPath -Algorithm SHA256).
+                Hash.ToLowerInvariant()
+            } else { '' }
+            $gltfHash = if (Test-Path -LiteralPath $gltfPath -PathType Leaf) {
+                (Get-FileHash -LiteralPath $gltfPath -Algorithm SHA256).
+                Hash.ToLowerInvariant()
+            } else { '' }
+            $sidecar = Get-Content -Raw -LiteralPath $sidecarPath | ConvertFrom-Json
+            $bufferPath = Join-Path $actorDirectory ([string]$sidecar.outputs.buffer.file)
+            $bufferHash = if (Test-Path -LiteralPath $bufferPath -PathType Leaf) {
+                (Get-FileHash -LiteralPath $bufferPath -Algorithm SHA256).
+                Hash.ToLowerInvariant()
+            } else { '' }
+            $gltf = Get-Content -Raw -LiteralPath $gltfPath | ConvertFrom-Json
+            $gltfAnimationChannels = @($gltf.animations | ForEach-Object {
+                @($_.channels).Count
+            } | Measure-Object -Sum).Sum
+            $jobCellPath = [IO.Path]::GetFullPath([string]$job.cellScene)
+            $shotReference = Normalize-GalleryFormId ([string]$shot.referenceFormId)
+            $shotBase = Normalize-GalleryFormId ([string]$shot.baseFormId)
+            $shotActorCell = Normalize-GalleryFormId ([string]$shot.actor.cellFormId)
+            $shotSceneCell = Normalize-GalleryFormId ([string]$shot.scene.cellFormId)
+            $shotSceneInterior = [bool]$shot.scene.interior
+            $shotSceneWorldspace = if ($null -eq $shot.scene.worldspaceFormId) {
+                $null
+            } else {
+                Normalize-GalleryFormId ([string]$shot.scene.worldspaceFormId)
+            }
+            $jobCellIds = @((Normalize-GalleryFormId ([string]$cell.cell.formId)))
+            if ($null -ne $cell.cell.PSObject.Properties['sourceCellFormIds']) {
+                $jobCellIds += @($cell.cell.sourceCellFormIds | ForEach-Object {
+                    Normalize-GalleryFormId ([string]$_)
+                })
+            }
+            $retailEvidencePath = [IO.Path]::GetFullPath(
+                [string]$shot.retailEvidence.path)
+            $retailEvidence = Get-Content -Raw -LiteralPath $retailEvidencePath |
+                ConvertFrom-Json
+            $retailEvidenceItem = Get-Item -LiteralPath $retailEvidencePath
+            $retailEvidenceSha256 =
+                (Get-FileHash -LiteralPath $retailEvidencePath -Algorithm SHA256).
+                Hash.ToLowerInvariant()
+            $presentation = $retailEvidence.retail.presentation
+            $presentationPolicy = $galleryPolicy.retailPresentationSelection
+            $selection = $presentation.selection
+            $policyCandidateShotKinds = @($presentationPolicy.candidateShotKinds |
+                ForEach-Object { [string]$_ })
+            $evidenceCandidateShotKinds = @($selection.candidateShotKinds |
+                ForEach-Object { [string]$_ })
+            $focusRules = @($presentationPolicy.semanticFocusFacingRules |
+                Where-Object {
+                    [string]$_.focusKind -ceq [string]$selection.focusKind
+                })
+            $presentationSelectionValid =
+                [string]$presentationPolicy.schema -ceq
+                    'opennv-gallery-presentation-selection/v1' -and
+                [string]$selection.policySchema -ceq
+                    [string]$presentationPolicy.schema -and
+                [string]$selection.tieBreak -ceq
+                    [string]$presentationPolicy.tieBreak -and
+                (Test-ExactStringSequence `
+                    $evidenceCandidateShotKinds $policyCandidateShotKinds) -and
+                [string]$presentation.shotKind -cin $policyCandidateShotKinds -and
+                $focusRules.Count -eq 1 -and
+                [string]$presentation.shotKind -cin
+                    @($focusRules[0].allowedShotKinds) -and
+                [double]$selection.cameraDirectionDotFocusForward -ge
+                    [double]$focusRules[0].minimumCameraDirectionDotFocusForward -and
+                [double]$selection.cameraDirectionDotFocusForward -le
+                    [double]$focusRules[0].maximumCameraDirectionDotFocusForward -and
+                [string]$selection.surfaceStatus -ceq
+                    [string]$presentationPolicy.requiredSurfaceStatus -and
+                [bool]$selection.semanticFocusSurface -eq
+                    [bool]$presentationPolicy.requireSemanticFocusSurface -and
+                [bool]$selection.cameraOutsideActorWorldBound -eq
+                    [bool]$presentationPolicy.requireCameraOutsideActorWorldBound -and
+                [bool]$selection.cameraCorridorPassed -eq
+                    [bool]$presentationPolicy.requireClearCameraCorridor -and
+                [double]$selection.cameraTranslationToleranceGameUnits -eq
+                    [double]$presentationPolicy.cameraTranslationToleranceGameUnits
+            $retailShotSceneWorldspace = if (
+                $null -eq $retailEvidence.shot.scene.worldspaceFormId) {
+                $null
+            } else {
+                Normalize-GalleryFormId `
+                    ([string]$retailEvidence.shot.scene.worldspaceFormId)
+            }
+            $observerSceneWorldspace = if (
+                $null -eq $retailEvidence.retail.sceneObserver.worldspaceFormId) {
+                $null
+            } else {
+                Normalize-GalleryFormId `
+                    ([string]$retailEvidence.retail.sceneObserver.worldspaceFormId)
+            }
+            $retailEvidenceValid =
+                [string]$retailEvidence.schema -ceq
+                    'opennv-gallery-retail-evidence/v2' -and
+                [string]$retailEvidence.status -ceq
+                    'retail-authored-reference-observed' -and
+                [int64]$shot.retailEvidence.bytes -eq $retailEvidenceItem.Length -and
+                [string]$shot.retailEvidence.sha256 -ceq $retailEvidenceSha256 -and
+                [int64]$job.retailEvidence.bytes -eq $retailEvidenceItem.Length -and
+                [string]$job.retailEvidence.sha256 -ceq $retailEvidenceSha256 -and
+                [string]$retailEvidence.runtimeConfiguration.sha256 -ceq
+                    $runtimeConfigurationSha256 -and
+                [string]$retailEvidence.shot.id -ceq [string]$shot.id -and
+                [int]$retailEvidence.shot.ordinal -eq [int]$shot.ordinal -and
+                [string]$retailEvidence.shot.locationId -ceq
+                    [string]$shot.locationId -and
+                (Normalize-GalleryFormId `
+                    ([string]$retailEvidence.shot.referenceFormId)) -ceq
+                    $shotReference -and
+                (Normalize-GalleryFormId `
+                    ([string]$retailEvidence.shot.baseFormId)) -ceq $shotBase -and
+                (Normalize-GalleryFormId `
+                    ([string]$retailEvidence.shot.actor.cellFormId)) -ceq
+                    $shotActorCell -and
+                (Normalize-GalleryFormId `
+                    ([string]$retailEvidence.shot.scene.cellFormId)) -ceq
+                    $shotSceneCell -and
+                $retailShotSceneWorldspace -ceq $shotSceneWorldspace -and
+                [bool]$retailEvidence.shot.scene.interior -eq
+                    $shotSceneInterior -and
+                (Normalize-GalleryFormId `
+                    ([string]$retailEvidence.retail.sceneObserver.cellFormId)) -ceq
+                    $shotSceneCell -and
+                $observerSceneWorldspace -ceq $shotSceneWorldspace -and
+                [bool]$retailEvidence.retail.sceneObserver.interior -eq
+                    $shotSceneInterior -and
+                $presentationSelectionValid -and
+                [string]$presentation.sourceFrameCameraContractEventSha256 -cmatch
+                    '^[0-9a-f]{64}$'
+            Add-Check "GodotGalleryVideo $jobId contracts are current and exact" `
+                ([string]$cell.schema -ceq 'opennv-cell-scene/v10' -and
+                    [string]$cell.status -ceq 'geometry-structure' -and
+                    [string]$actor.schema -ceq 'opennv-actor-scene/v5' -and
+                    [string]$actor.status -ceq 'skinned-animated' -and
+                    [string]$shot.schema -ceq 'opennv-gallery-shot/v5' -and
+                    [string]$shot.status -ceq 'owned-authored-placement' -and
+                    [string]$shot.id -ceq $jobId -and
+                    [int]$shot.ordinal -eq [int]$job.ordinal -and
+                    [string]$shot.locationClass -ceq [string]$job.locationClass -and
+                    [string]$shot.recordType -ceq [string]$job.recordType -and
+                    $shotReference -ceq (Normalize-GalleryFormId `
+                        ([string]$actor.reference.formId)) -and
+                    $shotBase -ceq (Normalize-GalleryFormId `
+                        ([string]$actor.reference.baseFormId)) -and
+                    $shotActorCell -ceq (Normalize-GalleryFormId `
+                        ([string]$actor.cellFormId)) -and
+                    $shotSceneInterior -eq
+                        ([string]$shot.locationClass -ceq 'interior') -and
+                    (($shotSceneInterior -and $null -eq $shotSceneWorldspace) -or
+                        (-not $shotSceneInterior -and
+                            $null -ne $shotSceneWorldspace)) -and
+                    $jobCellIds -ccontains $shotSceneCell -and
+                    $retailEvidenceValid -and
+                    [string]$cell.configuration.sha256 -ceq
+                        $runtimeConfigurationSha256 -and
+                    [string]$actor.configuration.sha256 -ceq
+                        $runtimeConfigurationSha256 -and
+                    [string]$cell.galleryLocationContract.schema -ceq
+                        'opennv-gallery-location-contract/v2' -and
+                    [string]$cell.galleryLocationContract.manifestKey -ceq
+                        [string]$job.locationSceneKey -and
+                    [string]$cell.galleryLocationContract.runtimeConfigurationSha256 -ceq
+                        $runtimeConfigurationSha256 -and
+                    [string]$cell.galleryLocationContract.galleryCompilerSha256 -ceq
+                        [string]$manifest.compiler.gallerySha256 -and
+                    [string]$cell.galleryLocationContract.ownedArchiveStackSha256 -ceq
+                        $archiveStackSha256 -and
+                    $locationByScene.ContainsKey($jobCellPath)) `
+                "ordinal=$([int]$job.ordinal) class=$([string]$job.locationClass)"
+            Add-Check "GodotGalleryVideo $jobId retains authored skinned-animation outputs" `
+                ($sidecarHash -ceq [string]$actor.outputs.sidecarSha256 -and
+                    $gltfHash -ceq [string]$actor.outputs.gltfSha256 -and
+                    $bufferHash -ceq [string]$actor.outputs.bufferSha256 -and
+                    [string]$sidecar.schema -ceq 'opennv-actor-gltf/v3' -and
+                    [string]$sidecar.status -ceq 'skinned-animated' -and
+                    [bool]$sidecar.coverage.animated -and
+                    [int]$sidecar.coverage.animations -gt 0 -and
+                    [int]$sidecar.coverage.animationChannels -gt 0 -and
+                    [int]$sidecar.coverage.skins -gt 0 -and
+                    [string]$sidecar.animation.logicalPath -ceq
+                        [string]$actor.idleAnimation -and
+                    [string]$sidecar.animation.sha256 -cmatch '^[0-9a-f]{64}$' -and
+                    [int]$sidecar.animation.channels -gt 0 -and
+                    [string]$sidecar.outputs.gltf.sha256 -ceq $gltfHash -and
+                    [string]$sidecar.outputs.buffer.sha256 -ceq $bufferHash -and
+                    @($gltf.animations).Count -eq [int]$sidecar.coverage.animations -and
+                    [int]$gltfAnimationChannels -eq
+                        [int]$sidecar.coverage.animationChannels) `
+                "animation=$([string]$sidecar.animation.logicalPath) channels=$([int]$sidecar.coverage.animationChannels)"
+        }
+    }
+    catch {
+        Add-Check 'GodotGalleryVideo data contracts parse and verify' $false `
+            "$($_.Exception.Message) $($_.ScriptStackTrace)"
+    }
+    if ($RuntimeReady) {
+        [void](Test-File 'Godot .NET executable exists' $GodotBinary)
+        if (Test-Path -LiteralPath $GodotBinary -PathType Leaf) {
+            $godotHelp = (& $GodotBinary --help 2>&1 | Out-String)
+            Add-Check 'Godot supports native fixed-step movie capture' `
+                ($godotHelp -match '--write-movie' -and $godotHelp -match '--fixed-fps') `
+                $GodotBinary
+        }
+    }
+    if ($RequireIdle) {
+        $active = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.ProcessName -match '^(Godot.*|openmw|FalloutNV|nvse_loader)$'
+        })
+        Add-Check 'GodotGalleryVideo capture engines are idle' ($active.Count -eq 0) `
+            $(if ($active.Count -eq 0) { 'idle' } else { ($active.ProcessName -join ', ') })
+    }
+    $failed = @($checks | Where-Object { -not $_.passed })
+    $result = [pscustomobject][ordered]@{
+        schema = 'nikami-fnv-jam-background-capture-preflight/v1'
+        status = if ($failed.Count -eq 0) { 'pass' } else { 'fail' }
+        target = $Target
+        scenario = $Scenario
+        runtimeReadyChecked = [bool]$RuntimeReady
+        idleChecked = [bool]$RequireIdle
+        passedChecks = $checks.Count - $failed.Count
+        failedChecks = $failed.Count
+        checks = @($checks)
+    }
+    $result
+    if ($failed.Count -ne 0) {
+        throw "GodotGalleryVideo background-capture preflight failed $($failed.Count) check(s): " +
+            (($failed | ForEach-Object {
+                "$($_.name) [$($_.detail)]"
+            }) -join '; ')
+    }
+    return
+}
+
+if ($Scenario -eq 'GodotGallery') {
+    $openNvDirectory = if ([string]::IsNullOrWhiteSpace($OpenNvRoot)) { '' } else {
+        [IO.Path]::GetFullPath($OpenNvRoot)
+    }
+    $galleryCellPath = if ([string]::IsNullOrWhiteSpace($GalleryCellScene)) { '' } else {
+        [IO.Path]::GetFullPath($GalleryCellScene)
+    }
+    $galleryActorPath = if ([string]::IsNullOrWhiteSpace($GalleryActorScene)) { '' } else {
+        [IO.Path]::GetFullPath($GalleryActorScene)
+    }
+    $galleryShotPath = if ([string]::IsNullOrWhiteSpace($GalleryShot)) { '' } else {
+        [IO.Path]::GetFullPath($GalleryShot)
+    }
+    $runtimeProjectPath = if ($openNvDirectory) {
+        Join-Path $openNvDirectory 'runtime\project.godot'
+    } else { '' }
+    $runtimeProjectFile = if ($openNvDirectory) {
+        Join-Path $openNvDirectory 'runtime\OpenNV.csproj'
+    } else { '' }
+    $runtimeConfigurationPath = if ($openNvDirectory) {
+        Join-Path $openNvDirectory 'runtime\config\open-nv-runtime-v1.json'
+    } else { '' }
+    $GodotBinary = Resolve-NikamiPath `
+        -ParameterValue $GodotBinary `
+        -EnvName 'NIKAMI_GODOT_BINARY' `
+        -ConfigName 'godotBinary'
+    if ([string]::IsNullOrWhiteSpace($GodotBinary)) {
+        $godotCommand = Get-Command godot4, godot -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($null -ne $godotCommand) { $GodotBinary = $godotCommand.Source }
+    }
+
+    Add-Check 'GodotGallery is restricted to Godot' ($Target -eq 'Godot') "target=$Target"
+    [void](Test-Directory 'OpenNV checkout exists' $openNvDirectory)
+    foreach ($path in @($galleryRunnerPath, $runtimeProjectPath, $runtimeProjectFile,
+            $runtimeConfigurationPath,
+            $galleryCellPath, $galleryActorPath, $galleryShotPath, $catalogPath,
+            $runbookPath, $entryPointPath, $preflightPath)) {
+        [void](Test-File "GodotGallery input exists: $([IO.Path]::GetFileName($path))" $path)
+    }
+    Add-Check 'GodotGallery output does not already exist' `
+        ([string]::IsNullOrWhiteSpace($OutputRoot) -or -not (Test-Path -LiteralPath $OutputRoot)) `
+        $(if ($OutputRoot) { $OutputRoot } else { 'automatic unique output' })
+    foreach ($script in @($entryPointPath, $preflightPath, $galleryRunnerPath)) {
+        if (Test-Path -LiteralPath $script -PathType Leaf) { Test-PowerShellParse $script }
+    }
+    $runnerText = Get-Content -Raw -LiteralPath $galleryRunnerPath -ErrorAction SilentlyContinue
+    foreach ($forbidden in @('AppActivate', 'SetForegroundWindow', 'BringWindowToTop',
+            'SetFocus', 'SendInput', 'Computer Use')) {
+        Add-Check "GodotGallery runner excludes $forbidden" `
+            ($runnerText -notmatch [regex]::Escape($forbidden)) $galleryRunnerPath
+    }
+    Add-Check 'GodotGallery uses engine-owned viewport capture' `
+        ($runnerText -match 'Godot engine-owned viewport PNG' -and
+            $runnerText -match '--gallery-shot' -and
+            $runnerText -match '--cell-scene' -and
+            $runnerText -match '--actor-scene' -and
+            $runnerText -match '--capture-root') `
+        $galleryRunnerPath
+    try {
+        $catalog = Get-Content -Raw -LiteralPath $catalogPath | ConvertFrom-Json
+        $recipes = @($catalog.godotRecipes | Where-Object {
+            [string]$_.id -eq 'opennv-godot-owned-gallery-shot-v1'
+        })
+        Add-Check 'GodotGallery recipe is uniquely declared' ($recipes.Count -eq 1) $catalogPath
+        if ($recipes.Count -eq 1) {
+            Add-Check 'GodotGallery recipe forbids app control, retail replay, and parity claims' `
+                (-not [bool]$recipes[0].windowsAppControlUsed -and
+                    -not [bool]$recipes[0].foregroundRequired -and
+                    -not [bool]$recipes[0].retailCaptureUsed -and
+                    -not [bool]$recipes[0].parityClaimed -and
+                    [string]$recipes[0].acceptedCaptureStatus -ceq
+                        'captured-gallery-retail-bound-pending-parity') `
+                ([string]$recipes[0].captureMethod)
+        }
+    }
+    catch {
+        Add-Check 'GodotGallery recipe catalog parses' $false $_.Exception.Message
+    }
+    try {
+        $cell = Get-Content -Raw -LiteralPath $galleryCellPath | ConvertFrom-Json
+        $actor = Get-Content -Raw -LiteralPath $galleryActorPath | ConvertFrom-Json
+        $shot = Get-Content -Raw -LiteralPath $galleryShotPath | ConvertFrom-Json
+        $runtimeConfiguration =
+            Get-Content -Raw -LiteralPath $runtimeConfigurationPath | ConvertFrom-Json
+        $runtimeConfigurationSha256 =
+            (Get-FileHash -LiteralPath $runtimeConfigurationPath -Algorithm SHA256).
+            Hash.ToLowerInvariant()
+        $galleryPolicy = $runtimeConfiguration.capture.gallery
+        $shotReference = Normalize-GalleryFormId ([string]$shot.referenceFormId)
+        $shotBase = Normalize-GalleryFormId ([string]$shot.baseFormId)
+        $shotActorCell = Normalize-GalleryFormId ([string]$shot.actor.cellFormId)
+        $shotSceneCell = Normalize-GalleryFormId ([string]$shot.scene.cellFormId)
+        $shotSceneInterior = [bool]$shot.scene.interior
+        $shotSceneWorldspace = if ($null -eq $shot.scene.worldspaceFormId) {
+            $null
+        } else {
+            Normalize-GalleryFormId ([string]$shot.scene.worldspaceFormId)
+        }
+        Add-Check 'GodotGallery cell is current compiled presentation data' `
+            ([string]$cell.schema -ceq 'opennv-cell-scene/v10' -and
+                [string]$cell.status -ceq 'geometry-structure' -and
+                [string]$cell.cell.formId -cmatch '^[0-9a-f]{8}$') `
+            ([string]$cell.cell.formId)
+        Add-Check 'GodotGallery actor is current compiled animated data' `
+            ([string]$actor.schema -ceq 'opennv-actor-scene/v5' -and
+                [string]$actor.status -ceq 'skinned-animated' -and
+                [string]$actor.reference.formId -cmatch '^[0-9a-f]{8}$' -and
+                [string]$actor.reference.baseFormId -cmatch '^[0-9a-f]{8}$' -and
+                [string]$actor.cellFormId -cmatch '^[0-9a-f]{8}$') `
+            ([string]$actor.actor.name)
+        Add-Check 'GodotGallery shot is a bounded authored placement' `
+            ([string]$shot.schema -ceq 'opennv-gallery-shot/v5' -and
+                [string]$shot.status -ceq 'owned-authored-placement' -and
+                [string]$shot.locationClass -cin @('interior', 'exterior') -and
+                [string]$shot.recordType -cin @('NPC_', 'CREA') -and
+                [int]$shot.ordinal -ge 1 -and
+                -not [string]::IsNullOrWhiteSpace([string]$shot.locationId) -and
+                [string]$shot.actor.cellFormId -cmatch '^[0-9a-f]{8}$' -and
+                [string]$shot.scene.cellFormId -cmatch '^[0-9a-f]{8}$' -and
+                $shotSceneInterior -eq
+                    ([string]$shot.locationClass -ceq 'interior') -and
+                (($shotSceneInterior -and $null -eq $shotSceneWorldspace) -or
+                    (-not $shotSceneInterior -and
+                        $null -ne $shotSceneWorldspace)) -and
+                [IO.Path]::GetFileName([string]$shot.outputFile) -ceq
+                    [string]$shot.outputFile -and
+                [IO.Path]::GetExtension([string]$shot.outputFile) -ceq
+                    [string]$galleryPolicy.stillImageExtension) `
+            ([string]$shot.id)
+        $retailEvidencePath = [IO.Path]::GetFullPath([string]$shot.retailEvidence.path)
+        [void](Test-File 'GodotGallery retail evidence exists' $retailEvidencePath)
+        $retailEvidence = Get-Content -Raw -LiteralPath $retailEvidencePath |
+            ConvertFrom-Json
+        $retailEvidenceItem = Get-Item -LiteralPath $retailEvidencePath
+        $retailEvidenceSha256 =
+            (Get-FileHash -LiteralPath $retailEvidencePath -Algorithm SHA256).
+            Hash.ToLowerInvariant()
+        $retailRuntimeConfiguration = $retailEvidence.runtimeConfiguration
+        $presentation = $retailEvidence.retail.presentation
+        $presentationPolicy = $galleryPolicy.retailPresentationSelection
+        $selection = $presentation.selection
+        $policyCandidateShotKinds = @($presentationPolicy.candidateShotKinds |
+            ForEach-Object { [string]$_ })
+        $evidenceCandidateShotKinds = @($selection.candidateShotKinds |
+            ForEach-Object { [string]$_ })
+        $focusRules = @($presentationPolicy.semanticFocusFacingRules |
+            Where-Object { [string]$_.focusKind -ceq [string]$selection.focusKind })
+        $presentationSelectionValid =
+            [string]$presentationPolicy.schema -ceq
+                'opennv-gallery-presentation-selection/v1' -and
+            [string]$selection.policySchema -ceq [string]$presentationPolicy.schema -and
+            [string]$selection.tieBreak -ceq [string]$presentationPolicy.tieBreak -and
+            (Test-ExactStringSequence `
+                $evidenceCandidateShotKinds $policyCandidateShotKinds) -and
+            [string]$presentation.shotKind -cin $policyCandidateShotKinds -and
+            $focusRules.Count -eq 1 -and
+            [string]$presentation.shotKind -cin @($focusRules[0].allowedShotKinds) -and
+            [double]$selection.cameraDirectionDotFocusForward -ge
+                [double]$focusRules[0].minimumCameraDirectionDotFocusForward -and
+            [double]$selection.cameraDirectionDotFocusForward -le
+                [double]$focusRules[0].maximumCameraDirectionDotFocusForward -and
+            [string]$selection.surfaceStatus -ceq
+                [string]$presentationPolicy.requiredSurfaceStatus -and
+            [bool]$selection.semanticFocusSurface -eq
+                [bool]$presentationPolicy.requireSemanticFocusSurface -and
+            [bool]$selection.cameraOutsideActorWorldBound -eq
+                [bool]$presentationPolicy.requireCameraOutsideActorWorldBound -and
+            [bool]$selection.cameraCorridorPassed -eq
+                [bool]$presentationPolicy.requireClearCameraCorridor -and
+            [double]$selection.cameraTranslationToleranceGameUnits -eq
+                [double]$presentationPolicy.cameraTranslationToleranceGameUnits
+        $retailShotActorCell = Normalize-GalleryFormId `
+            ([string]$retailEvidence.shot.actor.cellFormId)
+        $retailShotSceneCell = Normalize-GalleryFormId `
+            ([string]$retailEvidence.shot.scene.cellFormId)
+        $retailShotSceneWorldspace = if (
+            $null -eq $retailEvidence.shot.scene.worldspaceFormId) {
+            $null
+        } else {
+            Normalize-GalleryFormId `
+                ([string]$retailEvidence.shot.scene.worldspaceFormId)
+        }
+        $observerSceneCell = Normalize-GalleryFormId `
+            ([string]$retailEvidence.retail.sceneObserver.cellFormId)
+        $observerSceneWorldspace = if (
+            $null -eq $retailEvidence.retail.sceneObserver.worldspaceFormId) {
+            $null
+        } else {
+            Normalize-GalleryFormId `
+                ([string]$retailEvidence.retail.sceneObserver.worldspaceFormId)
+        }
+        Add-Check 'GodotGallery retail evidence is immutable and authored-reference bound' `
+            ([string]$retailEvidence.schema -ceq
+                    'opennv-gallery-retail-evidence/v2' -and
+                [string]$retailEvidence.status -ceq
+                    'retail-authored-reference-observed' -and
+                [long]$shot.retailEvidence.bytes -eq $retailEvidenceItem.Length -and
+                [string]$shot.retailEvidence.sha256 -ceq $retailEvidenceSha256 -and
+                [string]$retailEvidence.shot.id -ceq [string]$shot.id -and
+                [int]$retailEvidence.shot.ordinal -eq [int]$shot.ordinal -and
+                [string]$retailEvidence.shot.label -ceq [string]$shot.label -and
+                [string]$retailEvidence.shot.locationId -ceq
+                    [string]$shot.locationId -and
+                [string]$retailEvidence.shot.location -ceq [string]$shot.location -and
+                [string]$retailEvidence.shot.locationClass -ceq
+                    [string]$shot.locationClass -and
+                $retailShotActorCell -ceq $shotActorCell -and
+                $retailShotSceneCell -ceq $shotSceneCell -and
+                $retailShotSceneWorldspace -ceq $shotSceneWorldspace -and
+                [bool]$retailEvidence.shot.scene.interior -eq
+                    $shotSceneInterior -and
+                $observerSceneCell -ceq $shotSceneCell -and
+                $observerSceneWorldspace -ceq $shotSceneWorldspace -and
+                [bool]$retailEvidence.retail.sceneObserver.interior -eq
+                    $shotSceneInterior -and
+                [int64]$retailRuntimeConfiguration.bytes -eq
+                    (Get-Item -LiteralPath $runtimeConfigurationPath).Length -and
+                [string]$retailRuntimeConfiguration.sha256 -ceq
+                    $runtimeConfigurationSha256 -and
+                $presentationSelectionValid -and
+                [int]$presentation.frame -gt 0 -and
+                [string]$presentation.sourceFrameCameraContractEventSha256 -cmatch
+                    '^[0-9a-f]{64}$' -and
+                @($presentation.camera.world.rotation).Count -eq 9 -and
+                @($presentation.camera.world.translation).Count -eq 3 -and
+                @($presentation.camera.frustum).Count -eq 7 -and
+                @($presentation.camera.viewport).Count -eq 4 -and
+                @($presentation.actor.rootWorld.rotation).Count -eq 9 -and
+                @($presentation.actor.rootWorld.translation).Count -eq 3 -and
+                @($presentation.actor.animationDataSequences).Count -gt 0 -and
+                (Normalize-GalleryFormId `
+                    ([string]$retailEvidence.shot.referenceFormId)) -ceq
+                    (Normalize-GalleryFormId ([string]$shot.referenceFormId)) -and
+                (Normalize-GalleryFormId `
+                    ([string]$retailEvidence.shot.baseFormId)) -ceq
+                    (Normalize-GalleryFormId ([string]$shot.baseFormId)) -and
+                -not [bool]$retailEvidence.retail.actorTransformMutated -and
+                -not [bool]$retailEvidence.evidencePolicy.windowsAppControlUsed -and
+                -not [bool]$retailEvidence.evidencePolicy.foregroundActivationUsed -and
+                -not [bool]$retailEvidence.evidencePolicy.foregroundInputInjected) `
+            $retailEvidencePath
+        $actorRecordType = [string]$actor.actor.recordType
+        $enableStateMode = [string]$shot.enableState.mode
+        Add-Check 'GodotGallery shot matches the exact actor base and reference records' `
+            ($shotReference -ceq (Normalize-GalleryFormId ([string]$actor.reference.formId)) -and
+                $shotBase -ceq (Normalize-GalleryFormId ([string]$actor.reference.baseFormId)) -and
+                $shotActorCell -ceq
+                    (Normalize-GalleryFormId ([string]$actor.cellFormId)) -and
+                [string]$shot.recordType -ceq $actorRecordType) `
+            "reference=$shotReference base=$shotBase actorCell=$shotActorCell"
+        Add-Check 'GodotGallery shot enable state matches the authored actor state' `
+            ($enableStateMode -cin @('authored', 'proof-enable-initially-disabled') -and
+                (($enableStateMode -ceq 'proof-enable-initially-disabled') -eq
+                    [bool]$actor.reference.initiallyDisabled)) `
+            "mode=$enableStateMode initiallyDisabled=$([bool]$actor.reference.initiallyDisabled)"
+        $cellIds = @((Normalize-GalleryFormId ([string]$cell.cell.formId)))
+        if ($null -ne $cell.cell.PSObject.Properties['sourceCellFormIds']) {
+            $cellIds += @($cell.cell.sourceCellFormIds | ForEach-Object {
+                Normalize-GalleryFormId ([string]$_)
+            })
+        }
+        Add-Check 'GodotGallery rendered CELL is represented by the loaded scene' `
+            ($cellIds -ccontains $shotSceneCell) ($cellIds -join ',')
+        Add-Check 'GodotGallery cell and actor use one current runtime configuration' `
+            ([string]$cell.configuration.schema -ceq 'opennv-runtime-configuration/v1' -and
+                [string]$actor.configuration.schema -ceq 'opennv-runtime-configuration/v1' -and
+                [string]$cell.configuration.sha256 -cmatch '^[0-9a-f]{64}$' -and
+                [string]$cell.configuration.sha256 -ceq
+                    [string]$actor.configuration.sha256 -and
+                [string]$cell.configuration.sha256 -ceq
+                    $runtimeConfigurationSha256) `
+            ([string]$cell.configuration.sha256)
+        $locationContract = $cell.galleryLocationContract
+        $grassObservation = $locationContract.retailGrassObservation
+        $sceneGrassProperty = @($cell.source.PSObject.Properties |
+            Where-Object { [string]$_.Name -ceq 'retailGrassObservation' })
+        $sceneGrass = if ($sceneGrassProperty.Count -eq 1) {
+            $sceneGrassProperty[0].Value
+        } else { $null }
+        $grassOverlaysProperty = @($cell.PSObject.Properties |
+            Where-Object { [string]$_.Name -ceq 'grassOverlays' })
+        $grassOverlays = @(if ($grassOverlaysProperty.Count -eq 1) {
+            @($grassOverlaysProperty[0].Value)
+        })
+        $retailOraclePath = [IO.Path]::GetFullPath(
+            [string]$retailEvidence.retail.oracleJsonl.path)
+        $retailOracleHash = if (Test-Path -LiteralPath $retailOraclePath -PathType Leaf) {
+            (Get-FileHash -LiteralPath $retailOraclePath -Algorithm SHA256).
+                Hash.ToLowerInvariant()
+        } else { '' }
+        $locationContractValid =
+            [string]$locationContract.schema -ceq
+                'opennv-gallery-location-contract/v2' -and
+            [string]$locationContract.runtimeConfigurationSha256 -ceq
+                $runtimeConfigurationSha256 -and
+            $(if ([string]$shot.locationClass -ceq 'exterior') {
+                [string]$locationContract.subjectId -ceq [string]$shot.id -and
+                $grassOverlays.Count -gt 0 -and
+                [string]$grassObservation.sha256 -ceq $retailOracleHash -and
+                [int64]$grassObservation.bytes -eq
+                    [int64]$retailEvidence.retail.oracleJsonl.bytes -and
+                [string]$sceneGrass.sha256 -ceq $retailOracleHash
+            } else {
+                $null -eq $locationContract.subjectId -and
+                $null -eq $grassObservation -and
+                $grassOverlays.Count -eq 0
+            })
+        Add-Check 'GodotGallery location scene is shot-bound to retail vegetation evidence' `
+            $locationContractValid ([string]$locationContract.manifestKey)
+    }
+    catch {
+        Add-Check 'GodotGallery owned-data contracts parse' $false $_.Exception.Message
+    }
+    if ($RuntimeReady) {
+        [void](Test-File 'Godot .NET executable exists' $GodotBinary)
+        Add-Check 'dotnet is available' ($null -ne (Get-Command dotnet -ErrorAction SilentlyContinue)) `
+            'dotnet'
+    }
+    if ($RequireIdle) {
+        $active = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.ProcessName -match '^(Godot.*|openmw|FalloutNV|nvse_loader)$'
+        })
+        Add-Check 'GodotGallery capture engines are idle' ($active.Count -eq 0) `
+            $(if ($active.Count -eq 0) { 'idle' } else { ($active.ProcessName -join ', ') })
+    }
+    $passed = @($checks | Where-Object { -not $_.passed }).Count -eq 0
+    $result = [ordered]@{
+        schema = 'nikami-fnv-jam-background-capture-preflight/v1'
+        passed = $passed
+        target = $Target
+        scenario = $Scenario
+        runtimeReadyChecked = [bool]$RuntimeReady
+        idleChecked = [bool]$RequireIdle
+        checks = @($checks)
+    }
+    $result | ConvertTo-Json -Depth 8
+    if (-not $passed) { throw 'GodotGallery background-capture preflight failed.' }
     return
 }
 
@@ -472,6 +1562,9 @@ if ($Scenario -eq 'GodotActorReview') {
     }
     $reviewScenePath = if ([string]::IsNullOrWhiteSpace($ActorReviewScene)) { '' } else {
         [IO.Path]::GetFullPath($ActorReviewScene)
+    }
+    $reviewBackgroundPath = if ([string]::IsNullOrWhiteSpace($ActorReviewBackgroundCell)) { '' } else {
+        [IO.Path]::GetFullPath($ActorReviewBackgroundCell)
     }
     $runtimeProjectPath = if ($openNvDirectory) {
         Join-Path $openNvDirectory 'runtime\project.godot'
@@ -494,6 +1587,20 @@ if ($Scenario -eq 'GodotActorReview') {
     foreach ($path in @($actorReviewRunnerPath, $runtimeProjectPath, $runtimeProjectFile,
             $reviewScenePath, $catalogPath, $runbookPath, $entryPointPath, $preflightPath)) {
         [void](Test-File "GodotActorReview input exists: $([IO.Path]::GetFileName($path))" $path)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($reviewBackgroundPath)) {
+        [void](Test-File 'GodotActorReview owned CELL background exists' $reviewBackgroundPath)
+        try {
+            $backgroundCell = Get-Content -Raw -LiteralPath $reviewBackgroundPath | ConvertFrom-Json
+            Add-Check 'GodotActorReview owned CELL background is compiled presentation data' `
+                ([string]$backgroundCell.schema -ceq 'opennv-cell-scene/v10' -and
+                    [string]$backgroundCell.status -ceq 'geometry-structure' -and
+                    [string]$backgroundCell.cell.formId -cmatch '^[0-9a-f]{8}$') `
+                ([string]$backgroundCell.cell.formId)
+        }
+        catch {
+            Add-Check 'GodotActorReview owned CELL background parses' $false $_.Exception.Message
+        }
     }
     Add-Check 'GodotActorReview output does not already exist' `
         ([string]::IsNullOrWhiteSpace($OutputRoot) -or -not (Test-Path -LiteralPath $OutputRoot)) `
@@ -549,7 +1656,7 @@ if ($Scenario -eq 'GodotActorReview') {
             $shots = @($contract.retail.shots)
             $samples = @($shots | ForEach-Object { @($_.samples) })
             Add-Check 'GodotActorReview requires exact per-frame retail final-eye and skin-palette evidence' `
-                ([string]$contract.schema -ceq 'opennv-actor-review-contract/v4' -and
+                ([string]$contract.schema -ceq 'opennv-actor-review-contract/v6' -and
                     [string]$scene.retailContract.projectionStatus -ceq
                         'exact-retail-final-eye-d3d9-perspective' -and
                     $shots.Count -gt 0 -and $samples.Count -gt 0 -and

@@ -27,6 +27,7 @@
 #include <fstream>
 #include <filesystem>
 #include <iomanip>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <set>
@@ -149,20 +150,68 @@ namespace
     bool gCaptureAnimation = true;
     bool gCompactActorTelemetry = false;
     bool gCompactActorAppearanceLogged = false;
+    unsigned int gActorAppearanceMaximumEventBytes = 0;
     bool gCaptureActorSkinPalettes = false;
     unsigned int gActorSkinPaletteMaximumBytesPerShape = 0;
     bool gCaptureActorDrawContract = false;
     bool gCaptureActorSurfaceContract = false;
     unsigned int gActorDrawMaximumRecordsPerSourceFrame = 0;
     unsigned int gActorDrawVertexShaderRegisterCount = 0;
+    unsigned int gActorDrawPixelShaderRegisterCount = 0;
     unsigned int gActorDrawMaximumShaderBytes = 0;
     unsigned int gActorDrawTextureStageCount = 0;
     unsigned int gActorDrawRenderFrameLead = 0;
     unsigned int gActorDrawMaximumBufferBytesPerRecord = 0;
+    unsigned int gActorDrawMaximumTextureBytesPerArtifact = 0;
     std::string gActorDrawArtifactDirectory;
+    bool gCaptureTextureSamplerContract = false;
+    std::vector<UInt32> gTextureSamplerSourceFrames;
+    UInt32 gTextureSamplerRenderFrameLead = 0;
+    UInt32 gTextureSamplerTargetWidth = 0;
+    UInt32 gTextureSamplerTargetHeight = 0;
+    UInt32 gTextureSamplerTargetLevelCount = 0;
+    D3DFORMAT gTextureSamplerTargetFormat = D3DFMT_UNKNOWN;
+    UInt32 gTextureSamplerTargetHash = 0;
+    UInt32 gTextureSamplerTargetTopLevelHash = 0;
+    UInt32 gTextureSamplerTextureStageCount = 0;
+    UInt32 gTextureSamplerMaximumCandidates = 0;
+    UInt32 gTextureSamplerMaximumRecords = 0;
+    UInt32 gTextureSamplerMaximumShaderBytes = 0;
+    UInt32 gTextureSamplerVertexShaderRegisterCount = 0;
+    UInt32 gTextureSamplerPixelShaderRegisterCount = 0;
+    UInt32 gTextureSamplerMaximumVertexBufferBytes = 0;
+    bool gTextureSamplerContractWritten = false;
+    bool gCaptureShaderDrawContract = false;
+    UInt32 gShaderDrawSourceFrame = 0;
+    UInt32 gShaderDrawRenderFrameLead = 0;
+    UInt32 gShaderDrawTargetVertexShaderHash = 0;
+    UInt32 gShaderDrawTargetPixelShaderHash = 0;
+    UInt32 gShaderDrawMaximumRecords = 0;
+    UInt32 gShaderDrawMaximumShaderBytes = 0;
+    UInt32 gShaderDrawVertexShaderRegisterCount = 0;
+    UInt32 gShaderDrawPixelShaderRegisterCount = 0;
+    bool gShaderDrawContractWritten = false;
+    bool gCaptureImageSpaceShaderInputs = false;
+    unsigned int gImageSpaceExpectedShaderByteCount = 0;
+    UInt32 gImageSpaceExpectedShaderHash = 0;
+    std::vector<UInt32> gImageSpaceInputTextureStages;
+    unsigned int gImageSpaceMaximumBytesPerInput = 0;
+    UInt32 gImageSpaceSourceFrame = 0;
+    UInt32 gImageSpaceRenderFrameLead = 0;
+    std::string gImageSpaceArtifactDirectory;
+    bool gCaptureImageSpacePipelineTrace = false;
+    std::vector<UInt32> gImageSpaceTracePixelShaderHashes;
+    unsigned int gImageSpaceTraceMaximumRecords = 0;
+    unsigned int gImageSpaceTraceTextureStageCount = 0;
+    unsigned int gImageSpaceTraceVertexShaderRegisterCount = 0;
+    unsigned int gImageSpaceTracePixelShaderRegisterCount = 0;
+    unsigned int gImageSpaceTraceMaximumShaderBytes = 0;
+    unsigned int gImageSpaceTraceMaximumVertexBytes = 0;
+    bool gImageSpacePipelineTraceWritten = false;
     unsigned int gActorSurfaceMaximumShaderBytes = 0;
     unsigned int gActorSurfaceTextureStageCount = 0;
     unsigned int gActorSurfaceRenderFrameLead = 0;
+    unsigned int gActorSurfaceMaximumRecordsPerSourceFrame = 0;
     bool gCaptureSession = false;
     bool gPipBoyProbe = false;
     bool gHoldRetailPipBoyRenderedState = false;
@@ -243,7 +292,17 @@ namespace
     bool gPortraitCamera = false;
     bool gPortraitCameraRequested = false;
     bool gPortraitCameraLogged = false;
+    bool gEmitSourceFrameCameraContract = false;
     bool gPortraitCameraWaitingLogged = false;
+    struct PortraitSemanticFocusRule
+    {
+        std::string kind;
+        std::string match;
+        std::string value;
+        float detailAimOffsetGameUnits = 0.f;
+    };
+    std::vector<PortraitSemanticFocusRule> gPortraitSemanticFocusRules;
+    std::string gPortraitSemanticFocusRulesEncoded;
     std::string gCameraShotKind = "front-portrait";
     bool gFullBodyCamera = false;
     float gFullBodyDistanceScale = 1.6f;
@@ -255,10 +314,12 @@ namespace
     unsigned int gBatchWeaponProbeFrames = 12;
     bool gAppearanceLogged = false;
     bool gRenderEnvironmentLogged = false;
+    unsigned int gRenderEnvironmentFrame = 0;
     bool gImageSpaceShaderHookLogged = false;
     bool gPluginStackLogged = false;
     std::set<UInt32> gActorGeometryLogged;
     float gPortraitDistance = 110.f;
+    float gCameraCorridorClearanceGameUnits = 0.f;
     unsigned int gBehaviorBeforeFrame = 60;
     unsigned int gBehaviorCommandFrame = 90;
     unsigned int gBehaviorAfterFrame = 150;
@@ -328,6 +389,40 @@ namespace
     DrawIndexedPrimitiveUpFn gOriginalDrawIndexedPrimitiveUp = nullptr;
     bool gImageSpaceShaderHooked = false;
 
+    struct ImageSpaceShaderInputCapture
+    {
+        UInt32 stage = 0;
+        HRESULT getTextureResult = E_FAIL;
+        D3DRESOURCETYPE resourceType = D3DRTYPE_FORCE_DWORD;
+        UInt32 levelCount = 0;
+        HRESULT levelDescriptionResult = E_FAIL;
+        D3DSURFACE_DESC description = {};
+        HRESULT getSurfaceResult = E_FAIL;
+        HRESULT createSystemSurfaceResult = E_FAIL;
+        HRESULT directTransferResult = E_FAIL;
+        HRESULT createResolveSurfaceResult = E_FAIL;
+        HRESULT stretchResult = E_FAIL;
+        HRESULT resolvedTransferResult = E_FAIL;
+        HRESULT copyResult = E_FAIL;
+        HRESULT lockResult = E_FAIL;
+        HRESULT allocationResult = E_FAIL;
+        HRESULT unlockResult = E_FAIL;
+        HRESULT srgbTextureResult = E_FAIL;
+        DWORD srgbTexture = 0;
+        UInt32 rowBytes = 0;
+        UInt32 rowCount = 0;
+        UInt64 canonicalByteCount = 0;
+        UInt32 contentHash = 0;
+        bool layoutResolved = false;
+        bool withinConfiguredBound = false;
+        bool captured = false;
+        std::vector<UInt8> canonicalBytes;
+        bool artifactWritten = false;
+        std::string artifactPath;
+        UInt64 artifactBytes = 0;
+        UInt32 artifactHash = 0;
+    };
+
     struct ImageSpaceShaderCapture
     {
         volatile LONG ready = 0;
@@ -338,7 +433,82 @@ namespace
         bool alphaMask = false;
         HRESULT constantsResult = E_FAIL;
         float constants[24][4] = {};
+        HRESULT srgbWriteResult = E_FAIL;
+        DWORD srgbWrite = 0;
+        std::vector<ImageSpaceShaderInputCapture> inputs;
     } gImageSpaceShaderCapture;
+
+    struct ImageSpaceTraceTexture
+    {
+        UInt32 stage = 0;
+        HRESULT getResult = E_FAIL;
+        D3DRESOURCETYPE resourceType = D3DRTYPE_FORCE_DWORD;
+        UInt32 levelCount = 0;
+        HRESULT descriptionResult = E_FAIL;
+        D3DSURFACE_DESC description = {};
+        HRESULT addressUResult = E_FAIL;
+        DWORD addressU = 0;
+        HRESULT addressVResult = E_FAIL;
+        DWORD addressV = 0;
+        HRESULT magFilterResult = E_FAIL;
+        DWORD magFilter = 0;
+        HRESULT minFilterResult = E_FAIL;
+        DWORD minFilter = 0;
+        HRESULT mipFilterResult = E_FAIL;
+        DWORD mipFilter = 0;
+        HRESULT srgbTextureResult = E_FAIL;
+        DWORD srgbTexture = 0;
+    };
+
+    struct ImageSpacePipelineTrace
+    {
+        UInt32 ordinal = 0;
+        UInt32 sourceFrame = 0;
+        UInt32 renderFrame = 0;
+        std::string drawMethod;
+        D3DPRIMITIVETYPE primitiveType = D3DPT_FORCE_DWORD;
+        UInt32 primitiveCount = 0;
+        UInt32 vertexCount = 0;
+        UInt32 vertexStride = 0;
+        UInt32 pixelShaderByteCount = 0;
+        UInt32 pixelShaderHash = 0;
+        HRESULT pixelConstantsResult = E_FAIL;
+        UInt32 pixelConstantRegisterCount = 0;
+        std::vector<float> pixelConstants;
+        HRESULT vertexShaderResult = E_FAIL;
+        HRESULT vertexShaderFunctionResult = E_FAIL;
+        UInt32 vertexShaderByteCount = 0;
+        UInt32 vertexShaderHash = 0;
+        HRESULT vertexConstantsResult = E_FAIL;
+        UInt32 vertexConstantRegisterCount = 0;
+        std::vector<float> vertexConstants;
+        HRESULT vertexDeclarationResult = E_FAIL;
+        HRESULT vertexDeclarationElementsResult = E_FAIL;
+        std::vector<D3DVERTEXELEMENT9> vertexDeclaration;
+        HRESULT fvfResult = E_FAIL;
+        UInt32 fvf = 0;
+        HRESULT srgbWriteResult = E_FAIL;
+        DWORD srgbWrite = 0;
+        HRESULT renderTargetResult = E_FAIL;
+        HRESULT renderTargetDescriptionResult = E_FAIL;
+        D3DSURFACE_DESC renderTargetDescription = {};
+        HRESULT viewportResult = E_FAIL;
+        D3DVIEWPORT9 viewport = {};
+        HRESULT scissorResult = E_FAIL;
+        RECT scissor = {};
+        std::vector<ImageSpaceTraceTexture> textures;
+        std::vector<UInt8> upVertexBytes;
+    };
+
+    struct ActorDrawTextureLevel
+    {
+        UInt32 width = 0;
+        UInt32 height = 0;
+        UInt32 rowBytes = 0;
+        UInt32 rowCount = 0;
+        UInt32 artifactOffset = 0;
+        UInt32 artifactBytes = 0;
+    };
 
     struct ActorDrawTargetTexture
     {
@@ -346,6 +516,18 @@ namespace
         UInt32 contentHash = 0;
         UInt32 appearanceStage = 0;
         std::string path;
+        UInt32 width = 0;
+        UInt32 height = 0;
+        UInt32 levelCount = 0;
+        D3DFORMAT format = D3DFMT_UNKNOWN;
+        std::vector<std::string> roles;
+        std::vector<std::string> geometryNames;
+        std::vector<std::string> visualNodePaths;
+        std::vector<std::string> semantics;
+        bool semanticFocusSurface = false;
+        bool nonSemanticFocusSurface = false;
+        std::vector<ActorDrawTextureLevel> levels;
+        std::vector<UInt8> canonicalBytes;
     };
 
     struct ActorDrawBufferCapture
@@ -382,6 +564,40 @@ namespace
         RECT scissor = {};
     };
 
+    struct ActorDrawBoundTextureCapture
+    {
+        UInt32 stage = 0;
+        HRESULT getResult = E_FAIL;
+        HRESULT srgbTextureResult = E_FAIL;
+        DWORD srgbTexture = 0;
+        bool registeredActorTexture = false;
+        UInt32 appearanceStage = 0;
+        std::string path;
+        UInt32 width = 0;
+        UInt32 height = 0;
+        UInt32 levelCount = 0;
+        D3DFORMAT format = D3DFMT_UNKNOWN;
+        UInt32 contentHash = 0;
+    };
+
+    struct ActorDrawBoundTextureArtifact
+    {
+        UInt32 sourceFrame = 0;
+        UInt32 ordinal = 0;
+        UInt32 firstBoundStage = 0;
+        UInt32 width = 0;
+        UInt32 height = 0;
+        UInt32 levelCount = 0;
+        D3DFORMAT format = D3DFMT_UNKNOWN;
+        UInt32 contentHash = 0;
+        std::vector<ActorDrawTextureLevel> levels;
+        std::vector<UInt8> canonicalBytes;
+    };
+
+    bool actorDrawObserveBoundTexture(
+        UInt32 sourceFrame, IDirect3DBaseTexture9* resource,
+        ActorDrawBoundTextureCapture& capture);
+
     struct ActorDrawContractCapture
     {
         UInt32 sourceFrame = 0;
@@ -405,6 +621,14 @@ namespace
         HRESULT vertexConstantsResult = E_FAIL;
         UInt32 vertexConstantRegisterCount = 0;
         std::vector<float> vertexConstants;
+        HRESULT pixelShaderResult = E_FAIL;
+        HRESULT pixelShaderFunctionResult = E_FAIL;
+        UInt32 pixelShaderByteCount = 0;
+        UInt32 pixelShaderHash = 0;
+        std::vector<UInt8> pixelShaderBytes;
+        HRESULT pixelConstantsResult = E_FAIL;
+        UInt32 pixelConstantRegisterCount = 0;
+        std::vector<float> pixelConstants;
         HRESULT vertexDeclarationResult = E_FAIL;
         HRESULT vertexDeclarationElementsResult = E_FAIL;
         std::vector<D3DVERTEXELEMENT9> vertexDeclaration;
@@ -413,10 +637,13 @@ namespace
         HRESULT worldTransformResult = E_FAIL;
         HRESULT viewTransformResult = E_FAIL;
         HRESULT projectionTransformResult = E_FAIL;
+        HRESULT srgbWriteResult = E_FAIL;
+        DWORD srgbWrite = 0;
         D3DMATRIX worldTransform = {};
         D3DMATRIX viewTransform = {};
         D3DMATRIX projectionTransform = {};
         ActorDrawRenderTargetCapture renderTarget;
+        std::vector<ActorDrawBoundTextureCapture> boundTextures;
         ActorDrawBufferCapture vertexBuffer;
         ActorDrawBufferCapture indexBuffer;
     };
@@ -425,10 +652,17 @@ namespace
     {
         UInt32 sourceFrame = 0;
         UInt32 renderFrame = 0;
+        IDirect3DBaseTexture9* matchedTextureResource = nullptr;
         UInt32 matchedTextureStage = 0;
         UInt32 matchedTextureHash = 0;
         UInt32 matchedTextureAppearanceStage = 0;
         std::string matchedTexturePath;
+        std::vector<std::string> matchedTextureRoles;
+        std::vector<std::string> matchedTextureGeometryNames;
+        std::vector<std::string> matchedTextureVisualNodePaths;
+        std::vector<std::string> matchedTextureSemantics;
+        bool matchedTextureSemanticFocusSurface = false;
+        bool matchedTextureSemanticFocusExclusive = false;
         HRESULT vertexShaderResult = E_FAIL;
         HRESULT vertexShaderFunctionResult = E_FAIL;
         UInt32 vertexShaderByteCount = 0;
@@ -444,12 +678,191 @@ namespace
         ActorDrawRenderTargetCapture renderTarget;
     };
 
+    struct TextureSamplerContractCapture
+    {
+        UInt32 sourceFrame = 0;
+        UInt32 renderFrame = 0;
+        UInt32 ordinal = 0;
+        std::string drawMethod;
+        D3DPRIMITIVETYPE primitiveType = D3DPT_FORCE_DWORD;
+        UInt32 primitiveCount = 0;
+        SInt32 baseVertexIndex = 0;
+        UInt32 minimumVertexIndex = 0;
+        UInt32 vertexCount = 0;
+        UInt32 startIndex = 0;
+        UInt32 stage = 0;
+        UInt32 width = 0;
+        UInt32 height = 0;
+        UInt32 levelCount = 0;
+        D3DFORMAT format = D3DFMT_UNKNOWN;
+        UInt32 contentHash = 0;
+        UInt32 topLevelHash = 0;
+        HRESULT addressUResult = E_FAIL;
+        DWORD addressU = 0;
+        HRESULT addressVResult = E_FAIL;
+        DWORD addressV = 0;
+        HRESULT magFilterResult = E_FAIL;
+        DWORD magFilter = 0;
+        HRESULT minFilterResult = E_FAIL;
+        DWORD minFilter = 0;
+        HRESULT mipFilterResult = E_FAIL;
+        DWORD mipFilter = 0;
+        HRESULT srgbTextureResult = E_FAIL;
+        DWORD srgbTexture = 0;
+        HRESULT srgbWriteResult = E_FAIL;
+        DWORD srgbWrite = 0;
+        HRESULT cullModeResult = E_FAIL;
+        DWORD cullMode = 0;
+        HRESULT zEnableResult = E_FAIL;
+        DWORD zEnable = 0;
+        HRESULT zWriteEnableResult = E_FAIL;
+        DWORD zWriteEnable = 0;
+        HRESULT zFunctionResult = E_FAIL;
+        DWORD zFunction = 0;
+        HRESULT alphaTestEnableResult = E_FAIL;
+        DWORD alphaTestEnable = 0;
+        HRESULT alphaReferenceResult = E_FAIL;
+        DWORD alphaReference = 0;
+        HRESULT alphaFunctionResult = E_FAIL;
+        DWORD alphaFunction = 0;
+        HRESULT alphaBlendEnableResult = E_FAIL;
+        DWORD alphaBlendEnable = 0;
+        HRESULT sourceBlendResult = E_FAIL;
+        DWORD sourceBlend = 0;
+        HRESULT destinationBlendResult = E_FAIL;
+        DWORD destinationBlend = 0;
+        HRESULT blendOperationResult = E_FAIL;
+        DWORD blendOperation = 0;
+        HRESULT separateAlphaBlendEnableResult = E_FAIL;
+        DWORD separateAlphaBlendEnable = 0;
+        HRESULT sourceBlendAlphaResult = E_FAIL;
+        DWORD sourceBlendAlpha = 0;
+        HRESULT destinationBlendAlphaResult = E_FAIL;
+        DWORD destinationBlendAlpha = 0;
+        HRESULT blendOperationAlphaResult = E_FAIL;
+        DWORD blendOperationAlpha = 0;
+        HRESULT colorWriteEnableResult = E_FAIL;
+        DWORD colorWriteEnable = 0;
+        HRESULT fogEnableResult = E_FAIL;
+        DWORD fogEnable = 0;
+        HRESULT pixelShaderResult = E_FAIL;
+        HRESULT pixelShaderFunctionResult = E_FAIL;
+        UInt32 pixelShaderByteCount = 0;
+        UInt32 pixelShaderHash = 0;
+        HRESULT pixelConstantsResult = E_FAIL;
+        UInt32 pixelConstantRegisterCount = 0;
+        std::vector<float> pixelConstants;
+        HRESULT vertexShaderResult = E_FAIL;
+        HRESULT vertexShaderFunctionResult = E_FAIL;
+        UInt32 vertexShaderByteCount = 0;
+        UInt32 vertexShaderHash = 0;
+        HRESULT vertexConstantsResult = E_FAIL;
+        UInt32 vertexConstantRegisterCount = 0;
+        std::vector<float> vertexConstants;
+        HRESULT vertexDeclarationResult = E_FAIL;
+        HRESULT vertexDeclarationElementsResult = E_FAIL;
+        std::vector<D3DVERTEXELEMENT9> vertexDeclaration;
+        ActorDrawBufferCapture vertexBuffer;
+        ActorDrawRenderTargetCapture renderTarget;
+    };
+
+    struct TextureSamplerCandidateCapture
+    {
+        UInt32 ordinal = 0;
+        UInt32 renderFrame = 0;
+        UInt32 stage = 0;
+        bool topLevelHashed = false;
+        UInt32 topLevelHash = 0;
+        bool fullChainHashed = false;
+        UInt32 fullChainHash = 0;
+        HRESULT srgbTextureResult = E_FAIL;
+        DWORD srgbTexture = 0;
+    };
+
+    struct ShaderDrawContractCapture
+    {
+        UInt32 sourceFrame = 0;
+        UInt32 renderFrame = 0;
+        UInt32 ordinal = 0;
+        std::string drawMethod;
+        D3DPRIMITIVETYPE primitiveType = D3DPT_FORCE_DWORD;
+        UInt32 primitiveCount = 0;
+        SInt32 baseVertexIndex = 0;
+        UInt32 minimumVertexIndex = 0;
+        UInt32 vertexCount = 0;
+        UInt32 startIndex = 0;
+        HRESULT cullModeResult = E_FAIL;
+        DWORD cullMode = 0;
+        HRESULT zEnableResult = E_FAIL;
+        DWORD zEnable = 0;
+        HRESULT zWriteEnableResult = E_FAIL;
+        DWORD zWriteEnable = 0;
+        HRESULT zFunctionResult = E_FAIL;
+        DWORD zFunction = 0;
+        HRESULT alphaTestEnableResult = E_FAIL;
+        DWORD alphaTestEnable = 0;
+        HRESULT alphaReferenceResult = E_FAIL;
+        DWORD alphaReference = 0;
+        HRESULT alphaFunctionResult = E_FAIL;
+        DWORD alphaFunction = 0;
+        HRESULT alphaBlendEnableResult = E_FAIL;
+        DWORD alphaBlendEnable = 0;
+        HRESULT sourceBlendResult = E_FAIL;
+        DWORD sourceBlend = 0;
+        HRESULT destinationBlendResult = E_FAIL;
+        DWORD destinationBlend = 0;
+        HRESULT blendOperationResult = E_FAIL;
+        DWORD blendOperation = 0;
+        HRESULT colorWriteEnableResult = E_FAIL;
+        DWORD colorWriteEnable = 0;
+        HRESULT fogEnableResult = E_FAIL;
+        DWORD fogEnable = 0;
+        HRESULT srgbWriteResult = E_FAIL;
+        DWORD srgbWrite = 0;
+        HRESULT vertexShaderResult = E_FAIL;
+        HRESULT vertexShaderFunctionResult = E_FAIL;
+        UInt32 vertexShaderByteCount = 0;
+        UInt32 vertexShaderHash = 0;
+        HRESULT vertexConstantsResult = E_FAIL;
+        UInt32 vertexConstantRegisterCount = 0;
+        std::vector<float> vertexConstants;
+        HRESULT vertexDeclarationResult = E_FAIL;
+        HRESULT vertexDeclarationElementsResult = E_FAIL;
+        std::vector<D3DVERTEXELEMENT9> vertexDeclaration;
+        HRESULT pixelShaderResult = E_FAIL;
+        HRESULT pixelShaderFunctionResult = E_FAIL;
+        UInt32 pixelShaderByteCount = 0;
+        UInt32 pixelShaderHash = 0;
+        HRESULT pixelConstantsResult = E_FAIL;
+        UInt32 pixelConstantRegisterCount = 0;
+        std::vector<float> pixelConstants;
+        ActorDrawRenderTargetCapture renderTarget;
+    };
+
     std::vector<ActorDrawTargetTexture> gActorDrawTargetTextures;
+    std::vector<ActorDrawBoundTextureArtifact> gActorDrawBoundTextureArtifacts;
     std::vector<ActorDrawContractCapture> gActorDrawCaptures;
     std::vector<ActorSurfaceContractCapture> gActorSurfaceCaptures;
     SRWLOCK gActorDrawCaptureLock = SRWLOCK_INIT;
+    std::set<IDirect3DBaseTexture9*> gTextureSamplerInspectedResources;
+    std::set<IDirect3DBaseTexture9*> gTextureSamplerMatchedResources;
+    std::map<IDirect3DBaseTexture9*, std::pair<UInt32, UInt32>>
+        gTextureSamplerMatchedResourceHashes;
+    std::vector<TextureSamplerContractCapture> gTextureSamplerCaptures;
+    std::vector<TextureSamplerCandidateCapture> gTextureSamplerCandidates;
+    SRWLOCK gTextureSamplerCaptureLock = SRWLOCK_INIT;
+    std::vector<ShaderDrawContractCapture> gShaderDrawCaptures;
+    SRWLOCK gShaderDrawCaptureLock = SRWLOCK_INIT;
+    std::vector<ImageSpacePipelineTrace> gImageSpacePipelineTraces;
+    SRWLOCK gImageSpacePipelineTraceLock = SRWLOCK_INIT;
     volatile LONG gActorDrawTargetTexturesReady = 0;
     volatile LONG gActorDrawOrdinal = 0;
+    volatile LONG gTextureSamplerOrdinal = 0;
+    volatile LONG gShaderDrawOrdinal = 0;
+    volatile LONG gImageSpacePipelineTraceOrdinal = 0;
+    UInt32 gActorDrawBoundTextureArtifactOrdinal = 0;
+    UInt32 gTextureSamplerCandidateCount = 0;
+    UInt32 gTextureSamplerHashedCandidateCount = 0;
 
     constexpr const char* sSchema = "nikami-retail-oracle/v4";
     constexpr const char* sSchemaJson = "\"nikami-retail-oracle/v4\"";
@@ -482,12 +895,14 @@ namespace
     constexpr UInt64 sD3DFloatRegisterComponents = 4;
     constexpr UInt32 sD3DMaximumTextureStages = 16;
     constexpr UInt32 sD3DMaximumVertexShaderFloatRegisters = 256;
+    constexpr UInt32 sD3DMaximumPixelShaderFloatRegisters = 224;
     constexpr UInt32 sSidecarAppearanceMaximumDepth = 64;
     constexpr UInt32 sSidecarAppearanceMaximumChildrenPerNode = 2048;
     constexpr UInt32 sSidecarAppearanceMaximumNodes = 8192;
     constexpr UInt32 sSidecarAppearanceMaximumCandidates = 128;
     constexpr UInt32 sSidecarAppearanceMaximumParts = 48;
-    constexpr std::size_t sSidecarAppearanceMaximumJsonBytes = 23000;
+    constexpr std::size_t sSidecarPayloadReservedTailBytes = 4096;
+    constexpr std::size_t sSidecarAppearanceEnvelopeBytes = 512;
     constexpr UInt64 sSidecarTextureMaximumCanonicalBytes = 64ull * 1024ull * 1024ull;
     constexpr float sPortraitMinimumSemanticForwardLength = 0.25f;
     // FalloutNV 1.4.0.525's NiCamera layout differs from the historical
@@ -517,6 +932,19 @@ namespace
     bool sidecarReadSceneCameraObservation(SidecarCameraObservation& observation);
     bool sidecarBuildPerspectiveProjection(const SidecarCameraObservation& observation,
         std::array<float, 16>& projection, float& fovYRadians);
+    bool sidecarTextureRowLayout(
+        D3DFORMAT format, UInt32 width, UInt32 height, UInt32& rowBytes, UInt32& rowCount);
+    void captureTextureSamplerContract(IDirect3DDevice9* device,
+        const char* drawMethod, D3DPRIMITIVETYPE primitiveType,
+        UInt32 primitiveCount, SInt32 baseVertexIndex,
+        UInt32 minimumVertexIndex, UInt32 vertexCount, UInt32 startIndex);
+    void captureShaderDrawContract(IDirect3DDevice9* device,
+        const char* drawMethod, D3DPRIMITIVETYPE primitiveType,
+        UInt32 primitiveCount, SInt32 baseVertexIndex,
+        UInt32 minimumVertexIndex, UInt32 vertexCount, UInt32 startIndex);
+    std::string jsonString(const char* value);
+    void writeJsonStringArray(
+        std::ostream& out, const std::vector<std::string>& values);
 
     static_assert(sizeof(NiTransform) == 0x34);
 
@@ -668,24 +1096,33 @@ namespace
         return capture;
     }
 
-    bool actorSurfaceFrameCaptured(UInt32 sourceFrame)
+    bool actorSurfaceFrameNeedsTarget(
+        UInt32 sourceFrame, IDirect3DBaseTexture9* resource)
     {
-        bool captured = false;
+        bool available = false;
         AcquireSRWLockShared(&gActorDrawCaptureLock);
-        captured = std::any_of(gActorSurfaceCaptures.begin(), gActorSurfaceCaptures.end(),
+        const std::size_t count = static_cast<std::size_t>(std::count_if(
+            gActorSurfaceCaptures.begin(), gActorSurfaceCaptures.end(),
             [sourceFrame](const ActorSurfaceContractCapture& existing) {
                 return existing.sourceFrame == sourceFrame;
+            }));
+        const bool alreadyCaptured = std::any_of(
+            gActorSurfaceCaptures.begin(), gActorSurfaceCaptures.end(),
+            [sourceFrame, resource](const ActorSurfaceContractCapture& existing) {
+                return existing.sourceFrame == sourceFrame
+                    && existing.matchedTextureResource == resource;
             });
+        available = !alreadyCaptured
+            && count < gActorSurfaceMaximumRecordsPerSourceFrame;
         ReleaseSRWLockShared(&gActorDrawCaptureLock);
-        return captured;
+        return available;
     }
 
     void captureActorSurfaceContract(IDirect3DDevice9* device)
     {
         UInt32 sourceFrame = 0;
         if (device == nullptr
-            || !actorSurfaceSourceFrameForRenderFrame(gFrame, sourceFrame)
-            || actorSurfaceFrameCaptured(sourceFrame))
+            || !actorSurfaceSourceFrameForRenderFrame(gFrame, sourceFrame))
             return;
 
         UInt32 boundTextureStage = 0;
@@ -693,14 +1130,26 @@ namespace
         if (!actorDrawFindBoundTargetTexture(
                 device, gActorSurfaceTextureStageCount, boundTextureStage, matchedTexture))
             return;
+        if (!actorSurfaceFrameNeedsTarget(sourceFrame, matchedTexture.resource))
+            return;
 
         ActorSurfaceContractCapture capture;
         capture.sourceFrame = sourceFrame;
         capture.renderFrame = gFrame;
+        capture.matchedTextureResource = matchedTexture.resource;
         capture.matchedTextureStage = boundTextureStage;
         capture.matchedTextureHash = matchedTexture.contentHash;
         capture.matchedTextureAppearanceStage = matchedTexture.appearanceStage;
         capture.matchedTexturePath = matchedTexture.path;
+        capture.matchedTextureRoles = matchedTexture.roles;
+        capture.matchedTextureGeometryNames = matchedTexture.geometryNames;
+        capture.matchedTextureVisualNodePaths = matchedTexture.visualNodePaths;
+        capture.matchedTextureSemantics = matchedTexture.semantics;
+        capture.matchedTextureSemanticFocusSurface
+            = matchedTexture.semanticFocusSurface;
+        capture.matchedTextureSemanticFocusExclusive
+            = matchedTexture.semanticFocusSurface
+                && !matchedTexture.nonSemanticFocusSurface;
         capture.renderTarget = actorDrawCaptureRenderTarget(device);
         if (!capture.renderTarget.matchesBackBufferDimensions)
             return;
@@ -731,8 +1180,10 @@ namespace
             }
             shader->Release();
         }
-        if (!capture.hasBonesParameter
-            || !capture.hasSkinModelViewProjectionParameter)
+        const bool skinnedActorShader = capture.hasBonesParameter
+            && capture.hasSkinModelViewProjectionParameter;
+        if (!skinnedActorShader
+            && !capture.matchedTextureSemanticFocusExclusive)
             return;
 
         capture.worldTransformResult
@@ -743,12 +1194,19 @@ namespace
             = device->GetTransform(D3DTS_PROJECTION, &capture.projectionTransform);
 
         AcquireSRWLockExclusive(&gActorDrawCaptureLock);
-        const bool alreadyCaptured = std::any_of(
+        const std::size_t currentCount = static_cast<std::size_t>(std::count_if(
             gActorSurfaceCaptures.begin(), gActorSurfaceCaptures.end(),
             [sourceFrame](const ActorSurfaceContractCapture& existing) {
                 return existing.sourceFrame == sourceFrame;
+            }));
+        const bool targetAlreadyCaptured = std::any_of(
+            gActorSurfaceCaptures.begin(), gActorSurfaceCaptures.end(),
+            [&capture](const ActorSurfaceContractCapture& existing) {
+                return existing.sourceFrame == capture.sourceFrame
+                    && existing.matchedTextureResource == capture.matchedTextureResource;
             });
-        if (!alreadyCaptured)
+        if (!targetAlreadyCaptured
+            && currentCount < gActorSurfaceMaximumRecordsPerSourceFrame)
             gActorSurfaceCaptures.push_back(std::move(capture));
         ReleaseSRWLockExclusive(&gActorDrawCaptureLock);
     }
@@ -916,6 +1374,36 @@ namespace
         capture.matchedTextureHash = matchedTexture.contentHash;
         capture.matchedTextureAppearanceStage = matchedTexture.appearanceStage;
         capture.matchedTexturePath = matchedTexture.path;
+        for (UInt32 stage = 0; stage < gActorDrawTextureStageCount; ++stage)
+        {
+            IDirect3DBaseTexture9* bound = nullptr;
+            ActorDrawBoundTextureCapture boundCapture;
+            boundCapture.stage = stage;
+            boundCapture.getResult = device->GetTexture(stage, &bound);
+            if (FAILED(boundCapture.getResult) || bound == nullptr)
+                continue;
+            boundCapture.srgbTextureResult = device->GetSamplerState(
+                stage, D3DSAMP_SRGBTEXTURE, &boundCapture.srgbTexture);
+            const auto registered = std::find_if(gActorDrawTargetTextures.begin(),
+                gActorDrawTargetTextures.end(), [bound](const ActorDrawTargetTexture& target) {
+                    return target.resource == bound;
+                });
+            if (registered != gActorDrawTargetTextures.end())
+            {
+                boundCapture.registeredActorTexture = true;
+                boundCapture.appearanceStage = registered->appearanceStage;
+                boundCapture.path = registered->path;
+                boundCapture.width = registered->width;
+                boundCapture.height = registered->height;
+                boundCapture.levelCount = registered->levelCount;
+                boundCapture.format = registered->format;
+                boundCapture.contentHash = registered->contentHash;
+            }
+            else
+                actorDrawObserveBoundTexture(sourceFrame, bound, boundCapture);
+            capture.boundTextures.push_back(std::move(boundCapture));
+            bound->Release();
+        }
 
         IDirect3DVertexShader9* shader = nullptr;
         capture.vertexShaderResult = device->GetVertexShader(&shader);
@@ -956,6 +1444,43 @@ namespace
         if (FAILED(capture.vertexConstantsResult))
             capture.vertexConstants.clear();
 
+        IDirect3DPixelShader9* pixelShader = nullptr;
+        capture.pixelShaderResult = device->GetPixelShader(&pixelShader);
+        if (SUCCEEDED(capture.pixelShaderResult) && pixelShader != nullptr)
+        {
+            UINT byteCount = 0;
+            capture.pixelShaderFunctionResult
+                = pixelShader->GetFunction(nullptr, &byteCount);
+            if (SUCCEEDED(capture.pixelShaderFunctionResult) && byteCount > 0
+                && byteCount <= gActorDrawMaximumShaderBytes)
+            {
+                capture.pixelShaderBytes.resize(byteCount);
+                UINT actualByteCount = byteCount;
+                capture.pixelShaderFunctionResult = pixelShader->GetFunction(
+                    capture.pixelShaderBytes.data(), &actualByteCount);
+                if (SUCCEEDED(capture.pixelShaderFunctionResult))
+                {
+                    capture.pixelShaderBytes.resize(actualByteCount);
+                    capture.pixelShaderByteCount = actualByteCount;
+                    capture.pixelShaderHash = fnv1a32(capture.pixelShaderBytes.data(),
+                        capture.pixelShaderBytes.size());
+                }
+                else
+                    capture.pixelShaderBytes.clear();
+            }
+            pixelShader->Release();
+        }
+        capture.pixelConstantRegisterCount = (std::min)(
+            static_cast<UInt32>(gActorDrawPixelShaderRegisterCount),
+            sD3DMaximumPixelShaderFloatRegisters);
+        capture.pixelConstants.resize(
+            static_cast<std::size_t>(capture.pixelConstantRegisterCount)
+                * sD3DFloatRegisterComponents);
+        capture.pixelConstantsResult = device->GetPixelShaderConstantF(
+            0, capture.pixelConstants.data(), capture.pixelConstantRegisterCount);
+        if (FAILED(capture.pixelConstantsResult))
+            capture.pixelConstants.clear();
+
         IDirect3DVertexDeclaration9* declaration = nullptr;
         capture.vertexDeclarationResult = device->GetVertexDeclaration(&declaration);
         if (SUCCEEDED(capture.vertexDeclarationResult) && declaration != nullptr)
@@ -982,7 +1507,11 @@ namespace
             = device->GetTransform(D3DTS_VIEW, &capture.viewTransform);
         capture.projectionTransformResult
             = device->GetTransform(D3DTS_PROJECTION, &capture.projectionTransform);
+        capture.srgbWriteResult = device->GetRenderState(
+            D3DRS_SRGBWRITEENABLE, &capture.srgbWrite);
         capture.renderTarget = actorDrawCaptureRenderTarget(device);
+        if (!capture.renderTarget.matchesBackBufferDimensions)
+            return;
         actorDrawCaptureVertexBuffer(device, capture);
         actorDrawCaptureIndexBuffer(device, capture);
 
@@ -997,9 +1526,343 @@ namespace
         ReleaseSRWLockExclusive(&gActorDrawCaptureLock);
     }
 
+    void captureImageSpacePipelineTrace(IDirect3DDevice9* device,
+        const char* drawMethod, D3DPRIMITIVETYPE primitiveType,
+        UInt32 primitiveCount, UInt32 vertexCount,
+        const void* upVertexData, UInt32 vertexStride)
+    {
+        if (!gCaptureImageSpacePipelineTrace || device == nullptr
+            || gImageSpaceSourceFrame <= gImageSpaceRenderFrameLead
+            || gFrame != gImageSpaceSourceFrame - gImageSpaceRenderFrameLead)
+            return;
+
+        AcquireSRWLockShared(&gImageSpacePipelineTraceLock);
+        const bool hasCapacity
+            = gImageSpacePipelineTraces.size() < gImageSpaceTraceMaximumRecords;
+        ReleaseSRWLockShared(&gImageSpacePipelineTraceLock);
+        if (!hasCapacity)
+            return;
+
+        IDirect3DPixelShader9* pixelShader = nullptr;
+        if (FAILED(device->GetPixelShader(&pixelShader)) || pixelShader == nullptr)
+            return;
+        UINT pixelShaderByteCount = 0;
+        HRESULT shaderResult = pixelShader->GetFunction(nullptr, &pixelShaderByteCount);
+        if (FAILED(shaderResult) || pixelShaderByteCount == 0
+            || pixelShaderByteCount > gImageSpaceTraceMaximumShaderBytes)
+        {
+            pixelShader->Release();
+            return;
+        }
+        std::vector<UInt8> pixelShaderBytes(pixelShaderByteCount);
+        UINT actualPixelShaderBytes = pixelShaderByteCount;
+        shaderResult = pixelShader->GetFunction(
+            pixelShaderBytes.data(), &actualPixelShaderBytes);
+        pixelShader->Release();
+        if (FAILED(shaderResult) || actualPixelShaderBytes == 0
+            || actualPixelShaderBytes > pixelShaderBytes.size())
+            return;
+        pixelShaderBytes.resize(actualPixelShaderBytes);
+        const UInt32 pixelShaderHash = fnv1a32(
+            pixelShaderBytes.data(), pixelShaderBytes.size());
+        if (std::find(gImageSpaceTracePixelShaderHashes.begin(),
+                gImageSpaceTracePixelShaderHashes.end(), pixelShaderHash)
+            == gImageSpaceTracePixelShaderHashes.end())
+            return;
+
+        ImageSpacePipelineTrace capture;
+        capture.ordinal = static_cast<UInt32>(
+            InterlockedIncrement(&gImageSpacePipelineTraceOrdinal));
+        capture.sourceFrame = gImageSpaceSourceFrame;
+        capture.renderFrame = gFrame;
+        capture.drawMethod = drawMethod != nullptr ? drawMethod : "unknown";
+        capture.primitiveType = primitiveType;
+        capture.primitiveCount = primitiveCount;
+        capture.vertexCount = vertexCount;
+        capture.vertexStride = vertexStride;
+        capture.pixelShaderByteCount = actualPixelShaderBytes;
+        capture.pixelShaderHash = pixelShaderHash;
+        capture.pixelConstantRegisterCount = (std::min)(
+            static_cast<UInt32>(gImageSpaceTracePixelShaderRegisterCount),
+            sD3DMaximumPixelShaderFloatRegisters);
+        capture.pixelConstants.resize(
+            static_cast<std::size_t>(capture.pixelConstantRegisterCount)
+                * sD3DFloatRegisterComponents);
+        capture.pixelConstantsResult = device->GetPixelShaderConstantF(
+            0, capture.pixelConstants.data(), capture.pixelConstantRegisterCount);
+        if (FAILED(capture.pixelConstantsResult))
+            capture.pixelConstants.clear();
+
+        IDirect3DVertexShader9* vertexShader = nullptr;
+        capture.vertexShaderResult = device->GetVertexShader(&vertexShader);
+        if (SUCCEEDED(capture.vertexShaderResult) && vertexShader != nullptr)
+        {
+            UINT byteCount = 0;
+            capture.vertexShaderFunctionResult
+                = vertexShader->GetFunction(nullptr, &byteCount);
+            if (SUCCEEDED(capture.vertexShaderFunctionResult) && byteCount > 0
+                && byteCount <= gImageSpaceTraceMaximumShaderBytes)
+            {
+                std::vector<UInt8> bytes(byteCount);
+                UINT actualByteCount = byteCount;
+                capture.vertexShaderFunctionResult = vertexShader->GetFunction(
+                    bytes.data(), &actualByteCount);
+                if (SUCCEEDED(capture.vertexShaderFunctionResult)
+                    && actualByteCount > 0 && actualByteCount <= bytes.size())
+                {
+                    capture.vertexShaderByteCount = actualByteCount;
+                    capture.vertexShaderHash = fnv1a32(bytes.data(), actualByteCount);
+                }
+            }
+            vertexShader->Release();
+        }
+        capture.vertexConstantRegisterCount = (std::min)(
+            static_cast<UInt32>(gImageSpaceTraceVertexShaderRegisterCount),
+            sD3DMaximumVertexShaderFloatRegisters);
+        capture.vertexConstants.resize(
+            static_cast<std::size_t>(capture.vertexConstantRegisterCount)
+                * sD3DFloatRegisterComponents);
+        capture.vertexConstantsResult = device->GetVertexShaderConstantF(
+            0, capture.vertexConstants.data(), capture.vertexConstantRegisterCount);
+        if (FAILED(capture.vertexConstantsResult))
+            capture.vertexConstants.clear();
+
+        IDirect3DVertexDeclaration9* declaration = nullptr;
+        capture.vertexDeclarationResult = device->GetVertexDeclaration(&declaration);
+        if (SUCCEEDED(capture.vertexDeclarationResult) && declaration != nullptr)
+        {
+            UINT elementCount = 0;
+            capture.vertexDeclarationElementsResult
+                = declaration->GetDeclaration(nullptr, &elementCount);
+            if (SUCCEEDED(capture.vertexDeclarationElementsResult) && elementCount > 0)
+            {
+                capture.vertexDeclaration.resize(elementCount);
+                capture.vertexDeclarationElementsResult = declaration->GetDeclaration(
+                    capture.vertexDeclaration.data(), &elementCount);
+                if (SUCCEEDED(capture.vertexDeclarationElementsResult))
+                    capture.vertexDeclaration.resize(elementCount);
+                else
+                    capture.vertexDeclaration.clear();
+            }
+            declaration->Release();
+        }
+        capture.fvfResult = device->GetFVF(&capture.fvf);
+        capture.srgbWriteResult = device->GetRenderState(
+            D3DRS_SRGBWRITEENABLE, &capture.srgbWrite);
+
+        IDirect3DSurface9* renderTarget = nullptr;
+        capture.renderTargetResult = device->GetRenderTarget(0, &renderTarget);
+        if (SUCCEEDED(capture.renderTargetResult) && renderTarget != nullptr)
+        {
+            capture.renderTargetDescriptionResult
+                = renderTarget->GetDesc(&capture.renderTargetDescription);
+            renderTarget->Release();
+        }
+        capture.viewportResult = device->GetViewport(&capture.viewport);
+        capture.scissorResult = device->GetScissorRect(&capture.scissor);
+
+        for (UInt32 stage = 0; stage < gImageSpaceTraceTextureStageCount; ++stage)
+        {
+            ImageSpaceTraceTexture textureCapture;
+            textureCapture.stage = stage;
+            IDirect3DBaseTexture9* resource = nullptr;
+            textureCapture.getResult = device->GetTexture(stage, &resource);
+            if (SUCCEEDED(textureCapture.getResult) && resource != nullptr)
+            {
+                textureCapture.resourceType = resource->GetType();
+                textureCapture.levelCount = resource->GetLevelCount();
+                IDirect3DTexture9* texture = nullptr;
+                if (SUCCEEDED(resource->QueryInterface(
+                        __uuidof(IDirect3DTexture9), reinterpret_cast<void**>(&texture)))
+                    && texture != nullptr)
+                {
+                    textureCapture.descriptionResult
+                        = texture->GetLevelDesc(0, &textureCapture.description);
+                    texture->Release();
+                }
+                resource->Release();
+            }
+            textureCapture.addressUResult = device->GetSamplerState(
+                stage, D3DSAMP_ADDRESSU, &textureCapture.addressU);
+            textureCapture.addressVResult = device->GetSamplerState(
+                stage, D3DSAMP_ADDRESSV, &textureCapture.addressV);
+            textureCapture.magFilterResult = device->GetSamplerState(
+                stage, D3DSAMP_MAGFILTER, &textureCapture.magFilter);
+            textureCapture.minFilterResult = device->GetSamplerState(
+                stage, D3DSAMP_MINFILTER, &textureCapture.minFilter);
+            textureCapture.mipFilterResult = device->GetSamplerState(
+                stage, D3DSAMP_MIPFILTER, &textureCapture.mipFilter);
+            textureCapture.srgbTextureResult = device->GetSamplerState(
+                stage, D3DSAMP_SRGBTEXTURE, &textureCapture.srgbTexture);
+            capture.textures.push_back(textureCapture);
+        }
+
+        const UInt64 upVertexByteCount
+            = static_cast<UInt64>(vertexCount) * vertexStride;
+        if (upVertexData != nullptr && vertexStride > 0 && upVertexByteCount > 0
+            && upVertexByteCount <= gImageSpaceTraceMaximumVertexBytes
+            && upVertexByteCount <= (std::numeric_limits<std::size_t>::max)())
+        {
+            const auto* begin = static_cast<const UInt8*>(upVertexData);
+            capture.upVertexBytes.assign(
+                begin, begin + static_cast<std::size_t>(upVertexByteCount));
+        }
+
+        AcquireSRWLockExclusive(&gImageSpacePipelineTraceLock);
+        if (gImageSpacePipelineTraces.size() < gImageSpaceTraceMaximumRecords)
+            gImageSpacePipelineTraces.push_back(std::move(capture));
+        ReleaseSRWLockExclusive(&gImageSpacePipelineTraceLock);
+    }
+
+    UInt32 imageSpacePrimitiveVertexCount(
+        D3DPRIMITIVETYPE primitiveType, UInt32 primitiveCount)
+    {
+        switch (primitiveType)
+        {
+        case D3DPT_POINTLIST:
+            return primitiveCount;
+        case D3DPT_LINELIST:
+            return primitiveCount * 2;
+        case D3DPT_LINESTRIP:
+            return primitiveCount + 1;
+        case D3DPT_TRIANGLELIST:
+            return primitiveCount * 3;
+        case D3DPT_TRIANGLESTRIP:
+        case D3DPT_TRIANGLEFAN:
+            return primitiveCount + 2;
+        default:
+            return 0;
+        }
+    }
+
+    void captureImageSpaceShaderInput(IDirect3DDevice9* device, UInt32 stage,
+        ImageSpaceShaderInputCapture& capture)
+    {
+        IDirect3DBaseTexture9* resource = nullptr;
+        IDirect3DTexture9* texture = nullptr;
+        IDirect3DSurface9* sourceSurface = nullptr;
+        IDirect3DSurface9* systemSurface = nullptr;
+        IDirect3DSurface9* resolveSurface = nullptr;
+        D3DLOCKED_RECT locked = {};
+        bool systemSurfaceLocked = false;
+
+        capture.stage = stage;
+        if (device == nullptr)
+            return;
+        capture.srgbTextureResult = device->GetSamplerState(
+            stage, D3DSAMP_SRGBTEXTURE, &capture.srgbTexture);
+        capture.getTextureResult = device->GetTexture(stage, &resource);
+        if (FAILED(capture.getTextureResult) || resource == nullptr)
+            goto cleanup;
+        capture.resourceType = resource->GetType();
+        if (capture.resourceType != D3DRTYPE_TEXTURE)
+            goto cleanup;
+        texture = static_cast<IDirect3DTexture9*>(resource);
+        capture.levelCount = texture->GetLevelCount();
+        if (capture.levelCount == 0)
+            goto cleanup;
+        capture.levelDescriptionResult = texture->GetLevelDesc(0, &capture.description);
+        if (FAILED(capture.levelDescriptionResult))
+            goto cleanup;
+        capture.layoutResolved = sidecarTextureRowLayout(capture.description.Format,
+            capture.description.Width, capture.description.Height,
+            capture.rowBytes, capture.rowCount);
+        if (!capture.layoutResolved)
+            goto cleanup;
+        capture.canonicalByteCount = static_cast<UInt64>(capture.rowBytes)
+            * static_cast<UInt64>(capture.rowCount);
+        capture.withinConfiguredBound = capture.canonicalByteCount > 0
+            && capture.canonicalByteCount <= gImageSpaceMaximumBytesPerInput
+            && capture.canonicalByteCount
+                <= static_cast<UInt64>((std::numeric_limits<std::size_t>::max)());
+        if (!capture.withinConfiguredBound)
+            goto cleanup;
+        capture.getSurfaceResult = texture->GetSurfaceLevel(0, &sourceSurface);
+        if (FAILED(capture.getSurfaceResult) || sourceSurface == nullptr)
+            goto cleanup;
+        capture.createSystemSurfaceResult = device->CreateOffscreenPlainSurface(
+            capture.description.Width, capture.description.Height, capture.description.Format,
+            D3DPOOL_SYSTEMMEM, &systemSurface, nullptr);
+        if (FAILED(capture.createSystemSurfaceResult) || systemSurface == nullptr)
+            goto cleanup;
+
+        capture.directTransferResult = device->GetRenderTargetData(sourceSurface, systemSurface);
+        capture.copyResult = capture.directTransferResult;
+        if (FAILED(capture.directTransferResult))
+        {
+            capture.createResolveSurfaceResult = device->CreateRenderTarget(
+                capture.description.Width, capture.description.Height, capture.description.Format,
+                D3DMULTISAMPLE_NONE, 0, FALSE, &resolveSurface, nullptr);
+            if (SUCCEEDED(capture.createResolveSurfaceResult) && resolveSurface != nullptr)
+            {
+                capture.stretchResult = device->StretchRect(
+                    sourceSurface, nullptr, resolveSurface, nullptr, D3DTEXF_NONE);
+                if (SUCCEEDED(capture.stretchResult))
+                {
+                    capture.resolvedTransferResult
+                        = device->GetRenderTargetData(resolveSurface, systemSurface);
+                    capture.copyResult = capture.resolvedTransferResult;
+                }
+            }
+        }
+        if (FAILED(capture.copyResult))
+            goto cleanup;
+        capture.lockResult = systemSurface->LockRect(&locked, nullptr, D3DLOCK_READONLY);
+        if (FAILED(capture.lockResult) || locked.pBits == nullptr || locked.Pitch <= 0
+            || static_cast<UInt32>(locked.Pitch) < capture.rowBytes)
+            goto cleanup;
+        systemSurfaceLocked = true;
+        try
+        {
+            capture.canonicalBytes.resize(
+                static_cast<std::size_t>(capture.canonicalByteCount));
+            capture.allocationResult = S_OK;
+        }
+        catch (...)
+        {
+            capture.allocationResult = E_OUTOFMEMORY;
+            goto cleanup;
+        }
+        for (UInt32 row = 0; row < capture.rowCount; ++row)
+        {
+            const UInt8* source = static_cast<const UInt8*>(locked.pBits)
+                + static_cast<std::size_t>(row) * static_cast<UInt32>(locked.Pitch);
+            UInt8* destination = capture.canonicalBytes.data()
+                + static_cast<std::size_t>(row) * capture.rowBytes;
+            std::memcpy(destination, source, capture.rowBytes);
+        }
+        capture.contentHash = fnv1a32(
+            capture.canonicalBytes.data(), capture.canonicalBytes.size());
+
+    cleanup:
+        if (systemSurfaceLocked)
+            capture.unlockResult = systemSurface->UnlockRect();
+        capture.captured = SUCCEEDED(capture.getTextureResult)
+            && capture.resourceType == D3DRTYPE_TEXTURE
+            && SUCCEEDED(capture.levelDescriptionResult)
+            && capture.layoutResolved && capture.withinConfiguredBound
+            && SUCCEEDED(capture.getSurfaceResult)
+            && SUCCEEDED(capture.createSystemSurfaceResult)
+            && SUCCEEDED(capture.copyResult) && SUCCEEDED(capture.lockResult)
+            && SUCCEEDED(capture.allocationResult) && SUCCEEDED(capture.unlockResult)
+            && capture.canonicalBytes.size() == capture.canonicalByteCount;
+        if (resolveSurface != nullptr)
+            resolveSurface->Release();
+        if (systemSurface != nullptr)
+            systemSurface->Release();
+        if (sourceSurface != nullptr)
+            sourceSurface->Release();
+        if (resource != nullptr)
+            resource->Release();
+    }
+
     void captureImageSpaceShaderConstants(IDirect3DDevice9* device)
     {
-        if (gWorldReady && gFrame > 0 && gImageSpaceShaderCapture.ready == 0 && device != nullptr)
+        const bool captureFrameEligible = !gCaptureImageSpaceShaderInputs
+            || (gImageSpaceSourceFrame >= gImageSpaceRenderFrameLead
+                && gFrame == gImageSpaceSourceFrame - gImageSpaceRenderFrameLead);
+        if (gWorldReady && gFrame > 0 && captureFrameEligible
+            && gImageSpaceShaderCapture.ready == 0 && device != nullptr)
         {
             IDirect3DPixelShader9* shader = nullptr;
             if (SUCCEEDED(device->GetPixelShader(&shader)) && shader != nullptr)
@@ -1011,21 +1874,40 @@ namespace
                     UINT actualByteCount = byteCount;
                     if (SUCCEEDED(shader->GetFunction(bytes, &actualByteCount)))
                     {
+                        const UInt32 shaderHash = fnv1a32(bytes, actualByteCount);
                         const bool cinematic = containsAscii(bytes, actualByteCount, "Cinematic")
                             && containsAscii(bytes, actualByteCount, "Tint")
                             && containsAscii(bytes, actualByteCount, "Fade");
                         const bool hdrBlend = containsAscii(bytes, actualByteCount, "HDRParam")
                             && containsAscii(bytes, actualByteCount, "DestBlend");
-                        if (cinematic
+                        const bool configuredShaderMatches = !gCaptureImageSpaceShaderInputs
+                            || (hdrBlend
+                                && actualByteCount == gImageSpaceExpectedShaderByteCount
+                                && shaderHash == gImageSpaceExpectedShaderHash);
+                        if (cinematic && configuredShaderMatches
                             && InterlockedCompareExchange(&gImageSpaceShaderCapture.ready, -1, 0) == 0)
                         {
                             gImageSpaceShaderCapture.frame = gFrame;
                             gImageSpaceShaderCapture.byteCount = actualByteCount;
-                            gImageSpaceShaderCapture.hash = fnv1a32(bytes, actualByteCount);
+                            gImageSpaceShaderCapture.hash = shaderHash;
                             gImageSpaceShaderCapture.hdrBlend = hdrBlend;
                             gImageSpaceShaderCapture.alphaMask = containsAscii(bytes, actualByteCount, "UseAlphaMask");
                             gImageSpaceShaderCapture.constantsResult = device->GetPixelShaderConstantF(
                                 0, &gImageSpaceShaderCapture.constants[0][0], 24);
+                            gImageSpaceShaderCapture.srgbWriteResult = device->GetRenderState(
+                                D3DRS_SRGBWRITEENABLE, &gImageSpaceShaderCapture.srgbWrite);
+                            if (gCaptureImageSpaceShaderInputs)
+                            {
+                                gImageSpaceShaderCapture.inputs.clear();
+                                gImageSpaceShaderCapture.inputs.reserve(
+                                    gImageSpaceInputTextureStages.size());
+                                for (const UInt32 stage : gImageSpaceInputTextureStages)
+                                {
+                                    ImageSpaceShaderInputCapture input;
+                                    captureImageSpaceShaderInput(device, stage, input);
+                                    gImageSpaceShaderCapture.inputs.push_back(std::move(input));
+                                }
+                            }
                             MemoryBarrier();
                             InterlockedExchange(&gImageSpaceShaderCapture.ready, 1);
                         }
@@ -1040,6 +1922,15 @@ namespace
         IDirect3DDevice9* device, D3DPRIMITIVETYPE primitiveType, UINT startVertex, UINT primitiveCount)
     {
         captureImageSpaceShaderConstants(device);
+        captureImageSpacePipelineTrace(device, "DrawPrimitive", primitiveType,
+            primitiveCount, imageSpacePrimitiveVertexCount(primitiveType, primitiveCount),
+            nullptr, 0);
+        captureTextureSamplerContract(
+            device, "DrawPrimitive", primitiveType, primitiveCount,
+            0, startVertex, 0, 0);
+        captureShaderDrawContract(
+            device, "DrawPrimitive", primitiveType, primitiveCount,
+            0, startVertex, 0, 0);
         return gOriginalDrawPrimitive(device, primitiveType, startVertex, primitiveCount);
     }
 
@@ -1048,9 +1939,17 @@ namespace
         UINT startIndex, UINT primitiveCount)
     {
         captureImageSpaceShaderConstants(device);
+        captureImageSpacePipelineTrace(device, "DrawIndexedPrimitive", primitiveType,
+            primitiveCount, vertexCount, nullptr, 0);
         captureActorSurfaceContract(device);
         captureActorDrawContract(device, primitiveType, baseVertexIndex, minimumVertexIndex,
             vertexCount, startIndex, primitiveCount);
+        captureTextureSamplerContract(
+            device, "DrawIndexedPrimitive", primitiveType, primitiveCount,
+            baseVertexIndex, minimumVertexIndex, vertexCount, startIndex);
+        captureShaderDrawContract(
+            device, "DrawIndexedPrimitive", primitiveType, primitiveCount,
+            baseVertexIndex, minimumVertexIndex, vertexCount, startIndex);
         return gOriginalDrawIndexedPrimitive(device, primitiveType, baseVertexIndex, minimumVertexIndex,
             vertexCount, startIndex, primitiveCount);
     }
@@ -1059,6 +1958,15 @@ namespace
         D3DPRIMITIVETYPE primitiveType, UINT primitiveCount, const void* vertexData, UINT vertexStride)
     {
         captureImageSpaceShaderConstants(device);
+        captureImageSpacePipelineTrace(device, "DrawPrimitiveUP", primitiveType,
+            primitiveCount, imageSpacePrimitiveVertexCount(primitiveType, primitiveCount),
+            vertexData, vertexStride);
+        captureTextureSamplerContract(
+            device, "DrawPrimitiveUP", primitiveType, primitiveCount,
+            0, 0, 0, 0);
+        captureShaderDrawContract(
+            device, "DrawPrimitiveUP", primitiveType, primitiveCount,
+            0, 0, 0, 0);
         return gOriginalDrawPrimitiveUp(device, primitiveType, primitiveCount, vertexData, vertexStride);
     }
 
@@ -1067,6 +1975,14 @@ namespace
         const void* indexData, D3DFORMAT indexFormat, const void* vertexData, UINT vertexStride)
     {
         captureImageSpaceShaderConstants(device);
+        captureImageSpacePipelineTrace(device, "DrawIndexedPrimitiveUP", primitiveType,
+            primitiveCount, vertexCount, vertexData, vertexStride);
+        captureTextureSamplerContract(
+            device, "DrawIndexedPrimitiveUP", primitiveType, primitiveCount,
+            0, minimumVertexIndex, vertexCount, 0);
+        captureShaderDrawContract(
+            device, "DrawIndexedPrimitiveUP", primitiveType, primitiveCount,
+            0, minimumVertexIndex, vertexCount, 0);
         return gOriginalDrawIndexedPrimitiveUp(device, primitiveType, minimumVertexIndex, vertexCount,
             primitiveCount, indexData, indexFormat, vertexData, vertexStride);
     }
@@ -1116,11 +2032,56 @@ namespace
         return gImageSpaceShaderHooked;
     }
 
+    void writeImageSpaceInputArtifact(
+        UInt32 frame, ImageSpaceShaderInputCapture& input)
+    {
+        if (!input.captured || input.canonicalBytes.empty()
+            || gImageSpaceArtifactDirectory.empty())
+            return;
+        std::ostringstream name;
+        name << "image-space-frame-" << std::setfill('0') << std::setw(6) << frame
+             << "-stage-" << std::setw(2) << input.stage << "-fnv1a32-"
+             << std::hex << std::nouppercase << std::setw(8) << input.contentHash << ".bin";
+        const std::filesystem::path path
+            = std::filesystem::path(gImageSpaceArtifactDirectory) / name.str();
+        if (std::filesystem::exists(path))
+            return;
+        std::ofstream stream(path, std::ios::out | std::ios::binary);
+        if (!stream)
+            return;
+        stream.write(reinterpret_cast<const char*>(input.canonicalBytes.data()),
+            static_cast<std::streamsize>(input.canonicalBytes.size()));
+        stream.flush();
+        if (!stream)
+            return;
+        input.artifactWritten = true;
+        input.artifactPath = path.string();
+        input.artifactBytes = input.canonicalBytes.size();
+        input.artifactHash = fnv1a32(
+            input.canonicalBytes.data(), input.canonicalBytes.size());
+    }
+
+    void writeImageSpaceSurfaceDescription(
+        std::ostream& out, const D3DSURFACE_DESC& description)
+    {
+        out << "{\"format\":" << static_cast<UInt32>(description.Format)
+            << ",\"type\":" << static_cast<UInt32>(description.Type)
+            << ",\"usage\":" << description.Usage
+            << ",\"pool\":" << static_cast<UInt32>(description.Pool)
+            << ",\"multiSampleType\":"
+            << static_cast<UInt32>(description.MultiSampleType)
+            << ",\"multiSampleQuality\":" << description.MultiSampleQuality
+            << ",\"width\":" << description.Width
+            << ",\"height\":" << description.Height << '}';
+    }
+
     void writeImageSpaceShaderCapture()
     {
         if (InterlockedCompareExchange(&gImageSpaceShaderCapture.ready, 0, 0) != 1 || !gOutput.is_open())
             return;
         MemoryBarrier();
+        for (auto& input : gImageSpaceShaderCapture.inputs)
+            writeImageSpaceInputArtifact(gImageSpaceShaderCapture.frame, input);
         gOutput << std::setprecision(9)
                 << "{\"schema\":" << sSchemaJson << ",\"event\":\"image-space-shader-constants\""
                 << ",\"frame\":" << gImageSpaceShaderCapture.frame
@@ -1130,6 +2091,17 @@ namespace
                         ? (gImageSpaceShaderCapture.alphaMask ? "hdr-cinematic-alpha-mask" : "hdr-cinematic")
                         : "cinematic") << '"'
                 << ",\"getConstantsResult\":" << static_cast<long>(gImageSpaceShaderCapture.constantsResult)
+                << ",\"inputCaptureEnabled\":"
+                << (gCaptureImageSpaceShaderInputs ? "true" : "false")
+                << ",\"expectedShaderByteCount\":"
+                << gImageSpaceExpectedShaderByteCount
+                << ",\"expectedShaderFnv1a32\":" << gImageSpaceExpectedShaderHash
+                << ",\"sourceFrame\":" << gImageSpaceSourceFrame
+                << ",\"renderFrame\":" << gImageSpaceShaderCapture.frame
+                << ",\"renderFrameLead\":" << gImageSpaceRenderFrameLead
+                << ",\"srgbWrite\":{\"getResult\":"
+                << static_cast<long>(gImageSpaceShaderCapture.srgbWriteResult)
+                << ",\"enabled\":" << gImageSpaceShaderCapture.srgbWrite << '}'
                 << ",\"registers\":[";
         for (unsigned int reg = 0; reg < 24; ++reg)
         {
@@ -1148,8 +2120,59 @@ namespace
             }
             gOutput << ']';
         }
+        gOutput << "],\"inputTextures\":[";
+        for (std::size_t index = 0; index < gImageSpaceShaderCapture.inputs.size(); ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            const ImageSpaceShaderInputCapture& input = gImageSpaceShaderCapture.inputs[index];
+            gOutput << "{\"ordinal\":" << index
+                    << ",\"stage\":" << input.stage
+                    << ",\"getTextureResult\":" << static_cast<long>(input.getTextureResult)
+                    << ",\"resourceType\":" << static_cast<UInt32>(input.resourceType)
+                    << ",\"levelCount\":" << input.levelCount
+                    << ",\"levelDescriptionResult\":"
+                    << static_cast<long>(input.levelDescriptionResult)
+                    << ",\"description\":";
+            writeImageSpaceSurfaceDescription(gOutput, input.description);
+            gOutput << ",\"getSurfaceResult\":" << static_cast<long>(input.getSurfaceResult)
+                    << ",\"createSystemSurfaceResult\":"
+                    << static_cast<long>(input.createSystemSurfaceResult)
+                    << ",\"directTransferResult\":"
+                    << static_cast<long>(input.directTransferResult)
+                    << ",\"createResolveSurfaceResult\":"
+                    << static_cast<long>(input.createResolveSurfaceResult)
+                    << ",\"stretchResult\":" << static_cast<long>(input.stretchResult)
+                    << ",\"resolvedTransferResult\":"
+                    << static_cast<long>(input.resolvedTransferResult)
+                    << ",\"copyResult\":" << static_cast<long>(input.copyResult)
+                    << ",\"lockResult\":" << static_cast<long>(input.lockResult)
+                    << ",\"allocationResult\":"
+                    << static_cast<long>(input.allocationResult)
+                    << ",\"unlockResult\":" << static_cast<long>(input.unlockResult)
+                    << ",\"srgbTexture\":{\"getResult\":"
+                    << static_cast<long>(input.srgbTextureResult)
+                    << ",\"enabled\":" << input.srgbTexture << '}'
+                    << ",\"rowBytes\":" << input.rowBytes
+                    << ",\"rowCount\":" << input.rowCount
+                    << ",\"canonicalBytes\":" << input.canonicalByteCount
+                    << ",\"fnv1a32\":" << input.contentHash
+                    << ",\"layoutResolved\":"
+                    << (input.layoutResolved ? "true" : "false")
+                    << ",\"withinConfiguredBound\":"
+                    << (input.withinConfiguredBound ? "true" : "false")
+                    << ",\"captured\":" << (input.captured ? "true" : "false")
+                    << ",\"artifact\":{\"written\":"
+                    << (input.artifactWritten ? "true" : "false")
+                    << ",\"path\":" << jsonString(
+                           input.artifactWritten ? input.artifactPath.c_str() : nullptr)
+                    << ",\"bytes\":" << input.artifactBytes
+                    << ",\"fnv1a32\":" << input.artifactHash << "}}";
+        }
         gOutput << "]}\n";
         gOutput.flush();
+        for (auto& input : gImageSpaceShaderCapture.inputs)
+            input.canonicalBytes.clear();
         InterlockedExchange(&gImageSpaceShaderCapture.ready, 2);
     }
 
@@ -1893,6 +2916,19 @@ namespace
         return out.str();
     }
 
+    void writeJsonStringArray(
+        std::ostream& out, const std::vector<std::string>& values)
+    {
+        out << '[';
+        for (std::size_t index = 0; index < values.size(); ++index)
+        {
+            if (index != 0)
+                out << ',';
+            out << jsonString(values[index].c_str());
+        }
+        out << ']';
+    }
+
     constexpr std::uintptr_t sRuntimeDataHandlerPointerAddress = 0x011C3F2C;
     constexpr UInt32 sMaximumRuntimePluginCount = 0xff;
 
@@ -1974,6 +3010,45 @@ namespace
         if (length == 0 || length >= requiredLength)
             return {};
         return std::string(value.data(), length);
+    }
+
+    std::vector<PortraitSemanticFocusRule> envPortraitSemanticFocusRules(
+        const char* name)
+    {
+        std::vector<PortraitSemanticFocusRule> result;
+        const std::string encoded = envString(name);
+        std::size_t offset = 0;
+        while (offset < encoded.size())
+        {
+            const std::size_t separator = encoded.find(';', offset);
+            const std::string token = encoded.substr(offset,
+                separator == std::string::npos ? std::string::npos : separator - offset);
+            const std::size_t first = token.find(',');
+            const std::size_t second = first == std::string::npos
+                ? std::string::npos : token.find(',', first + 1);
+            const std::size_t third = second == std::string::npos
+                ? std::string::npos : token.find(',', second + 1);
+            if (first == std::string::npos || second == std::string::npos
+                || third == std::string::npos || token.find(',', third + 1) != std::string::npos)
+                return {};
+            PortraitSemanticFocusRule rule;
+            rule.kind = token.substr(0, first);
+            rule.match = token.substr(first + 1, second - first - 1);
+            rule.value = token.substr(second + 1, third - second - 1);
+            const std::string offsetText = token.substr(third + 1);
+            char* end = nullptr;
+            rule.detailAimOffsetGameUnits = std::strtof(offsetText.c_str(), &end);
+            if (rule.kind.empty() || rule.value.empty()
+                || (rule.match != "exact" && rule.match != "prefix")
+                || end == offsetText.c_str() || *end != '\0'
+                || !std::isfinite(rule.detailAimOffsetGameUnits))
+                return {};
+            result.push_back(std::move(rule));
+            if (separator == std::string::npos)
+                break;
+            offset = separator + 1;
+        }
+        return result;
     }
 
     std::vector<UInt32> envUIntList(const char* name)
@@ -2679,6 +3754,10 @@ namespace
                     << (gHighProcessBoneLodPathHooked ? "true" : "false") << ','
                     << "\"compactActorTelemetry\":"
                     << (gCompactActorTelemetry ? "true" : "false") << ','
+                    << "\"actorAppearanceMaximumEventBytes\":"
+                    << gActorAppearanceMaximumEventBytes << ','
+                    << "\"renderEnvironmentFrame\":"
+                    << gRenderEnvironmentFrame << ','
                     << "\"captureActorSkinPalettes\":"
                     << (gCaptureActorSkinPalettes ? "true" : "false") << ','
                     << "\"actorSkinPaletteMaximumBytesPerShape\":"
@@ -2691,12 +3770,20 @@ namespace
                     << gActorSurfaceTextureStageCount << ','
                     << "\"actorSurfaceRenderFrameLead\":"
                     << gActorSurfaceRenderFrameLead << ','
+                    << "\"actorSurfaceMaximumRecordsPerSourceFrame\":"
+                    << gActorSurfaceMaximumRecordsPerSourceFrame << ','
+                    << "\"portraitSemanticFocusRules\":"
+                    << jsonString(gPortraitSemanticFocusRulesEncoded.c_str()) << ','
+                    << "\"cameraCorridorClearanceGameUnits\":"
+                    << gCameraCorridorClearanceGameUnits << ','
                     << "\"captureActorDrawContract\":"
                     << (gCaptureActorDrawContract ? "true" : "false") << ','
                     << "\"actorDrawMaximumRecordsPerSourceFrame\":"
                     << gActorDrawMaximumRecordsPerSourceFrame << ','
                     << "\"actorDrawVertexShaderRegisterCount\":"
                     << gActorDrawVertexShaderRegisterCount << ','
+                    << "\"actorDrawPixelShaderRegisterCount\":"
+                    << gActorDrawPixelShaderRegisterCount << ','
                     << "\"actorDrawMaximumShaderBytes\":"
                     << gActorDrawMaximumShaderBytes << ','
                     << "\"actorDrawTextureStageCount\":"
@@ -2705,6 +3792,106 @@ namespace
                     << gActorDrawRenderFrameLead << ','
                     << "\"actorDrawMaximumBufferBytesPerRecord\":"
                     << gActorDrawMaximumBufferBytesPerRecord << ','
+                    << "\"actorDrawMaximumTextureBytesPerArtifact\":"
+                    << gActorDrawMaximumTextureBytesPerArtifact << ','
+                    << "\"captureTextureSamplerContract\":"
+                    << (gCaptureTextureSamplerContract ? "true" : "false") << ','
+                    << "\"textureSamplerSourceFrames\":[";
+            for (std::size_t index = 0;
+                 index < gTextureSamplerSourceFrames.size(); ++index)
+            {
+                if (index != 0)
+                    gOutput << ',';
+                gOutput << gTextureSamplerSourceFrames[index];
+            }
+            gOutput << "],"
+                    << "\"textureSamplerRenderFrameLead\":"
+                    << gTextureSamplerRenderFrameLead << ','
+                    << "\"textureSamplerTargetWidth\":"
+                    << gTextureSamplerTargetWidth << ','
+                    << "\"textureSamplerTargetHeight\":"
+                    << gTextureSamplerTargetHeight << ','
+                    << "\"textureSamplerTargetLevelCount\":"
+                    << gTextureSamplerTargetLevelCount << ','
+                    << "\"textureSamplerTargetFormat\":"
+                    << static_cast<UInt32>(gTextureSamplerTargetFormat) << ','
+                    << "\"textureSamplerTargetFnv1a32\":"
+                    << gTextureSamplerTargetHash << ','
+                    << "\"textureSamplerTargetTopLevelFnv1a32\":"
+                    << gTextureSamplerTargetTopLevelHash << ','
+                    << "\"textureSamplerTextureStageCount\":"
+                    << gTextureSamplerTextureStageCount << ','
+                    << "\"textureSamplerMaximumCandidates\":"
+                    << gTextureSamplerMaximumCandidates << ','
+                    << "\"textureSamplerMaximumRecords\":"
+                    << gTextureSamplerMaximumRecords << ','
+                    << "\"textureSamplerMaximumShaderBytes\":"
+                    << gTextureSamplerMaximumShaderBytes << ','
+                    << "\"textureSamplerVertexShaderRegisterCount\":"
+                    << gTextureSamplerVertexShaderRegisterCount << ','
+                    << "\"textureSamplerPixelShaderRegisterCount\":"
+                    << gTextureSamplerPixelShaderRegisterCount << ','
+                    << "\"textureSamplerMaximumVertexBufferBytes\":"
+                    << gTextureSamplerMaximumVertexBufferBytes << ','
+                    << "\"captureShaderDrawContract\":"
+                    << (gCaptureShaderDrawContract ? "true" : "false") << ','
+                    << "\"shaderDrawSourceFrame\":"
+                    << gShaderDrawSourceFrame << ','
+                    << "\"shaderDrawRenderFrameLead\":"
+                    << gShaderDrawRenderFrameLead << ','
+                    << "\"shaderDrawTargetVertexShaderFnv1a32\":"
+                    << gShaderDrawTargetVertexShaderHash << ','
+                    << "\"shaderDrawTargetPixelShaderFnv1a32\":"
+                    << gShaderDrawTargetPixelShaderHash << ','
+                    << "\"shaderDrawMaximumRecords\":"
+                    << gShaderDrawMaximumRecords << ','
+                    << "\"shaderDrawMaximumShaderBytes\":"
+                    << gShaderDrawMaximumShaderBytes << ','
+                    << "\"shaderDrawVertexShaderRegisterCount\":"
+                    << gShaderDrawVertexShaderRegisterCount << ','
+                    << "\"shaderDrawPixelShaderRegisterCount\":"
+                    << gShaderDrawPixelShaderRegisterCount << ','
+                    << "\"captureImageSpaceShaderInputs\":"
+                    << (gCaptureImageSpaceShaderInputs ? "true" : "false") << ','
+                    << "\"imageSpaceExpectedShaderByteCount\":"
+                    << gImageSpaceExpectedShaderByteCount << ','
+                    << "\"imageSpaceExpectedShaderFnv1a32\":"
+                    << gImageSpaceExpectedShaderHash << ','
+                    << "\"imageSpaceMaximumBytesPerInput\":"
+                    << gImageSpaceMaximumBytesPerInput << ','
+                    << "\"imageSpaceSourceFrame\":" << gImageSpaceSourceFrame << ','
+                    << "\"imageSpaceRenderFrameLead\":"
+                    << gImageSpaceRenderFrameLead << ','
+                    << "\"imageSpaceInputTextureStages\":[";
+            for (std::size_t index = 0; index < gImageSpaceInputTextureStages.size(); ++index)
+            {
+                if (index != 0)
+                    gOutput << ',';
+                gOutput << gImageSpaceInputTextureStages[index];
+            }
+            gOutput << "],\"captureImageSpacePipelineTrace\":"
+                    << (gCaptureImageSpacePipelineTrace ? "true" : "false")
+                    << ",\"imageSpaceTraceMaximumRecords\":"
+                    << gImageSpaceTraceMaximumRecords
+                    << ",\"imageSpaceTraceTextureStageCount\":"
+                    << gImageSpaceTraceTextureStageCount
+                    << ",\"imageSpaceTraceVertexShaderRegisterCount\":"
+                    << gImageSpaceTraceVertexShaderRegisterCount
+                    << ",\"imageSpaceTracePixelShaderRegisterCount\":"
+                    << gImageSpaceTracePixelShaderRegisterCount
+                    << ",\"imageSpaceTraceMaximumShaderBytes\":"
+                    << gImageSpaceTraceMaximumShaderBytes
+                    << ",\"imageSpaceTraceMaximumVertexBytes\":"
+                    << gImageSpaceTraceMaximumVertexBytes
+                    << ",\"imageSpaceTracePixelShaderFnv1a32\":[";
+            for (std::size_t index = 0;
+                index < gImageSpaceTracePixelShaderHashes.size(); ++index)
+            {
+                if (index != 0)
+                    gOutput << ',';
+                gOutput << gImageSpaceTracePixelShaderHashes[index];
+            }
+            gOutput << "],"
                     << "\"vatsControlBytesAddress\":9709312,"
                     << "\"vatsControlBytesReadable\":" << (vatsControlBytesReadable ? "true" : "false") << ','
                     << "\"vatsControlBytesHex\":" << jsonString(vatsControlHex.c_str()) << ','
@@ -3087,6 +4274,54 @@ namespace
                 return found;
         }
         return nullptr;
+    }
+
+    struct PortraitSemanticFocus
+    {
+        NiAVObject* object = nullptr;
+        std::string kind = "root";
+        std::string nodeLabel = "<actor-root>";
+        std::string match;
+        UInt32 ruleOrdinal = 0xffffffffu;
+        float detailAimOffsetGameUnits = 0.f;
+        bool rootFallback = true;
+    };
+
+    PortraitSemanticFocus resolvePortraitSemanticFocus(NiNode* root)
+    {
+        PortraitSemanticFocus result;
+        result.object = root;
+        for (std::size_t index = 0; index < gPortraitSemanticFocusRules.size(); ++index)
+        {
+            const PortraitSemanticFocusRule& rule = gPortraitSemanticFocusRules[index];
+            NiAVObject* found = rule.match == "prefix"
+                ? findNodeRecursivePrefix(root, rule.value.c_str())
+                : findNodeRecursive(root, rule.value.c_str());
+            if (found == nullptr)
+                continue;
+            result.object = found;
+            result.kind = rule.kind;
+            result.nodeLabel = rule.value;
+            result.match = rule.match;
+            result.ruleOrdinal = static_cast<UInt32>(index);
+            result.detailAimOffsetGameUnits = rule.detailAimOffsetGameUnits;
+            result.rootFallback = false;
+            break;
+        }
+        return result;
+    }
+
+    bool portraitSemanticFocusNameMatches(const std::string& name)
+    {
+        if (name.empty())
+            return false;
+        return std::any_of(gPortraitSemanticFocusRules.begin(),
+            gPortraitSemanticFocusRules.end(), [&name](const PortraitSemanticFocusRule& rule) {
+                if (rule.match == "exact")
+                    return _stricmp(name.c_str(), rule.value.c_str()) == 0;
+                return name.size() >= rule.value.size()
+                    && _strnicmp(name.c_str(), rule.value.c_str(), rule.value.size()) == 0;
+            });
     }
 
     // Runtime 1.4.0.525 layout documented by the game's NiGeometryData methods.
@@ -4150,6 +5385,57 @@ namespace
             << '}';
     }
 
+    void writeReferenceLocation(std::ostream& out, const TESObjectREFR* reference)
+    {
+        if (reference == nullptr)
+        {
+            out << "null";
+            return;
+        }
+        TESObjectCELL* parentCell = reference->parentCell;
+        BSExtraData* persistentCellData =
+            reference->extraDataList.GetByType(kExtraData_PersistentCell);
+        const ExtraPersistentCell* persistentCellExtra =
+            persistentCellData != nullptr
+                && persistentCellData->type == kExtraData_PersistentCell
+            ? static_cast<const ExtraPersistentCell*>(persistentCellData)
+            : nullptr;
+        TESObjectCELL* persistentCell = persistentCellExtra != nullptr
+            ? persistentCellExtra->persistentCell
+            : nullptr;
+        TESWorldSpace* parentWorldSpace = parentCell != nullptr
+            ? parentCell->worldSpace
+            : nullptr;
+        TESWorldSpace* persistentWorldSpace = persistentCell != nullptr
+            ? persistentCell->worldSpace
+            : nullptr;
+        TESWorldSpace* resolvedWorldSpace = persistentWorldSpace != nullptr
+            ? persistentWorldSpace
+            : parentWorldSpace;
+
+        out << "{\"parentCellForm\":"
+            << (parentCell != nullptr ? parentCell->refID : 0)
+            << ",\"persistentCellForm\":"
+            << (persistentCell != nullptr ? persistentCell->refID : 0)
+            << ",\"parentWorldSpaceForm\":"
+            << (parentWorldSpace != nullptr ? parentWorldSpace->refID : 0)
+            << ",\"persistentWorldSpaceForm\":"
+            << (persistentWorldSpace != nullptr ? persistentWorldSpace->refID : 0)
+            << ",\"worldSpaceForm\":"
+            << (resolvedWorldSpace != nullptr ? resolvedWorldSpace->refID : 0)
+            << ",\"interior\":" << (resolvedWorldSpace == nullptr ? "true" : "false")
+            << ",\"parentCellCoordinates\":";
+        if (parentCell != nullptr && parentWorldSpace != nullptr && parentCell->cellData != nullptr)
+        {
+            out << '['
+                << static_cast<SInt32>(parentCell->cellData->x) << ','
+                << static_cast<SInt32>(parentCell->cellData->y) << ']';
+        }
+        else
+            out << "null";
+        out << '}';
+    }
+
     void writeCompactActorPose(
         Actor* actor, BaseProcess* process, MiddleHighProcess* mhp, HighProcess* hp,
         TESObjectWEAP* weapon, NiNode* root)
@@ -4161,7 +5447,9 @@ namespace
                 << ",\"baseForm\":" << (actor->baseForm != nullptr ? actor->baseForm->refID : 0)
                 << ",\"position\":[" << actor->posX << ',' << actor->posY << ',' << actor->posZ << ']'
                 << ",\"rotation\":[" << actor->rotX << ',' << actor->rotY << ',' << actor->rotZ << ']'
-                << ",\"actorLifeState\":" << actor->lifeState
+                << ",\"location\":";
+        writeReferenceLocation(gOutput, actor);
+        gOutput << ",\"actorLifeState\":" << actor->lifeState
                 << ",\"processLevel\":" << process->processLevel
                 << ",\"weaponOut\":" << (mhp != nullptr && mhp->isWeaponOut ? "true" : "false")
                 << ",\"aiming\":" << (mhp != nullptr && mhp->isAiming ? "true" : "false")
@@ -4619,7 +5907,7 @@ namespace
 
     void captureRetailRenderEnvironment()
     {
-        if (gRenderEnvironmentLogged)
+        if (gRenderEnvironmentLogged || gFrame < gRenderEnvironmentFrame)
             return;
 
         // JIP LN NVSE's public FalloutNV 1.4.0.525 Sky layout maps the singleton
@@ -4660,6 +5948,9 @@ namespace
                     << ",\"weatherPercent\":" << transition
                     << ",\"skyMode\":" << skyMode
                     << ",\"flags\":" << flags
+                    << ",\"observerLocation\":";
+            writeReferenceLocation(gOutput, player);
+            gOutput
                     << ",\"weatherImageSpace\":{\"currentFadeIn\":";
             writeImageSpaceInstance(*reinterpret_cast<const UInt8* const*>(sky + 0x11C));
             gOutput << ",\"currentFadeOut\":";
@@ -5001,6 +6292,12 @@ namespace
         Actor* actor = findDriveActor();
         if (actor == nullptr || actor->baseForm == nullptr)
             return;
+        // Authored-reference observations do not pass through the spawned-actor
+        // resolver, so publish the already resolved live actor to the same
+        // frame-bound pose and visual-snapshot pipeline. This does not mutate
+        // actor state or transform; it only establishes the telemetry owner.
+        if (gDrivenActor == nullptr)
+            gDrivenActor = actor;
         captureRetailRenderEnvironment();
 
         NpcAppearanceSnapshot snapshot = {};
@@ -5422,21 +6719,10 @@ namespace
             return;
         }
 
-        // Robots can retain a humanoid-named Bip01 Head whose +Y axis points out
-        // the back of the chassis. Prefer a rendered screen surface when one is
-        // present. Its local +Y is the authored outward normal in retail assets.
-        NiAVObject* focus = findNodeRecursivePrefix(root, "Screen01");
-        bool screenFocus = focus != nullptr;
-        if (focus == nullptr)
-            focus = findNodeRecursivePrefix(root, "Screenreflection01");
-        screenFocus = screenFocus || focus != nullptr;
-        if (focus == nullptr)
-            focus = findNodeRecursive(root, "Bip01 Head");
-
-        bool rootFallback = focus == nullptr;
+        const PortraitSemanticFocus semanticFocus = resolvePortraitSemanticFocus(root);
+        NiAVObject* focus = semanticFocus.object;
+        bool rootFallback = semanticFocus.rootFallback;
         const char* focusFallbackReason = rootFallback ? "semantic-focus-missing" : nullptr;
-        if (rootFallback)
-            focus = root;
         // Keep this as a pointer. NiTransform has C++ lifetime semantics in the
         // xNVSE headers, and copying one inside an SEH-protected function makes
         // MSVC require C++ unwinding (C2712). The retail object owns the transform.
@@ -5461,7 +6747,6 @@ namespace
                 if (gFullBodyCamera)
                 {
                     rootFallback = true;
-                    screenFocus = false;
                     focus = root;
                     focusTransform = &runtimeTransform(*root, sNiAVObjectWorldTransformOffset);
                     focusWorld.x = actor->posX;
@@ -5485,9 +6770,10 @@ namespace
                 }
             }
         }
-        const char* focusNodeLabel
-            = screenFocus ? "Screen01" : (rootFallback ? "<actor-root>" : "Bip01 Head");
-        const char* focusKindLabel = screenFocus ? "screen" : (rootFallback ? "root" : "head");
+        const std::string focusNodeLabel
+            = rootFallback ? std::string("<actor-root>") : semanticFocus.nodeLabel;
+        const std::string focusKindLabel
+            = rootFallback ? std::string("root") : semanticFocus.kind;
 
         OracleBound* rootWorldBoundAddress = nullptr;
         bool rootWorldBoundPointerReadable = false;
@@ -5544,7 +6830,8 @@ namespace
         const float aimY = gFullBodyCamera ? worldBound.center.y : focusWorld.y;
         const float rawAimZ = gFullBodyCamera
             ? worldBound.center.z
-            : focusWorld.z + (screenFocus || rootFallback ? 0.f : 20.f);
+            : focusWorld.z + (rootFallback
+                ? 0.f : semanticFocus.detailAimOffsetGameUnits);
         // The proof surface is an explicit part of the shared-volume contract.
         // Live ragdolls and low creature rigs can author their bound center below
         // that surface; never put the optical axis back inside the road mesh.
@@ -5574,7 +6861,13 @@ namespace
         forwardY /= forwardLength;
         float cameraDirectionX = forwardX;
         float cameraDirectionY = forwardY;
-        if (gCameraShotKind == "left-profile")
+        if (gCameraShotKind == "rear-detail"
+            || gCameraShotKind == "rear-full-body")
+        {
+            cameraDirectionX = -forwardX;
+            cameraDirectionY = -forwardY;
+        }
+        else if (gCameraShotKind == "left-profile")
         {
             cameraDirectionX = -forwardY;
             cameraDirectionY = forwardX;
@@ -5612,17 +6905,23 @@ namespace
         *reinterpret_cast<float*>(reinterpret_cast<UInt8*>(player) + 0x7F0) = cameraZ;
         if (gBatchProofStaging && !gBatchVisualStageGateLogged)
         {
-            const float corridorStopDistance = (std::min)(
-                cameraLineDistance - 2.f, worldBound.radius + 8.f);
-            const float inverseLineDistance = 1.f / cameraLineDistance;
+            const float corridorStopDistance = worldBound.radius
+                + gCameraCorridorClearanceGameUnits;
+            const bool cameraOutsideWorldBound = worldBoundValid
+                && cameraLineDistance > corridorStopDistance;
+            const float inverseLineDistance = cameraOutsideWorldBound
+                ? 1.f / cameraLineDistance : 0.f;
             const float corridorEndX = aimX
                 + (cameraX - aimX) * inverseLineDistance * corridorStopDistance;
             const float corridorEndY = aimY
                 + (cameraY - aimY) * inverseLineDistance * corridorStopDistance;
             const float corridorEndZ = aimZ
                 + (cameraZ - aimZ) * inverseLineDistance * corridorStopDistance;
-            const OracleRayCastResult corridor = castProofCorridor(player,
-                cameraX, cameraY, cameraZ, corridorEndX, corridorEndY, corridorEndZ);
+            const OracleRayCastResult corridor = cameraOutsideWorldBound
+                ? castProofCorridor(player,
+                    cameraX, cameraY, cameraZ,
+                    corridorEndX, corridorEndY, corridorEndZ)
+                : OracleRayCastResult{};
             const std::string hitName = safeRuntimeString(
                 corridor.hitObject != nullptr ? corridor.hitObject->m_pcName : nullptr);
             const std::string hitType = safeRuntimeString(
@@ -5635,7 +6934,14 @@ namespace
                     << ",\"frame\":" << gFrame
                     << ",\"targetIndex\":" << gBatchTargetIndex
                     << ",\"targetForm\":" << gTargetForm
-                    << ",\"passed\":" << (corridor.passed ? "true" : "false")
+                    << ",\"passed\":"
+                    << (cameraOutsideWorldBound && corridor.passed
+                        ? "true" : "false")
+                    << ",\"outsideWorldBound\":"
+                    << (cameraOutsideWorldBound ? "true" : "false")
+                    << ",\"clearanceGameUnits\":"
+                    << gCameraCorridorClearanceGameUnits
+                    << ",\"stopDistance\":" << corridorStopDistance
                     << ",\"filterAvailable\":"
                     << (corridor.filterAvailable ? "true" : "false")
                     << ",\"tesAvailable\":" << (corridor.tesAvailable ? "true" : "false")
@@ -5668,7 +6974,7 @@ namespace
             if (yawError > 3.14159265358979323846f)
                 yawError = 2.f * 3.14159265358979323846f - yawError;
             const bool passed = gBatchTargetStaged && root != nullptr && worldBoundValid
-                && corridor.passed
+                && cameraOutsideWorldBound && corridor.passed
                 && positionError <= 24.f && yawError <= 0.08f
                 && std::isfinite(cameraX) && std::isfinite(cameraY) && std::isfinite(cameraZ)
                 && std::isfinite(cameraPitch) && cameraLineDistance >= 32.f
@@ -5711,23 +7017,96 @@ namespace
         }
         if (gBatchProofStaging && !gBatchVisualStageGatePassed)
             return;
-        if (!gPortraitCameraLogged)
+        const bool sourceFrameCameraContract = gEmitSourceFrameCameraContract
+            && std::find(gScreenshotFrames.begin(), gScreenshotFrames.end(), gFrame)
+                != gScreenshotFrames.end();
+        float contractCameraX = cameraX;
+        float contractCameraY = cameraY;
+        float contractCameraZ = cameraZ;
+        bool contractCameraFromScene = false;
+        if (sourceFrameCameraContract)
         {
-            gPortraitCameraLogged = true;
+            SidecarCameraObservation sceneCamera = {};
+            if (sidecarReadSceneCameraObservation(sceneCamera))
+            {
+                contractCameraX = sceneCamera.world.translate.x;
+                contractCameraY = sceneCamera.world.translate.y;
+                contractCameraZ = sceneCamera.world.translate.z;
+                contractCameraFromScene = true;
+            }
+        }
+        const float contractCameraDx = contractCameraX - aimX;
+        const float contractCameraDy = contractCameraY - aimY;
+        const float contractCameraDz = contractCameraZ - aimZ;
+        const float contractCameraHorizontalDistance = std::sqrt(
+            contractCameraDx * contractCameraDx + contractCameraDy * contractCameraDy);
+        const float contractCameraLineDistance = std::sqrt(
+            contractCameraHorizontalDistance * contractCameraHorizontalDistance
+                + contractCameraDz * contractCameraDz);
+        const bool contractCameraDirectionValid =
+            contractCameraHorizontalDistance >= sPortraitMinimumSemanticForwardLength;
+        const float contractCameraDirectionX = contractCameraDirectionValid
+            ? contractCameraDx / contractCameraHorizontalDistance : cameraDirectionX;
+        const float contractCameraDirectionY = contractCameraDirectionValid
+            ? contractCameraDy / contractCameraHorizontalDistance : cameraDirectionY;
+        const float contractCameraYaw = std::atan2(
+            aimX - contractCameraX, aimY - contractCameraY);
+        const float contractCameraPitch = -std::atan2(
+            aimZ - contractCameraZ, contractCameraHorizontalDistance);
+        const float cameraCorridorStopDistance = worldBound.radius
+            + gCameraCorridorClearanceGameUnits;
+        const bool cameraOutsideWorldBound = worldBoundValid
+            && contractCameraLineDistance > cameraCorridorStopDistance;
+        const float cameraCorridorInverseDistance = cameraOutsideWorldBound
+            ? 1.f / contractCameraLineDistance : 0.f;
+        const float cameraCorridorEndX = aimX
+            + contractCameraDx * cameraCorridorInverseDistance
+                * cameraCorridorStopDistance;
+        const float cameraCorridorEndY = aimY
+            + contractCameraDy * cameraCorridorInverseDistance
+                * cameraCorridorStopDistance;
+        const float cameraCorridorEndZ = aimZ
+            + contractCameraDz * cameraCorridorInverseDistance
+                * cameraCorridorStopDistance;
+        const OracleRayCastResult cameraCorridor = cameraOutsideWorldBound
+            ? castProofCorridor(player, contractCameraX, contractCameraY,
+                contractCameraZ,
+                cameraCorridorEndX, cameraCorridorEndY, cameraCorridorEndZ)
+            : OracleRayCastResult{};
+        if (!gPortraitCameraLogged || sourceFrameCameraContract)
+        {
+            if (!gPortraitCameraLogged)
+                gPortraitCameraLogged = true;
             gOutput << std::setprecision(9)
                     << "{\"schema\":" << sSchemaJson
-                    << ",\"event\":\"portrait-camera-set\""
+                    << ",\"event\":" << jsonString(
+                        sourceFrameCameraContract
+                            ? "portrait-camera-source-frame"
+                            : "portrait-camera-set")
                     << ",\"frame\":" << gFrame
                     << ",\"refForm\":" << actor->refID
-                    << ",\"shotKind\":\"" << gCameraShotKind << '\"'
-                    << ",\"focusNode\":\"" << focusNodeLabel << '\"'
-                    << ",\"focusKind\":\"" << focusKindLabel << '\"'
+                    << ",\"shotKind\":" << jsonString(gCameraShotKind.c_str())
+                    << ",\"focusNode\":" << jsonString(focusNodeLabel.c_str())
+                    << ",\"focusKind\":" << jsonString(focusKindLabel.c_str())
+                    << ",\"focusRuleOrdinal\":";
+            if (rootFallback)
+                gOutput << "null";
+            else
+                gOutput << semanticFocus.ruleOrdinal;
+            gOutput << ",\"focusRuleMatch\":"
+                    << (rootFallback ? "null" : jsonString(semanticFocus.match.c_str()))
+                    << ",\"focusDetailAimOffsetGameUnits\":"
+                    << (rootFallback ? 0.f : semanticFocus.detailAimOffsetGameUnits)
                     << ",\"focusFallbackReason\":"
                     << (focusFallbackReason != nullptr ? jsonString(focusFallbackReason) : "null")
                     << ",\"headWorld\":[" << focusWorld.x << ',' << focusWorld.y << ',' << focusWorld.z << ']'
                     << ",\"headForwardXY\":[" << forwardX << ',' << forwardY << ']'
-                    << ",\"cameraDirectionXY\":[" << cameraDirectionX << ','
-                    << cameraDirectionY << ']'
+                    << ",\"cameraDirectionXY\":[" << contractCameraDirectionX << ','
+                    << contractCameraDirectionY << ']'
+                    << ",\"cameraSource\":" << jsonString(
+                        contractCameraFromScene
+                            ? "same-frame-scene-camera-world"
+                            : "driven-flycam-target")
                     << ",\"rootWorldBound\":";
             writeRawBoundDiagnostics(
                 gOutput, rootWorldBoundPointerReadable, rootWorldBoundAddress,
@@ -5740,15 +7119,39 @@ namespace
                     << ",\"center\":[" << worldBound.center.x << ',' << worldBound.center.y << ','
                     << worldBound.center.z << "]"
                     << ",\"radius\":" << worldBound.radius << '}'
-                    << ",\"cameraDistance\":" << cameraDistance
-                    << ",\"cameraLineDistance\":" << cameraLineDistance
+                    << ",\"cameraDistance\":" << contractCameraHorizontalDistance
+                    << ",\"cameraLineDistance\":" << contractCameraLineDistance
+                    << ",\"cameraCorridor\":{\"outsideWorldBound\":"
+                    << (cameraOutsideWorldBound ? "true" : "false")
+                    << ",\"clearanceGameUnits\":"
+                    << gCameraCorridorClearanceGameUnits
+                    << ",\"stopDistance\":" << cameraCorridorStopDistance
+                    << ",\"passed\":" << (cameraCorridor.passed ? "true" : "false")
+                    << ",\"filterAvailable\":"
+                    << (cameraCorridor.filterAvailable ? "true" : "false")
+                    << ",\"tesAvailable\":"
+                    << (cameraCorridor.tesAvailable ? "true" : "false")
+                    << ",\"invoked\":" << (cameraCorridor.invoked ? "true" : "false")
+                    << ",\"faulted\":" << (cameraCorridor.faulted ? "true" : "false")
+                    << ",\"fractionValid\":"
+                    << (cameraCorridor.fractionValid ? "true" : "false")
+                    << ",\"hit\":" << (cameraCorridor.hit ? "true" : "false")
+                    << ",\"hitFraction\":";
+            writeFiniteFloat(gOutput, cameraCorridor.hitFraction);
+            gOutput << ",\"collisionFilter\":" << cameraCorridor.collisionFilter
+                    << ",\"start\":[" << contractCameraX << ',' << contractCameraY << ','
+                    << contractCameraZ << ']'
+                    << ",\"end\":[" << cameraCorridorEndX << ','
+                    << cameraCorridorEndY << ',' << cameraCorridorEndZ << "]}"
                     << ",\"framingRadius\":" << framingRadius
                     << ",\"rawAimZ\":" << rawAimZ
                     << ",\"minimumAimZ\":" << minimumAimZ
                     << ",\"minimumCameraZ\":" << minimumCameraZ
                     << ",\"aim\":[" << aimX << ',' << aimY << ',' << aimZ << ']'
-                    << ",\"camera\":[" << cameraX << ',' << cameraY << ',' << cameraZ << ']'
-                    << ",\"rotation\":[" << cameraPitch << ',' << cameraYaw << "]}\n";
+                    << ",\"camera\":[" << contractCameraX << ',' << contractCameraY << ','
+                    << contractCameraZ << ']'
+                    << ",\"rotation\":[" << contractCameraPitch << ','
+                    << contractCameraYaw << "]}\n";
             gOutput.flush();
         }
     }
@@ -8615,6 +10018,12 @@ namespace
     bool scheduledCaptureBackBuffer()
     {
         writeReviewCameraObservation();
+        // Emit the source-frame camera/corridor contract beside the camera
+        // observation and captured backbuffer, after the engine has published
+        // the final scene camera for these pixels.
+        gEmitSourceFrameCameraContract = true;
+        drivePortraitCamera();
+        gEmitSourceFrameCameraContract = false;
         std::string outputPath;
         long captureResult = E_FAIL;
         const bool captured = sidecarCaptureBackBuffer(outputPath, captureResult);
@@ -9228,6 +10637,8 @@ namespace
                 || std::strcmp(shotKind, "left-profile") == 0
                 || std::strcmp(shotKind, "right-profile") == 0
                 || std::strcmp(shotKind, "front-full-body") == 0
+                || std::strcmp(shotKind, "rear-detail") == 0
+                || std::strcmp(shotKind, "rear-full-body") == 0
                 || std::strcmp(shotKind, "idle-motion") == 0;
             if (!valid)
                 return false;
@@ -9235,6 +10646,7 @@ namespace
                 && gPortraitCameraLogged;
             gCameraShotKind = shotKind;
             gFullBodyCamera = std::strcmp(shotKind, "front-full-body") == 0
+                || std::strcmp(shotKind, "rear-full-body") == 0
                 || std::strcmp(shotKind, "idle-motion") == 0;
             if (!cameraStateAlreadyPublished)
             {
@@ -9762,6 +11174,80 @@ namespace
         out << '}';
     }
 
+    constexpr UInt32 sFaceGenEmotionWeightCount = 0x0Du;
+    constexpr UInt32 sFaceGenMovementWeightCount = 0x11u;
+    constexpr UInt32 sFaceGenPhonemeWeightCount = 0x10u;
+    // The active FNV NiNode layout ends at 0xAC. The 0xDC annotation in the
+    // excluded legacy BSFaceGenNiNode declaration assumes an older base layout.
+    constexpr std::size_t sFaceGenNiNodeAnimationDataOffset = 0xACu;
+    constexpr std::size_t sFaceGenEmotionKeyframeOffset = 0x10u;
+    constexpr std::size_t sFaceGenMovementKeyframeOffset = 0x38u;
+    constexpr std::size_t sFaceGenPhonemeKeyframeOffset = 0x4Cu;
+    constexpr std::size_t sFaceGenKeyframeValuesOffset = 0x0Cu;
+    constexpr std::size_t sFaceGenKeyframeCountOffset = 0x10u;
+
+    void sidecarWriteFaceGenWeights(std::ostream& out,
+        BSFaceGenAnimationData* animation, std::size_t keyframeOffset, UInt32 count)
+    {
+        const UInt8* keyframe = animation != nullptr
+            ? reinterpret_cast<const UInt8*>(animation) + keyframeOffset : nullptr;
+        float* values = nullptr;
+        UInt32 sourceCount = 0;
+        bool complete = animation != nullptr
+            && safeRead(keyframe + sFaceGenKeyframeValuesOffset, values) && values != nullptr
+            && safeRead(keyframe + sFaceGenKeyframeCountOffset, sourceCount)
+            && sourceCount >= count;
+        out << "{\"sourceCount\":" << sourceCount << ",\"values\":[";
+        for (UInt32 index = 0; index < count; ++index)
+        {
+            if (index != 0)
+                out << ',';
+            float weight = 0.f;
+            if (complete && safeRead(&values[index], weight) && std::isfinite(weight))
+                out << weight;
+            else
+            {
+                out << "null";
+                complete = false;
+            }
+        }
+        out << "],\"complete\":" << (complete ? "true" : "false") << '}';
+    }
+
+    void sidecarWriteFaceGenRuntime(
+        std::ostream& out, BSFaceGenAnimationData* animation)
+    {
+        out << "{\"animationDataAvailable\":"
+            << (animation != nullptr ? "true" : "false")
+            << ",\"emotionWeights\":";
+        sidecarWriteFaceGenWeights(out, animation,
+            sFaceGenEmotionKeyframeOffset, sFaceGenEmotionWeightCount);
+        out << ",\"movementWeights\":";
+        sidecarWriteFaceGenWeights(out, animation,
+            sFaceGenMovementKeyframeOffset, sFaceGenMovementWeightCount);
+        out << ",\"phonemeWeights\":";
+        sidecarWriteFaceGenWeights(out, animation,
+            sFaceGenPhonemeKeyframeOffset, sFaceGenPhonemeWeightCount);
+        out << '}';
+    }
+
+    BSFaceGenAnimationData* sidecarFaceGenAnimationForActor(Actor* actor)
+    {
+        BaseProcess* process = nullptr;
+        UInt8 processLevel = 0xff;
+        if (actor == nullptr || !safeRead(&actor->baseProcess, process) || process == nullptr
+            || !safeRead(&process->processLevel, processLevel) || processLevel > 1)
+            return nullptr;
+        BSFaceGenNiNode* faceNode = nullptr;
+        NiObject* animation = nullptr;
+        if (!safeRead(&static_cast<MiddleHighProcess*>(process)->unk248, faceNode)
+            || faceNode == nullptr
+            || !safeRead(reinterpret_cast<const UInt8*>(faceNode)
+                    + sFaceGenNiNodeAnimationDataOffset, animation))
+            return nullptr;
+        return reinterpret_cast<BSFaceGenAnimationData*>(animation);
+    }
+
     void sidecarWriteAnimationTelemetry(std::ostringstream& out, Actor* actor)
     {
         BaseProcess* process = nullptr;
@@ -9782,7 +11268,7 @@ namespace
         bool weaponOut = false;
         bool aiming = false;
         UInt8 processSitSleepState = 0xff;
-        BSFaceGenAnimationData* faceAnimation = nullptr;
+        BSFaceGenAnimationData* faceAnimation = sidecarFaceGenAnimationForActor(actor);
         BSFaceGenNiNode* faceNodeA = nullptr;
         BSFaceGenNiNode* faceNodeB = nullptr;
         NiTriShape* faceShape = nullptr;
@@ -9792,7 +11278,6 @@ namespace
             safeRead(&middle->isWeaponOut, weaponOut);
             safeRead(&middle->isAiming, aiming);
             safeRead(reinterpret_cast<const UInt8*>(middle) + 0x13D, processSitSleepState);
-            safeRead(&middle->unk178, faceAnimation);
             safeRead(&middle->unk248, faceNodeA);
             safeRead(&middle->unk24C, faceNodeB);
             safeRead(&middle->unk250, faceShape);
@@ -9806,12 +11291,14 @@ namespace
             << ",\"processSitSleepState\":" << static_cast<UInt32>(processSitSleepState)
             << ",\"weaponOut\":" << (weaponOut ? "true" : "false")
             << ",\"aiming\":" << (aiming ? "true" : "false")
-            << ",\"facialRuntime\":{";
-        out << "\"animationDataAvailable\":" << (faceAnimation != nullptr ? "true" : "false")
-            << ",\"animationDataAddress\":" << reinterpret_cast<std::uintptr_t>(faceAnimation)
+            << ",\"facialRuntime\":";
+        sidecarWriteFaceGenRuntime(out, faceAnimation);
+        out << ",\"facialRuntimeAddresses\":{"
+            << "\"animationDataAddress\":" << reinterpret_cast<std::uintptr_t>(faceAnimation)
             << ",\"faceNodeAAddress\":" << reinterpret_cast<std::uintptr_t>(faceNodeA)
             << ",\"faceNodeBAddress\":" << reinterpret_cast<std::uintptr_t>(faceNodeB)
-            << ",\"faceShapeAddress\":" << reinterpret_cast<std::uintptr_t>(faceShape) << '}';
+            << ",\"faceShapeAddress\":" << reinterpret_cast<std::uintptr_t>(faceShape);
+        out << '}';
         out << ",\"middleHighSequences\":[";
         for (UInt32 index = 0; index < 3; ++index)
         {
@@ -9894,7 +11381,7 @@ namespace
     constexpr UInt8 sSidecarMiddleHighMaximumProcessLevel = 1u;
     constexpr UInt8 sSidecarUnreadableProcessLevel = 0xFFu;
     constexpr const char* sSidecarAppearanceSchema
-        = "nikami-fnv-sidecar-appearance/v3";
+        = "nikami-fnv-sidecar-appearance/v4";
     constexpr const char* sSidecarWeaponStateUnreadable = "unreadable";
     constexpr const char* sSidecarWeaponStateNone = "none";
     constexpr const char* sSidecarWeaponStateEquipped = "equipped";
@@ -9905,6 +11392,7 @@ namespace
     constexpr const char* sSidecarWeaponRenderStateNotVisibleAtFrame
         = "not-visible-at-frame";
     const std::string sSidecarEmptyNodePath;
+    const std::string sSidecarRootVisualNodePath = "root";
 
     struct SidecarTextureResource
     {
@@ -9912,6 +11400,7 @@ namespace
         IDirect3DBaseTexture9* resource = nullptr;
         UInt32 width = 0;
         UInt32 height = 0;
+        UInt32 levelCount = 0;
         D3DFORMAT format = D3DFMT_UNKNOWN;
         UInt32 contentHash = 2166136261u;
     };
@@ -9960,12 +11449,18 @@ namespace
         bool attached = false;
         bool drawable = false;
         bool visible = false;
+        bool skinned = false;
         bool skinSurface = false;
+        bool semanticFocusDescendant = false;
+        bool semanticFocusSkinInfluence = false;
+        bool semanticFocusNameMatch = false;
         UInt32 alphaBits = 0x3F800000u;
         std::string modelPath;
         std::string modelHash;
         std::string nodeHash;
         std::string geometryHash;
+        std::string geometryName;
+        std::string visualNodePath;
         std::vector<SidecarTextureBinding> textureBindings;
         std::string stableKey;
         std::string deterministicKey;
@@ -9980,6 +11475,7 @@ namespace
         std::map<const NiTexture*, SidecarTextureResource> textureCache;
         std::set<const NiAVObject*> visitedObjects;
         std::set<std::string> evidenceFaults;
+        const NiAVObject* semanticFocus = nullptr;
         UInt32 visitedNodes = 0;
         UInt32 geometryCandidates = 0;
         std::string equippedWeaponState = sSidecarWeaponStateUnreadable;
@@ -10201,6 +11697,7 @@ namespace
         const UINT levels = texture->GetLevelCount();
         if (levels == 0 || levels > 32)
             return false;
+        observed.levelCount = levels;
         UInt32 hash = 2166136261u;
         UInt64 canonicalBytes = 0;
         for (UINT level = 0; level < levels; ++level)
@@ -10235,6 +11732,552 @@ namespace
         return true;
     }
 
+    bool sidecarHashTexture2DLevel(
+        IDirect3DTexture9* texture, UInt32 level, UInt32& hash)
+    {
+        hash = 0;
+        if (texture == nullptr || level >= texture->GetLevelCount())
+            return false;
+        D3DSURFACE_DESC description = {};
+        UInt32 rowBytes = 0;
+        UInt32 rowCount = 0;
+        if (FAILED(texture->GetLevelDesc(level, &description))
+            || !sidecarTextureRowLayout(description.Format, description.Width,
+                description.Height, rowBytes, rowCount))
+            return false;
+        D3DLOCKED_RECT locked = {};
+        if (FAILED(texture->LockRect(level, &locked, nullptr, D3DLOCK_READONLY)))
+            return false;
+        UInt32 value = 2166136261u;
+        UInt64 canonicalBytes = 0;
+        const bool hashed = sidecarHashLockedRows(
+            value, locked.pBits, locked.Pitch, rowBytes, rowCount, canonicalBytes);
+        const HRESULT unlocked = texture->UnlockRect(level);
+        if (!hashed || FAILED(unlocked))
+            return false;
+        hash = value;
+        return true;
+    }
+
+    void textureSamplerCaptureVertexBuffer(IDirect3DDevice9* device,
+        TextureSamplerContractCapture& capture)
+    {
+        IDirect3DVertexBuffer9* buffer = nullptr;
+        UINT streamOffset = 0;
+        UINT stride = 0;
+        capture.vertexBuffer.getResult
+            = device->GetStreamSource(0, &buffer, &streamOffset, &stride);
+        capture.vertexBuffer.stride = stride;
+        if (FAILED(capture.vertexBuffer.getResult) || buffer == nullptr)
+            return;
+
+        D3DVERTEXBUFFER_DESC description = {};
+        capture.vertexBuffer.descriptionResult = buffer->GetDesc(&description);
+        if (SUCCEEDED(capture.vertexBuffer.descriptionResult))
+        {
+            capture.vertexBuffer.totalBytes = description.Size;
+            capture.vertexBuffer.usage = description.Usage;
+            capture.vertexBuffer.pool = description.Pool;
+            const SInt64 firstVertex = static_cast<SInt64>(capture.baseVertexIndex)
+                + static_cast<SInt64>(capture.minimumVertexIndex);
+            const UInt64 firstByte = firstVertex >= 0
+                ? static_cast<UInt64>(streamOffset)
+                    + static_cast<UInt64>(firstVertex) * stride
+                : static_cast<UInt64>(description.Size) + 1u;
+            const UInt64 byteCount = static_cast<UInt64>(capture.vertexCount) * stride;
+            if (stride > 0 && firstByte <= description.Size
+                && byteCount <= description.Size - firstByte
+                && byteCount <= gTextureSamplerMaximumVertexBufferBytes)
+            {
+                capture.vertexBuffer.rangeOffset = static_cast<UInt32>(firstByte);
+                capture.vertexBuffer.rangeBytes = static_cast<UInt32>(byteCount);
+                void* bytes = nullptr;
+                capture.vertexBuffer.lockResult = buffer->Lock(
+                    capture.vertexBuffer.rangeOffset, capture.vertexBuffer.rangeBytes,
+                    &bytes, D3DLOCK_READONLY);
+                if (SUCCEEDED(capture.vertexBuffer.lockResult) && bytes != nullptr)
+                {
+                    const auto* begin = static_cast<const UInt8*>(bytes);
+                    capture.vertexBuffer.bytes.assign(
+                        begin, begin + capture.vertexBuffer.rangeBytes);
+                    capture.vertexBuffer.fnv1a32 = fnv1a32(
+                        capture.vertexBuffer.bytes.data(),
+                        capture.vertexBuffer.bytes.size());
+                    buffer->Unlock();
+                }
+            }
+        }
+        buffer->Release();
+    }
+
+    void captureTextureSamplerContract(IDirect3DDevice9* device,
+        const char* drawMethod, D3DPRIMITIVETYPE primitiveType,
+        UInt32 primitiveCount, SInt32 baseVertexIndex,
+        UInt32 minimumVertexIndex, UInt32 vertexCount, UInt32 startIndex)
+    {
+        UInt32 sourceFrame = 0;
+        for (const UInt32 configuredSourceFrame : gTextureSamplerSourceFrames)
+        {
+            if (configuredSourceFrame > gTextureSamplerRenderFrameLead
+                && gFrame == configuredSourceFrame - gTextureSamplerRenderFrameLead)
+            {
+                sourceFrame = configuredSourceFrame;
+                break;
+            }
+        }
+        if (!gCaptureTextureSamplerContract || device == nullptr || sourceFrame == 0)
+            return;
+
+        AcquireSRWLockShared(&gTextureSamplerCaptureLock);
+        const std::size_t maximumTotalRecords
+            = static_cast<std::size_t>(gTextureSamplerMaximumRecords)
+                * gTextureSamplerSourceFrames.size();
+        const bool hasCapacity
+            = gTextureSamplerCaptures.size() < maximumTotalRecords;
+        ReleaseSRWLockShared(&gTextureSamplerCaptureLock);
+        if (!hasCapacity)
+            return;
+
+        for (UInt32 stage = 0; stage < gTextureSamplerTextureStageCount; ++stage)
+        {
+            IDirect3DBaseTexture9* resource = nullptr;
+            if (FAILED(device->GetTexture(stage, &resource)) || resource == nullptr)
+                continue;
+            if (resource->GetType() != D3DRTYPE_TEXTURE
+                || resource->GetLevelCount() != gTextureSamplerTargetLevelCount)
+            {
+                resource->Release();
+                continue;
+            }
+
+            auto* texture = static_cast<IDirect3DTexture9*>(resource);
+            D3DSURFACE_DESC description = {};
+            if (FAILED(texture->GetLevelDesc(0, &description))
+                || description.Width != gTextureSamplerTargetWidth
+                || description.Height != gTextureSamplerTargetHeight
+                || description.Format != gTextureSamplerTargetFormat)
+            {
+                resource->Release();
+                continue;
+            }
+
+            bool matched = false;
+            bool inspect = false;
+            UInt32 matchedFullChainHash = 0;
+            UInt32 matchedTopLevelHash = 0;
+            UInt32 candidateOrdinal = 0;
+            AcquireSRWLockExclusive(&gTextureSamplerCaptureLock);
+            const auto matchedHashes
+                = gTextureSamplerMatchedResourceHashes.find(resource);
+            matched = matchedHashes != gTextureSamplerMatchedResourceHashes.end();
+            if (matched)
+            {
+                matchedFullChainHash = matchedHashes->second.first;
+                matchedTopLevelHash = matchedHashes->second.second;
+            }
+            if (!matched
+                && gTextureSamplerInspectedResources.count(resource) == 0
+                && gTextureSamplerCandidateCount < gTextureSamplerMaximumCandidates)
+            {
+                gTextureSamplerInspectedResources.insert(resource);
+                ++gTextureSamplerCandidateCount;
+                candidateOrdinal = gTextureSamplerCandidateCount;
+                inspect = true;
+            }
+            ReleaseSRWLockExclusive(&gTextureSamplerCaptureLock);
+
+            if (inspect)
+            {
+                UInt32 topLevelHash = 0;
+                const bool topLevelHashed
+                    = sidecarHashTexture2DLevel(texture, 0, topLevelHash);
+                SidecarTextureResource observed;
+                observed.resource = resource;
+                const bool fullChainHashed
+                    = sidecarObserveTexture2D(texture, observed);
+                TextureSamplerCandidateCapture candidate;
+                candidate.ordinal = candidateOrdinal;
+                candidate.renderFrame = gFrame;
+                candidate.stage = stage;
+                candidate.topLevelHashed = topLevelHashed;
+                candidate.topLevelHash = topLevelHash;
+                candidate.fullChainHashed = fullChainHashed;
+                candidate.fullChainHash
+                    = fullChainHashed ? observed.contentHash : 0;
+                candidate.srgbTextureResult = device->GetSamplerState(
+                    stage, D3DSAMP_SRGBTEXTURE, &candidate.srgbTexture);
+                AcquireSRWLockExclusive(&gTextureSamplerCaptureLock);
+                if (fullChainHashed)
+                {
+                    ++gTextureSamplerHashedCandidateCount;
+                }
+                gTextureSamplerCandidates.push_back(candidate);
+                if ((fullChainHashed
+                        && observed.contentHash == gTextureSamplerTargetHash)
+                    || (topLevelHashed
+                        && topLevelHash == gTextureSamplerTargetTopLevelHash))
+                {
+                    matchedFullChainHash
+                        = fullChainHashed ? observed.contentHash : 0;
+                    matchedTopLevelHash
+                        = topLevelHashed ? topLevelHash : 0;
+                    gTextureSamplerMatchedResources.insert(resource);
+                    gTextureSamplerMatchedResourceHashes[resource]
+                        = { matchedFullChainHash, matchedTopLevelHash };
+                    matched = true;
+                }
+                ReleaseSRWLockExclusive(&gTextureSamplerCaptureLock);
+            }
+
+            if (!matched)
+            {
+                resource->Release();
+                continue;
+            }
+
+            TextureSamplerContractCapture capture;
+            capture.sourceFrame = sourceFrame;
+            capture.renderFrame = gFrame;
+            capture.ordinal = static_cast<UInt32>(
+                InterlockedIncrement(&gTextureSamplerOrdinal));
+            capture.drawMethod = drawMethod != nullptr ? drawMethod : "unknown";
+            capture.primitiveType = primitiveType;
+            capture.primitiveCount = primitiveCount;
+            capture.baseVertexIndex = baseVertexIndex;
+            capture.minimumVertexIndex = minimumVertexIndex;
+            capture.vertexCount = vertexCount;
+            capture.startIndex = startIndex;
+            capture.stage = stage;
+            capture.width = description.Width;
+            capture.height = description.Height;
+            capture.levelCount = resource->GetLevelCount();
+            capture.format = description.Format;
+            capture.contentHash = matchedFullChainHash;
+            capture.topLevelHash = matchedTopLevelHash;
+            capture.addressUResult = device->GetSamplerState(
+                stage, D3DSAMP_ADDRESSU, &capture.addressU);
+            capture.addressVResult = device->GetSamplerState(
+                stage, D3DSAMP_ADDRESSV, &capture.addressV);
+            capture.magFilterResult = device->GetSamplerState(
+                stage, D3DSAMP_MAGFILTER, &capture.magFilter);
+            capture.minFilterResult = device->GetSamplerState(
+                stage, D3DSAMP_MINFILTER, &capture.minFilter);
+            capture.mipFilterResult = device->GetSamplerState(
+                stage, D3DSAMP_MIPFILTER, &capture.mipFilter);
+            capture.srgbTextureResult = device->GetSamplerState(
+                stage, D3DSAMP_SRGBTEXTURE, &capture.srgbTexture);
+            capture.srgbWriteResult = device->GetRenderState(
+                D3DRS_SRGBWRITEENABLE, &capture.srgbWrite);
+            capture.cullModeResult = device->GetRenderState(
+                D3DRS_CULLMODE, &capture.cullMode);
+            capture.zEnableResult = device->GetRenderState(
+                D3DRS_ZENABLE, &capture.zEnable);
+            capture.zWriteEnableResult = device->GetRenderState(
+                D3DRS_ZWRITEENABLE, &capture.zWriteEnable);
+            capture.zFunctionResult = device->GetRenderState(
+                D3DRS_ZFUNC, &capture.zFunction);
+            capture.alphaTestEnableResult = device->GetRenderState(
+                D3DRS_ALPHATESTENABLE, &capture.alphaTestEnable);
+            capture.alphaReferenceResult = device->GetRenderState(
+                D3DRS_ALPHAREF, &capture.alphaReference);
+            capture.alphaFunctionResult = device->GetRenderState(
+                D3DRS_ALPHAFUNC, &capture.alphaFunction);
+            capture.alphaBlendEnableResult = device->GetRenderState(
+                D3DRS_ALPHABLENDENABLE, &capture.alphaBlendEnable);
+            capture.sourceBlendResult = device->GetRenderState(
+                D3DRS_SRCBLEND, &capture.sourceBlend);
+            capture.destinationBlendResult = device->GetRenderState(
+                D3DRS_DESTBLEND, &capture.destinationBlend);
+            capture.blendOperationResult = device->GetRenderState(
+                D3DRS_BLENDOP, &capture.blendOperation);
+            capture.separateAlphaBlendEnableResult = device->GetRenderState(
+                D3DRS_SEPARATEALPHABLENDENABLE,
+                &capture.separateAlphaBlendEnable);
+            capture.sourceBlendAlphaResult = device->GetRenderState(
+                D3DRS_SRCBLENDALPHA, &capture.sourceBlendAlpha);
+            capture.destinationBlendAlphaResult = device->GetRenderState(
+                D3DRS_DESTBLENDALPHA, &capture.destinationBlendAlpha);
+            capture.blendOperationAlphaResult = device->GetRenderState(
+                D3DRS_BLENDOPALPHA, &capture.blendOperationAlpha);
+            capture.colorWriteEnableResult = device->GetRenderState(
+                D3DRS_COLORWRITEENABLE, &capture.colorWriteEnable);
+            capture.fogEnableResult = device->GetRenderState(
+                D3DRS_FOGENABLE, &capture.fogEnable);
+
+            IDirect3DVertexShader9* vertexShader = nullptr;
+            capture.vertexShaderResult = device->GetVertexShader(&vertexShader);
+            if (SUCCEEDED(capture.vertexShaderResult) && vertexShader != nullptr)
+            {
+                UINT byteCount = 0;
+                capture.vertexShaderFunctionResult
+                    = vertexShader->GetFunction(nullptr, &byteCount);
+                if (SUCCEEDED(capture.vertexShaderFunctionResult) && byteCount > 0
+                    && byteCount <= gTextureSamplerMaximumShaderBytes)
+                {
+                    std::vector<UInt8> bytes(byteCount);
+                    UINT actualByteCount = byteCount;
+                    capture.vertexShaderFunctionResult
+                        = vertexShader->GetFunction(bytes.data(), &actualByteCount);
+                    if (SUCCEEDED(capture.vertexShaderFunctionResult))
+                    {
+                        bytes.resize(actualByteCount);
+                        capture.vertexShaderByteCount = actualByteCount;
+                        capture.vertexShaderHash
+                            = fnv1a32(bytes.data(), bytes.size());
+                    }
+                }
+                vertexShader->Release();
+            }
+            D3DCAPS9 capabilities = {};
+            capture.vertexConstantRegisterCount
+                = SUCCEEDED(device->GetDeviceCaps(&capabilities))
+                ? (std::min)(gTextureSamplerVertexShaderRegisterCount,
+                    static_cast<UInt32>(capabilities.MaxVertexShaderConst))
+                : gTextureSamplerVertexShaderRegisterCount;
+            capture.vertexConstants.resize(
+                static_cast<std::size_t>(capture.vertexConstantRegisterCount)
+                    * sD3DFloatRegisterComponents);
+            capture.vertexConstantsResult = device->GetVertexShaderConstantF(
+                0, capture.vertexConstants.data(),
+                capture.vertexConstantRegisterCount);
+            if (FAILED(capture.vertexConstantsResult))
+                capture.vertexConstants.clear();
+
+            IDirect3DVertexDeclaration9* declaration = nullptr;
+            capture.vertexDeclarationResult = device->GetVertexDeclaration(&declaration);
+            if (SUCCEEDED(capture.vertexDeclarationResult) && declaration != nullptr)
+            {
+                UINT elementCount = 0;
+                capture.vertexDeclarationElementsResult
+                    = declaration->GetDeclaration(nullptr, &elementCount);
+                if (SUCCEEDED(capture.vertexDeclarationElementsResult)
+                    && elementCount > 0)
+                {
+                    capture.vertexDeclaration.resize(elementCount);
+                    capture.vertexDeclarationElementsResult
+                        = declaration->GetDeclaration(
+                            capture.vertexDeclaration.data(), &elementCount);
+                    if (SUCCEEDED(capture.vertexDeclarationElementsResult))
+                        capture.vertexDeclaration.resize(elementCount);
+                    else
+                        capture.vertexDeclaration.clear();
+                }
+                declaration->Release();
+            }
+
+            IDirect3DPixelShader9* pixelShader = nullptr;
+            capture.pixelShaderResult = device->GetPixelShader(&pixelShader);
+            if (SUCCEEDED(capture.pixelShaderResult) && pixelShader != nullptr)
+            {
+                UINT byteCount = 0;
+                capture.pixelShaderFunctionResult
+                    = pixelShader->GetFunction(nullptr, &byteCount);
+                if (SUCCEEDED(capture.pixelShaderFunctionResult) && byteCount > 0
+                    && byteCount <= gTextureSamplerMaximumShaderBytes)
+                {
+                    std::vector<UInt8> bytes(byteCount);
+                    UINT actualByteCount = byteCount;
+                    capture.pixelShaderFunctionResult
+                        = pixelShader->GetFunction(bytes.data(), &actualByteCount);
+                    if (SUCCEEDED(capture.pixelShaderFunctionResult))
+                    {
+                        bytes.resize(actualByteCount);
+                        capture.pixelShaderByteCount = actualByteCount;
+                        capture.pixelShaderHash
+                            = fnv1a32(bytes.data(), bytes.size());
+                    }
+                }
+                pixelShader->Release();
+            }
+            capture.pixelConstantRegisterCount = (std::min)(
+                gTextureSamplerPixelShaderRegisterCount,
+                sD3DMaximumPixelShaderFloatRegisters);
+            capture.pixelConstants.resize(
+                static_cast<std::size_t>(capture.pixelConstantRegisterCount)
+                    * sD3DFloatRegisterComponents);
+            capture.pixelConstantsResult = device->GetPixelShaderConstantF(
+                0, capture.pixelConstants.data(),
+                capture.pixelConstantRegisterCount);
+            if (FAILED(capture.pixelConstantsResult))
+                capture.pixelConstants.clear();
+            capture.renderTarget = actorDrawCaptureRenderTarget(device);
+            if (capture.drawMethod == "DrawIndexedPrimitive")
+                textureSamplerCaptureVertexBuffer(device, capture);
+
+            AcquireSRWLockExclusive(&gTextureSamplerCaptureLock);
+            if (gTextureSamplerCaptures.size() < maximumTotalRecords)
+                gTextureSamplerCaptures.push_back(std::move(capture));
+            ReleaseSRWLockExclusive(&gTextureSamplerCaptureLock);
+            resource->Release();
+        }
+    }
+
+    void captureShaderDrawContract(IDirect3DDevice9* device,
+        const char* drawMethod, D3DPRIMITIVETYPE primitiveType,
+        UInt32 primitiveCount, SInt32 baseVertexIndex,
+        UInt32 minimumVertexIndex, UInt32 vertexCount, UInt32 startIndex)
+    {
+        if (!gCaptureShaderDrawContract || device == nullptr
+            || gShaderDrawSourceFrame <= gShaderDrawRenderFrameLead
+            || gFrame != gShaderDrawSourceFrame - gShaderDrawRenderFrameLead)
+            return;
+
+        AcquireSRWLockShared(&gShaderDrawCaptureLock);
+        const bool hasCapacity
+            = gShaderDrawCaptures.size() < gShaderDrawMaximumRecords;
+        ReleaseSRWLockShared(&gShaderDrawCaptureLock);
+        if (!hasCapacity)
+            return;
+
+        ShaderDrawContractCapture capture;
+        IDirect3DVertexShader9* vertexShader = nullptr;
+        capture.vertexShaderResult = device->GetVertexShader(&vertexShader);
+        if (FAILED(capture.vertexShaderResult) || vertexShader == nullptr)
+            return;
+        UINT vertexByteCount = 0;
+        capture.vertexShaderFunctionResult
+            = vertexShader->GetFunction(nullptr, &vertexByteCount);
+        if (FAILED(capture.vertexShaderFunctionResult) || vertexByteCount == 0
+            || vertexByteCount > gShaderDrawMaximumShaderBytes)
+        {
+            vertexShader->Release();
+            return;
+        }
+        std::vector<UInt8> vertexBytes(vertexByteCount);
+        UINT actualVertexByteCount = vertexByteCount;
+        capture.vertexShaderFunctionResult = vertexShader->GetFunction(
+            vertexBytes.data(), &actualVertexByteCount);
+        vertexShader->Release();
+        if (FAILED(capture.vertexShaderFunctionResult))
+            return;
+        vertexBytes.resize(actualVertexByteCount);
+        capture.vertexShaderByteCount = actualVertexByteCount;
+        capture.vertexShaderHash = fnv1a32(vertexBytes.data(), vertexBytes.size());
+        if (capture.vertexShaderHash != gShaderDrawTargetVertexShaderHash)
+            return;
+
+        IDirect3DPixelShader9* pixelShader = nullptr;
+        capture.pixelShaderResult = device->GetPixelShader(&pixelShader);
+        if (FAILED(capture.pixelShaderResult) || pixelShader == nullptr)
+            return;
+        UINT pixelByteCount = 0;
+        capture.pixelShaderFunctionResult
+            = pixelShader->GetFunction(nullptr, &pixelByteCount);
+        if (FAILED(capture.pixelShaderFunctionResult) || pixelByteCount == 0
+            || pixelByteCount > gShaderDrawMaximumShaderBytes)
+        {
+            pixelShader->Release();
+            return;
+        }
+        std::vector<UInt8> pixelBytes(pixelByteCount);
+        UINT actualPixelByteCount = pixelByteCount;
+        capture.pixelShaderFunctionResult = pixelShader->GetFunction(
+            pixelBytes.data(), &actualPixelByteCount);
+        pixelShader->Release();
+        if (FAILED(capture.pixelShaderFunctionResult))
+            return;
+        pixelBytes.resize(actualPixelByteCount);
+        capture.pixelShaderByteCount = actualPixelByteCount;
+        capture.pixelShaderHash = fnv1a32(pixelBytes.data(), pixelBytes.size());
+        if (capture.pixelShaderHash != gShaderDrawTargetPixelShaderHash)
+            return;
+
+        capture.sourceFrame = gShaderDrawSourceFrame;
+        capture.renderFrame = gFrame;
+        capture.ordinal = static_cast<UInt32>(
+            InterlockedIncrement(&gShaderDrawOrdinal));
+        capture.drawMethod = drawMethod != nullptr ? drawMethod : "unknown";
+        capture.primitiveType = primitiveType;
+        capture.primitiveCount = primitiveCount;
+        capture.baseVertexIndex = baseVertexIndex;
+        capture.minimumVertexIndex = minimumVertexIndex;
+        capture.vertexCount = vertexCount;
+        capture.startIndex = startIndex;
+        capture.cullModeResult = device->GetRenderState(
+            D3DRS_CULLMODE, &capture.cullMode);
+        capture.zEnableResult = device->GetRenderState(
+            D3DRS_ZENABLE, &capture.zEnable);
+        capture.zWriteEnableResult = device->GetRenderState(
+            D3DRS_ZWRITEENABLE, &capture.zWriteEnable);
+        capture.zFunctionResult = device->GetRenderState(
+            D3DRS_ZFUNC, &capture.zFunction);
+        capture.alphaTestEnableResult = device->GetRenderState(
+            D3DRS_ALPHATESTENABLE, &capture.alphaTestEnable);
+        capture.alphaReferenceResult = device->GetRenderState(
+            D3DRS_ALPHAREF, &capture.alphaReference);
+        capture.alphaFunctionResult = device->GetRenderState(
+            D3DRS_ALPHAFUNC, &capture.alphaFunction);
+        capture.alphaBlendEnableResult = device->GetRenderState(
+            D3DRS_ALPHABLENDENABLE, &capture.alphaBlendEnable);
+        capture.sourceBlendResult = device->GetRenderState(
+            D3DRS_SRCBLEND, &capture.sourceBlend);
+        capture.destinationBlendResult = device->GetRenderState(
+            D3DRS_DESTBLEND, &capture.destinationBlend);
+        capture.blendOperationResult = device->GetRenderState(
+            D3DRS_BLENDOP, &capture.blendOperation);
+        capture.colorWriteEnableResult = device->GetRenderState(
+            D3DRS_COLORWRITEENABLE, &capture.colorWriteEnable);
+        capture.fogEnableResult = device->GetRenderState(
+            D3DRS_FOGENABLE, &capture.fogEnable);
+        capture.srgbWriteResult = device->GetRenderState(
+            D3DRS_SRGBWRITEENABLE, &capture.srgbWrite);
+
+        D3DCAPS9 capabilities = {};
+        capture.vertexConstantRegisterCount
+            = SUCCEEDED(device->GetDeviceCaps(&capabilities))
+            ? (std::min)(gShaderDrawVertexShaderRegisterCount,
+                static_cast<UInt32>(capabilities.MaxVertexShaderConst))
+            : gShaderDrawVertexShaderRegisterCount;
+        capture.vertexConstants.resize(
+            static_cast<std::size_t>(capture.vertexConstantRegisterCount)
+                * sD3DFloatRegisterComponents);
+        capture.vertexConstantsResult = device->GetVertexShaderConstantF(
+            0, capture.vertexConstants.data(),
+            capture.vertexConstantRegisterCount);
+        if (FAILED(capture.vertexConstantsResult))
+            capture.vertexConstants.clear();
+
+        IDirect3DVertexDeclaration9* declaration = nullptr;
+        capture.vertexDeclarationResult = device->GetVertexDeclaration(&declaration);
+        if (SUCCEEDED(capture.vertexDeclarationResult) && declaration != nullptr)
+        {
+            UINT elementCount = 0;
+            capture.vertexDeclarationElementsResult
+                = declaration->GetDeclaration(nullptr, &elementCount);
+            if (SUCCEEDED(capture.vertexDeclarationElementsResult)
+                && elementCount > 0)
+            {
+                capture.vertexDeclaration.resize(elementCount);
+                capture.vertexDeclarationElementsResult
+                    = declaration->GetDeclaration(
+                        capture.vertexDeclaration.data(), &elementCount);
+                if (SUCCEEDED(capture.vertexDeclarationElementsResult))
+                    capture.vertexDeclaration.resize(elementCount);
+                else
+                    capture.vertexDeclaration.clear();
+            }
+            declaration->Release();
+        }
+
+        capture.pixelConstantRegisterCount = (std::min)(
+            gShaderDrawPixelShaderRegisterCount,
+            sD3DMaximumPixelShaderFloatRegisters);
+        capture.pixelConstants.resize(
+            static_cast<std::size_t>(capture.pixelConstantRegisterCount)
+                * sD3DFloatRegisterComponents);
+        capture.pixelConstantsResult = device->GetPixelShaderConstantF(
+            0, capture.pixelConstants.data(),
+            capture.pixelConstantRegisterCount);
+        if (FAILED(capture.pixelConstantsResult))
+            capture.pixelConstants.clear();
+        capture.renderTarget = actorDrawCaptureRenderTarget(device);
+
+        AcquireSRWLockExclusive(&gShaderDrawCaptureLock);
+        if (gShaderDrawCaptures.size() < gShaderDrawMaximumRecords)
+            gShaderDrawCaptures.push_back(std::move(capture));
+        ReleaseSRWLockExclusive(&gShaderDrawCaptureLock);
+    }
+
     bool sidecarObserveTextureCube(
         IDirect3DCubeTexture9* texture, SidecarTextureResource& observed)
     {
@@ -10243,6 +12286,7 @@ namespace
         const UINT levels = texture->GetLevelCount();
         if (levels == 0 || levels > 32)
             return false;
+        observed.levelCount = levels;
         UInt32 hash = 2166136261u;
         UInt64 canonicalBytes = 0;
         for (UINT level = 0; level < levels; ++level)
@@ -10290,6 +12334,7 @@ namespace
         const UINT levels = texture->GetLevelCount();
         if (levels == 0 || levels > 32)
             return false;
+        observed.levelCount = levels;
         UInt32 hash = 2166136261u;
         UInt64 canonicalBytes = 0;
         for (UINT level = 0; level < levels; ++level)
@@ -10379,6 +12424,178 @@ namespace
         return result;
     }
 
+    bool actorDrawCaptureTexture2D(IDirect3DTexture9* texture,
+        UInt32 expectedLevelCount, D3DFORMAT expectedFormat, UInt32 expectedHash,
+        std::vector<ActorDrawTextureLevel>& levels, std::vector<UInt8>& canonicalBytes)
+    {
+        levels.clear();
+        canonicalBytes.clear();
+        if (texture == nullptr || gActorDrawMaximumTextureBytesPerArtifact == 0)
+            return false;
+        const UINT levelCount = texture->GetLevelCount();
+        if (levelCount == 0 || levelCount != expectedLevelCount)
+            return false;
+
+        UInt64 totalBytes = 0;
+        for (UINT levelIndex = 0; levelIndex < levelCount; ++levelIndex)
+        {
+            D3DSURFACE_DESC description = {};
+            UInt32 rowBytes = 0;
+            UInt32 rowCount = 0;
+            if (FAILED(texture->GetLevelDesc(levelIndex, &description))
+                || description.Format != expectedFormat
+                || !sidecarTextureRowLayout(description.Format, description.Width,
+                    description.Height, rowBytes, rowCount))
+            {
+                levels.clear();
+                return false;
+            }
+            const UInt64 levelBytes = static_cast<UInt64>(rowBytes) * rowCount;
+            if (levelBytes > gActorDrawMaximumTextureBytesPerArtifact
+                || totalBytes > gActorDrawMaximumTextureBytesPerArtifact - levelBytes)
+            {
+                levels.clear();
+                return false;
+            }
+            ActorDrawTextureLevel retained;
+            retained.width = description.Width;
+            retained.height = description.Height;
+            retained.rowBytes = rowBytes;
+            retained.rowCount = rowCount;
+            retained.artifactOffset = static_cast<UInt32>(totalBytes);
+            retained.artifactBytes = static_cast<UInt32>(levelBytes);
+            levels.push_back(retained);
+            totalBytes += levelBytes;
+        }
+
+        canonicalBytes.reserve(static_cast<std::size_t>(totalBytes));
+        for (UINT levelIndex = 0; levelIndex < levelCount; ++levelIndex)
+        {
+            const ActorDrawTextureLevel& level = levels[levelIndex];
+            D3DLOCKED_RECT locked = {};
+            if (FAILED(texture->LockRect(levelIndex, &locked, nullptr, D3DLOCK_READONLY))
+                || locked.pBits == nullptr || locked.Pitch <= 0
+                || static_cast<UInt32>(locked.Pitch) < level.rowBytes)
+            {
+                levels.clear();
+                canonicalBytes.clear();
+                return false;
+            }
+            for (UInt32 row = 0; row < level.rowCount; ++row)
+            {
+                const UInt8* address = static_cast<const UInt8*>(locked.pBits)
+                    + static_cast<std::size_t>(row) * static_cast<UInt32>(locked.Pitch);
+                canonicalBytes.insert(
+                    canonicalBytes.end(), address, address + level.rowBytes);
+            }
+            if (FAILED(texture->UnlockRect(levelIndex)))
+            {
+                levels.clear();
+                canonicalBytes.clear();
+                return false;
+            }
+        }
+        if (canonicalBytes.size() != totalBytes
+            || fnv1a32(canonicalBytes.data(), canonicalBytes.size()) != expectedHash)
+        {
+            levels.clear();
+            canonicalBytes.clear();
+            return false;
+        }
+        return true;
+    }
+
+    bool actorDrawBoundTextureArtifactMatches(const ActorDrawBoundTextureArtifact& artifact,
+        const ActorDrawBoundTextureCapture& capture)
+    {
+        return artifact.width == capture.width && artifact.height == capture.height
+            && artifact.levelCount == capture.levelCount && artifact.format == capture.format
+            && artifact.contentHash == capture.contentHash;
+    }
+
+    bool actorDrawObserveBoundTexture(UInt32 sourceFrame,
+        IDirect3DBaseTexture9* resource, ActorDrawBoundTextureCapture& capture)
+    {
+        if (resource == nullptr)
+            return false;
+        SidecarTextureResource observed;
+        observed.resource = resource;
+        bool valid = false;
+        switch (resource->GetType())
+        {
+            case D3DRTYPE_TEXTURE:
+                valid = sidecarObserveTexture2D(
+                    static_cast<IDirect3DTexture9*>(resource), observed);
+                break;
+            case D3DRTYPE_CUBETEXTURE:
+                valid = sidecarObserveTextureCube(
+                    static_cast<IDirect3DCubeTexture9*>(resource), observed);
+                break;
+            case D3DRTYPE_VOLUMETEXTURE:
+                valid = sidecarObserveTextureVolume(
+                    static_cast<IDirect3DVolumeTexture9*>(resource), observed);
+                break;
+            default:
+                break;
+        }
+        if (!valid)
+            return false;
+        capture.width = observed.width;
+        capture.height = observed.height;
+        capture.levelCount = observed.levelCount;
+        capture.format = observed.format;
+        capture.contentHash = observed.contentHash;
+
+        if (resource->GetType() != D3DRTYPE_TEXTURE)
+            return true;
+        AcquireSRWLockShared(&gActorDrawCaptureLock);
+        const bool alreadyRetained = std::any_of(gActorDrawBoundTextureArtifacts.begin(),
+            gActorDrawBoundTextureArtifacts.end(), [&capture](const auto& artifact) {
+                return actorDrawBoundTextureArtifactMatches(artifact, capture);
+            });
+        ReleaseSRWLockShared(&gActorDrawCaptureLock);
+        if (alreadyRetained)
+            return true;
+
+        ActorDrawBoundTextureArtifact artifact;
+        artifact.sourceFrame = sourceFrame;
+        artifact.firstBoundStage = capture.stage;
+        artifact.width = capture.width;
+        artifact.height = capture.height;
+        artifact.levelCount = capture.levelCount;
+        artifact.format = capture.format;
+        artifact.contentHash = capture.contentHash;
+        if (!actorDrawCaptureTexture2D(static_cast<IDirect3DTexture9*>(resource),
+                artifact.levelCount, artifact.format, artifact.contentHash,
+                artifact.levels, artifact.canonicalBytes))
+            return true;
+
+        AcquireSRWLockExclusive(&gActorDrawCaptureLock);
+        const bool duplicate = std::any_of(gActorDrawBoundTextureArtifacts.begin(),
+            gActorDrawBoundTextureArtifacts.end(), [&capture](const auto& existing) {
+                return actorDrawBoundTextureArtifactMatches(existing, capture);
+            });
+        if (!duplicate)
+        {
+            artifact.ordinal = ++gActorDrawBoundTextureArtifactOrdinal;
+            gActorDrawBoundTextureArtifacts.push_back(std::move(artifact));
+        }
+        ReleaseSRWLockExclusive(&gActorDrawCaptureLock);
+        return true;
+    }
+
+    void sidecarCaptureActorTargetTexture(
+        IDirect3DBaseTexture9* resource, ActorDrawTargetTexture& target)
+    {
+        if (!gCaptureActorDrawContract || resource == nullptr
+            || resource->GetType() != D3DRTYPE_TEXTURE
+            || gActorDrawMaximumTextureBytesPerArtifact == 0)
+            return;
+        auto* texture = static_cast<IDirect3DTexture9*>(resource);
+        actorDrawCaptureTexture2D(texture, target.levelCount, target.format,
+            target.contentHash, target.levels, target.canonicalBytes);
+    }
+
     std::string sidecarTextureFormat(D3DFORMAT format)
     {
         return "d3d9:" + std::to_string(static_cast<UInt32>(format));
@@ -10446,6 +12663,29 @@ namespace
         return std::string(prefix) + suffixes[stage < 6 ? stage : 5];
     }
 
+    void sidecarAppendUniqueText(
+        std::vector<std::string>& values, const std::string& value)
+    {
+        if (!value.empty()
+            && std::find(values.begin(), values.end(), value) == values.end())
+            values.push_back(value);
+    }
+
+    void sidecarMergeDrawTargetMetadata(ActorDrawTargetTexture& target,
+        const SidecarRenderPart& part, const SidecarTextureBinding& binding)
+    {
+        sidecarAppendUniqueText(target.roles, part.role);
+        sidecarAppendUniqueText(target.geometryNames, part.geometryName);
+        sidecarAppendUniqueText(target.visualNodePaths, part.visualNodePath);
+        sidecarAppendUniqueText(target.semantics, binding.semantic);
+        const bool semanticFocusSurface = part.semanticFocusDescendant
+            || part.semanticFocusSkinInfluence || part.semanticFocusNameMatch;
+        target.semanticFocusSurface
+            = target.semanticFocusSurface || semanticFocusSurface;
+        target.nonSemanticFocusSurface
+            = target.nonSemanticFocusSurface || !semanticFocusSurface;
+    }
+
     void sidecarAppendTextureBinding(SidecarAppearanceCapture& capture,
         SidecarRenderPart& part, UInt32 stage, std::string path, NiTexture* texture,
         const char* pathSourceKind)
@@ -10493,7 +12733,7 @@ namespace
             || binding.path.rfind("runtime/falloutnv/", 0) == 0;
         binding.sourceKind = generated ? "generated" : pathSourceKind;
         binding.stage = stage;
-        const auto registered = std::find_if(capture.drawTextures.begin(),
+        auto registered = std::find_if(capture.drawTextures.begin(),
             capture.drawTextures.end(), [resource = observed.resource](
                 const ActorDrawTargetTexture& value) {
                 return value.resource == resource;
@@ -10505,8 +12745,16 @@ namespace
             target.contentHash = observed.contentHash;
             target.appearanceStage = stage;
             target.path = binding.path;
+            target.width = observed.width;
+            target.height = observed.height;
+            target.levelCount = observed.levelCount;
+            target.format = observed.format;
+            sidecarMergeDrawTargetMetadata(target, part, binding);
+            sidecarCaptureActorTargetTexture(observed.resource, target);
             capture.drawTextures.push_back(std::move(target));
         }
+        else if (registered != capture.drawTextures.end())
+            sidecarMergeDrawTargetMetadata(*registered, part, binding);
         part.textureBindings.push_back(std::move(binding));
     }
 
@@ -10907,7 +13155,10 @@ namespace
         std::ostringstream key;
         key << part.alphaBits << '|' << (part.required ? '1' : '0')
             << (part.attached ? '1' : '0') << (part.drawable ? '1' : '0')
-            << (part.visible ? '1' : '0');
+            << (part.visible ? '1' : '0')
+            << (part.semanticFocusDescendant ? '1' : '0')
+            << (part.semanticFocusSkinInfluence ? '1' : '0')
+            << (part.semanticFocusNameMatch ? '1' : '0');
         for (const SidecarTextureBinding& binding : part.textureBindings)
         {
             key << '|' << binding.stage << ':' << binding.semantic << ':' << binding.path
@@ -10917,9 +13168,36 @@ namespace
         return key.str();
     }
 
+    bool sidecarSkinReferencesSemanticFocus(
+        NiObject* skinAddress, const NiAVObject* semanticFocus)
+    {
+        if (skinAddress == nullptr || semanticFocus == nullptr)
+            return false;
+        const std::string skinType = safeRuntimeString(runtimeTypeName(skinAddress));
+        OracleSkinInstance skin = {};
+        if (!isOracleSkinInstanceType(skinType) || !safeRead(skinAddress, skin)
+            || skin.matrixCount == 0 || skin.registersPerMatrix == 0
+            || skin.bones == nullptr)
+            return false;
+        const UInt64 matrixBytes = static_cast<UInt64>(skin.matrixCount)
+            * static_cast<UInt64>(skin.registersPerMatrix)
+            * sD3DFloatRegisterComponents * sizeof(float);
+        if (matrixBytes > gActorSkinPaletteMaximumBytesPerShape
+            || matrixBytes > skin.allocatedBytes)
+            return false;
+        for (UInt32 index = 0; index < skin.matrixCount; ++index)
+        {
+            NiAVObject* bone = nullptr;
+            if (safeRead(skin.bones + index, bone) && bone == semanticFocus)
+                return true;
+        }
+        return false;
+    }
+
     void sidecarCollectAppearanceRecursive(SidecarAppearanceCapture& capture,
         NiAVObject* object, SidecarAppearanceAttachment* inheritedAttachment,
-        const std::string& parentPath, bool ancestorHidden, UInt32 depth)
+        const std::string& parentPath, const std::string& visualNodePath,
+        bool ancestorHidden, bool insideSemanticFocus, UInt32 depth)
     {
         if (object == nullptr)
             return;
@@ -10932,6 +13210,8 @@ namespace
         if (!capture.visitedObjects.insert(object).second)
             return;
         ++capture.visitedNodes;
+        const bool semanticFocusDescendant = insideSemanticFocus
+            || (capture.semanticFocus != nullptr && object == capture.semanticFocus);
 
         SidecarAppearanceAttachment* attachment = sidecarFindAttachmentAt(capture, object);
         if (attachment == nullptr)
@@ -10963,12 +13243,17 @@ namespace
                 NiObject* materialProperty = nullptr;
                 NiObject* shaderProperty = nullptr;
                 OracleGeometryData* geometryDataAddress = nullptr;
+                NiObject* skinInstance = nullptr;
                 safeRead(reinterpret_cast<const UInt8*>(object)
                     + sNiGeometryMaterialPropertyOffset, materialProperty);
                 safeRead(reinterpret_cast<const UInt8*>(object)
                     + sNiGeometryShaderPropertyOffset, shaderProperty);
                 safeRead(reinterpret_cast<const UInt8*>(object)
                     + sNiGeometryDataOffset, geometryDataAddress);
+                const bool skinInstanceReadable = safeRead(
+                    reinterpret_cast<const UInt8*>(object)
+                        + sNiGeometrySkinInstanceOffset,
+                    skinInstance);
                 OracleGeometryData geometryData = {};
                 const bool geometryReadable = geometryDataAddress != nullptr
                     && safeRead(geometryDataAddress, geometryData)
@@ -10998,7 +13283,14 @@ namespace
                         && ((shaderFlags1 & sBsShaderPropertySkinTintFlag) != 0
                             || lowerNodePath.find("skin") != std::string::npos
                             || lowerNodePath.find("arms") != std::string::npos)));
+                part.semanticFocusDescendant = semanticFocusDescendant;
                 part.attached = true;
+                part.skinned = skinInstanceReadable && skinInstance != nullptr;
+                part.semanticFocusSkinInfluence = part.skinned
+                    && sidecarSkinReferencesSemanticFocus(
+                        skinInstance, capture.semanticFocus);
+                if (!skinInstanceReadable)
+                    sidecarAppearanceFault(capture, "geometry-skin-instance-unreadable");
                 part.drawable = geometryReadable && flagsReadable
                     && shaderProperty != nullptr;
                 const std::string shaderRuntimeType
@@ -11048,6 +13340,12 @@ namespace
                     part.modelHash = sidecarHashText(attachment->modelPath);
                 }
                 part.nodeHash = sidecarHashText(nodePath);
+                part.geometryName = safeRuntimeString(nameAddress);
+                part.semanticFocusNameMatch
+                    = portraitSemanticFocusNameMatches(part.geometryName);
+                part.visualNodePath = visualNodePath;
+                if (part.required && part.geometryName.empty())
+                    sidecarAppearanceFault(capture, "required-geometry-name-missing");
                 if (geometryReadable)
                 {
                     UInt32 geometryHash = 2166136261u;
@@ -11106,7 +13404,8 @@ namespace
                 continue;
             }
             sidecarCollectAppearanceRecursive(capture, child, attachment,
-                nodePath, hidden, depth + 1);
+                nodePath, visualNodePath + '/' + std::to_string(index),
+                hidden, semanticFocusDescendant, depth + 1);
         }
     }
 
@@ -11117,7 +13416,8 @@ namespace
         __try
         {
             sidecarCollectAppearanceRecursive(
-                capture, root, nullptr, sSidecarEmptyNodePath, false, 0);
+                capture, root, nullptr, sSidecarEmptyNodePath,
+                sSidecarRootVisualNodePath, false, false, 0);
             complete = true;
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
@@ -11179,7 +13479,7 @@ namespace
         if (capture.equippedWeaponState == sSidecarWeaponStateNone)
         {
             capture.equippedWeaponRenderState = sSidecarWeaponRenderStateNotApplicable;
-            if (capture.equippedWeaponForm != 0 || capture.equippedWeaponOut
+            if (capture.equippedWeaponForm != 0
                 || !capture.equippedWeaponModelPath.empty()
                 || capture.equippedWeaponNodePresent || hasVisibleWeapon)
             {
@@ -11239,8 +13539,17 @@ namespace
             << ",\"attached\":" << (part.attached ? "true" : "false")
             << ",\"drawable\":" << (part.drawable ? "true" : "false")
             << ",\"visible\":" << (part.visible ? "true" : "false")
+            << ",\"skinned\":" << (part.skinned ? "true" : "false")
+            << ",\"semanticFocusDescendant\":"
+            << (part.semanticFocusDescendant ? "true" : "false")
+            << ",\"semanticFocusSkinInfluence\":"
+            << (part.semanticFocusSkinInfluence ? "true" : "false")
+            << ",\"semanticFocusNameMatch\":"
+            << (part.semanticFocusNameMatch ? "true" : "false")
             << ",\"alphaBits\":" << part.alphaBits
-            << ",\"modelPath\":" << jsonString(part.modelPath.c_str());
+            << ",\"modelPath\":" << jsonString(part.modelPath.c_str())
+            << ",\"geometryName\":" << jsonString(part.geometryName.c_str())
+            << ",\"visualNodePath\":" << jsonString(part.visualNodePath.c_str());
         out << ",\"textureBindings\":[";
         for (std::size_t index = 0; index < part.textureBindings.size(); ++index)
         {
@@ -11266,7 +13575,13 @@ namespace
         sidecarCollectAppearanceSourcesAndAttachments(actor, capture);
         NiNode* root = sidecarActorRootUnsafe(actor);
         if (root != nullptr)
+        {
+            const PortraitSemanticFocus semanticFocus
+                = resolvePortraitSemanticFocus(root);
+            capture.semanticFocus = semanticFocus.rootFallback
+                ? nullptr : semanticFocus.object;
             sidecarCollectAppearanceSafely(capture, root);
+        }
         sidecarAddMissingAttachmentParts(capture);
         sidecarValidateEquippedWeaponAppearance(capture);
         if (capture.parts.empty())
@@ -11291,13 +13606,15 @@ namespace
         const std::streampos currentPosition = out.tellp();
         const std::size_t currentBytes = currentPosition >= std::streampos(0)
             ? static_cast<std::size_t>(currentPosition) : 0;
-        constexpr std::size_t reservedTailBytes = 4096;
-        const std::size_t transportBudget = NikamiFNVSidecar::PayloadBytes
-                > currentBytes + reservedTailBytes
-            ? NikamiFNVSidecar::PayloadBytes - currentBytes - reservedTailBytes : 0;
-        const std::size_t renderPartsBudget = (std::min)(
-            sSidecarAppearanceMaximumJsonBytes,
-            transportBudget > 512 ? transportBudget - 512 : std::size_t(0));
+        const std::size_t maximumEventBytes =
+            static_cast<std::size_t>(gActorAppearanceMaximumEventBytes);
+        const std::size_t transportBudget = maximumEventBytes
+                > currentBytes + sSidecarPayloadReservedTailBytes
+            ? maximumEventBytes - currentBytes
+                - sSidecarPayloadReservedTailBytes : 0;
+        const std::size_t renderPartsBudget
+            = transportBudget > sSidecarAppearanceEnvelopeBytes
+            ? transportBudget - sSidecarAppearanceEnvelopeBytes : std::size_t(0);
         std::size_t serializedBytes = 0;
         for (const SidecarRenderPart& part : capture.parts)
         {
@@ -11350,6 +13667,39 @@ namespace
         out << "]}";
     }
 
+    struct ActorDrawArtifactEvidence
+    {
+        bool written = false;
+        std::string path;
+        UInt64 bytes = 0;
+        UInt32 hash = 0;
+    };
+
+    ActorDrawArtifactEvidence writeActorDrawNamedArtifact(
+        const std::string& name, const std::vector<UInt8>& bytes)
+    {
+        ActorDrawArtifactEvidence evidence;
+        if (bytes.empty() || name.empty() || gActorDrawArtifactDirectory.empty())
+            return evidence;
+        const std::filesystem::path path
+            = std::filesystem::path(gActorDrawArtifactDirectory) / name;
+        if (std::filesystem::exists(path))
+            return evidence;
+        std::ofstream stream(path, std::ios::out | std::ios::binary);
+        if (!stream)
+            return evidence;
+        stream.write(reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+        stream.flush();
+        if (!stream)
+            return evidence;
+        evidence.written = true;
+        evidence.path = path.string();
+        evidence.bytes = bytes.size();
+        evidence.hash = fnv1a32(bytes.data(), bytes.size());
+        return evidence;
+    }
+
     void sidecarPrimeActorDrawTexturesUnsafe(Actor* actor)
     {
         if ((!gCaptureActorDrawContract && !gCaptureActorSurfaceContract) || actor == nullptr
@@ -11358,8 +13708,21 @@ namespace
         SidecarAppearanceCapture capture;
         sidecarCollectAppearanceSourcesAndAttachments(actor, capture);
         NiNode* root = sidecarActorRootUnsafe(actor);
-        if (root == nullptr || !sidecarCollectAppearanceSafely(capture, root)
+        if (root == nullptr)
+            return;
+        const PortraitSemanticFocus semanticFocus = resolvePortraitSemanticFocus(root);
+        capture.semanticFocus = semanticFocus.rootFallback
+            ? nullptr : semanticFocus.object;
+        if (!sidecarCollectAppearanceSafely(capture, root)
             || capture.drawTextures.empty())
+            return;
+        const bool semanticFocusRegistryReady = semanticFocus.rootFallback
+            || std::any_of(capture.drawTextures.begin(), capture.drawTextures.end(),
+                [](const ActorDrawTargetTexture& texture) {
+                    return texture.semanticFocusSurface
+                        && !texture.nonSemanticFocusSurface;
+                });
+        if (!semanticFocusRegistryReady)
             return;
         std::sort(capture.drawTextures.begin(), capture.drawTextures.end(),
             [](const ActorDrawTargetTexture& left, const ActorDrawTargetTexture& right) {
@@ -11370,6 +13733,13 @@ namespace
                     return left.appearanceStage < right.appearanceStage;
                 return left.resource < right.resource;
             });
+        for (ActorDrawTargetTexture& texture : capture.drawTextures)
+        {
+            std::sort(texture.roles.begin(), texture.roles.end());
+            std::sort(texture.geometryNames.begin(), texture.geometryNames.end());
+            std::sort(texture.visualNodePaths.begin(), texture.visualNodePaths.end());
+            std::sort(texture.semantics.begin(), texture.semantics.end());
+        }
         gActorDrawTargetTextures = std::move(capture.drawTextures);
         MemoryBarrier();
         InterlockedExchange(&gActorDrawTargetTexturesReady, 1);
@@ -11385,11 +13755,53 @@ namespace
             if (index != 0)
                 gOutput << ',';
             const ActorDrawTargetTexture& texture = gActorDrawTargetTextures[index];
+            std::ostringstream artifactName;
+            artifactName << "target-texture-" << std::setfill('0') << std::setw(3)
+                         << index << "-stage-" << std::setw(2)
+                         << texture.appearanceStage << '-' << std::hex
+                         << std::setw(8) << texture.contentHash << ".bin";
+            const ActorDrawArtifactEvidence artifact = writeActorDrawNamedArtifact(
+                artifactName.str(), texture.canonicalBytes);
             gOutput << "{\"path\":" << jsonString(texture.path.c_str())
                     << ",\"contentHash\":"
                     << jsonString(sidecarHashLabel(
                            "d3d9-fnv1a32:", texture.contentHash).c_str())
-                    << ",\"appearanceStage\":" << texture.appearanceStage << '}';
+                    << ",\"appearanceStage\":" << texture.appearanceStage
+                    << ",\"width\":" << texture.width
+                    << ",\"height\":" << texture.height
+                    << ",\"format\":" << static_cast<UInt32>(texture.format)
+                    << ",\"levelCount\":" << texture.levelCount
+                    << ",\"roles\":";
+            writeJsonStringArray(gOutput, texture.roles);
+            gOutput << ",\"geometryNames\":";
+            writeJsonStringArray(gOutput, texture.geometryNames);
+            gOutput << ",\"visualNodePaths\":";
+            writeJsonStringArray(gOutput, texture.visualNodePaths);
+            gOutput << ",\"semantics\":";
+            writeJsonStringArray(gOutput, texture.semantics);
+            gOutput << ",\"semanticFocusSurface\":"
+                    << (texture.semanticFocusSurface ? "true" : "false")
+                    << ",\"semanticFocusExclusive\":"
+                    << (texture.semanticFocusSurface
+                        && !texture.nonSemanticFocusSurface ? "true" : "false");
+            gOutput << ",\"levels\":[";
+            for (std::size_t levelIndex = 0; levelIndex < texture.levels.size(); ++levelIndex)
+            {
+                if (levelIndex != 0)
+                    gOutput << ',';
+                const ActorDrawTextureLevel& level = texture.levels[levelIndex];
+                gOutput << "{\"width\":" << level.width
+                        << ",\"height\":" << level.height
+                        << ",\"rowBytes\":" << level.rowBytes
+                        << ",\"rowCount\":" << level.rowCount
+                        << ",\"artifactOffset\":" << level.artifactOffset
+                        << ",\"artifactBytes\":" << level.artifactBytes << '}';
+            }
+            gOutput << "],\"artifact\":{\"written\":"
+                    << (artifact.written ? "true" : "false")
+                    << ",\"path\":" << jsonString(artifact.path.c_str())
+                    << ",\"bytes\":" << artifact.bytes
+                    << ",\"fnv1a32\":" << artifact.hash << "}}";
         }
         gOutput << "]}\n";
         gOutput.flush();
@@ -11410,42 +13822,80 @@ namespace
         }
     }
 
-    struct ActorDrawArtifactEvidence
-    {
-        bool written = false;
-        std::string path;
-        UInt64 bytes = 0;
-        UInt32 hash = 0;
-    };
-
     ActorDrawArtifactEvidence writeActorDrawArtifact(
         const ActorDrawContractCapture& capture, const char* suffix,
         const std::vector<UInt8>& bytes)
     {
-        ActorDrawArtifactEvidence evidence;
         if (bytes.empty() || gActorDrawArtifactDirectory.empty())
-            return evidence;
+            return {};
         std::ostringstream name;
         name << "source-" << std::setfill('0') << std::setw(6) << capture.sourceFrame
              << "-render-" << std::setw(6) << capture.renderFrame
              << "-draw-" << std::setw(6) << capture.ordinal << '-' << suffix << ".bin";
-        const std::filesystem::path path
-            = std::filesystem::path(gActorDrawArtifactDirectory) / name.str();
-        if (std::filesystem::exists(path))
-            return evidence;
-        std::ofstream stream(path, std::ios::out | std::ios::binary);
-        if (!stream)
-            return evidence;
-        stream.write(reinterpret_cast<const char*>(bytes.data()),
-            static_cast<std::streamsize>(bytes.size()));
-        stream.flush();
-        if (!stream)
-            return evidence;
-        evidence.written = true;
-        evidence.path = path.string();
-        evidence.bytes = bytes.size();
-        evidence.hash = fnv1a32(bytes.data(), bytes.size());
-        return evidence;
+        return writeActorDrawNamedArtifact(name.str(), bytes);
+    }
+
+    void writeActorDrawBoundTextureArtifacts(UInt32 sourceFrame)
+    {
+        std::vector<ActorDrawBoundTextureArtifact> artifacts;
+        AcquireSRWLockShared(&gActorDrawCaptureLock);
+        std::copy_if(gActorDrawBoundTextureArtifacts.begin(),
+            gActorDrawBoundTextureArtifacts.end(), std::back_inserter(artifacts),
+            [sourceFrame](const auto& artifact) {
+                return artifact.sourceFrame == sourceFrame;
+            });
+        ReleaseSRWLockShared(&gActorDrawCaptureLock);
+        if (artifacts.empty())
+            return;
+
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"actor-draw-contract-bound-textures\""
+                << ",\"frame\":" << gFrame
+                << ",\"sourceFrame\":" << sourceFrame
+                << ",\"textures\":[";
+        for (std::size_t index = 0; index < artifacts.size(); ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            const ActorDrawBoundTextureArtifact& texture = artifacts[index];
+            std::ostringstream artifactName;
+            artifactName << "source-" << std::setfill('0') << std::setw(6)
+                         << sourceFrame << "-bound-texture-" << std::setw(6)
+                         << texture.ordinal << "-fnv1a32-" << std::hex
+                         << std::setw(8) << texture.contentHash << ".bin";
+            const ActorDrawArtifactEvidence artifact = writeActorDrawNamedArtifact(
+                artifactName.str(), texture.canonicalBytes);
+            gOutput << "{\"ordinal\":" << texture.ordinal
+                    << ",\"firstBoundStage\":" << texture.firstBoundStage
+                    << ",\"contentHash\":"
+                    << jsonString(sidecarHashLabel(
+                           "d3d9-fnv1a32:", texture.contentHash).c_str())
+                    << ",\"width\":" << texture.width
+                    << ",\"height\":" << texture.height
+                    << ",\"format\":" << static_cast<UInt32>(texture.format)
+                    << ",\"levelCount\":" << texture.levelCount
+                    << ",\"levels\":[";
+            for (std::size_t levelIndex = 0; levelIndex < texture.levels.size();
+                ++levelIndex)
+            {
+                if (levelIndex != 0)
+                    gOutput << ',';
+                const ActorDrawTextureLevel& level = texture.levels[levelIndex];
+                gOutput << "{\"width\":" << level.width
+                        << ",\"height\":" << level.height
+                        << ",\"rowBytes\":" << level.rowBytes
+                        << ",\"rowCount\":" << level.rowCount
+                        << ",\"artifactOffset\":" << level.artifactOffset
+                        << ",\"artifactBytes\":" << level.artifactBytes << '}';
+            }
+            gOutput << "],\"artifact\":{"
+                    << "\"written\":" << (artifact.written ? "true" : "false")
+                    << ",\"path\":" << jsonString(artifact.path.c_str())
+                    << ",\"bytes\":" << artifact.bytes
+                    << ",\"fnv1a32\":" << artifact.hash << "}}";
+        }
+        gOutput << "]}\n";
+        gOutput.flush();
     }
 
     void writeActorDrawFloatArray(std::ostream& out, const float* values, std::size_t count)
@@ -11546,6 +13996,66 @@ namespace
         out << '}';
     }
 
+    void writeActorSurfaceCaptureJson(
+        std::ostream& out, const ActorSurfaceContractCapture& capture)
+    {
+        out << "{\"sourceFrame\":" << capture.sourceFrame
+            << ",\"renderFrame\":" << capture.renderFrame
+            << ",\"renderClass\":" << jsonString(
+                capture.matchedTextureSemanticFocusExclusive
+                    ? "semantic-focus" : "skinned-actor")
+            << ",\"matchedTexture\":{"
+            << "\"boundStage\":" << capture.matchedTextureStage
+            << ",\"appearanceStage\":"
+            << capture.matchedTextureAppearanceStage
+            << ",\"path\":" << jsonString(capture.matchedTexturePath.c_str())
+            << ",\"contentHash\":"
+            << jsonString(sidecarHashLabel(
+                   "d3d9-fnv1a32:", capture.matchedTextureHash).c_str())
+            << ",\"roles\":";
+        writeJsonStringArray(out, capture.matchedTextureRoles);
+        out << ",\"geometryNames\":";
+        writeJsonStringArray(out, capture.matchedTextureGeometryNames);
+        out << ",\"visualNodePaths\":";
+        writeJsonStringArray(out, capture.matchedTextureVisualNodePaths);
+        out << ",\"semantics\":";
+        writeJsonStringArray(out, capture.matchedTextureSemantics);
+        out << ",\"semanticFocusSurface\":"
+            << (capture.matchedTextureSemanticFocusSurface ? "true" : "false")
+            << ",\"semanticFocusExclusive\":"
+            << (capture.matchedTextureSemanticFocusExclusive ? "true" : "false");
+        out << "},\"vertexShader\":{"
+            << "\"getResult\":"
+            << static_cast<long>(capture.vertexShaderResult)
+            << ",\"getFunctionResult\":"
+            << static_cast<long>(capture.vertexShaderFunctionResult)
+            << ",\"byteCount\":" << capture.vertexShaderByteCount
+            << ",\"fnv1a32\":" << capture.vertexShaderHash
+            << ",\"hasBonesParameter\":"
+            << (capture.hasBonesParameter ? "true" : "false")
+            << ",\"hasSkinModelViewProjectionParameter\":"
+            << (capture.hasSkinModelViewProjectionParameter ? "true" : "false")
+            << "},\"fixedFunctionTransforms\":{"
+            << "\"worldResult\":"
+            << static_cast<long>(capture.worldTransformResult)
+            << ",\"world\":";
+        writeActorDrawFloatArray(out,
+            reinterpret_cast<const float*>(&capture.worldTransform), 16);
+        out << ",\"viewResult\":"
+            << static_cast<long>(capture.viewTransformResult)
+            << ",\"view\":";
+        writeActorDrawFloatArray(out,
+            reinterpret_cast<const float*>(&capture.viewTransform), 16);
+        out << ",\"projectionResult\":"
+            << static_cast<long>(capture.projectionTransformResult)
+            << ",\"projection\":";
+        writeActorDrawFloatArray(out,
+            reinterpret_cast<const float*>(&capture.projectionTransform), 16);
+        out << "},\"renderTarget\":";
+        writeActorDrawRenderTarget(out, capture.renderTarget);
+        out << '}';
+    }
+
     void writeActorSurfaceContract(UInt32 sourceFrame)
     {
         if (!gCaptureActorSurfaceContract || !gOutput.is_open())
@@ -11574,55 +14084,17 @@ namespace
                 << ",\"targetTexturesReady\":"
                 << (InterlockedCompareExchange(
                         &gActorDrawTargetTexturesReady, 0, 0) == 1 ? "true" : "false")
+                << ",\"maximumRecords\":"
+                << gActorSurfaceMaximumRecordsPerSourceFrame
                 << ",\"captureCount\":" << captures.size()
-                << ",\"surface\":";
-        if (captures.size() == 1)
+                << ",\"surfaces\":[";
+        for (std::size_t index = 0; index < captures.size(); ++index)
         {
-            const ActorSurfaceContractCapture& capture = captures[0];
-            gOutput << "{\"sourceFrame\":" << capture.sourceFrame
-                    << ",\"renderFrame\":" << capture.renderFrame
-                    << ",\"matchedTexture\":{"
-                    << "\"boundStage\":" << capture.matchedTextureStage
-                    << ",\"appearanceStage\":"
-                    << capture.matchedTextureAppearanceStage
-                    << ",\"path\":" << jsonString(capture.matchedTexturePath.c_str())
-                    << ",\"contentHash\":"
-                    << jsonString(sidecarHashLabel(
-                           "d3d9-fnv1a32:", capture.matchedTextureHash).c_str())
-                    << "},\"vertexShader\":{"
-                    << "\"getResult\":"
-                    << static_cast<long>(capture.vertexShaderResult)
-                    << ",\"getFunctionResult\":"
-                    << static_cast<long>(capture.vertexShaderFunctionResult)
-                    << ",\"byteCount\":" << capture.vertexShaderByteCount
-                    << ",\"fnv1a32\":" << capture.vertexShaderHash
-                    << ",\"hasBonesParameter\":"
-                    << (capture.hasBonesParameter ? "true" : "false")
-                    << ",\"hasSkinModelViewProjectionParameter\":"
-                    << (capture.hasSkinModelViewProjectionParameter ? "true" : "false")
-                    << "},\"fixedFunctionTransforms\":{"
-                    << "\"worldResult\":"
-                    << static_cast<long>(capture.worldTransformResult)
-                    << ",\"world\":";
-            writeActorDrawFloatArray(gOutput,
-                reinterpret_cast<const float*>(&capture.worldTransform), 16);
-            gOutput << ",\"viewResult\":"
-                    << static_cast<long>(capture.viewTransformResult)
-                    << ",\"view\":";
-            writeActorDrawFloatArray(gOutput,
-                reinterpret_cast<const float*>(&capture.viewTransform), 16);
-            gOutput << ",\"projectionResult\":"
-                    << static_cast<long>(capture.projectionTransformResult)
-                    << ",\"projection\":";
-            writeActorDrawFloatArray(gOutput,
-                reinterpret_cast<const float*>(&capture.projectionTransform), 16);
-            gOutput << "},\"renderTarget\":";
-            writeActorDrawRenderTarget(gOutput, capture.renderTarget);
-            gOutput << '}';
+            if (index != 0)
+                gOutput << ',';
+            writeActorSurfaceCaptureJson(gOutput, captures[index]);
         }
-        else
-            gOutput << "null";
-        gOutput << "}\n";
+        gOutput << "]}\n";
         gOutput.flush();
     }
 
@@ -11644,6 +14116,8 @@ namespace
         }
         ReleaseSRWLockExclusive(&gActorDrawCaptureLock);
 
+        writeActorDrawBoundTextureArtifacts(sourceFrame);
+
         gOutput << std::setprecision(9)
                 << "{\"schema\":" << sSchemaJson
                 << ",\"event\":\"actor-draw-contract\""
@@ -11663,6 +14137,8 @@ namespace
             const ActorDrawContractCapture& capture = captures[index];
             const ActorDrawArtifactEvidence shaderArtifact
                 = writeActorDrawArtifact(capture, "vertex-shader", capture.vertexShaderBytes);
+            const ActorDrawArtifactEvidence pixelShaderArtifact
+                = writeActorDrawArtifact(capture, "pixel-shader", capture.pixelShaderBytes);
             const ActorDrawArtifactEvidence vertexArtifact
                 = writeActorDrawArtifact(capture, "vertex-buffer", capture.vertexBuffer.bytes);
             const ActorDrawArtifactEvidence indexArtifact
@@ -11684,7 +14160,32 @@ namespace
                     << ",\"contentHash\":"
                     << jsonString(sidecarHashLabel(
                            "d3d9-fnv1a32:", capture.matchedTextureHash).c_str())
-                    << "},\"vertexShader\":{\"getResult\":"
+                    << "},\"boundTextures\":[";
+            for (std::size_t textureIndex = 0;
+                textureIndex < capture.boundTextures.size(); ++textureIndex)
+            {
+                if (textureIndex != 0)
+                    gOutput << ',';
+                const ActorDrawBoundTextureCapture& texture
+                    = capture.boundTextures[textureIndex];
+                gOutput << "{\"stage\":" << texture.stage
+                        << ",\"getResult\":" << static_cast<long>(texture.getResult)
+                        << ",\"srgbTextureResult\":"
+                        << static_cast<long>(texture.srgbTextureResult)
+                        << ",\"srgbTexture\":" << texture.srgbTexture
+                        << ",\"registeredActorTexture\":"
+                        << (texture.registeredActorTexture ? "true" : "false")
+                        << ",\"appearanceStage\":" << texture.appearanceStage
+                        << ",\"path\":" << jsonString(texture.path.c_str())
+                        << ",\"width\":" << texture.width
+                        << ",\"height\":" << texture.height
+                        << ",\"levelCount\":" << texture.levelCount
+                        << ",\"format\":" << static_cast<UInt32>(texture.format)
+                        << ",\"contentHash\":"
+                        << jsonString(sidecarHashLabel(
+                               "d3d9-fnv1a32:", texture.contentHash).c_str()) << '}';
+            }
+            gOutput << "],\"vertexShader\":{\"getResult\":"
                     << static_cast<long>(capture.vertexShaderResult)
                     << ",\"getFunctionResult\":"
                     << static_cast<long>(capture.vertexShaderFunctionResult)
@@ -11718,7 +14219,21 @@ namespace
                         << ",\"usageIndex\":"
                         << static_cast<UInt32>(element.UsageIndex) << '}';
             }
-            gOutput << "]},\"fvf\":{\"getResult\":"
+            gOutput << "]},\"pixelShader\":{\"getResult\":"
+                    << static_cast<long>(capture.pixelShaderResult)
+                    << ",\"getFunctionResult\":"
+                    << static_cast<long>(capture.pixelShaderFunctionResult)
+                    << ",\"byteCount\":" << capture.pixelShaderByteCount
+                    << ",\"fnv1a32\":" << capture.pixelShaderHash
+                    << ",\"artifact\":";
+            writeActorDrawArtifactJson(gOutput, pixelShaderArtifact);
+            gOutput << "},\"pixelConstants\":{\"getResult\":"
+                    << static_cast<long>(capture.pixelConstantsResult)
+                    << ",\"registerCount\":"
+                    << capture.pixelConstantRegisterCount << ",\"values\":";
+            writeActorDrawFloatArray(gOutput, capture.pixelConstants.data(),
+                capture.pixelConstants.size());
+            gOutput << "},\"fvf\":{\"getResult\":"
                     << static_cast<long>(capture.fvfResult)
                     << ",\"value\":" << capture.fvf
                     << "},\"fixedFunctionTransforms\":{\"worldResult\":"
@@ -11736,13 +14251,594 @@ namespace
                     << ",\"projection\":";
             writeActorDrawFloatArray(gOutput,
                 reinterpret_cast<const float*>(&capture.projectionTransform), 16);
-            gOutput << "},\"renderTarget\":";
+            gOutput << "},\"colorSpaceState\":{\"srgbWriteResult\":"
+                    << static_cast<long>(capture.srgbWriteResult)
+                    << ",\"srgbWrite\":" << capture.srgbWrite
+                    << "},\"renderTarget\":";
             writeActorDrawRenderTarget(gOutput, capture.renderTarget);
             gOutput << ",\"vertexBuffer\":";
             writeActorDrawBufferJson(gOutput, capture.vertexBuffer, vertexArtifact);
             gOutput << ",\"indexBuffer\":";
             writeActorDrawBufferJson(gOutput, capture.indexBuffer, indexArtifact);
             gOutput << '}';
+        }
+        gOutput << "]}\n";
+        gOutput.flush();
+    }
+
+    void writeTextureSamplerContract(UInt32 sourceFrame)
+    {
+        if (!gCaptureTextureSamplerContract || gTextureSamplerContractWritten
+            || !gOutput.is_open() || gTextureSamplerSourceFrames.empty()
+            || sourceFrame != gTextureSamplerSourceFrames.back())
+            return;
+
+        std::vector<TextureSamplerContractCapture> captures;
+        std::vector<TextureSamplerCandidateCapture> candidates;
+        UInt32 candidateCount = 0;
+        UInt32 hashedCandidateCount = 0;
+        std::size_t matchedResourceCount = 0;
+        AcquireSRWLockExclusive(&gTextureSamplerCaptureLock);
+        captures = std::move(gTextureSamplerCaptures);
+        gTextureSamplerCaptures.clear();
+        candidates = std::move(gTextureSamplerCandidates);
+        gTextureSamplerCandidates.clear();
+        candidateCount = gTextureSamplerCandidateCount;
+        hashedCandidateCount = gTextureSamplerHashedCandidateCount;
+        matchedResourceCount = gTextureSamplerMatchedResources.size();
+        gTextureSamplerContractWritten = true;
+        ReleaseSRWLockExclusive(&gTextureSamplerCaptureLock);
+
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"texture-sampler-contract\""
+                << ",\"frame\":" << gFrame
+                << ",\"sourceFrame\":" << sourceFrame
+                << ",\"sourceFrames\":[";
+        for (std::size_t index = 0;
+             index < gTextureSamplerSourceFrames.size(); ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            gOutput << gTextureSamplerSourceFrames[index];
+        }
+        gOutput << ']'
+                << ",\"renderFrameLead\":" << gTextureSamplerRenderFrameLead
+                << ",\"target\":{\"width\":" << gTextureSamplerTargetWidth
+                << ",\"height\":" << gTextureSamplerTargetHeight
+                << ",\"levelCount\":" << gTextureSamplerTargetLevelCount
+                << ",\"format\":"
+                << static_cast<UInt32>(gTextureSamplerTargetFormat)
+                << ",\"contentHash\":"
+                << jsonString(sidecarHashLabel(
+                       "d3d9-fnv1a32:", gTextureSamplerTargetHash).c_str())
+                << ",\"topLevelHash\":"
+                << jsonString(sidecarHashLabel(
+                       "d3d9-fnv1a32:",
+                       gTextureSamplerTargetTopLevelHash).c_str())
+                << "},\"textureStageCount\":" << gTextureSamplerTextureStageCount
+                << ",\"maximumCandidates\":" << gTextureSamplerMaximumCandidates
+                << ",\"candidateCount\":" << candidateCount
+                << ",\"hashedCandidateCount\":" << hashedCandidateCount
+                << ",\"candidateLimitReached\":"
+                << (candidateCount >= gTextureSamplerMaximumCandidates
+                        ? "true" : "false")
+                << ",\"matchedResourceCount\":" << matchedResourceCount
+                << ",\"maximumRecords\":" << gTextureSamplerMaximumRecords
+                << ",\"maximumVertexBufferBytes\":"
+                << gTextureSamplerMaximumVertexBufferBytes
+                << ",\"records\":[";
+        for (std::size_t index = 0; index < captures.size(); ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            const TextureSamplerContractCapture& capture = captures[index];
+            std::string vertexBufferHex;
+            vertexBufferHex.reserve(capture.vertexBuffer.bytes.size() * 2);
+            constexpr char hexDigits[] = "0123456789abcdef";
+            for (const UInt8 value : capture.vertexBuffer.bytes)
+            {
+                vertexBufferHex.push_back(hexDigits[value >> 4]);
+                vertexBufferHex.push_back(hexDigits[value & 0x0f]);
+            }
+            gOutput << "{\"ordinal\":" << capture.ordinal
+                    << ",\"sourceFrame\":" << capture.sourceFrame
+                    << ",\"renderFrame\":" << capture.renderFrame
+                    << ",\"drawMethod\":" << jsonString(capture.drawMethod.c_str())
+                    << ",\"primitiveType\":"
+                    << static_cast<UInt32>(capture.primitiveType)
+                    << ",\"primitiveCount\":" << capture.primitiveCount
+                    << ",\"baseVertexIndex\":" << capture.baseVertexIndex
+                    << ",\"minimumVertexIndex\":" << capture.minimumVertexIndex
+                    << ",\"vertexCount\":" << capture.vertexCount
+                    << ",\"startIndex\":" << capture.startIndex
+                    << ",\"texture\":{\"stage\":" << capture.stage
+                    << ",\"width\":" << capture.width
+                    << ",\"height\":" << capture.height
+                    << ",\"levelCount\":" << capture.levelCount
+                    << ",\"format\":" << static_cast<UInt32>(capture.format)
+                    << ",\"contentHash\":"
+                    << jsonString(sidecarHashLabel(
+                           "d3d9-fnv1a32:", capture.contentHash).c_str())
+                    << ",\"topLevelHash\":"
+                    << jsonString(sidecarHashLabel(
+                           "d3d9-fnv1a32:", capture.topLevelHash).c_str())
+                    << "},\"sampler\":{\"addressUResult\":"
+                    << static_cast<long>(capture.addressUResult)
+                    << ",\"addressU\":" << capture.addressU
+                    << ",\"addressVResult\":"
+                    << static_cast<long>(capture.addressVResult)
+                    << ",\"addressV\":" << capture.addressV
+                    << ",\"magFilterResult\":"
+                    << static_cast<long>(capture.magFilterResult)
+                    << ",\"magFilter\":" << capture.magFilter
+                    << ",\"minFilterResult\":"
+                    << static_cast<long>(capture.minFilterResult)
+                    << ",\"minFilter\":" << capture.minFilter
+                    << ",\"mipFilterResult\":"
+                    << static_cast<long>(capture.mipFilterResult)
+                    << ",\"mipFilter\":" << capture.mipFilter
+                    << ",\"srgbTextureResult\":"
+                    << static_cast<long>(capture.srgbTextureResult)
+                    << ",\"srgbTexture\":" << capture.srgbTexture
+                    << "},\"colorSpaceState\":{\"srgbWriteResult\":"
+                    << static_cast<long>(capture.srgbWriteResult)
+                    << ",\"srgbWrite\":" << capture.srgbWrite
+                    << "},\"renderState\":{\"cullModeResult\":"
+                    << static_cast<long>(capture.cullModeResult)
+                    << ",\"cullMode\":" << capture.cullMode
+                    << ",\"zEnableResult\":"
+                    << static_cast<long>(capture.zEnableResult)
+                    << ",\"zEnable\":" << capture.zEnable
+                    << ",\"zWriteEnableResult\":"
+                    << static_cast<long>(capture.zWriteEnableResult)
+                    << ",\"zWriteEnable\":" << capture.zWriteEnable
+                    << ",\"zFunctionResult\":"
+                    << static_cast<long>(capture.zFunctionResult)
+                    << ",\"zFunction\":" << capture.zFunction
+                    << ",\"alphaTestEnableResult\":"
+                    << static_cast<long>(capture.alphaTestEnableResult)
+                    << ",\"alphaTestEnable\":" << capture.alphaTestEnable
+                    << ",\"alphaReferenceResult\":"
+                    << static_cast<long>(capture.alphaReferenceResult)
+                    << ",\"alphaReference\":" << capture.alphaReference
+                    << ",\"alphaFunctionResult\":"
+                    << static_cast<long>(capture.alphaFunctionResult)
+                    << ",\"alphaFunction\":" << capture.alphaFunction
+                    << ",\"alphaBlendEnableResult\":"
+                    << static_cast<long>(capture.alphaBlendEnableResult)
+                    << ",\"alphaBlendEnable\":" << capture.alphaBlendEnable
+                    << ",\"sourceBlendResult\":"
+                    << static_cast<long>(capture.sourceBlendResult)
+                    << ",\"sourceBlend\":" << capture.sourceBlend
+                    << ",\"destinationBlendResult\":"
+                    << static_cast<long>(capture.destinationBlendResult)
+                    << ",\"destinationBlend\":" << capture.destinationBlend
+                    << ",\"blendOperationResult\":"
+                    << static_cast<long>(capture.blendOperationResult)
+                    << ",\"blendOperation\":" << capture.blendOperation
+                    << ",\"separateAlphaBlendEnableResult\":"
+                    << static_cast<long>(capture.separateAlphaBlendEnableResult)
+                    << ",\"separateAlphaBlendEnable\":"
+                    << capture.separateAlphaBlendEnable
+                    << ",\"sourceBlendAlphaResult\":"
+                    << static_cast<long>(capture.sourceBlendAlphaResult)
+                    << ",\"sourceBlendAlpha\":" << capture.sourceBlendAlpha
+                    << ",\"destinationBlendAlphaResult\":"
+                    << static_cast<long>(capture.destinationBlendAlphaResult)
+                    << ",\"destinationBlendAlpha\":"
+                    << capture.destinationBlendAlpha
+                    << ",\"blendOperationAlphaResult\":"
+                    << static_cast<long>(capture.blendOperationAlphaResult)
+                    << ",\"blendOperationAlpha\":" << capture.blendOperationAlpha
+                    << ",\"colorWriteEnableResult\":"
+                    << static_cast<long>(capture.colorWriteEnableResult)
+                    << ",\"colorWriteEnable\":" << capture.colorWriteEnable
+                    << ",\"fogEnableResult\":"
+                    << static_cast<long>(capture.fogEnableResult)
+                    << ",\"fogEnable\":" << capture.fogEnable
+                    << "},\"vertexShader\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexShaderResult)
+                    << ",\"getFunctionResult\":"
+                    << static_cast<long>(capture.vertexShaderFunctionResult)
+                    << ",\"byteCount\":" << capture.vertexShaderByteCount
+                    << ",\"fnv1a32\":" << capture.vertexShaderHash
+                    << "},\"vertexConstants\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexConstantsResult)
+                    << ",\"registerCount\":"
+                    << capture.vertexConstantRegisterCount << ",\"values\":";
+            writeActorDrawFloatArray(gOutput, capture.vertexConstants.data(),
+                capture.vertexConstants.size());
+            gOutput << "},\"vertexDeclaration\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexDeclarationResult)
+                    << ",\"getElementsResult\":"
+                    << static_cast<long>(capture.vertexDeclarationElementsResult)
+                    << ",\"elements\":[";
+            for (std::size_t elementIndex = 0;
+                elementIndex < capture.vertexDeclaration.size(); ++elementIndex)
+            {
+                if (elementIndex != 0)
+                    gOutput << ',';
+                const D3DVERTEXELEMENT9& element
+                    = capture.vertexDeclaration[elementIndex];
+                gOutput << "{\"stream\":" << element.Stream
+                        << ",\"offset\":" << element.Offset
+                        << ",\"type\":" << static_cast<UInt32>(element.Type)
+                        << ",\"method\":" << static_cast<UInt32>(element.Method)
+                        << ",\"usage\":" << static_cast<UInt32>(element.Usage)
+                        << ",\"usageIndex\":"
+                        << static_cast<UInt32>(element.UsageIndex) << '}';
+            }
+            gOutput << "]},\"vertexBuffer\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexBuffer.getResult)
+                    << ",\"descriptionResult\":"
+                    << static_cast<long>(capture.vertexBuffer.descriptionResult)
+                    << ",\"lockResult\":"
+                    << static_cast<long>(capture.vertexBuffer.lockResult)
+                    << ",\"totalBytes\":" << capture.vertexBuffer.totalBytes
+                    << ",\"rangeOffset\":" << capture.vertexBuffer.rangeOffset
+                    << ",\"rangeBytes\":" << capture.vertexBuffer.rangeBytes
+                    << ",\"stride\":" << capture.vertexBuffer.stride
+                    << ",\"usage\":" << capture.vertexBuffer.usage
+                    << ",\"pool\":" << capture.vertexBuffer.pool
+                    << ",\"fnv1a32\":" << capture.vertexBuffer.fnv1a32
+                    << ",\"bytesHex\":" << jsonString(vertexBufferHex.c_str())
+                    << "},\"pixelShader\":{\"getResult\":"
+                    << static_cast<long>(capture.pixelShaderResult)
+                    << ",\"getFunctionResult\":"
+                    << static_cast<long>(capture.pixelShaderFunctionResult)
+                    << ",\"byteCount\":" << capture.pixelShaderByteCount
+                    << ",\"fnv1a32\":" << capture.pixelShaderHash
+                    << "},\"pixelConstants\":{\"getResult\":"
+                    << static_cast<long>(capture.pixelConstantsResult)
+                    << ",\"registerCount\":"
+                    << capture.pixelConstantRegisterCount << ",\"values\":";
+            writeActorDrawFloatArray(gOutput, capture.pixelConstants.data(),
+                capture.pixelConstants.size());
+            gOutput << "},\"renderTarget\":";
+            writeActorDrawRenderTarget(gOutput, capture.renderTarget);
+            gOutput << '}';
+        }
+        gOutput << "],\"candidates\":[";
+        for (std::size_t index = 0; index < candidates.size(); ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            const TextureSamplerCandidateCapture& candidate = candidates[index];
+            gOutput << "{\"ordinal\":" << candidate.ordinal
+                    << ",\"renderFrame\":" << candidate.renderFrame
+                    << ",\"stage\":" << candidate.stage
+                    << ",\"topLevelHashed\":"
+                    << (candidate.topLevelHashed ? "true" : "false")
+                    << ",\"topLevelHash\":"
+                    << jsonString(sidecarHashLabel(
+                           "d3d9-fnv1a32:", candidate.topLevelHash).c_str())
+                    << ",\"fullChainHashed\":"
+                    << (candidate.fullChainHashed ? "true" : "false")
+                    << ",\"fullChainHash\":"
+                    << jsonString(sidecarHashLabel(
+                           "d3d9-fnv1a32:", candidate.fullChainHash).c_str())
+                    << ",\"srgbTextureResult\":"
+                    << static_cast<long>(candidate.srgbTextureResult)
+                    << ",\"srgbTexture\":" << candidate.srgbTexture << '}';
+        }
+        gOutput << "]}\n";
+        gOutput.flush();
+    }
+
+    void writeShaderDrawContract(UInt32 sourceFrame)
+    {
+        if (!gCaptureShaderDrawContract || gShaderDrawContractWritten
+            || !gOutput.is_open() || sourceFrame != gShaderDrawSourceFrame)
+            return;
+
+        std::vector<ShaderDrawContractCapture> captures;
+        AcquireSRWLockExclusive(&gShaderDrawCaptureLock);
+        captures = std::move(gShaderDrawCaptures);
+        gShaderDrawCaptures.clear();
+        gShaderDrawContractWritten = true;
+        ReleaseSRWLockExclusive(&gShaderDrawCaptureLock);
+        std::sort(captures.begin(), captures.end(),
+            [](const ShaderDrawContractCapture& left,
+                const ShaderDrawContractCapture& right) {
+                return left.ordinal < right.ordinal;
+            });
+
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"shader-draw-contract\""
+                << ",\"frame\":" << gFrame
+                << ",\"sourceFrame\":" << sourceFrame
+                << ",\"renderFrameLead\":" << gShaderDrawRenderFrameLead
+                << ",\"target\":{\"vertexShaderFnv1a32\":"
+                << jsonString(sidecarHashLabel(
+                       "fnv1a32:", gShaderDrawTargetVertexShaderHash).c_str())
+                << ",\"pixelShaderFnv1a32\":"
+                << jsonString(sidecarHashLabel(
+                       "fnv1a32:", gShaderDrawTargetPixelShaderHash).c_str())
+                << "},\"maximumRecords\":" << gShaderDrawMaximumRecords
+                << ",\"recordCount\":" << captures.size()
+                << ",\"records\":[";
+        for (std::size_t index = 0; index < captures.size(); ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            const ShaderDrawContractCapture& capture = captures[index];
+            gOutput << "{\"ordinal\":" << capture.ordinal
+                    << ",\"sourceFrame\":" << capture.sourceFrame
+                    << ",\"renderFrame\":" << capture.renderFrame
+                    << ",\"drawMethod\":"
+                    << jsonString(capture.drawMethod.c_str())
+                    << ",\"primitiveType\":"
+                    << static_cast<UInt32>(capture.primitiveType)
+                    << ",\"primitiveCount\":" << capture.primitiveCount
+                    << ",\"baseVertexIndex\":" << capture.baseVertexIndex
+                    << ",\"minimumVertexIndex\":"
+                    << capture.minimumVertexIndex
+                    << ",\"vertexCount\":" << capture.vertexCount
+                    << ",\"startIndex\":" << capture.startIndex
+                    << ",\"renderState\":{\"cullModeResult\":"
+                    << static_cast<long>(capture.cullModeResult)
+                    << ",\"cullMode\":" << capture.cullMode
+                    << ",\"zEnableResult\":"
+                    << static_cast<long>(capture.zEnableResult)
+                    << ",\"zEnable\":" << capture.zEnable
+                    << ",\"zWriteEnableResult\":"
+                    << static_cast<long>(capture.zWriteEnableResult)
+                    << ",\"zWriteEnable\":" << capture.zWriteEnable
+                    << ",\"zFunctionResult\":"
+                    << static_cast<long>(capture.zFunctionResult)
+                    << ",\"zFunction\":" << capture.zFunction
+                    << ",\"alphaTestEnableResult\":"
+                    << static_cast<long>(capture.alphaTestEnableResult)
+                    << ",\"alphaTestEnable\":" << capture.alphaTestEnable
+                    << ",\"alphaReferenceResult\":"
+                    << static_cast<long>(capture.alphaReferenceResult)
+                    << ",\"alphaReference\":" << capture.alphaReference
+                    << ",\"alphaFunctionResult\":"
+                    << static_cast<long>(capture.alphaFunctionResult)
+                    << ",\"alphaFunction\":" << capture.alphaFunction
+                    << ",\"alphaBlendEnableResult\":"
+                    << static_cast<long>(capture.alphaBlendEnableResult)
+                    << ",\"alphaBlendEnable\":" << capture.alphaBlendEnable
+                    << ",\"sourceBlendResult\":"
+                    << static_cast<long>(capture.sourceBlendResult)
+                    << ",\"sourceBlend\":" << capture.sourceBlend
+                    << ",\"destinationBlendResult\":"
+                    << static_cast<long>(capture.destinationBlendResult)
+                    << ",\"destinationBlend\":" << capture.destinationBlend
+                    << ",\"blendOperationResult\":"
+                    << static_cast<long>(capture.blendOperationResult)
+                    << ",\"blendOperation\":" << capture.blendOperation
+                    << ",\"colorWriteEnableResult\":"
+                    << static_cast<long>(capture.colorWriteEnableResult)
+                    << ",\"colorWriteEnable\":" << capture.colorWriteEnable
+                    << ",\"fogEnableResult\":"
+                    << static_cast<long>(capture.fogEnableResult)
+                    << ",\"fogEnable\":" << capture.fogEnable
+                    << ",\"srgbWriteResult\":"
+                    << static_cast<long>(capture.srgbWriteResult)
+                    << ",\"srgbWrite\":" << capture.srgbWrite
+                    << "},\"vertexShader\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexShaderResult)
+                    << ",\"getFunctionResult\":"
+                    << static_cast<long>(capture.vertexShaderFunctionResult)
+                    << ",\"byteCount\":" << capture.vertexShaderByteCount
+                    << ",\"fnv1a32\":" << capture.vertexShaderHash
+                    << "},\"vertexConstants\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexConstantsResult)
+                    << ",\"registerCount\":"
+                    << capture.vertexConstantRegisterCount << ",\"values\":";
+            writeActorDrawFloatArray(gOutput, capture.vertexConstants.data(),
+                capture.vertexConstants.size());
+            gOutput << "},\"vertexDeclaration\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexDeclarationResult)
+                    << ",\"getElementsResult\":"
+                    << static_cast<long>(capture.vertexDeclarationElementsResult)
+                    << ",\"elements\":[";
+            for (std::size_t elementIndex = 0;
+                elementIndex < capture.vertexDeclaration.size(); ++elementIndex)
+            {
+                if (elementIndex != 0)
+                    gOutput << ',';
+                const D3DVERTEXELEMENT9& element
+                    = capture.vertexDeclaration[elementIndex];
+                gOutput << "{\"stream\":" << element.Stream
+                        << ",\"offset\":" << element.Offset
+                        << ",\"type\":" << static_cast<UInt32>(element.Type)
+                        << ",\"method\":"
+                        << static_cast<UInt32>(element.Method)
+                        << ",\"usage\":" << static_cast<UInt32>(element.Usage)
+                        << ",\"usageIndex\":"
+                        << static_cast<UInt32>(element.UsageIndex) << '}';
+            }
+            gOutput << "]},\"pixelShader\":{\"getResult\":"
+                    << static_cast<long>(capture.pixelShaderResult)
+                    << ",\"getFunctionResult\":"
+                    << static_cast<long>(capture.pixelShaderFunctionResult)
+                    << ",\"byteCount\":" << capture.pixelShaderByteCount
+                    << ",\"fnv1a32\":" << capture.pixelShaderHash
+                    << "},\"pixelConstants\":{\"getResult\":"
+                    << static_cast<long>(capture.pixelConstantsResult)
+                    << ",\"registerCount\":"
+                    << capture.pixelConstantRegisterCount << ",\"values\":";
+            writeActorDrawFloatArray(gOutput, capture.pixelConstants.data(),
+                capture.pixelConstants.size());
+            gOutput << "},\"renderTarget\":";
+            writeActorDrawRenderTarget(gOutput, capture.renderTarget);
+            gOutput << '}';
+        }
+        gOutput << "]}\n";
+        gOutput.flush();
+    }
+
+    void writeImageSpacePipelineTrace(UInt32 sourceFrame)
+    {
+        if (!gCaptureImageSpacePipelineTrace || gImageSpacePipelineTraceWritten
+            || !gOutput.is_open() || sourceFrame != gImageSpaceSourceFrame)
+            return;
+
+        std::vector<ImageSpacePipelineTrace> captures;
+        AcquireSRWLockExclusive(&gImageSpacePipelineTraceLock);
+        captures = std::move(gImageSpacePipelineTraces);
+        gImageSpacePipelineTraces.clear();
+        gImageSpacePipelineTraceWritten = true;
+        ReleaseSRWLockExclusive(&gImageSpacePipelineTraceLock);
+        std::sort(captures.begin(), captures.end(),
+            [](const ImageSpacePipelineTrace& left,
+                const ImageSpacePipelineTrace& right) {
+                return left.ordinal < right.ordinal;
+            });
+
+        gOutput << std::setprecision(9)
+                << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"image-space-pipeline-trace\""
+                << ",\"frame\":" << gFrame
+                << ",\"sourceFrame\":" << sourceFrame
+                << ",\"renderFrame\":"
+                << (sourceFrame - gImageSpaceRenderFrameLead)
+                << ",\"renderFrameLead\":" << gImageSpaceRenderFrameLead
+                << ",\"maximumRecords\":" << gImageSpaceTraceMaximumRecords
+                << ",\"configuredPixelShaderFnv1a32\":[";
+        for (std::size_t hashIndex = 0;
+            hashIndex < gImageSpaceTracePixelShaderHashes.size(); ++hashIndex)
+        {
+            if (hashIndex != 0)
+                gOutput << ',';
+            gOutput << gImageSpaceTracePixelShaderHashes[hashIndex];
+        }
+        gOutput << "],\"records\":[";
+        for (std::size_t index = 0; index < captures.size(); ++index)
+        {
+            if (index != 0)
+                gOutput << ',';
+            const ImageSpacePipelineTrace& capture = captures[index];
+            gOutput << "{\"ordinal\":" << capture.ordinal
+                    << ",\"sourceFrame\":" << capture.sourceFrame
+                    << ",\"renderFrame\":" << capture.renderFrame
+                    << ",\"drawMethod\":" << jsonString(capture.drawMethod.c_str())
+                    << ",\"primitiveType\":"
+                    << static_cast<UInt32>(capture.primitiveType)
+                    << ",\"primitiveCount\":" << capture.primitiveCount
+                    << ",\"vertexCount\":" << capture.vertexCount
+                    << ",\"vertexStride\":" << capture.vertexStride
+                    << ",\"pixelShader\":{\"byteCount\":"
+                    << capture.pixelShaderByteCount
+                    << ",\"fnv1a32\":" << capture.pixelShaderHash
+                    << "},\"pixelConstants\":{\"getResult\":"
+                    << static_cast<long>(capture.pixelConstantsResult)
+                    << ",\"registerCount\":"
+                    << capture.pixelConstantRegisterCount << ",\"values\":";
+            writeActorDrawFloatArray(gOutput, capture.pixelConstants.data(),
+                capture.pixelConstants.size());
+            gOutput << "},\"vertexShader\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexShaderResult)
+                    << ",\"getFunctionResult\":"
+                    << static_cast<long>(capture.vertexShaderFunctionResult)
+                    << ",\"byteCount\":" << capture.vertexShaderByteCount
+                    << ",\"fnv1a32\":" << capture.vertexShaderHash
+                    << "},\"vertexConstants\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexConstantsResult)
+                    << ",\"registerCount\":"
+                    << capture.vertexConstantRegisterCount << ",\"values\":";
+            writeActorDrawFloatArray(gOutput, capture.vertexConstants.data(),
+                capture.vertexConstants.size());
+            gOutput << "},\"vertexDeclaration\":{\"getResult\":"
+                    << static_cast<long>(capture.vertexDeclarationResult)
+                    << ",\"getElementsResult\":"
+                    << static_cast<long>(capture.vertexDeclarationElementsResult)
+                    << ",\"elements\":[";
+            for (std::size_t elementIndex = 0;
+                elementIndex < capture.vertexDeclaration.size(); ++elementIndex)
+            {
+                if (elementIndex != 0)
+                    gOutput << ',';
+                const D3DVERTEXELEMENT9& element
+                    = capture.vertexDeclaration[elementIndex];
+                gOutput << "{\"stream\":" << element.Stream
+                        << ",\"offset\":" << element.Offset
+                        << ",\"type\":" << static_cast<UInt32>(element.Type)
+                        << ",\"method\":" << static_cast<UInt32>(element.Method)
+                        << ",\"usage\":" << static_cast<UInt32>(element.Usage)
+                        << ",\"usageIndex\":"
+                        << static_cast<UInt32>(element.UsageIndex) << '}';
+            }
+            gOutput << "]},\"fvf\":{\"getResult\":"
+                    << static_cast<long>(capture.fvfResult)
+                    << ",\"value\":" << capture.fvf
+                    << "},\"colorSpaceState\":{\"srgbWriteResult\":"
+                    << static_cast<long>(capture.srgbWriteResult)
+                    << ",\"srgbWrite\":" << capture.srgbWrite
+                    << "},\"renderTarget\":{\"getResult\":"
+                    << static_cast<long>(capture.renderTargetResult)
+                    << ",\"descriptionResult\":"
+                    << static_cast<long>(capture.renderTargetDescriptionResult)
+                    << ",\"description\":";
+            writeImageSpaceSurfaceDescription(
+                gOutput, capture.renderTargetDescription);
+            gOutput << "},\"viewport\":{\"getResult\":"
+                    << static_cast<long>(capture.viewportResult)
+                    << ",\"x\":" << capture.viewport.X
+                    << ",\"y\":" << capture.viewport.Y
+                    << ",\"width\":" << capture.viewport.Width
+                    << ",\"height\":" << capture.viewport.Height
+                    << ",\"minimumZ\":" << capture.viewport.MinZ
+                    << ",\"maximumZ\":" << capture.viewport.MaxZ
+                    << "},\"scissor\":{\"getResult\":"
+                    << static_cast<long>(capture.scissorResult)
+                    << ",\"left\":" << capture.scissor.left
+                    << ",\"top\":" << capture.scissor.top
+                    << ",\"right\":" << capture.scissor.right
+                    << ",\"bottom\":" << capture.scissor.bottom
+                    << "},\"textures\":[";
+            for (std::size_t textureIndex = 0;
+                textureIndex < capture.textures.size(); ++textureIndex)
+            {
+                if (textureIndex != 0)
+                    gOutput << ',';
+                const ImageSpaceTraceTexture& texture
+                    = capture.textures[textureIndex];
+                gOutput << "{\"stage\":" << texture.stage
+                        << ",\"getResult\":"
+                        << static_cast<long>(texture.getResult)
+                        << ",\"resourceType\":"
+                        << static_cast<UInt32>(texture.resourceType)
+                        << ",\"levelCount\":" << texture.levelCount
+                        << ",\"descriptionResult\":"
+                        << static_cast<long>(texture.descriptionResult)
+                        << ",\"description\":";
+                writeImageSpaceSurfaceDescription(gOutput, texture.description);
+                gOutput << ",\"sampler\":{\"addressUResult\":"
+                        << static_cast<long>(texture.addressUResult)
+                        << ",\"addressU\":" << texture.addressU
+                        << ",\"addressVResult\":"
+                        << static_cast<long>(texture.addressVResult)
+                        << ",\"addressV\":" << texture.addressV
+                        << ",\"magFilterResult\":"
+                        << static_cast<long>(texture.magFilterResult)
+                        << ",\"magFilter\":" << texture.magFilter
+                        << ",\"minFilterResult\":"
+                        << static_cast<long>(texture.minFilterResult)
+                        << ",\"minFilter\":" << texture.minFilter
+                        << ",\"mipFilterResult\":"
+                        << static_cast<long>(texture.mipFilterResult)
+                        << ",\"mipFilter\":" << texture.mipFilter
+                        << ",\"srgbTextureResult\":"
+                        << static_cast<long>(texture.srgbTextureResult)
+                        << ",\"srgbTexture\":" << texture.srgbTexture << "}}";
+            }
+            const UInt32 vertexHash = capture.upVertexBytes.empty()
+                ? 0
+                : fnv1a32(capture.upVertexBytes.data(), capture.upVertexBytes.size());
+            gOutput << "],\"upVertexBytes\":{\"byteCount\":"
+                    << capture.upVertexBytes.size()
+                    << ",\"fnv1a32\":" << vertexHash << ",\"values\":[";
+            for (std::size_t byteIndex = 0;
+                byteIndex < capture.upVertexBytes.size(); ++byteIndex)
+            {
+                if (byteIndex != 0)
+                    gOutput << ',';
+                gOutput << static_cast<UInt32>(capture.upVertexBytes[byteIndex]);
+            }
+            gOutput << "]}}";
         }
         gOutput << "]}\n";
         gOutput.flush();
@@ -11756,7 +14852,7 @@ namespace
             return;
         NiNode* node = object->GetAsNiNode();
         const char* name = object->m_pcName;
-        if (node != nullptr && name != nullptr && name[0] != '\0')
+        if (name != nullptr && name[0] != '\0')
         {
             if (!first)
                 out << ',';
@@ -11805,6 +14901,8 @@ namespace
         }
         else
             out << "null";
+        out << ",\"facialRuntime\":";
+        sidecarWriteFaceGenRuntime(out, sidecarFaceGenAnimationForActor(actor));
         out << ",\"nodes\":[";
         bool firstNode = true;
         writeCompactActorNodes(out, root, firstNode, 0, "root");
@@ -13537,6 +16635,9 @@ namespace
         captureTargetAppearance();
         captureAppearanceBatch();
         driveScheduledConsoleCommands();
+        if (!gRenderEnvironmentLogged && gRenderEnvironmentFrame > 0
+            && gFrame >= gRenderEnvironmentFrame)
+            captureRetailRenderEnvironment();
         sidecarPrimeActorDrawTextures(gScheduledSpawnedActor != nullptr
                 ? gScheduledSpawnedActor : gDrivenActor);
         holdRetailPipBoyRenderedState();
@@ -13561,6 +16662,16 @@ namespace
         }
         if (!gBehaviorCommandsRun && gFrame >= gBehaviorCommandFrame)
             runBehaviorCommands();
+        if (gCaptureTextureSamplerContract && !gTextureSamplerContractWritten
+            && !gTextureSamplerSourceFrames.empty()
+            && gFrame >= gTextureSamplerSourceFrames.back())
+            writeTextureSamplerContract(gTextureSamplerSourceFrames.back());
+        if (gCaptureShaderDrawContract && !gShaderDrawContractWritten
+            && gFrame >= gShaderDrawSourceFrame)
+            writeShaderDrawContract(gShaderDrawSourceFrame);
+        if (gCaptureImageSpacePipelineTrace && !gImageSpacePipelineTraceWritten
+            && gFrame >= gImageSpaceSourceFrame)
+            writeImageSpacePipelineTrace(gImageSpaceSourceFrame);
         while (gScreenshotFrameIndex < gScreenshotFrames.size()
             && gFrame >= gScreenshotFrames[gScreenshotFrameIndex])
         {
@@ -13745,6 +16856,7 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
 
     gSampleEvery = (std::max)(1u, envUInt("NIKAMI_ORACLE_SAMPLE_EVERY", 1));
     gMaxFrames = (std::max)(1u, envUInt("NIKAMI_ORACLE_MAX_FRAMES", 3600));
+    gRenderEnvironmentFrame = envUInt("NIKAMI_ORACLE_RENDER_ENVIRONMENT_FRAME", 0);
     gTargetForm = envUInt("NIKAMI_ORACLE_TARGET_FORM", 0);
     gRequireScheduledSpawn
         = envUInt("NIKAMI_ORACLE_REQUIRE_SCHEDULED_SPAWN", 0) != 0;
@@ -13760,6 +16872,13 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gAllHighActors = envUInt("NIKAMI_ORACLE_ALL_HIGH_ACTORS", 1) != 0;
     gCaptureAnimation = envUInt("NIKAMI_ORACLE_CAPTURE_ANIMATION", 1) != 0;
     gCompactActorTelemetry = envUInt("NIKAMI_ORACLE_COMPACT_ACTOR_TELEMETRY", 0) != 0;
+    gActorAppearanceMaximumEventBytes = envUInt(
+        "NIKAMI_ORACLE_ACTOR_APPEARANCE_MAXIMUM_EVENT_BYTES",
+        static_cast<unsigned int>(NikamiFNVSidecar::PayloadBytes));
+    if (gCompactActorTelemetry
+        && gActorAppearanceMaximumEventBytes
+            <= sSidecarPayloadReservedTailBytes + sSidecarAppearanceEnvelopeBytes)
+        return false;
     gCaptureActorSkinPalettes
         = envUInt("NIKAMI_ORACLE_CAPTURE_ACTOR_SKIN_PALETTES", 0) != 0;
     gActorSkinPaletteMaximumBytesPerShape
@@ -13775,12 +16894,15 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
         = envUInt("NIKAMI_ORACLE_ACTOR_SURFACE_TEXTURE_STAGE_COUNT", 0);
     gActorSurfaceRenderFrameLead
         = envUInt("NIKAMI_ORACLE_ACTOR_SURFACE_RENDER_FRAME_LEAD", 0);
+    gActorSurfaceMaximumRecordsPerSourceFrame = envUInt(
+        "NIKAMI_ORACLE_ACTOR_SURFACE_MAXIMUM_RECORDS_PER_SOURCE_FRAME", 0);
     if (gCaptureActorSurfaceContract
         && (!gCompactActorTelemetry || !gCaptureActorSkinPalettes
             || gActorSurfaceMaximumShaderBytes == 0
             || gActorSurfaceTextureStageCount == 0
             || gActorSurfaceTextureStageCount > sD3DMaximumTextureStages
-            || gActorSurfaceRenderFrameLead == 0))
+            || gActorSurfaceRenderFrameLead == 0
+            || gActorSurfaceMaximumRecordsPerSourceFrame == 0))
         return false;
     gCaptureActorDrawContract
         = envUInt("NIKAMI_ORACLE_CAPTURE_ACTOR_DRAW_CONTRACT", 0) != 0;
@@ -13788,6 +16910,8 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
         = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_RECORDS_PER_SOURCE_FRAME", 0);
     gActorDrawVertexShaderRegisterCount
         = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_VERTEX_SHADER_REGISTER_COUNT", 0);
+    gActorDrawPixelShaderRegisterCount
+        = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_PIXEL_SHADER_REGISTER_COUNT", 0);
     gActorDrawMaximumShaderBytes
         = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_SHADER_BYTES", 0);
     gActorDrawTextureStageCount
@@ -13796,6 +16920,8 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
         = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_RENDER_FRAME_LEAD", 0);
     gActorDrawMaximumBufferBytesPerRecord
         = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_BUFFER_BYTES_PER_RECORD", 0);
+    gActorDrawMaximumTextureBytesPerArtifact
+        = envUInt("NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_TEXTURE_BYTES_PER_ARTIFACT", 0);
     gActorDrawArtifactDirectory
         = envString("NIKAMI_ORACLE_ACTOR_DRAW_ARTIFACT_DIRECTORY");
     const DWORD actorDrawArtifactAttributes = gActorDrawArtifactDirectory.empty()
@@ -13807,17 +16933,245 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
             || gActorDrawVertexShaderRegisterCount == 0
             || gActorDrawVertexShaderRegisterCount
                 > sD3DMaximumVertexShaderFloatRegisters
+            || gActorDrawPixelShaderRegisterCount == 0
+            || gActorDrawPixelShaderRegisterCount
+                > sD3DMaximumPixelShaderFloatRegisters
             || gActorDrawMaximumShaderBytes == 0
             || gActorDrawTextureStageCount == 0
             || gActorDrawTextureStageCount > sD3DMaximumTextureStages
             || gActorDrawRenderFrameLead == 0
             || gActorDrawMaximumBufferBytesPerRecord == 0
+            || gActorDrawMaximumTextureBytesPerArtifact == 0
             || actorDrawArtifactAttributes == INVALID_FILE_ATTRIBUTES
             || (actorDrawArtifactAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0))
         return false;
     if (gCaptureActorSurfaceContract && gCaptureActorDrawContract
         && (gActorSurfaceRenderFrameLead != gActorDrawRenderFrameLead
             || gActorSurfaceTextureStageCount != gActorDrawTextureStageCount))
+        return false;
+    gCaptureTextureSamplerContract
+        = envUInt("NIKAMI_ORACLE_CAPTURE_TEXTURE_SAMPLER_CONTRACT", 0) != 0;
+    gTextureSamplerSourceFrames
+        = envUIntList("NIKAMI_ORACLE_TEXTURE_SAMPLER_SOURCE_FRAMES");
+    gTextureSamplerRenderFrameLead
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_RENDER_FRAME_LEAD", 0);
+    gTextureSamplerTargetWidth
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_WIDTH", 0);
+    gTextureSamplerTargetHeight
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_HEIGHT", 0);
+    gTextureSamplerTargetLevelCount
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_LEVEL_COUNT", 0);
+    gTextureSamplerTargetFormat = static_cast<D3DFORMAT>(
+        envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_FORMAT", 0));
+    gTextureSamplerTargetHash
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_FNV1A32", 0);
+    gTextureSamplerTargetTopLevelHash
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_TOP_LEVEL_FNV1A32", 0);
+    gTextureSamplerTextureStageCount
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_TEXTURE_STAGE_COUNT", 0);
+    gTextureSamplerMaximumCandidates
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_MAXIMUM_CANDIDATES", 0);
+    gTextureSamplerMaximumRecords
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_MAXIMUM_RECORDS", 0);
+    gTextureSamplerMaximumShaderBytes
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_MAXIMUM_SHADER_BYTES", 0);
+    gTextureSamplerVertexShaderRegisterCount
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_VERTEX_SHADER_REGISTER_COUNT", 0);
+    gTextureSamplerPixelShaderRegisterCount
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_PIXEL_SHADER_REGISTER_COUNT", 0);
+    gTextureSamplerMaximumVertexBufferBytes
+        = envUInt("NIKAMI_ORACLE_TEXTURE_SAMPLER_MAXIMUM_VERTEX_BUFFER_BYTES", 0);
+    if (gCaptureTextureSamplerContract
+        && (gTextureSamplerSourceFrames.empty()
+            || !std::is_sorted(
+                gTextureSamplerSourceFrames.begin(), gTextureSamplerSourceFrames.end())
+            || std::adjacent_find(
+                gTextureSamplerSourceFrames.begin(), gTextureSamplerSourceFrames.end())
+                    != gTextureSamplerSourceFrames.end()
+            || gTextureSamplerRenderFrameLead == 0
+            || std::any_of(gTextureSamplerSourceFrames.begin(),
+                gTextureSamplerSourceFrames.end(), [](UInt32 sourceFrame)
+                {
+                    return sourceFrame <= gTextureSamplerRenderFrameLead;
+                })
+            || gTextureSamplerTargetWidth == 0
+            || gTextureSamplerTargetHeight == 0
+            || gTextureSamplerTargetLevelCount == 0
+            || gTextureSamplerTargetFormat == D3DFMT_UNKNOWN
+            || gTextureSamplerTargetHash == 0
+            || gTextureSamplerTargetTopLevelHash == 0
+            || gTextureSamplerTextureStageCount == 0
+            || gTextureSamplerTextureStageCount > sD3DMaximumTextureStages
+            || gTextureSamplerMaximumCandidates == 0
+            || gTextureSamplerMaximumRecords == 0
+            || gTextureSamplerMaximumShaderBytes == 0
+            || gTextureSamplerVertexShaderRegisterCount == 0
+            || gTextureSamplerVertexShaderRegisterCount
+                > sD3DMaximumVertexShaderFloatRegisters
+            || gTextureSamplerPixelShaderRegisterCount == 0
+            || gTextureSamplerPixelShaderRegisterCount
+                > sD3DMaximumPixelShaderFloatRegisters
+            || gTextureSamplerMaximumVertexBufferBytes == 0))
+        return false;
+    if (!gCaptureTextureSamplerContract
+        && (!gTextureSamplerSourceFrames.empty()
+            || gTextureSamplerRenderFrameLead != 0
+            || gTextureSamplerTargetWidth != 0
+            || gTextureSamplerTargetHeight != 0
+            || gTextureSamplerTargetLevelCount != 0
+            || gTextureSamplerTargetFormat != D3DFMT_UNKNOWN
+            || gTextureSamplerTargetHash != 0
+            || gTextureSamplerTargetTopLevelHash != 0
+            || gTextureSamplerTextureStageCount != 0
+            || gTextureSamplerMaximumCandidates != 0
+            || gTextureSamplerMaximumRecords != 0
+            || gTextureSamplerMaximumShaderBytes != 0
+            || gTextureSamplerVertexShaderRegisterCount != 0
+            || gTextureSamplerPixelShaderRegisterCount != 0
+            || gTextureSamplerMaximumVertexBufferBytes != 0))
+        return false;
+    gCaptureShaderDrawContract
+        = envUInt("NIKAMI_ORACLE_CAPTURE_SHADER_DRAW_CONTRACT", 0) != 0;
+    gShaderDrawSourceFrame
+        = envUInt("NIKAMI_ORACLE_SHADER_DRAW_SOURCE_FRAME", 0);
+    gShaderDrawRenderFrameLead
+        = envUInt("NIKAMI_ORACLE_SHADER_DRAW_RENDER_FRAME_LEAD", 0);
+    gShaderDrawTargetVertexShaderHash
+        = envUInt("NIKAMI_ORACLE_SHADER_DRAW_TARGET_VERTEX_SHADER_FNV1A32", 0);
+    gShaderDrawTargetPixelShaderHash
+        = envUInt("NIKAMI_ORACLE_SHADER_DRAW_TARGET_PIXEL_SHADER_FNV1A32", 0);
+    gShaderDrawMaximumRecords
+        = envUInt("NIKAMI_ORACLE_SHADER_DRAW_MAXIMUM_RECORDS", 0);
+    gShaderDrawMaximumShaderBytes
+        = envUInt("NIKAMI_ORACLE_SHADER_DRAW_MAXIMUM_SHADER_BYTES", 0);
+    gShaderDrawVertexShaderRegisterCount
+        = envUInt("NIKAMI_ORACLE_SHADER_DRAW_VERTEX_SHADER_REGISTER_COUNT", 0);
+    gShaderDrawPixelShaderRegisterCount
+        = envUInt("NIKAMI_ORACLE_SHADER_DRAW_PIXEL_SHADER_REGISTER_COUNT", 0);
+    if (gCaptureShaderDrawContract
+        && (gShaderDrawSourceFrame == 0
+            || gShaderDrawRenderFrameLead == 0
+            || gShaderDrawSourceFrame <= gShaderDrawRenderFrameLead
+            || gShaderDrawTargetVertexShaderHash == 0
+            || gShaderDrawTargetPixelShaderHash == 0
+            || gShaderDrawMaximumRecords == 0
+            || gShaderDrawMaximumShaderBytes == 0
+            || gShaderDrawVertexShaderRegisterCount == 0
+            || gShaderDrawVertexShaderRegisterCount
+                > sD3DMaximumVertexShaderFloatRegisters
+            || gShaderDrawPixelShaderRegisterCount == 0
+            || gShaderDrawPixelShaderRegisterCount
+                > sD3DMaximumPixelShaderFloatRegisters))
+        return false;
+    if (!gCaptureShaderDrawContract
+        && (gShaderDrawSourceFrame != 0
+            || gShaderDrawRenderFrameLead != 0
+            || gShaderDrawTargetVertexShaderHash != 0
+            || gShaderDrawTargetPixelShaderHash != 0
+            || gShaderDrawMaximumRecords != 0
+            || gShaderDrawMaximumShaderBytes != 0
+            || gShaderDrawVertexShaderRegisterCount != 0
+            || gShaderDrawPixelShaderRegisterCount != 0))
+        return false;
+    gCaptureImageSpaceShaderInputs
+        = envUInt("NIKAMI_ORACLE_CAPTURE_IMAGE_SPACE_SHADER_INPUTS", 0) != 0;
+    gImageSpaceExpectedShaderByteCount
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_EXPECTED_SHADER_BYTE_COUNT", 0);
+    gImageSpaceExpectedShaderHash
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_EXPECTED_SHADER_FNV1A32", 0);
+    gImageSpaceInputTextureStages
+        = envUIntList("NIKAMI_ORACLE_IMAGE_SPACE_INPUT_TEXTURE_STAGES");
+    gImageSpaceMaximumBytesPerInput
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_MAXIMUM_BYTES_PER_INPUT", 0);
+    gImageSpaceSourceFrame
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_SOURCE_FRAME", 0);
+    gImageSpaceRenderFrameLead
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_RENDER_FRAME_LEAD", 0);
+    gImageSpaceArtifactDirectory
+        = envString("NIKAMI_ORACLE_IMAGE_SPACE_ARTIFACT_DIRECTORY");
+    const DWORD imageSpaceArtifactAttributes = gImageSpaceArtifactDirectory.empty()
+        ? INVALID_FILE_ATTRIBUTES
+        : GetFileAttributesA(gImageSpaceArtifactDirectory.c_str());
+    std::vector<UInt32> uniqueImageSpaceStages = gImageSpaceInputTextureStages;
+    std::sort(uniqueImageSpaceStages.begin(), uniqueImageSpaceStages.end());
+    uniqueImageSpaceStages.erase(
+        std::unique(uniqueImageSpaceStages.begin(), uniqueImageSpaceStages.end()),
+        uniqueImageSpaceStages.end());
+    const bool imageSpaceStagesValid = gImageSpaceInputTextureStages.size() == 2
+        && uniqueImageSpaceStages.size() == gImageSpaceInputTextureStages.size()
+        && std::all_of(gImageSpaceInputTextureStages.begin(),
+            gImageSpaceInputTextureStages.end(), [](UInt32 stage) {
+                return stage < sD3DMaximumTextureStages;
+            });
+    if (gCaptureImageSpaceShaderInputs
+        && (gImageSpaceExpectedShaderByteCount == 0
+            || gImageSpaceExpectedShaderHash == 0
+            || !imageSpaceStagesValid
+            || gImageSpaceMaximumBytesPerInput == 0
+            || gImageSpaceSourceFrame == 0
+            || gImageSpaceRenderFrameLead == 0
+            || gImageSpaceSourceFrame <= gImageSpaceRenderFrameLead
+            || imageSpaceArtifactAttributes == INVALID_FILE_ATTRIBUTES
+            || (imageSpaceArtifactAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0))
+        return false;
+    if (!gCaptureImageSpaceShaderInputs
+        && (gImageSpaceExpectedShaderByteCount != 0
+            || gImageSpaceExpectedShaderHash != 0
+            || !gImageSpaceInputTextureStages.empty()
+            || gImageSpaceMaximumBytesPerInput != 0
+            || gImageSpaceSourceFrame != 0
+            || gImageSpaceRenderFrameLead != 0
+            || !gImageSpaceArtifactDirectory.empty()))
+        return false;
+    gCaptureImageSpacePipelineTrace
+        = envUInt("NIKAMI_ORACLE_CAPTURE_IMAGE_SPACE_PIPELINE_TRACE", 0) != 0;
+    gImageSpaceTracePixelShaderHashes
+        = envUIntList("NIKAMI_ORACLE_IMAGE_SPACE_TRACE_PIXEL_SHADER_FNV1A32");
+    gImageSpaceTraceMaximumRecords
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_TRACE_MAXIMUM_RECORDS", 0);
+    gImageSpaceTraceTextureStageCount
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_TRACE_TEXTURE_STAGE_COUNT", 0);
+    gImageSpaceTraceVertexShaderRegisterCount
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_TRACE_VERTEX_SHADER_REGISTER_COUNT", 0);
+    gImageSpaceTracePixelShaderRegisterCount
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_TRACE_PIXEL_SHADER_REGISTER_COUNT", 0);
+    gImageSpaceTraceMaximumShaderBytes
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_TRACE_MAXIMUM_SHADER_BYTES", 0);
+    gImageSpaceTraceMaximumVertexBytes
+        = envUInt("NIKAMI_ORACLE_IMAGE_SPACE_TRACE_MAXIMUM_VERTEX_BYTES", 0);
+    std::vector<UInt32> uniqueImageSpaceTraceHashes
+        = gImageSpaceTracePixelShaderHashes;
+    std::sort(uniqueImageSpaceTraceHashes.begin(), uniqueImageSpaceTraceHashes.end());
+    uniqueImageSpaceTraceHashes.erase(
+        std::unique(uniqueImageSpaceTraceHashes.begin(), uniqueImageSpaceTraceHashes.end()),
+        uniqueImageSpaceTraceHashes.end());
+    const bool imageSpaceTraceHashesValid
+        = !gImageSpaceTracePixelShaderHashes.empty()
+        && uniqueImageSpaceTraceHashes.size() == gImageSpaceTracePixelShaderHashes.size()
+        && std::all_of(gImageSpaceTracePixelShaderHashes.begin(),
+            gImageSpaceTracePixelShaderHashes.end(), [](UInt32 hash) { return hash != 0; });
+    if (gCaptureImageSpacePipelineTrace
+        && (!gCaptureImageSpaceShaderInputs || !imageSpaceTraceHashesValid
+            || gImageSpaceTraceMaximumRecords == 0
+            || gImageSpaceTraceTextureStageCount == 0
+            || gImageSpaceTraceTextureStageCount > sD3DMaximumTextureStages
+            || gImageSpaceTraceVertexShaderRegisterCount == 0
+            || gImageSpaceTraceVertexShaderRegisterCount
+                > sD3DMaximumVertexShaderFloatRegisters
+            || gImageSpaceTracePixelShaderRegisterCount == 0
+            || gImageSpaceTracePixelShaderRegisterCount
+                > sD3DMaximumPixelShaderFloatRegisters
+            || gImageSpaceTraceMaximumShaderBytes == 0
+            || gImageSpaceTraceMaximumVertexBytes == 0))
+        return false;
+    if (!gCaptureImageSpacePipelineTrace
+        && (!gImageSpaceTracePixelShaderHashes.empty()
+            || gImageSpaceTraceMaximumRecords != 0
+            || gImageSpaceTraceTextureStageCount != 0
+            || gImageSpaceTraceVertexShaderRegisterCount != 0
+            || gImageSpaceTracePixelShaderRegisterCount != 0
+            || gImageSpaceTraceMaximumShaderBytes != 0
+            || gImageSpaceTraceMaximumVertexBytes != 0))
         return false;
     gCaptureSession = envUInt("NIKAMI_ORACLE_CAPTURE_SESSION", 0) != 0;
     gPipBoyProbe = envUInt("NIKAMI_ORACLE_PIPBOY_PROBE", 0) != 0;
@@ -13829,16 +17183,30 @@ extern "C" __declspec(dllexport) bool NVSEPlugin_Load(NVSEInterface* nvse)
     gFurnitureReleaseSamples = (std::max)(1u, envUInt("NIKAMI_ORACLE_FURNITURE_RELEASE_SAMPLES", 3));
     gCloseMenusDuringCapture = envUInt("NIKAMI_ORACLE_CLOSE_MENUS", 0) != 0;
     gPortraitCamera = envUInt("NIKAMI_ORACLE_PORTRAIT_CAMERA", 0) != 0;
+    gPortraitSemanticFocusRulesEncoded
+        = envString("NIKAMI_ORACLE_PORTRAIT_SEMANTIC_FOCUS_RULES");
+    gPortraitSemanticFocusRules = envPortraitSemanticFocusRules(
+        "NIKAMI_ORACLE_PORTRAIT_SEMANTIC_FOCUS_RULES");
+    if ((gPortraitCamera || gCaptureActorSurfaceContract)
+        && gPortraitSemanticFocusRules.empty())
+        return false;
     gPortraitDistance = (std::max)(32.f, envFloat("NIKAMI_ORACLE_PORTRAIT_DISTANCE", 110.f));
+    gCameraCorridorClearanceGameUnits = envFloat(
+        "NIKAMI_ORACLE_CAMERA_CORRIDOR_CLEARANCE_GAME_UNITS", 0.f);
+    if (gPortraitCamera && (!std::isfinite(gCameraCorridorClearanceGameUnits)
+        || gCameraCorridorClearanceGameUnits <= 0.f))
+        return false;
     gCameraShotKind = envString("NIKAMI_ORACLE_CAMERA_SHOT_KIND");
     if (gCameraShotKind.empty())
         gCameraShotKind = "front-portrait";
     if (gCameraShotKind != "front-portrait" && gCameraShotKind != "front-detail"
         && gCameraShotKind != "left-profile"
         && gCameraShotKind != "right-profile" && gCameraShotKind != "front-full-body"
+        && gCameraShotKind != "rear-detail" && gCameraShotKind != "rear-full-body"
         && gCameraShotKind != "idle-motion")
         return false;
-    gFullBodyCamera = gCameraShotKind == "front-full-body" || gCameraShotKind == "idle-motion";
+    gFullBodyCamera = gCameraShotKind == "front-full-body"
+        || gCameraShotKind == "rear-full-body" || gCameraShotKind == "idle-motion";
     gFullBodyDistanceScale
         = (std::max)(1.25f, envFloat("NIKAMI_ORACLE_FULL_BODY_DISTANCE_SCALE", 1.6f));
     gBatchForceWeaponOut = envUInt("NIKAMI_ORACLE_BATCH_FORCE_WEAPON_OUT", 0) != 0;

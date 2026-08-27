@@ -19,6 +19,7 @@ param(
     [int]$CommandFrame = 20,
     [int]$AfterFrame = 30,
     [int]$MaxFrames = 40,
+    [int]$RenderEnvironmentFrame = 0,
     [int]$TimeoutSeconds = 55,
     [string]$PlanPath = "",
     [string]$SharedMemoryName = "",
@@ -58,20 +59,56 @@ param(
     [switch]$CaptureAnimation,
     [switch]$TargetAnimationOnly,
     [switch]$CompactActorTelemetry,
+    [int]$ActorAppearanceMaximumEventBytes = 0,
     [switch]$CaptureActorSkinPalettes,
     [int]$ActorSkinPaletteMaximumBytesPerShape = 0,
     [switch]$CaptureActorSurfaceContract,
     [int]$ActorSurfaceMaximumShaderBytes = 0,
     [int]$ActorSurfaceTextureStageCount = 0,
     [int]$ActorSurfaceRenderFrameLead = 0,
+    [int]$ActorSurfaceMaximumRecordsPerSourceFrame = 0,
     [switch]$CaptureActorDrawContract,
     [int]$ActorDrawMaximumRecordsPerSourceFrame = 0,
     [int]$ActorDrawVertexShaderRegisterCount = 0,
+    [int]$ActorDrawPixelShaderRegisterCount = 0,
     [int]$ActorDrawMaximumShaderBytes = 0,
     [int]$ActorDrawTextureStageCount = 0,
     [int]$ActorDrawRenderFrameLead = 0,
     [int]$ActorDrawMaximumBufferBytesPerRecord = 0,
+    [int]$ActorDrawMaximumTextureBytesPerArtifact = 0,
     [string]$ActorDrawArtifactDirectory = "",
+    [switch]$CaptureTextureSamplerContract,
+    [int[]]$TextureSamplerSourceFrame = @(),
+    [int]$TextureSamplerRenderFrameLead = 0,
+    [int]$TextureSamplerTargetWidth = 0,
+    [int]$TextureSamplerTargetHeight = 0,
+    [int]$TextureSamplerTargetLevelCount = 0,
+    [uint32]$TextureSamplerTargetFormat = 0,
+    [uint32]$TextureSamplerTargetFnv1a32 = 0,
+    [uint32]$TextureSamplerTargetTopLevelFnv1a32 = 0,
+    [int]$TextureSamplerTextureStageCount = 0,
+    [int]$TextureSamplerMaximumCandidates = 0,
+    [int]$TextureSamplerMaximumRecords = 0,
+    [int]$TextureSamplerMaximumShaderBytes = 0,
+    [int]$TextureSamplerVertexShaderRegisterCount = 0,
+    [int]$TextureSamplerPixelShaderRegisterCount = 0,
+    [int]$TextureSamplerMaximumVertexBufferBytes = 0,
+    [switch]$CaptureImageSpaceShaderInputs,
+    [int]$ImageSpaceExpectedShaderByteCount = 0,
+    [uint32]$ImageSpaceExpectedShaderFnv1a32 = 0,
+    [int[]]$ImageSpaceInputTextureStage = @(),
+    [int]$ImageSpaceMaximumBytesPerInput = 0,
+    [int]$ImageSpaceSourceFrame = 0,
+    [int]$ImageSpaceRenderFrameLead = 0,
+    [string]$ImageSpaceArtifactDirectory = "",
+    [switch]$CaptureImageSpacePipelineTrace,
+    [uint32[]]$ImageSpaceTracePixelShaderFnv1a32 = @(),
+    [int]$ImageSpaceTraceMaximumRecords = 0,
+    [int]$ImageSpaceTraceTextureStageCount = 0,
+    [int]$ImageSpaceTraceVertexShaderRegisterCount = 0,
+    [int]$ImageSpaceTracePixelShaderRegisterCount = 0,
+    [int]$ImageSpaceTraceMaximumShaderBytes = 0,
+    [int]$ImageSpaceTraceMaximumVertexBytes = 0,
     [int[]]$ScreenshotFrame = @(),
     [string]$ScreenshotDirectory = "",
     [switch]$MaterialShaderCapture,
@@ -80,7 +117,10 @@ param(
     [switch]$PortraitCamera,
     [ValidateRange(32, 1000)]
     [float]$PortraitDistance = 110,
-    [ValidateSet('front-portrait', 'front-detail', 'left-profile', 'right-profile', 'front-full-body', 'idle-motion')]
+    [ValidateRange(0.01, 1000)]
+    [float]$CameraCorridorClearanceGameUnits = 8,
+    [string]$PortraitSemanticFocusRules = "",
+    [ValidateSet('front-portrait', 'front-detail', 'left-profile', 'right-profile', 'front-full-body', 'rear-detail', 'rear-full-body', 'idle-motion')]
     [string]$CameraShotKind = 'front-portrait',
     [string[]]$ExpectedCameraShotKind = @(),
     [ValidateRange(1.25, 10)]
@@ -424,12 +464,39 @@ foreach ($frame in $ScreenshotFrame) {
 if ($PortraitCamera -and $TargetForm -match '^(0[xX]0+|0+)$') {
     throw "PortraitCamera requires a nonzero TargetForm."
 }
+if (($PortraitCamera -or $CaptureActorSurfaceContract) -and
+    [string]::IsNullOrWhiteSpace($PortraitSemanticFocusRules)) {
+    throw 'Portrait camera and actor-surface capture require configured semantic-focus rules.'
+}
+if (-not [string]::IsNullOrWhiteSpace($PortraitSemanticFocusRules)) {
+    $semanticFocusRuleTokens = @($PortraitSemanticFocusRules -split ';')
+    if ($semanticFocusRuleTokens.Count -lt 1 -or
+        @($semanticFocusRuleTokens | Where-Object {
+            $fields = @($_ -split ',', 4)
+            $parsedOffset = 0.0
+            $fields.Count -ne 4 -or
+                [string]::IsNullOrWhiteSpace($fields[0]) -or
+                $fields[1] -cnotin @('exact', 'prefix') -or
+                [string]::IsNullOrWhiteSpace($fields[2]) -or
+                -not [double]::TryParse(
+                    $fields[3],
+                    [Globalization.NumberStyles]::Float,
+                    [Globalization.CultureInfo]::InvariantCulture,
+                    [ref]$parsedOffset) -or
+                [double]::IsNaN($parsedOffset) -or
+                [double]::IsInfinity($parsedOffset)
+        }).Count -ne 0) {
+        throw 'PortraitSemanticFocusRules must be semicolon-delimited kind,match,value,finite-offset rows.'
+    }
+}
 $allowedCameraShotKinds = @(
     'front-portrait',
     'front-detail',
     'left-profile',
     'right-profile',
     'front-full-body',
+    'rear-detail',
+    'rear-full-body',
     'idle-motion'
 )
 $ExpectedCameraShotKind = @($ExpectedCameraShotKind)
@@ -450,7 +517,9 @@ $scheduledReviewShots = @($ScheduledCommand | Where-Object {
 })
 if ($ExpectedCameraShotKind.Count -gt 1 -and
     $scheduledReviewShots.Count -ne $ExpectedCameraShotKind.Count) {
-    throw 'Multi-view capture requires one scheduled SetReviewShot command per expected shot kind.'
+    throw "Multi-view capture requires one scheduled SetReviewShot command per expected shot kind " +
+        "(scheduled=$($scheduledReviewShots.Count), expected=$($ExpectedCameraShotKind.Count), " +
+        "commands=$($ScheduledCommand -join ' | '))."
 }
 if ($SpawnBaseCapture) {
     if ($TargetForm -match '^(0[xX]0+|0+)$' -or $BatchTargetForm.Count -gt 0 -or $planMode) {
@@ -474,6 +543,10 @@ if ($TargetAnimationOnly -and -not $CaptureAnimation) {
 if ($CompactActorTelemetry -and -not $CaptureAnimation) {
     throw "CompactActorTelemetry requires CaptureAnimation."
 }
+if ($ActorAppearanceMaximumEventBytes -lt 0 -or
+    (-not $CompactActorTelemetry -and $ActorAppearanceMaximumEventBytes -ne 0)) {
+    throw "ActorAppearanceMaximumEventBytes must be non-negative and is valid only with CompactActorTelemetry."
+}
 if ($CaptureActorSkinPalettes -and (-not $CompactActorTelemetry -or
     $ActorSkinPaletteMaximumBytesPerShape -le 0)) {
     throw "CaptureActorSkinPalettes requires CompactActorTelemetry and a positive ActorSkinPaletteMaximumBytesPerShape."
@@ -485,13 +558,15 @@ if ($CaptureActorSurfaceContract -and (-not $CompactActorTelemetry -or
     -not $CaptureActorSkinPalettes -or $ScreenshotFrame.Count -eq 0 -or
     $ActorSurfaceMaximumShaderBytes -le 0 -or
     $ActorSurfaceTextureStageCount -le 0 -or $ActorSurfaceTextureStageCount -gt 16 -or
-    $ActorSurfaceRenderFrameLead -le 0)) {
+    $ActorSurfaceRenderFrameLead -le 0 -or
+    $ActorSurfaceMaximumRecordsPerSourceFrame -le 0)) {
     throw "CaptureActorSurfaceContract requires compact actor, skin-palette, screenshot, shader, texture-stage, and render-lead policy."
 }
 if (-not $CaptureActorSurfaceContract -and
     ($ActorSurfaceMaximumShaderBytes -ne 0 -or
         $ActorSurfaceTextureStageCount -ne 0 -or
-        $ActorSurfaceRenderFrameLead -ne 0)) {
+        $ActorSurfaceRenderFrameLead -ne 0 -or
+        $ActorSurfaceMaximumRecordsPerSourceFrame -ne 0)) {
     throw "Actor surface-contract settings are valid only with CaptureActorSurfaceContract."
 }
 if ($CaptureActorDrawContract -and (-not $CompactActorTelemetry -or
@@ -499,20 +574,25 @@ if ($CaptureActorDrawContract -and (-not $CompactActorTelemetry -or
     $ActorDrawMaximumRecordsPerSourceFrame -le 0 -or
     $ActorDrawVertexShaderRegisterCount -le 0 -or
     $ActorDrawVertexShaderRegisterCount -gt 256 -or
+    $ActorDrawPixelShaderRegisterCount -le 0 -or
+    $ActorDrawPixelShaderRegisterCount -gt 224 -or
     $ActorDrawMaximumShaderBytes -le 0 -or
     $ActorDrawTextureStageCount -le 0 -or $ActorDrawTextureStageCount -gt 16 -or
     $ActorDrawRenderFrameLead -le 0 -or
     $ActorDrawMaximumBufferBytesPerRecord -le 0 -or
+    $ActorDrawMaximumTextureBytesPerArtifact -le 0 -or
     [string]::IsNullOrWhiteSpace($ActorDrawArtifactDirectory))) {
     throw "CaptureActorDrawContract requires compact actor, skin-palette, screenshot, shader, texture-stage, render-lead, buffer, and artifact-directory policy."
 }
 if (-not $CaptureActorDrawContract -and
     ($ActorDrawMaximumRecordsPerSourceFrame -ne 0 -or
         $ActorDrawVertexShaderRegisterCount -ne 0 -or
+        $ActorDrawPixelShaderRegisterCount -ne 0 -or
         $ActorDrawMaximumShaderBytes -ne 0 -or
         $ActorDrawTextureStageCount -ne 0 -or
         $ActorDrawRenderFrameLead -ne 0 -or
         $ActorDrawMaximumBufferBytesPerRecord -ne 0 -or
+        $ActorDrawMaximumTextureBytesPerArtifact -ne 0 -or
         -not [string]::IsNullOrWhiteSpace($ActorDrawArtifactDirectory))) {
     throw "Actor draw-contract settings are valid only with CaptureActorDrawContract."
 }
@@ -520,6 +600,104 @@ if ($CaptureActorSurfaceContract -and $CaptureActorDrawContract -and
     ($ActorSurfaceTextureStageCount -ne $ActorDrawTextureStageCount -or
         $ActorSurfaceRenderFrameLead -ne $ActorDrawRenderFrameLead)) {
     throw "Actor surface and diagnostic draw contracts must use the same texture-stage and render-lead policy."
+}
+$textureSamplerSourceFrames = @($TextureSamplerSourceFrame | ForEach-Object { [int]$_ })
+$orderedUniqueTextureSamplerSourceFrames = @(
+    $textureSamplerSourceFrames | Sort-Object -Unique)
+if ($CaptureTextureSamplerContract -and
+    ($textureSamplerSourceFrames.Count -lt 1 -or
+        ($textureSamplerSourceFrames -join ',') -cne
+            ($orderedUniqueTextureSamplerSourceFrames -join ',') -or
+        @($textureSamplerSourceFrames | Where-Object {
+            $_ -le $TextureSamplerRenderFrameLead -or
+            $ScreenshotFrame -notcontains $_
+        }).Count -ne 0 -or
+        $TextureSamplerRenderFrameLead -le 0 -or
+        $TextureSamplerTargetWidth -le 0 -or
+        $TextureSamplerTargetHeight -le 0 -or
+        $TextureSamplerTargetLevelCount -le 0 -or
+        $TextureSamplerTargetFormat -eq 0 -or
+        $TextureSamplerTargetFnv1a32 -eq 0 -or
+        $TextureSamplerTargetTopLevelFnv1a32 -eq 0 -or
+        $TextureSamplerTextureStageCount -le 0 -or
+        $TextureSamplerTextureStageCount -gt 16 -or
+        $TextureSamplerMaximumCandidates -le 0 -or
+        $TextureSamplerMaximumRecords -le 0 -or
+        $TextureSamplerMaximumShaderBytes -le 0 -or
+        $TextureSamplerVertexShaderRegisterCount -le 0 -or
+        $TextureSamplerVertexShaderRegisterCount -gt 256 -or
+        $TextureSamplerPixelShaderRegisterCount -le 0 -or
+        $TextureSamplerPixelShaderRegisterCount -gt 224 -or
+        $TextureSamplerMaximumVertexBufferBytes -le 0)) {
+    throw "CaptureTextureSamplerContract requires one or more ordered, unique, screenshot-bound source frames and complete bounded D3D9 texture, shader, constant, and record policy."
+}
+if (-not $CaptureTextureSamplerContract -and
+    ($textureSamplerSourceFrames.Count -ne 0 -or
+        $TextureSamplerRenderFrameLead -ne 0 -or
+        $TextureSamplerTargetWidth -ne 0 -or
+        $TextureSamplerTargetHeight -ne 0 -or
+        $TextureSamplerTargetLevelCount -ne 0 -or
+        $TextureSamplerTargetFormat -ne 0 -or
+        $TextureSamplerTargetFnv1a32 -ne 0 -or
+        $TextureSamplerTargetTopLevelFnv1a32 -ne 0 -or
+        $TextureSamplerTextureStageCount -ne 0 -or
+        $TextureSamplerMaximumCandidates -ne 0 -or
+        $TextureSamplerMaximumRecords -ne 0 -or
+        $TextureSamplerMaximumShaderBytes -ne 0 -or
+        $TextureSamplerVertexShaderRegisterCount -ne 0 -or
+        $TextureSamplerPixelShaderRegisterCount -ne 0 -or
+        $TextureSamplerMaximumVertexBufferBytes -ne 0)) {
+    throw "Texture sampler settings are valid only with CaptureTextureSamplerContract."
+}
+if ($CaptureImageSpaceShaderInputs -and
+    ($ImageSpaceExpectedShaderByteCount -le 0 -or
+        $ImageSpaceExpectedShaderFnv1a32 -eq 0 -or
+        $ImageSpaceInputTextureStage.Count -ne 2 -or
+        @($ImageSpaceInputTextureStage | Sort-Object -Unique).Count -ne 2 -or
+        @($ImageSpaceInputTextureStage | Where-Object { $_ -lt 0 -or $_ -ge 16 }).Count -ne 0 -or
+        $ImageSpaceMaximumBytesPerInput -le 0 -or
+        $ImageSpaceSourceFrame -le $ImageSpaceRenderFrameLead -or
+        $ImageSpaceRenderFrameLead -le 0 -or
+        $ScreenshotFrame -notcontains $ImageSpaceSourceFrame -or
+        [string]::IsNullOrWhiteSpace($ImageSpaceArtifactDirectory))) {
+    throw "CaptureImageSpaceShaderInputs requires exact shader identity, two unique D3D9 stages, a bounded declared source frame, and an artifact directory."
+}
+if (-not $CaptureImageSpaceShaderInputs -and
+    ($ImageSpaceExpectedShaderByteCount -ne 0 -or
+        $ImageSpaceExpectedShaderFnv1a32 -ne 0 -or
+        $ImageSpaceInputTextureStage.Count -ne 0 -or
+        $ImageSpaceMaximumBytesPerInput -ne 0 -or
+        $ImageSpaceSourceFrame -ne 0 -or
+        $ImageSpaceRenderFrameLead -ne 0 -or
+        -not [string]::IsNullOrWhiteSpace($ImageSpaceArtifactDirectory))) {
+    throw "Image-space shader input settings are valid only with CaptureImageSpaceShaderInputs."
+}
+if ($CaptureImageSpacePipelineTrace -and
+    (-not $CaptureImageSpaceShaderInputs -or
+        $ImageSpaceTracePixelShaderFnv1a32.Count -lt 1 -or
+        @($ImageSpaceTracePixelShaderFnv1a32 | Sort-Object -Unique).Count -ne
+            $ImageSpaceTracePixelShaderFnv1a32.Count -or
+        @($ImageSpaceTracePixelShaderFnv1a32 | Where-Object { $_ -eq 0 }).Count -ne 0 -or
+        $ImageSpaceTraceMaximumRecords -le 0 -or
+        $ImageSpaceTraceTextureStageCount -lt 1 -or
+        $ImageSpaceTraceTextureStageCount -gt 16 -or
+        $ImageSpaceTraceVertexShaderRegisterCount -lt 1 -or
+        $ImageSpaceTraceVertexShaderRegisterCount -gt 256 -or
+        $ImageSpaceTracePixelShaderRegisterCount -lt 1 -or
+        $ImageSpaceTracePixelShaderRegisterCount -gt 224 -or
+        $ImageSpaceTraceMaximumShaderBytes -le 0 -or
+        $ImageSpaceTraceMaximumVertexBytes -le 0)) {
+    throw "CaptureImageSpacePipelineTrace requires bounded unique shader hashes, stages, constants, shaders, and UP vertices."
+}
+if (-not $CaptureImageSpacePipelineTrace -and
+    ($ImageSpaceTracePixelShaderFnv1a32.Count -ne 0 -or
+        $ImageSpaceTraceMaximumRecords -ne 0 -or
+        $ImageSpaceTraceTextureStageCount -ne 0 -or
+        $ImageSpaceTraceVertexShaderRegisterCount -ne 0 -or
+        $ImageSpaceTracePixelShaderRegisterCount -ne 0 -or
+        $ImageSpaceTraceMaximumShaderBytes -ne 0 -or
+        $ImageSpaceTraceMaximumVertexBytes -ne 0)) {
+    throw "Image-space pipeline trace settings are valid only with CaptureImageSpacePipelineTrace."
 }
 if ($CameraShotKind -eq 'front-full-body' -and -not $PortraitCamera -and
     $BatchTargetForm.Count -eq 0 -and -not $planMode) {
@@ -787,6 +965,15 @@ if ($CaptureActorDrawContract -and
             -Root (Split-Path -Parent $output)))) {
     throw "ActorDrawArtifactDirectory must be an existing directory beneath the output directory."
 }
+$imageSpaceArtifactDirectoryPath = if ($CaptureImageSpaceShaderInputs) {
+    Resolve-AbsolutePath $ImageSpaceArtifactDirectory
+} else { '' }
+if ($CaptureImageSpaceShaderInputs -and
+    (-not (Test-Path -LiteralPath $imageSpaceArtifactDirectoryPath -PathType Container) -or
+        -not (Test-PathWithinRoot -Path $imageSpaceArtifactDirectoryPath `
+            -Root (Split-Path -Parent $output)))) {
+    throw "ImageSpaceArtifactDirectory must be an existing directory beneath the output directory."
+}
 if (-not (Test-Path -LiteralPath $runtimeRootPath -PathType Container)) {
     throw "Missing repo-local isolated xNVSE RuntimeRoot: $runtimeRootPath"
 }
@@ -817,8 +1004,12 @@ if (-not (Test-Path -LiteralPath $runtimeManifestPath -PathType Leaf)) {
     throw "Missing isolated xNVSE runtime manifest: $runtimeManifestPath"
 }
 $runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json
-if ([string]$runtimeManifest.schema -ne 'nikami-xnvse-isolated-runtime/v1') {
-    throw "Unexpected isolated xNVSE runtime manifest schema: $($runtimeManifest.schema)"
+$acceptedRuntimeSchemas = @(
+    'nikami-xnvse-isolated-runtime/v1',
+    'nikami-xnvse-active-runtime/v1'
+)
+if ([string]$runtimeManifest.schema -cnotin $acceptedRuntimeSchemas) {
+    throw "Unexpected xNVSE runtime manifest schema: $($runtimeManifest.schema)"
 }
 if ($null -eq $runtimeManifest.overlay -or [string]$runtimeManifest.overlay.name -ne 'xnvse') {
     throw "Isolated xNVSE runtime manifest must declare overlay.name=xnvse."
@@ -932,6 +1123,7 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_BARRIER_TIMEOUT_MS = [string]$BarrierTimeoutMilliseconds
     NIKAMI_ORACLE_SAMPLE_EVERY = [string]$SampleEvery
     NIKAMI_ORACLE_MAX_FRAMES = [string]$MaxFrames
+    NIKAMI_ORACLE_RENDER_ENVIRONMENT_FRAME = [string]$RenderEnvironmentFrame
     NIKAMI_ORACLE_TARGET_FORM = $TargetForm
     NIKAMI_ORACLE_REQUIRE_SCHEDULED_SPAWN = if ($SpawnBaseCapture) { "1" } else { "0" }
     NIKAMI_ORACLE_OBSERVER_APPROACH_FORM = $ObserverApproachForm
@@ -942,20 +1134,57 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_ALL_HIGH_ACTORS = if ($CaptureAnimation -and -not $TargetAnimationOnly) { "1" } else { "0" }
     NIKAMI_ORACLE_CAPTURE_ANIMATION = if ($CaptureAnimation) { "1" } else { "0" }
     NIKAMI_ORACLE_COMPACT_ACTOR_TELEMETRY = if ($CompactActorTelemetry) { "1" } else { "0" }
+    NIKAMI_ORACLE_ACTOR_APPEARANCE_MAXIMUM_EVENT_BYTES = [string]$ActorAppearanceMaximumEventBytes
     NIKAMI_ORACLE_CAPTURE_ACTOR_SKIN_PALETTES = if ($CaptureActorSkinPalettes) { "1" } else { "0" }
     NIKAMI_ORACLE_ACTOR_SKIN_PALETTE_MAXIMUM_BYTES_PER_SHAPE = [string]$ActorSkinPaletteMaximumBytesPerShape
     NIKAMI_ORACLE_CAPTURE_ACTOR_SURFACE_CONTRACT = if ($CaptureActorSurfaceContract) { "1" } else { "0" }
     NIKAMI_ORACLE_ACTOR_SURFACE_MAXIMUM_SHADER_BYTES = [string]$ActorSurfaceMaximumShaderBytes
     NIKAMI_ORACLE_ACTOR_SURFACE_TEXTURE_STAGE_COUNT = [string]$ActorSurfaceTextureStageCount
     NIKAMI_ORACLE_ACTOR_SURFACE_RENDER_FRAME_LEAD = [string]$ActorSurfaceRenderFrameLead
+    NIKAMI_ORACLE_ACTOR_SURFACE_MAXIMUM_RECORDS_PER_SOURCE_FRAME = [string]$ActorSurfaceMaximumRecordsPerSourceFrame
     NIKAMI_ORACLE_CAPTURE_ACTOR_DRAW_CONTRACT = if ($CaptureActorDrawContract) { "1" } else { "0" }
     NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_RECORDS_PER_SOURCE_FRAME = [string]$ActorDrawMaximumRecordsPerSourceFrame
     NIKAMI_ORACLE_ACTOR_DRAW_VERTEX_SHADER_REGISTER_COUNT = [string]$ActorDrawVertexShaderRegisterCount
+    NIKAMI_ORACLE_ACTOR_DRAW_PIXEL_SHADER_REGISTER_COUNT = [string]$ActorDrawPixelShaderRegisterCount
     NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_SHADER_BYTES = [string]$ActorDrawMaximumShaderBytes
     NIKAMI_ORACLE_ACTOR_DRAW_TEXTURE_STAGE_COUNT = [string]$ActorDrawTextureStageCount
     NIKAMI_ORACLE_ACTOR_DRAW_RENDER_FRAME_LEAD = [string]$ActorDrawRenderFrameLead
     NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_BUFFER_BYTES_PER_RECORD = [string]$ActorDrawMaximumBufferBytesPerRecord
+    NIKAMI_ORACLE_ACTOR_DRAW_MAXIMUM_TEXTURE_BYTES_PER_ARTIFACT = [string]$ActorDrawMaximumTextureBytesPerArtifact
     NIKAMI_ORACLE_ACTOR_DRAW_ARTIFACT_DIRECTORY = $actorDrawArtifactDirectoryPath
+    NIKAMI_ORACLE_CAPTURE_TEXTURE_SAMPLER_CONTRACT = if ($CaptureTextureSamplerContract) { "1" } else { "0" }
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_SOURCE_FRAMES =
+        ($textureSamplerSourceFrames -join ',')
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_RENDER_FRAME_LEAD = [string]$TextureSamplerRenderFrameLead
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_WIDTH = [string]$TextureSamplerTargetWidth
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_HEIGHT = [string]$TextureSamplerTargetHeight
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_LEVEL_COUNT = [string]$TextureSamplerTargetLevelCount
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_FORMAT = [string]$TextureSamplerTargetFormat
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_FNV1A32 = [string]$TextureSamplerTargetFnv1a32
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_TARGET_TOP_LEVEL_FNV1A32 = [string]$TextureSamplerTargetTopLevelFnv1a32
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_TEXTURE_STAGE_COUNT = [string]$TextureSamplerTextureStageCount
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_MAXIMUM_CANDIDATES = [string]$TextureSamplerMaximumCandidates
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_MAXIMUM_RECORDS = [string]$TextureSamplerMaximumRecords
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_MAXIMUM_SHADER_BYTES = [string]$TextureSamplerMaximumShaderBytes
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_VERTEX_SHADER_REGISTER_COUNT = [string]$TextureSamplerVertexShaderRegisterCount
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_PIXEL_SHADER_REGISTER_COUNT = [string]$TextureSamplerPixelShaderRegisterCount
+    NIKAMI_ORACLE_TEXTURE_SAMPLER_MAXIMUM_VERTEX_BUFFER_BYTES = [string]$TextureSamplerMaximumVertexBufferBytes
+    NIKAMI_ORACLE_CAPTURE_IMAGE_SPACE_SHADER_INPUTS = if ($CaptureImageSpaceShaderInputs) { "1" } else { "0" }
+    NIKAMI_ORACLE_IMAGE_SPACE_EXPECTED_SHADER_BYTE_COUNT = [string]$ImageSpaceExpectedShaderByteCount
+    NIKAMI_ORACLE_IMAGE_SPACE_EXPECTED_SHADER_FNV1A32 = [string]$ImageSpaceExpectedShaderFnv1a32
+    NIKAMI_ORACLE_IMAGE_SPACE_INPUT_TEXTURE_STAGES = (@($ImageSpaceInputTextureStage) -join ",")
+    NIKAMI_ORACLE_IMAGE_SPACE_MAXIMUM_BYTES_PER_INPUT = [string]$ImageSpaceMaximumBytesPerInput
+    NIKAMI_ORACLE_IMAGE_SPACE_SOURCE_FRAME = [string]$ImageSpaceSourceFrame
+    NIKAMI_ORACLE_IMAGE_SPACE_RENDER_FRAME_LEAD = [string]$ImageSpaceRenderFrameLead
+    NIKAMI_ORACLE_IMAGE_SPACE_ARTIFACT_DIRECTORY = $imageSpaceArtifactDirectoryPath
+    NIKAMI_ORACLE_CAPTURE_IMAGE_SPACE_PIPELINE_TRACE = if ($CaptureImageSpacePipelineTrace) { "1" } else { "0" }
+    NIKAMI_ORACLE_IMAGE_SPACE_TRACE_PIXEL_SHADER_FNV1A32 = (@($ImageSpaceTracePixelShaderFnv1a32) -join ",")
+    NIKAMI_ORACLE_IMAGE_SPACE_TRACE_MAXIMUM_RECORDS = [string]$ImageSpaceTraceMaximumRecords
+    NIKAMI_ORACLE_IMAGE_SPACE_TRACE_TEXTURE_STAGE_COUNT = [string]$ImageSpaceTraceTextureStageCount
+    NIKAMI_ORACLE_IMAGE_SPACE_TRACE_VERTEX_SHADER_REGISTER_COUNT = [string]$ImageSpaceTraceVertexShaderRegisterCount
+    NIKAMI_ORACLE_IMAGE_SPACE_TRACE_PIXEL_SHADER_REGISTER_COUNT = [string]$ImageSpaceTracePixelShaderRegisterCount
+    NIKAMI_ORACLE_IMAGE_SPACE_TRACE_MAXIMUM_SHADER_BYTES = [string]$ImageSpaceTraceMaximumShaderBytes
+    NIKAMI_ORACLE_IMAGE_SPACE_TRACE_MAXIMUM_VERTEX_BYTES = [string]$ImageSpaceTraceMaximumVertexBytes
     NIKAMI_ORACLE_CAPTURE_SESSION = if ($CaptureSession) { "1" } else { "0" }
     NIKAMI_ORACLE_PIPBOY_PROBE = if ($PipBoyProbe) { "1" } else { "0" }
     NIKAMI_ORACLE_SESSION_TARGET_FORM = $SessionTargetForm
@@ -1010,6 +1239,9 @@ $environment = [ordered]@{
     NIKAMI_ORACLE_BATCH_WEAPON_PROBE_FRAMES = [string]$BatchWeaponProbeFrames
     NIKAMI_ORACLE_PORTRAIT_CAMERA = if ($PortraitCamera) { "1" } else { "0" }
     NIKAMI_ORACLE_PORTRAIT_DISTANCE = [string]$PortraitDistance
+    NIKAMI_ORACLE_CAMERA_CORRIDOR_CLEARANCE_GAME_UNITS =
+        [string]$CameraCorridorClearanceGameUnits
+    NIKAMI_ORACLE_PORTRAIT_SEMANTIC_FOCUS_RULES = $PortraitSemanticFocusRules
     NIKAMI_ORACLE_CAMERA_SHOT_KIND = $CameraShotKind
     NIKAMI_ORACLE_FULL_BODY_DISTANCE_SCALE = [string]$FullBodyDistanceScale
     NIKAMI_ORACLE_EXIT_WHEN_DONE = "1"
@@ -1071,23 +1303,61 @@ if ($DryRun) {
         spawnBaseCapture = [bool]$SpawnBaseCapture
         targetAnimationOnly = [bool]$TargetAnimationOnly
         compactActorTelemetry = [bool]$CompactActorTelemetry
+        actorAppearanceMaximumEventBytes = $ActorAppearanceMaximumEventBytes
         captureActorSkinPalettes = [bool]$CaptureActorSkinPalettes
         actorSkinPaletteMaximumBytesPerShape = $ActorSkinPaletteMaximumBytesPerShape
         captureActorSurfaceContract = [bool]$CaptureActorSurfaceContract
         actorSurfaceMaximumShaderBytes = $ActorSurfaceMaximumShaderBytes
         actorSurfaceTextureStageCount = $ActorSurfaceTextureStageCount
         actorSurfaceRenderFrameLead = $ActorSurfaceRenderFrameLead
+        actorSurfaceMaximumRecordsPerSourceFrame = $ActorSurfaceMaximumRecordsPerSourceFrame
         captureActorDrawContract = [bool]$CaptureActorDrawContract
         actorDrawMaximumRecordsPerSourceFrame = $ActorDrawMaximumRecordsPerSourceFrame
         actorDrawVertexShaderRegisterCount = $ActorDrawVertexShaderRegisterCount
+        actorDrawPixelShaderRegisterCount = $ActorDrawPixelShaderRegisterCount
         actorDrawMaximumShaderBytes = $ActorDrawMaximumShaderBytes
         actorDrawTextureStageCount = $ActorDrawTextureStageCount
         actorDrawRenderFrameLead = $ActorDrawRenderFrameLead
         actorDrawMaximumBufferBytesPerRecord = $ActorDrawMaximumBufferBytesPerRecord
+        actorDrawMaximumTextureBytesPerArtifact = $ActorDrawMaximumTextureBytesPerArtifact
         actorDrawArtifactDirectory = $actorDrawArtifactDirectoryPath
+        captureTextureSamplerContract = [bool]$CaptureTextureSamplerContract
+        textureSamplerSourceFrames = @($textureSamplerSourceFrames)
+        textureSamplerRenderFrameLead = $TextureSamplerRenderFrameLead
+        textureSamplerTargetWidth = $TextureSamplerTargetWidth
+        textureSamplerTargetHeight = $TextureSamplerTargetHeight
+        textureSamplerTargetLevelCount = $TextureSamplerTargetLevelCount
+        textureSamplerTargetFormat = $TextureSamplerTargetFormat
+        textureSamplerTargetFnv1a32 = $TextureSamplerTargetFnv1a32
+        textureSamplerTargetTopLevelFnv1a32 = $TextureSamplerTargetTopLevelFnv1a32
+        textureSamplerTextureStageCount = $TextureSamplerTextureStageCount
+        textureSamplerMaximumCandidates = $TextureSamplerMaximumCandidates
+        textureSamplerMaximumRecords = $TextureSamplerMaximumRecords
+        textureSamplerMaximumShaderBytes = $TextureSamplerMaximumShaderBytes
+        textureSamplerVertexShaderRegisterCount = $TextureSamplerVertexShaderRegisterCount
+        textureSamplerPixelShaderRegisterCount = $TextureSamplerPixelShaderRegisterCount
+        textureSamplerMaximumVertexBufferBytes = $TextureSamplerMaximumVertexBufferBytes
+        captureImageSpaceShaderInputs = [bool]$CaptureImageSpaceShaderInputs
+        imageSpaceExpectedShaderByteCount = $ImageSpaceExpectedShaderByteCount
+        imageSpaceExpectedShaderFnv1a32 = $ImageSpaceExpectedShaderFnv1a32
+        imageSpaceInputTextureStages = @($ImageSpaceInputTextureStage)
+        imageSpaceMaximumBytesPerInput = $ImageSpaceMaximumBytesPerInput
+        imageSpaceSourceFrame = $ImageSpaceSourceFrame
+        imageSpaceRenderFrameLead = $ImageSpaceRenderFrameLead
+        imageSpaceArtifactDirectory = $imageSpaceArtifactDirectoryPath
+        captureImageSpacePipelineTrace = [bool]$CaptureImageSpacePipelineTrace
+        imageSpaceTracePixelShaderFnv1a32 = @($ImageSpaceTracePixelShaderFnv1a32)
+        imageSpaceTraceMaximumRecords = $ImageSpaceTraceMaximumRecords
+        imageSpaceTraceTextureStageCount = $ImageSpaceTraceTextureStageCount
+        imageSpaceTraceVertexShaderRegisterCount = $ImageSpaceTraceVertexShaderRegisterCount
+        imageSpaceTracePixelShaderRegisterCount = $ImageSpaceTracePixelShaderRegisterCount
+        imageSpaceTraceMaximumShaderBytes = $ImageSpaceTraceMaximumShaderBytes
+        imageSpaceTraceMaximumVertexBytes = $ImageSpaceTraceMaximumVertexBytes
         batchExpectedBaseForms = @($BatchExpectedBaseForm)
         cameraShotKind = $CameraShotKind
         expectedCameraShotKinds = @($ExpectedCameraShotKind)
+        portraitSemanticFocusRules = $PortraitSemanticFocusRules
+        cameraCorridorClearanceGameUnits = $CameraCorridorClearanceGameUnits
         fullBodyDistanceScale = $FullBodyDistanceScale
         batchForceWeaponOut = [bool]$BatchForceWeaponOut
         batchWeaponProbeFrames = $BatchWeaponProbeFrames
@@ -1665,7 +1935,7 @@ if ($expectedPortraitEvents -gt 0) {
             [string]$cameraEvent.shotKind -cne $expectedShotKind) {
             throw "Camera shot-kind contract expected '$expectedShotKind' at camera index $cameraIndex."
         }
-        if ($expectedShotKind -in @('front-full-body', 'idle-motion')) {
+        if ($expectedShotKind -in @('front-full-body', 'rear-full-body', 'idle-motion')) {
             if ($cameraEvent.PSObject.Properties.Name -notcontains 'worldBound' -or
                 -not [bool]$cameraEvent.worldBound.valid -or [double]$cameraEvent.worldBound.radius -le 0) {
                 throw "Full-body camera event lacks a valid assembled-actor world bound."
@@ -1796,6 +2066,9 @@ if ($BatchProofStaging) {
             throw "Proof volume was not exclusive to target index $targetIndex."
         }
         if ($occlusion.Count -ne 1 -or -not [bool]$occlusion[0].passed -or
+            -not [bool]$occlusion[0].outsideWorldBound -or
+            [double]$occlusion[0].clearanceGameUnits -ne
+                [double]$CameraCorridorClearanceGameUnits -or
             -not [bool]$occlusion[0].invoked -or [bool]$occlusion[0].faulted -or
             -not [bool]$occlusion[0].fractionValid -or [bool]$occlusion[0].hit) {
             throw "Camera-to-target corridor is not proven clear for target index $targetIndex."
@@ -1884,6 +2157,8 @@ $manifestDocument = [ordered]@{
         batchAdvanceFrames = $BatchAdvanceFrames
         cameraShotKind = $CameraShotKind
         expectedCameraShotKinds = @($ExpectedCameraShotKind)
+        portraitSemanticFocusRules = $PortraitSemanticFocusRules
+        cameraCorridorClearanceGameUnits = $CameraCorridorClearanceGameUnits
         fullBodyDistanceScale = $FullBodyDistanceScale
         batchForceWeaponOut = [bool]$BatchForceWeaponOut
         batchWeaponProbeFrames = $BatchWeaponProbeFrames
@@ -1983,6 +2258,8 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     portraitDistance = $PortraitDistance
     cameraShotKind = $CameraShotKind
     expectedCameraShotKinds = @($ExpectedCameraShotKind)
+    portraitSemanticFocusRules = $PortraitSemanticFocusRules
+    cameraCorridorClearanceGameUnits = $CameraCorridorClearanceGameUnits
     fullBodyDistanceScale = $FullBodyDistanceScale
     batchForceWeaponOut = [bool]$BatchForceWeaponOut
     batchWeaponProbeFrames = $BatchWeaponProbeFrames
@@ -2004,20 +2281,56 @@ $runManifestEvidence = Get-FNVFileEvidence $writtenRunManifest 'oracle-run-manif
     setStageIndex = $SetStageIndex
     captureAnimation = [bool]$CaptureAnimation
     compactActorTelemetry = [bool]$CompactActorTelemetry
+    actorAppearanceMaximumEventBytes = $ActorAppearanceMaximumEventBytes
     captureActorSkinPalettes = [bool]$CaptureActorSkinPalettes
     actorSkinPaletteMaximumBytesPerShape = $ActorSkinPaletteMaximumBytesPerShape
     captureActorSurfaceContract = [bool]$CaptureActorSurfaceContract
     actorSurfaceMaximumShaderBytes = $ActorSurfaceMaximumShaderBytes
     actorSurfaceTextureStageCount = $ActorSurfaceTextureStageCount
     actorSurfaceRenderFrameLead = $ActorSurfaceRenderFrameLead
+    actorSurfaceMaximumRecordsPerSourceFrame = $ActorSurfaceMaximumRecordsPerSourceFrame
     captureActorDrawContract = [bool]$CaptureActorDrawContract
     actorDrawMaximumRecordsPerSourceFrame = $ActorDrawMaximumRecordsPerSourceFrame
     actorDrawVertexShaderRegisterCount = $ActorDrawVertexShaderRegisterCount
+    actorDrawPixelShaderRegisterCount = $ActorDrawPixelShaderRegisterCount
     actorDrawMaximumShaderBytes = $ActorDrawMaximumShaderBytes
     actorDrawTextureStageCount = $ActorDrawTextureStageCount
     actorDrawRenderFrameLead = $ActorDrawRenderFrameLead
     actorDrawMaximumBufferBytesPerRecord = $ActorDrawMaximumBufferBytesPerRecord
+    actorDrawMaximumTextureBytesPerArtifact = $ActorDrawMaximumTextureBytesPerArtifact
     actorDrawArtifactDirectory = $actorDrawArtifactDirectoryPath
+    captureTextureSamplerContract = [bool]$CaptureTextureSamplerContract
+    textureSamplerSourceFrames = @($textureSamplerSourceFrames)
+    textureSamplerRenderFrameLead = $TextureSamplerRenderFrameLead
+    textureSamplerTargetWidth = $TextureSamplerTargetWidth
+    textureSamplerTargetHeight = $TextureSamplerTargetHeight
+    textureSamplerTargetLevelCount = $TextureSamplerTargetLevelCount
+    textureSamplerTargetFormat = $TextureSamplerTargetFormat
+    textureSamplerTargetFnv1a32 = $TextureSamplerTargetFnv1a32
+    textureSamplerTargetTopLevelFnv1a32 = $TextureSamplerTargetTopLevelFnv1a32
+    textureSamplerTextureStageCount = $TextureSamplerTextureStageCount
+    textureSamplerMaximumCandidates = $TextureSamplerMaximumCandidates
+    textureSamplerMaximumRecords = $TextureSamplerMaximumRecords
+    textureSamplerMaximumShaderBytes = $TextureSamplerMaximumShaderBytes
+    textureSamplerVertexShaderRegisterCount = $TextureSamplerVertexShaderRegisterCount
+    textureSamplerPixelShaderRegisterCount = $TextureSamplerPixelShaderRegisterCount
+    textureSamplerMaximumVertexBufferBytes = $TextureSamplerMaximumVertexBufferBytes
+    captureImageSpaceShaderInputs = [bool]$CaptureImageSpaceShaderInputs
+    imageSpaceExpectedShaderByteCount = $ImageSpaceExpectedShaderByteCount
+    imageSpaceExpectedShaderFnv1a32 = $ImageSpaceExpectedShaderFnv1a32
+    imageSpaceInputTextureStages = @($ImageSpaceInputTextureStage)
+    imageSpaceMaximumBytesPerInput = $ImageSpaceMaximumBytesPerInput
+    imageSpaceSourceFrame = $ImageSpaceSourceFrame
+    imageSpaceRenderFrameLead = $ImageSpaceRenderFrameLead
+    imageSpaceArtifactDirectory = $imageSpaceArtifactDirectoryPath
+    captureImageSpacePipelineTrace = [bool]$CaptureImageSpacePipelineTrace
+    imageSpaceTracePixelShaderFnv1a32 = @($ImageSpaceTracePixelShaderFnv1a32)
+    imageSpaceTraceMaximumRecords = $ImageSpaceTraceMaximumRecords
+    imageSpaceTraceTextureStageCount = $ImageSpaceTraceTextureStageCount
+    imageSpaceTraceVertexShaderRegisterCount = $ImageSpaceTraceVertexShaderRegisterCount
+    imageSpaceTracePixelShaderRegisterCount = $ImageSpaceTracePixelShaderRegisterCount
+    imageSpaceTraceMaximumShaderBytes = $ImageSpaceTraceMaximumShaderBytes
+    imageSpaceTraceMaximumVertexBytes = $ImageSpaceTraceMaximumVertexBytes
     captureSession = [bool]$CaptureSession
     pipBoyProbe = [bool]$PipBoyProbe
     pipBoyProbeSnapshots = @($pipBoyProbeSnapshots)

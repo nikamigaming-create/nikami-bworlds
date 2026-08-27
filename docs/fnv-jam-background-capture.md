@@ -424,6 +424,14 @@ portrait. The recipe owns the shared timeline and declares only the record-type
 detail-name override, so the two paths cannot drift independently. Run retail
 and Godot sequentially.
 
+The seed supplies the hash-locked xNVSE loader/core files; it is not another
+generated build. The catalog declares exactly one active actor-observation
+runtime at `local/actor-observation-runtime-current`. While both engines are
+idle, the runner refreshes that directory in place when the oracle DLL changes.
+It never creates plugin-hash runtime directories. Each non-overwritten proof
+retains the exact active-runtime manifest and oracle DLL as evidence, while ZIP,
+release, and exported-build creation remain outside this capture lane.
+
 ```powershell
 & .\scripts\Test-FNVJamBackgroundCapture.ps1 `
   -Target Retail -Scenario ActorObservation `
@@ -503,13 +511,18 @@ applies the validated retail NiCamera world transform and the exact skinned-draw
 Direct3D 9 scene-color projection, and retains one engine-owned PNG for every
 retail source frame at the same dimensions. The NiCamera culling projection is
 retained separately and is not treated as final-eye evidence. Nonstandard
-skeleton roots are data, not record-type special cases.
+skeleton roots are data, not record-type special cases. An optional compiled
+`opennv-cell-scene/v10` may provide the owned-data world around the sampled
+actor. Its path, SHA-256, CELL identity, and content counts must round-trip
+through the engine report; it is context evidence, not permission to call an
+incomplete cell retail-equivalent.
 
 ```powershell
 & .\scripts\Test-FNVJamBackgroundCapture.ps1 `
   -Target Godot -Scenario GodotActorReview `
   -OpenNvRoot '<clean OpenNV checkout>' `
   -ActorReviewScene '<compiled owned-data review scene>' `
+  -ActorReviewBackgroundCell '<compiled owned-data CELL scene>' `
   -GodotBinary '<Godot .NET executable>' `
   -OutputRoot .\run\opennv-godot-actor-review-<unique> `
   -RuntimeReady -RequireIdle
@@ -517,6 +530,7 @@ skeleton roots are data, not record-type special cases.
   -Target Godot -Scenario GodotActorReview `
   -OpenNvRoot '<clean OpenNV checkout>' `
   -ActorReviewScene '<compiled owned-data review scene>' `
+  -ActorReviewBackgroundCell '<compiled owned-data CELL scene>' `
   -GodotBinary '<Godot .NET executable>' `
   -OutputRoot .\run\opennv-godot-actor-review-<unique>
 ```
@@ -525,6 +539,47 @@ The capture status is deliberately `captured-pending-parity`, never `pass`,
 while the retail sun vector and matched-pixel comparison remain unresolved.
 Projection, pose, and native-frame gates may succeed without laundering those
 remaining renderer gaps into an appearance verdict.
+
+## OpenNV owned-data gallery video
+
+`GodotGalleryVideo` is the canonical manifest-driven gallery lane. It accepts
+one current `opennv-owned-gallery-compiled/v3` manifest and captures every job
+once in manifest ordinal order. Subject identity, CELL scene, actor scene,
+authored placement, indoor/outdoor classification, KF animation, duration,
+frame rate, motion threshold, output names, codecs, and tolerances come from
+the hash-bound manifest and OpenNV runtime configuration. The runner contains
+no subject list, location list, shot-count ceiling, record-type fallback, or
+invented animation fallback.
+
+The lane builds the runtime once. For each job, Godot writes a retained native
+fixed-step source movie and viewport PNG while the runtime measures actual
+authored-animation progression. A shot fails closed unless its KF source path,
+SHA-256, channel count, Godot track count, and observed motion all pass. ffmpeg
+then trims only the configured authored-motion interval and joins the validated
+segments. This is current OpenNV presentation evidence, not retail parity
+evidence, and it never launches retail FNV.
+
+```powershell
+& .\scripts\Test-FNVJamBackgroundCapture.ps1 `
+  -Target Godot -Scenario GodotGalleryVideo `
+  -OpenNvRoot '<current OpenNV checkout>' `
+  -GalleryManifest '<fresh compiled gallery-manifest.json>' `
+  -GodotBinary '<Godot .NET executable>' `
+  -OutputRoot '.\run\opennv-godot-gallery-video-<unique>' `
+  -RuntimeReady -RequireIdle
+& .\scripts\Invoke-FNVJamBackgroundCapture.ps1 `
+  -Target Godot -Scenario GodotGalleryVideo `
+  -OpenNvRoot '<current OpenNV checkout>' `
+  -GalleryManifest '<fresh compiled gallery-manifest.json>' `
+  -GodotBinary '<Godot .NET executable>' `
+  -OutputRoot '.\run\opennv-godot-gallery-video-<unique>'
+```
+
+The final report must state `captured-gallery-video-non-parity`, retain every
+per-shot source report/movie and encoded segment, prove all authored-motion
+gates passed, match the manifest's exact class totals, validate the configured
+delivery duration and codec, and keep all app-control, foreground-input,
+retail-capture, overwrite, and parity-claim flags false.
 
 ## Provenance and recovery
 

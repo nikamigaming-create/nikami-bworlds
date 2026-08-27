@@ -117,7 +117,8 @@
       "additionalProperties": true,
       "required": [
         "role", "sourceFormId", "sourceSlot", "ordinal", "required",
-        "attached", "drawable", "visible", "textureBindings"
+        "attached", "drawable", "visible", "skinned", "geometryName", "visualNodePath",
+        "textureBindings"
       ],
       "properties": {
         "role": { "type": "string", "minLength": 1 },
@@ -134,8 +135,20 @@
         "attached": { "type": "boolean" },
         "drawable": { "type": "boolean" },
         "visible": { "type": "boolean" },
+        "skinned": {
+          "description": "True only when the live NiGeometry has a runtime NiSkinInstance.",
+          "type": "boolean"
+        },
         "alphaBits": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
         "modelPath": { "type": "string" },
+        "geometryName": {
+          "description": "Exact runtime NiGeometry name; empty only for a non-rendered missing-attachment diagnostic.",
+          "type": "string"
+        },
+        "visualNodePath": {
+          "description": "Exact numeric child path shared with every per-frame actor-visual-snapshot node.",
+          "type": "string"
+        },
         "materialId": {
           "oneOf": [
             { "type": "string", "minLength": 1 },

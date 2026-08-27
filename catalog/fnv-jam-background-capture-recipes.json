@@ -449,6 +449,67 @@
   ],
   "godotRecipes": [
     {
+      "id": "opennv-godot-owned-gallery-shot-v1",
+      "target": "Godot",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-OpenNVGalleryCapture.ps1",
+      "captureMethod": "Godot retains one engine-owned viewport PNG from one current opennv-cell-scene/v10, one exact authored opennv-actor-scene/v5 placement, and one hash-bound prior retail authored-reference observation",
+      "driverMethod": "OpenNV loads hash-bound presentation data compiled locally from the player's legally owned Fallout: New Vegas master and archives, resolves the observed retail environment against those owned records, frames the declared authored actor placement, and captures without host input",
+      "backgroundInputMethod": "no host keyboard or mouse input is sent and no retail process is launched",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "retailCaptureUsed": false,
+      "parityClaimed": false,
+      "acceptedCaptureStatus": "captured-gallery-retail-bound-pending-parity",
+      "sourceFramePattern": "godot/native-source-frames/*.png",
+      "telemetryPattern": "godot/gallery-engine-report.json; godot/opennv-gallery-capture-report.json",
+      "manifestPattern": "godot/opennv-gallery-capture-report.json; background-capture-summary.json",
+      "requiredTelemetry": [
+        "the shot contract, actor scene, and cell scene identify the same exact authored reference, base, and CELL records",
+        "the cell and actor scenes use the same current runtime configuration SHA-256",
+        "exactly one Godot-native PNG is retained under the declared output file name",
+        "capture.retailCaptureUsed=false",
+        "engine.retailEvidenceUsed=true and the evidence/report/oracle/native-frame hashes verify",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false",
+        "engine.parityClaimed=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotGallery -OpenNvRoot '<current OpenNV checkout>' -GalleryCellScene '<compiled current CELL scene>' -GalleryActorScene '<compiled exact authored actor scene>' -GalleryShot '<opennv-gallery-shot/v5 contract>' -GodotBinary '<Godot .NET executable>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotGallery -OpenNvRoot '<current OpenNV checkout>' -GalleryCellScene '<compiled current CELL scene>' -GalleryActorScene '<compiled exact authored actor scene>' -GalleryShot '<opennv-gallery-shot/v5 contract>' -GodotBinary '<Godot .NET executable>' -OutputRoot .\\run\\opennv-godot-gallery-<unique>"
+    },
+    {
+      "id": "opennv-godot-owned-gallery-video-v1",
+      "target": "Godot",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-OpenNVGalleryVideoCapture.ps1",
+      "captureMethod": "Godot writes one deterministic fixed-step native movie for every hash-bound job in the current compiled owned-data gallery manifest; ffmpeg trims the declared authored-motion interval and joins the retained segments into the configured delivery video",
+      "driverMethod": "OpenNV loads each exact locally compiled CELL scene, authored actor placement, shot contract, and KF animation in manifest ordinal order without subject-specific runner branches",
+      "backgroundInputMethod": "no host keyboard or mouse input, Windows app control, focus change, or retail process is used",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "retailCaptureUsed": false,
+      "parityClaimed": false,
+      "acceptedCaptureStatus": "captured-gallery-video-non-parity",
+      "sourceFramePattern": "godot/source-shots/*/native-source-frames/*.png; godot/source-shots/*/gallery-source.avi",
+      "telemetryPattern": "godot/source-shots/*/gallery-engine-report.json; godot/source-shots/*/opennv-gallery-capture-report.json",
+      "manifestPattern": "<compiled gallery>/gallery-manifest.json; godot/open-nv-owned-wasteland-gallery-report.json; background-capture-summary.json",
+      "videoPattern": "godot/open-nv-owned-wasteland-gallery.mp4",
+      "requiredTelemetry": [
+        "every manifest job input matches its declared SHA-256 and the current runtime configuration SHA-256",
+        "every location scene carries the current sealed gallery-location contract",
+        "every actor reports a non-empty authored KF path, SHA-256, source channel count, Godot track count, and configured minimum observed progression",
+        "all manifest jobs are captured once in exact ordinal order with declared interior and exterior class totals",
+        "capture.retailCaptureUsed=false",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false",
+        "capture.parityClaimed=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotGalleryVideo -OpenNvRoot '<current OpenNV checkout>' -GalleryManifest '<compiled current gallery-manifest.json>' -GodotBinary '<Godot .NET executable>' -OutputRoot '.\\run\\opennv-godot-gallery-video-<unique>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotGalleryVideo -OpenNvRoot '<current OpenNV checkout>' -GalleryManifest '<compiled current gallery-manifest.json>' -GodotBinary '<Godot .NET executable>' -OutputRoot '.\\run\\opennv-godot-gallery-video-<unique>'"
+    },
+    {
       "id": "opennv-godot-goodsprings-strip-v1",
       "target": "Godot",
       "diagnosticOnly": false,
@@ -530,8 +591,8 @@
       "diagnosticOnly": false,
       "runner": "scripts/Invoke-FNVActorObservationCapture.ps1",
       "queueRunner": "scripts/Invoke-FNVActorObservationQueue.ps1",
-      "captureMethod": "xNVSE spawns exactly one requested official actor base, correlates the resulting live reference and runtime template identity, frames it from live render bounds, and retains the native Direct3D 9 backbuffer BMP plus frame-labelled JSONL telemetry",
-      "driverMethod": "in-process xNVSE scheduled SpawnActor, ResolveSpawnedActor, and reference-targeted StageInFrontOfPlayer commands; no Windows input or application control",
+      "captureMethod": "xNVSE observes either one spawned proof actor or one hash-bound owned-gallery authored reference, correlates the live reference and runtime template identity, frames it from live render bounds, and retains the native Direct3D 9 backbuffer BMP plus frame-labelled JSONL telemetry",
+      "driverMethod": "in-process xNVSE scheduled commands; ordinary review jobs use SpawnActor, ResolveSpawnedActor, and reference-targeted StageInFrontOfPlayer, while gallery jobs move only the player to the declared authored reference and never mutate the actor transform; no Windows input or application control",
       "backgroundInputMethod": "no host keyboard or mouse input is sent",
       "foregroundRequired": false,
       "windowsAppControlUsed": false,
@@ -546,10 +607,14 @@
       "requiredTelemetry": [
         "capture job and source corpus hashes match their immutable manifests",
         "runtime official plugin stack exactly matches the corpus load order",
-        "one spawned reference is correlated to the requested stable base",
+        "one observed reference is correlated to the requested stable base; gallery mode additionally requires the exact hash-bound authored reference and preserves its transform",
+        "gallery authored-reference mode waits the retail-proven streaming-settle interval before its first camera shot and records the location's live environment and surrounding world",
+        "exterior gallery mode captures one runtime-configured texture-sampler-contract at the semantic presentation frame and proves the exact grass texture, shader pair, bounded draw records, and complete configured owned-mesh batch coverage",
         "runtime base, template pointers, leveled extra-data links, render bounds, camera, animation, and native source-frame hash are retained",
         "every native source frame retains the validated retail NiCamera culling state and one target-texture-matched skinned actor draw into the source-resolution Direct3D scene-color target",
         "every final-eye scene-color actor draw retains its skinned-shader identity, viewport, render-target and backbuffer descriptions, and exact Direct3D world, view, and projection matrices",
+        "the exact 748-byte hdr-cinematic draw retains bounded canonical raw rows, format and sampler state, hashes, and immutable artifacts for both configured shader input textures",
+        "the matched image-space render frame retains a bounded ordered trace of configured HDR, adaptation, downsample, bright-pass, blur, and final-join shader draws with live constants, inputs, targets, viewport, scissor, color-space state, and immediate vertices",
         "every native source frame has one same-frame actor visual snapshot with the actor root and complete named NiNode local/world transforms for later owned-skeleton intersection",
         "every native source frame retains each live skinned geometry's runtime bone order, cache dimensions, exact palette floats, and palette hash",
         "exactly one visual snapshot retains the resolved render-part, source-form, source-slot, owned model path, and texture-binding appearance inventory",
@@ -574,24 +639,61 @@
         "GunRunnersArsenal.esm"
       ],
       "capturePolicy": {
+        "activeRuntime": {
+          "schema": "nikami-xnvse-active-runtime/v1",
+          "relativeDirectory": "local/actor-observation-runtime-current",
+          "manifestFile": "oracle-runtime-manifest.json",
+          "pluginDirectory": "plugins",
+          "pluginFile": "nvse_retail_oracle.dll",
+          "evidenceDirectory": "runtime-inputs"
+        },
         "spawnFrame": 30,
         "resolveFrame": 45,
         "stageFrame": 46,
         "stageDistance": 384,
+        "authoredReferenceCapture": {
+          "enableFrame": 1,
+          "loadFrame": 2,
+          "minimumStreamingSettleFrames": 90,
+          "interiorLoadMode": "authored-reference",
+          "exteriorLoadMode": "scene-editor-id-then-authored-reference",
+          "runtimeStateByReferenceFormId": {
+            "00104C80": {
+              "mode": "game-hour-from-owned-package-midpoint",
+              "frame": 1,
+              "evaluatePackageFrame": 2,
+              "gameHour": 10,
+              "provenance": {
+                "sourceFile": "FalloutNV.esm",
+                "sourceFileSha256": "50991d36804b7d1e70df1afd7471b72f0e29d1b456ee2516a9717c002564e7c1",
+                "packageFormId": "0010655E",
+                "packageEditorId": "EasyPeteChairPackage8x4",
+                "packageStartHour": 8,
+                "packageDurationHours": 4,
+                "selection": "midpoint"
+              }
+            }
+          },
+          "settleProvenance": "docs/fallout-compatibility-evidence-ledger.md retail batch render readiness",
+          "captureMethod": "xNVSE loads the hash-bound gallery scene when required, moves only the player to the hash-bound authored actor reference, preserves the actor's owned transform, waits the retail-proven streaming interval after each load boundary, and retains native D3D9 frames plus exact actor, camera, environment, image-space, and scene telemetry"
+        },
         "beforeFrame": 60,
         "commandFrame": 65,
-        "afterFrame": 215,
-        "maxFrames": 220,
+        "afterFrame": 265,
+        "maxFrames": 270,
         "timeoutSeconds": 90,
         "sampleEvery": 1,
         "portraitDistance": 110,
+        "cameraCorridorClearanceGameUnits": 8,
         "fullBodyDistanceScale": 1.6,
         "shotTimeline": [
           { "slot": "detail", "setFrame": 48, "screenshotFrames": [70] },
           { "slot": "left-profile", "setFrame": 80, "screenshotFrames": [95] },
           { "slot": "right-profile", "setFrame": 105, "screenshotFrames": [120] },
           { "slot": "front-full-body", "setFrame": 130, "screenshotFrames": [145] },
-          { "slot": "idle-motion", "setFrame": 155, "screenshotFrames": [165, 175, 185, 195, 205, 215] }
+          { "slot": "rear-detail", "setFrame": 155, "screenshotFrames": [170], "reviewRequired": false },
+          { "slot": "rear-full-body", "setFrame": 180, "screenshotFrames": [195], "reviewRequired": false },
+          { "slot": "idle-motion", "setFrame": 205, "screenshotFrames": [215, 225, 235, 245, 255, 265] }
         ],
         "shotKindOverridesByRecordType": {
           "NPC_": { "detail": "front-portrait" },
@@ -617,17 +719,30 @@
         "visualSnapshotFaultEvent": "actor-visual-snapshot-fault",
         "requiredVisualSnapshotsPerSourceFrame": 1,
         "requiredAppearanceSnapshots": 1,
-        "appearanceSchema": "nikami-fnv-sidecar-appearance/v3",
+        "appearanceSchema": "nikami-fnv-sidecar-appearance/v4",
+        "appearanceMaximumEventBytes": 131072,
         "recordTypeRuntimeFormTypes": { "NPC_": 42, "CREA": 43 },
         "temporaryRuntimeFormIndex": 255,
         "requireSkinPalettesForSkinnedGeometry": true,
         "skinPaletteComponentsPerRegister": 4,
         "skinPaletteBytesPerComponent": 4,
         "skinPaletteMaximumBytesPerShape": 65536,
+        "faceGenAnimation": {
+          "requiredRecordTypes": ["NPC_"],
+          "emotionWeightCount": 13,
+          "movementWeightCount": 17,
+          "phonemeWeightCount": 16
+        },
         "surfaceContract": {
           "event": "actor-surface-contract",
           "targetTexturesEvent": "actor-draw-contract-target-textures",
+          "semanticFocusRules": [
+            { "kind": "screen", "match": "prefix", "value": "Screen01", "detailAimOffsetGameUnits": 0.0 },
+            { "kind": "screen", "match": "prefix", "value": "Screenreflection01", "detailAimOffsetGameUnits": 0.0 },
+            { "kind": "head", "match": "exact", "value": "Bip01 Head", "detailAimOffsetGameUnits": 20.0 }
+          ],
           "renderFrameLead": 1,
+          "maximumRecordsPerSourceFrame": 64,
           "textureStageCount": 6,
           "maximumShaderBytes": 65536,
           "matrixElementCount": 16,
@@ -638,15 +753,71 @@
           "normalizedDepthMinimum": 0.0,
           "normalizedDepthMaximum": 1.0
         },
+        "imageSpaceShaderInputs": {
+          "event": "image-space-shader-constants",
+          "path": "hdr-cinematic",
+          "expectedShaderByteCount": 748,
+          "expectedShaderFnv1a32": 167806978,
+          "inputTextureStages": [0, 1],
+          "renderFrameLead": 1,
+          "maximumBytesPerInput": 16777216,
+          "requireCanonicalRows": true,
+          "requireImmutableArtifacts": true
+        },
+        "imageSpacePipelineTrace": {
+          "event": "image-space-pipeline-trace",
+          "renderFrameLead": 1,
+          "pixelShaderFnv1a32": [
+            4014082162,
+            941366883,
+            287212882,
+            167806978,
+            771969766,
+            2632318987,
+            3018777163,
+            505864975,
+            3274322223,
+            2974496518,
+            4144256517,
+            2620602858,
+            1046821045,
+            2703659501,
+            2108783063,
+            1043556810,
+            4050983424,
+            2735906246,
+            2674915740,
+            2920664626,
+            2129584296,
+            1162804910,
+            3069854045,
+            3894555641,
+            2778950805,
+            4039567737,
+            3725347981,
+            4026572681,
+            3438023973
+          ],
+          "maximumRecords": 256,
+          "minimumRecords": 1,
+          "textureStageCount": 2,
+          "vertexShaderRegisterCount": 16,
+          "pixelShaderRegisterCount": 24,
+          "maximumShaderBytes": 4096,
+          "maximumVertexBytes": 4096
+        },
         "drawContractDiagnostic": {
           "event": "actor-draw-contract",
           "targetTexturesEvent": "actor-draw-contract-target-textures",
+          "boundTextureArtifactsEvent": "actor-draw-contract-bound-textures",
           "renderFrameLead": 1,
           "textureStageCount": 6,
-          "maximumRecordsPerSourceFrame": 24,
+          "maximumRecordsPerSourceFrame": 64,
           "vertexShaderRegisterCount": 256,
+          "pixelShaderRegisterCount": 32,
           "maximumShaderBytes": 65536,
-          "maximumBufferBytesPerRecord": 524288
+          "maximumBufferBytesPerRecord": 524288,
+          "maximumTextureBytesPerArtifact": 2097152
         },
         "minimumNamedNodesPerSnapshot": 1,
         "minimumPoseSamples": 2,
@@ -669,8 +840,8 @@
         "checkpointEveryAttempts": 32,
         "continueAfterCaptureFailure": true
       },
-      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario ActorObservation -ActorPlanRoot '<immutable capture plan>' -ActorCorpusRoot '<immutable corpus>' -ActorCaptureJobKey '<plugin:local-form>' -ActorOracleSeedRoot '<isolated xNVSE runtime>' -ActorOraclePluginDll '<built oracle DLL>' -ActorSaveFixture '<immutable legal retail save>' -RuntimeReady -RequireIdle",
-      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario ActorObservation -ActorPlanRoot '<immutable capture plan>' -ActorCorpusRoot '<immutable corpus>' -ActorCaptureJobKey '<plugin:local-form>' -ActorOracleSeedRoot '<isolated xNVSE runtime>' -ActorOraclePluginDll '<built oracle DLL>' -ActorSaveFixture '<immutable legal retail save>' -OutputRoot .\\run\\fnv-actor-observation-<unique>"
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario ActorObservation -ActorPlanRoot '<immutable capture plan>' -ActorCorpusRoot '<immutable corpus>' -ActorCaptureJobKey '<plugin:local-form>' -ActorOracleSeedRoot '<isolated xNVSE runtime>' -ActorOraclePluginDll '<built oracle DLL>' -ActorSaveFixture '<immutable legal retail save>' -ActorGalleryShot '<hash-bound opennv-gallery-capture-shot/v1 request>' -OpenNvRoot '<current OpenNV checkout>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario ActorObservation -ActorPlanRoot '<immutable capture plan>' -ActorCorpusRoot '<immutable corpus>' -ActorCaptureJobKey '<plugin:local-form>' -ActorOracleSeedRoot '<isolated xNVSE runtime>' -ActorOraclePluginDll '<built oracle DLL>' -ActorSaveFixture '<immutable legal retail save>' -ActorGalleryShot '<hash-bound opennv-gallery-capture-shot/v1 request>' -OpenNvRoot '<current OpenNV checkout>' -OutputRoot .\\run\\fnv-actor-observation-<unique>"
     },
     {
       "id": "opennv-godot-owned-actor-review-v1",
@@ -678,7 +849,7 @@
       "diagnosticOnly": false,
       "runner": "scripts/Invoke-OpenNVActorReviewCapture.ps1",
       "captureMethod": "Godot applies the immutable retail source-frame actor root, frame-bound NiSkinInstance render palettes, the validated NiCamera world transform, and the exact target-texture-matched Direct3D 9 final scene-color projection, then retains engine-owned viewport PNGs at the retail source dimensions",
-      "driverMethod": "OpenNV reads one content-addressed actor-review scene compiled from the player's legal plugins and BSA archives; no host input or application control",
+      "driverMethod": "OpenNV reads one content-addressed actor-review scene and, when declared, one hash-verified opennv-cell-scene/v10 background compiled from the player's legal plugins and BSA archives; no host input or application control",
       "backgroundInputMethod": "no host keyboard or mouse input is sent",
       "foregroundRequired": false,
       "windowsAppControlUsed": false,
@@ -692,13 +863,14 @@
         "frame-bound retail skin matrices resolved into the imported skeleton parent graph pass linear and translation tolerances at every captured frame",
         "the validated retail NiCamera world transform, exact final scene-color perspective, environment colors, and source dimensions are applied per source frame",
         "the retail NiCamera culling projection remains retained separately and cannot be substituted for the wider final scene-color projection",
+        "when an owned CELL background is requested, its path, SHA-256, CELL FormID, and content counts round-trip through the engine report",
         "unresolved retail light direction and pending pixel comparison keep parityPassed=false",
         "capture.windowsAppControlUsed=false",
         "capture.foregroundActivationUsed=false",
         "capture.foregroundInputInjected=false"
       ],
-      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotActorReview -OpenNvRoot '<clean OpenNV checkout>' -ActorReviewScene '<compiled owned-data review scene>' -GodotBinary '<Godot .NET executable>' -RuntimeReady -RequireIdle",
-      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotActorReview -OpenNvRoot '<clean OpenNV checkout>' -ActorReviewScene '<compiled owned-data review scene>' -GodotBinary '<Godot .NET executable>' -OutputRoot .\\run\\opennv-godot-actor-review-<unique>"
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotActorReview -OpenNvRoot '<clean OpenNV checkout>' -ActorReviewScene '<compiled owned-data review scene>' -ActorReviewBackgroundCell '<optional compiled owned-data CELL scene>' -GodotBinary '<Godot .NET executable>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Godot -Scenario GodotActorReview -OpenNvRoot '<clean OpenNV checkout>' -ActorReviewScene '<compiled owned-data review scene>' -ActorReviewBackgroundCell '<optional compiled owned-data CELL scene>' -GodotBinary '<Godot .NET executable>' -OutputRoot .\\run\\opennv-godot-actor-review-<unique>"
     }
   ],
   "terminalRecipes": [
