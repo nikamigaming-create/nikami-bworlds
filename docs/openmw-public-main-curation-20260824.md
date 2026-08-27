@@ -6,14 +6,14 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `b03eea6405028ab30e79858d5545a9957a290da8`;
-- tree: `56773bd646d3f90d8b5aaa66ab732352fe64174f`;
+- commit: `ecbdfd98d5e7a71c9c687b84f536a167e1add491`;
+- tree: `8568fb50bb7373129665c01101e64e5dbaf6fc92`;
 - official OpenMW base: `7d6273776b3e6fc05cb58c0b1453faf6e199d44a`;
 - local upstream sync merge: `2f5e87fd797a5be8b137337b8ec297dbfb43b68f`;
 - public remote topology: `main` only; the consolidated candidate, inventory,
-  crafting-station, crafting-session, and zero-magic-LIP topic refs were
-  deleted after their topic and post-push main gates passed. There are no open
-  PRs.
+  crafting-station, crafting-session, zero-magic-LIP, and zero-magic-CTDA topic
+  refs were deleted after their topic and post-push main gates passed. There
+  are no open PRs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
 `TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, `RACE`, `FACT`, `NOTE`, `RCCT`,
@@ -132,6 +132,12 @@ version, flags, header widths, payload overhead, target count, and voice-clock
 rate. The audit documents the boundary between authored format facts,
 injected resource policy, and synthetic fixture data; it does not claim visual
 or runtime animation parity.
+
+The zero-magic CTDA follow-up centralizes the authored target-condition widths
+and TES5 tail in `falloutformat.hpp`, then routes the shared decoder and the
+INFO/SOUN/QUST/TERM/RCPE readers through those names. A compile-time assertion
+keeps the native packed condition layout aligned with its declared width; no
+runtime behavior, UI path, or policy value is introduced.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -285,6 +291,15 @@ platform legs:
 
 The final published zero-magic-LIP SHA is `b03eea6405`.
 
+The zero-magic CTDA topic and its post-push `main` workflow passed all four
+platform legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33077264065;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33081276352;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
+The final published zero-magic-CTDA SHA is `ecbdfd98d5`.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, TERM, and
 crafting-catalog/session translation units and `git diff --check`; the MGEF/SPEL,
 LIP, RACE, CLAS, FACT,
@@ -347,6 +362,12 @@ rollback point.
 ## Recovery and provenance
 
 The current main/recovery bundle is:
+
+- bundle: `D:/code/archives/nikami-openmw-lab-main-zero-magic-ctda-20260827-v26.bundle`;
+- SHA-256: `C0A4C95A93509320ACD105B0045DF7E374CB26BFC366ABF0E60114BAB611C5BF`;
+- `git bundle verify`: passed; complete history recorded at `ecbdfd98d5`.
+
+The immediately preceding zero-magic-LIP main bundle remains preserved:
 
 - bundle: `D:/code/archives/nikami-openmw-lab-main-zero-magic-lip-20260827-v25.bundle`;
 - SHA-256: `A098FB4D68B3CAEFC42F728EEA0E54532F3604EF01F2580D71C689AA6DD486B7`;
@@ -454,7 +475,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: b03eea6405028ab30e79858d5545a9957a290da8
+# expected: ecbdfd98d5e7a71c9c687b84f536a167e1add491
 ```
 
 The public `main` lane is at a clean upstream-synchronized Fallout contract
