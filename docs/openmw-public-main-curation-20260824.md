@@ -1,4 +1,4 @@
-# OpenMW lab public-main curation — 2026-08-26
+# OpenMW lab public-main curation — 2026-08-27
 
 ## Published result
 
@@ -6,17 +6,17 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `f8aeeab300f7f640f54c20db57456416dfcf468e`;
-- tree: `1a42b92fd08b55235a4f0a5cd17ed49fa36f156d`;
+- commit: `72e46eddfc31f09d6e5ac232df6c485c008d97ff`;
+- tree: `f1a2de4f21b4f4eeb7bcdfd0e1b8a186a1348d56`;
 - official OpenMW base: `7d6273776b3e6fc05cb58c0b1453faf6e199d44a`;
 - local upstream sync merge: `2f5e87fd797a5be8b137337b8ec297dbfb43b68f`;
-- public remote topology: `main` only; the consolidated candidate and
-  standalone inventory topic refs were deleted after the candidate and
-  post-push main gates passed. There are no open PRs.
+- public remote topology: `main` only; the consolidated candidate,
+  inventory, and crafting-station topic refs were deleted after their topic
+  and post-push main gates passed. There are no open PRs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
 `TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, `RACE`, `FACT`, `NOTE`, `RCCT`,
-and `RCPE`
+and `RCPE`, plus the native crafting-station catalog
 contracts on top of the data-owned UI/game identity
 and collision seams. `MGEF` and `SPEL` provide strict Fallout actor-effect
 record loaders, fixed native DATA/SPIT/EFIT layouts, null-preserving FormID
@@ -108,6 +108,14 @@ supporting tests use environment-independent iteration/count assertions, and
 macOS dependency setup removes a stale Homebrew tap before updates. These are
 native C++/ESM4 contracts only: no Lua, MyGUI, UI, VR, quest scripting, or
 visual parity claim is implied.
+
+The follow-up crafting-station catalog slice is also native and headless. It
+resolves station/category through an injected `FnvCraftingStationRule`,
+freezes a snapshot of live authored recipes, retains unsupported recipes with
+explicit preparation errors, and records authored names and quantities. It
+does not embed retail IDs, mutate inventory, activate workbenches, or choose a
+Lua/MyGUI presentation path; activation and presentation remain separate
+contracts.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -234,8 +242,18 @@ The consolidated upstream/crafting/inventory candidate and its post-push
 The candidate run was repeated once after a documentation-only trailing-blank
 line correction; the final tested and published SHA is `f8aeeab300`.
 
-Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, and TERM
-translation units and `git diff --check`; the MGEF/SPEL, LIP, RACE, CLAS, FACT,
+The crafting-station catalog topic and its post-push `main` workflow passed
+all four platform legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33051910830;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33055029474;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
+The final published station-catalog SHA is `72e46eddfc`.
+
+Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, TERM, and
+crafting-catalog translation units and `git diff --check`; the MGEF/SPEL, LIP,
+RACE, CLAS, FACT,
 and NOTE/RCCT fixtures were exercised by green four-platform CI runs. The local full MSVC
 build reaches the
 changed ESM4 sources
@@ -249,7 +267,8 @@ terminal records, MGEF/SPEL actor effects, LIP animation decoding, RACE
 body-part metadata, CLAS/RACE class-and-race data, FACT faction data, NOTE
 note metadata, RCCT recipe-category data, the native crafting transaction,
 ESM4 inventory storage, Fallout special-inventory aliases, and authored item
-condition are separate commits. Their synthetic tests cover valid fields,
+condition, and the crafting-station catalog are separate commits. Their
+synthetic tests cover valid fields,
 null-preserving FormIDs, fixed-size validation, enum/range checks, exact
 menu/script retention, environment-independent container iteration, and
 unknown/malformed input.
@@ -294,6 +313,13 @@ rollback point.
 ## Recovery and provenance
 
 The current main/recovery bundle is:
+
+- bundle: `D:/code/archives/nikami-openmw-lab-main-crafting-station-catalog-20260827-v23.bundle`;
+- SHA-256: `2285E6128A01FAB99F4E89C06BB6895CE779BBF29D0B28690F2591CA13E7DB53`;
+- `git bundle verify`: passed; complete history recorded at `72e46eddfc`.
+
+The immediately preceding upstream/crafting/inventory main bundle remains
+preserved:
 
 - bundle: `D:/code/archives/nikami-openmw-lab-main-upstream-crafting-inventory-20260826-v22.bundle`;
 - SHA-256: `2A0F488D57AE5C66B84DBD363852D24793F4533DEE48A615C48B0C94DF4706EC`;
@@ -368,12 +394,13 @@ deleted only after their topic and post-push `main` runs were green. The
 post-push `main` runs are
 (`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
 `32795208280`, `32800267449`, `32806400610`, `32812037770`,
-`32818383821`, `32828347705`, `32845678839`, `32855446251`, and
-`33029970571`, and `33047983858`); the
+`32818383821`, `32828347705`, `32845678839`, `32855446251`, `33029970571`,
+`33047983858`, and `33055029474`); the
 CLAS/RACE topic run was `32815337608`, the FACT topic run was `32824274960`,
 the NOTE topic run was `32841961351`, the RCCT topic run was
 `32851192054`, and the RCPE topic run was `32873877733`. The consolidated
-candidate run was `33045391257`. The remote now exposes `main` only; there are
+candidate run was `33045391257`; the crafting-station topic run was
+`33051910830`. The remote now exposes `main` only; there are
 no open PRs. No private retail binary or evidence is present in any public ref
 or bundle.
 
@@ -385,7 +412,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: f8aeeab300f7f640f54c20db57456416dfcf468e
+# expected: 72e46eddfc31f09d6e5ac232df6c485c008d97ff
 ```
 
 The public `main` lane is at a clean upstream-synchronized Fallout contract
