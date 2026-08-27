@@ -6,13 +6,14 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `5b22b49243e4f4d708d2b6684a56302387d85783`;
-- tree: `266b7749e89acb418593161faf1fa69aff3e173f`;
+- commit: `b03eea6405028ab30e79858d5545a9957a290da8`;
+- tree: `56773bd646d3f90d8b5aaa66ab732352fe64174f`;
 - official OpenMW base: `7d6273776b3e6fc05cb58c0b1453faf6e199d44a`;
 - local upstream sync merge: `2f5e87fd797a5be8b137337b8ec297dbfb43b68f`;
 - public remote topology: `main` only; the consolidated candidate, inventory,
-  crafting-station, and crafting-session topic refs were deleted after their
-  topic and post-push main gates passed. There are no open PRs.
+  crafting-station, crafting-session, and zero-magic-LIP topic refs were
+  deleted after their topic and post-push main gates passed. There are no open
+  PRs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
 `TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, `RACE`, `FACT`, `NOTE`, `RCCT`,
@@ -124,6 +125,13 @@ redraw exhaustion are typed seams with injected policy and presenter/backend
 interfaces. It adds no MyGUI or Lua dependency, retail IDs, localization text,
 or inventory side effect; station activation and production presentation remain
 separate contracts.
+
+The zero-magic LIP follow-up centralizes the Fallout LIP container facts in
+`falloutformat.hpp` and makes the decoder/API consume one named owner for
+version, flags, header widths, payload overhead, target count, and voice-clock
+rate. The audit documents the boundary between authored format facts,
+injected resource policy, and synthetic fixture data; it does not claim visual
+or runtime animation parity.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -268,6 +276,15 @@ all four platform legs:
 
 The final published crafting-session SHA is `5b22b49243`.
 
+The zero-magic LIP topic and its post-push `main` workflow passed all four
+platform legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33070454177;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33073719855;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
+The final published zero-magic-LIP SHA is `b03eea6405`.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, TERM, and
 crafting-catalog/session translation units and `git diff --check`; the MGEF/SPEL,
 LIP, RACE, CLAS, FACT,
@@ -330,6 +347,12 @@ rollback point.
 ## Recovery and provenance
 
 The current main/recovery bundle is:
+
+- bundle: `D:/code/archives/nikami-openmw-lab-main-zero-magic-lip-20260827-v25.bundle`;
+- SHA-256: `A098FB4D68B3CAEFC42F728EEA0E54532F3604EF01F2580D71C689AA6DD486B7`;
+- `git bundle verify`: passed; complete history recorded at `b03eea6405`.
+
+The immediately preceding crafting-session main bundle remains preserved:
 
 - bundle: `D:/code/archives/nikami-openmw-lab-main-crafting-session-20260827-v24.bundle`;
 - SHA-256: `09394BFB08637031463D5324138CEE1965A47D45A8DE6664D05B6A2A751786AA`;
@@ -431,7 +454,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: 5b22b49243e4f4d708d2b6684a56302387d85783
+# expected: b03eea6405028ab30e79858d5545a9957a290da8
 ```
 
 The public `main` lane is at a clean upstream-synchronized Fallout contract
