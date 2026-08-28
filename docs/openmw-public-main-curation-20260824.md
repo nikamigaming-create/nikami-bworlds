@@ -6,15 +6,16 @@ The public `nikamigaming-create/nikami-openmw-lab` `main` lane is current with
 official OpenMW master and contains the bounded Fallout data contracts that
 have passed the full platform gate:
 
-- commit: `869133eb9b44bb92aa7f3f2fa11f7eaac53a0768`;
-- tree: `8b6c27718741d3a39314dbac2033a05ce3df0d47`;
+- commit: `d9229d0e5105a6eb706737602b8ae95c2e37802c`;
+- tree: `eed048ad345b4131fd5eb0bc6fecb90c3d9107d3`;
 - official OpenMW base: `7d6273776b3e6fc05cb58c0b1453faf6e199d44a`;
 - local upstream sync merge: `2f5e87fd797a5be8b137337b8ec297dbfb43b68f`;
 - public remote topology: `main` only; the consolidated candidate, inventory,
   crafting-station, crafting-session, zero-magic-LIP, zero-magic-CTDA, and
   zero-magic-WTHR, zero-magic-WTHR-layout, zero-magic-CLMT,
-  zero-magic-MGEF/SPEL, and zero-magic-TERM topic refs were deleted after their
-  topic and post-push main gates passed. There are no open PRs.
+  zero-magic-MGEF/SPEL, zero-magic-TERM, and AMEF-operation topic refs were
+  deleted after their topic and post-push main gates passed. There are no open
+  PRs.
 
 The published Fallout slices are typed `WTHR`, `CLMT`, `AVIF`, `REPU`, `AMEF`,
 `TERM`, `MGEF`, `SPEL`, `REFR`, `LIP`, `CLAS`, `RACE`, `FACT`, `NOTE`, `RCCT`,
@@ -171,6 +172,14 @@ script-local serialized widths plus the authored menu/script flag bounds in
 also reuses the shared New Vegas version gate. Parser behavior and typed
 terminal fields are unchanged; this is a format-ownership cleanup with no
 runtime policy, UI path, or visual parity claim.
+
+The AMEF operation follow-up adds a small native gameplay seam over already
+resolved Fallout `AMMO.RCIL` records. `applyFalloutAmmoEffects` applies the
+authored operations in order for one requested effect type, rejects null or
+non-finite inputs, unknown operations, and non-finite results, and reports a
+typed failure. Record lookup, ammunition ownership, combat state, weapon wear,
+and damage integration remain caller-owned and are not hidden behind Lua or
+MyGUI.
 
 Schema facts are named constants and decoded through the typed ESM4 API. No
 Lua/MyGUI replacement path, private retail bytes, generated product assets, or
@@ -381,6 +390,15 @@ platform legs:
 
 The final published zero-magic-TERM SHA is `869133eb9b`.
 
+The AMEF operation topic and its post-push `main` workflow passed all four
+platform legs:
+
+- topic run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33126031203;
+- post-push `main` run: https://github.com/nikamigaming-create/nikami-openmw-lab/actions/runs/33128513798;
+- Ubuntu, Windows 2022, macOS ARM, and macOS Intel: success on both runs.
+
+The final published AMEF-operation SHA is `d9229d0e51`.
+
 Focused local checks passed for the WTHR, CLMT, AVIF, REPU, AMEF, TERM, and
 crafting-catalog/session translation units and `git diff --check`; the MGEF/SPEL,
 LIP, RACE, CLAS, FACT,
@@ -443,6 +461,12 @@ rollback point.
 ## Recovery and provenance
 
 The current main/recovery bundle is:
+
+- bundle: `D:/code/archives/nikami-openmw-lab-main-fallout-amef-20260827-v32.bundle`;
+- SHA-256: `E73AE0F216A45D801E2926E685BFD118AE76079B8D8F5ED21FAB0131A2B93B4C`;
+- `git bundle verify`: passed; complete history recorded at `d9229d0e51`.
+
+The immediately preceding zero-magic-TERM main bundle remains preserved:
 
 - bundle: `D:/code/archives/nikami-openmw-lab-main-zero-magic-term-layout-20260827-v31.bundle`;
 - SHA-256: `E97DF0C45E95B45AE054402CA8D8B40AC1BD583FB8E4205012BC1CF7D885BDFB`;
@@ -563,7 +587,8 @@ Earlier recovery bundles remain preserved:
 The public weather, metadata, AMEF, TERM, actor-effect, patrol-reference,
 primitive, LIP, RACE, CLAS/RACE, FACT, NOTE, RCCT, RCPE, crafting-station, and
 crafting-session, zero-magic-LIP, zero-magic-CTDA, zero-magic-WTHR,
-zero-magic-WTHR-layout, zero-magic-CLMT, zero-magic-MGEF/SPEL, and zero-magic-TERM topic refs were
+zero-magic-WTHR-layout, zero-magic-CLMT, zero-magic-MGEF/SPEL, zero-magic-TERM,
+and AMEF-operation topic refs were
 deleted only after their topic and post-push `main` runs were green. The
 post-push `main` runs are
 (`32749407011`, `32762033204`, `32770688961`, `32781270416`, `32788636108`,
@@ -580,7 +605,8 @@ zero-magic-LIP topic run was `33070454177`; the zero-magic-CTDA topic run was
 `33077264065`; the zero-magic-WTHR topic run was `33085868363`; the
 zero-magic-CLMT topic run was `33093381698`; the zero-magic-MGEF/SPEL topic run
 was `33104658002`; the zero-magic-WTHR-layout topic run was `33111513963`; and
-the zero-magic-TERM topic run was `33119541311`.
+the zero-magic-TERM topic run was `33119541311`; the AMEF-operation topic run
+was `33126031203`, and its post-push `main` run was `33128513798`.
 The remote
 now exposes `main` only; there are
 no open PRs. No private retail binary or evidence is present in any public ref
@@ -594,7 +620,7 @@ Fresh consumers can start from the clean public lane:
 git clone https://github.com/nikamigaming-create/nikami-openmw-lab.git D:\code\nikami-openmw-fresh
 git -C D:\code\nikami-openmw-fresh switch main
 git -C D:\code\nikami-openmw-fresh rev-parse HEAD
-# expected: 869133eb9b44bb92aa7f3f2fa11f7eaac53a0768
+# expected: d9229d0e5105a6eb706737602b8ae95c2e37802c
 ```
 
 The public `main` lane is at a clean upstream-synchronized Fallout contract
