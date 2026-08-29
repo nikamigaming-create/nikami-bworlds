@@ -148,6 +148,7 @@ namespace
     bool gCaptureSession = false;
     bool gPipBoyProbe = false;
     bool gHoldRetailPipBoyRenderedState = false;
+    bool gPendingRetailPipBoyRenderedOpen = false;
     UInt32 gSessionTargetForm = 0;
     bool gJamSprintMovementDrive = false;
     bool gFurnitureOnly = false;
@@ -8207,8 +8208,72 @@ namespace
         }
     }
 
+    void drivePendingRetailPipBoyRenderedOpen()
+    {
+        if (!gPendingRetailPipBoyRenderedOpen)
+            return;
+
+        __try
+        {
+            InterfaceManager* interfaceManager
+                = *reinterpret_cast<InterfaceManager**>(0x011D8A80);
+            if (interfaceManager == nullptr)
+                return;
+
+            UInt32 pipBoyMode = 0;
+            FOPipboyManager* manager = nullptr;
+            FOPipboyManager* activeRenderedManager = nullptr;
+            if (!safeRead(reinterpret_cast<const UInt8*>(interfaceManager) + 0x4BC, pipBoyMode)
+                || pipBoyMode != 3
+                || !safeRead(&interfaceManager->pipboyManager, manager)
+                || manager == nullptr
+                || !safeRead(reinterpret_cast<const UInt8*>(interfaceManager) + 0x16C,
+                    activeRenderedManager)
+                || activeRenderedManager != manager)
+                return;
+
+            const bool managerReady
+                = reinterpret_cast<bool(__thiscall*)(FOPipboyManager*)>(0x00974D90)(manager);
+            if (!managerReady)
+                return;
+
+            void** virtualTable = nullptr;
+            void* renderedOpenCallback = nullptr;
+            if (!safeRead(manager, virtualTable) || virtualTable == nullptr
+                || !safeRead(virtualTable + 12, renderedOpenCallback)
+                || renderedOpenCallback == nullptr)
+                return;
+
+            // Clear before the call so a re-entrant game-loop callback cannot
+            // dispatch the rendered-menu open twice.
+            gPendingRetailPipBoyRenderedOpen = false;
+            reinterpret_cast<void(__thiscall*)(FOPipboyManager*)>(renderedOpenCallback)(manager);
+            gOutput << "{\"schema\":" << sSchemaJson
+                    << ",\"event\":\"retail-pipboy-rendered-open-dispatched\""
+                    << ",\"frame\":" << gFrame
+                    << ",\"pipBoyMode\":" << pipBoyMode
+                    << ",\"activeManagerMatched\":true"
+                    << ",\"managerReady\":true"
+                    << ",\"callback\":"
+                    << reinterpret_cast<std::uintptr_t>(renderedOpenCallback) << "}\n";
+            gOutput.flush();
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            gPendingRetailPipBoyRenderedOpen = false;
+        }
+    }
+
     bool runScheduledConsoleCommand(const ScheduledConsoleCommand& scheduled, TESObjectREFR* target)
     {
+        if (scheduled.targetForm == 0 && scheduled.command == "DismissBlockingMessageMenuOnce")
+        {
+            bool visibleReadable = false;
+            const bool messageVisible = retailMenuVisible(kMenuType_Message, visibleReadable);
+            if (!visibleReadable || !messageVisible || gConsole == nullptr)
+                return false;
+            return gConsole->RunScriptLine2("CloseAllMenus", nullptr, true);
+        }
         if (scheduled.targetForm == 0 && scheduled.command == "OpenPipBoyRetail")
         {
             bool invoked = false;
@@ -8225,6 +8290,7 @@ namespace
                     reinterpret_cast<void(__thiscall*)(InterfaceManager*, void(__cdecl*)(), UInt32)>(
                         0x0070F4E0)(interfaceManager, nullptr, 1003);
                     invoked = true;
+                    gPendingRetailPipBoyRenderedOpen = true;
                 }
             }
             __except (EXCEPTION_EXECUTE_HANDLER)
@@ -11816,6 +11882,7 @@ namespace
         captureTargetAppearance();
         captureAppearanceBatch();
         driveScheduledConsoleCommands();
+        drivePendingRetailPipBoyRenderedOpen();
         holdRetailPipBoyRenderedState();
         driveJamSprintMovement();
         if (gPipBoyProbe && gFrame % gSampleEvery == 0)

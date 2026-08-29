@@ -54,38 +54,27 @@ if ($WeaponAudit) {
 }
 $scheduledList.Add($(if ($WeaponAudit) { '680@0x14:SetWeaponOut 1' } else { '680:player.SetWeaponOut 1' }))
 $scheduledList.AddRange([string[]]@(
+    # The immutable fixture opens with the official Gun Runners' Arsenal
+    # MessageMenu. Retail rejects Pip-Boy open while that modal owns the UI.
+    # Dismiss it once, only when MessageMenu 1001 is visibly present, then
+    # prove the neutral HUD-only state before measuring the native lifecycle.
+    '800:DismissBlockingMessageMenuOnce'
     '850:PipBoySnapshot before-raise'
     '860:PipBoyTreeSnapshot before-raise'
     '900:OpenPipBoyRetail'
     '920:PipBoySnapshot raising'
-    # In an unattended background session the animation reaches retail mode 3,
-    # but its terminal animation event is not dispatched. Invoke only that
-    # missed retail rendered-menu callback once; lifecycle state remains native.
-    '944:OpenPipBoyRenderedManagerOnce'
-    '946:PipBoySnapshot rendered-held'
-    '950:PipBoySnapshot naturally-held'
-    '970:MenuTapKey 60' # F2 / ITEMS through retail buffered menu input
-    '980:PipBoySnapshot items'
-    '982:PipBoyTreeSnapshot items'
-    '990:MenuTapKey 208' # Down / list scroll
-    '1000:PipBoySnapshot items-down'
-    '1002:PipBoyTreeSnapshot items-down'
-    '1010:MenuTapKey 61' # F3 / DATA
-    '1020:PipBoySnapshot data'
-    '1022:PipBoyTreeSnapshot data'
-    '1030:MenuTapKey 59' # F1 / STATS
+    # OpenPipBoyRetail arms the rendered-menu callback. The oracle dispatches
+    # it exactly once only after retail reaches held mode and owns a ready,
+    # active Pip-Boy manager; no input or menu visibility state is synthesized.
+    '960:PipBoySnapshot naturally-held'
+    '962:PipBoyTreeSnapshot naturally-held'
     '1040:PipBoySnapshot held'
     '1042:PipBoyTreeSnapshot held'
-    # The audit route uses retail's native close entrypoint after the reference
-    # frame. The normal Pip-Boy reference retains its native Tab-key lifecycle.
+    # Native InterfaceManager::ClosePipboy owns modes 4 -> 5 -> 0.
+    '1050:ClosePipBoyRetail'
+    '1060:PipBoySnapshot lower-requested'
+    '1070:PipBoySnapshot lowering-terminal'
 ))
-$scheduledList.Add($(if ($WeaponAudit) { '1050:ClosePipBoyRetail' } else { '1050:HoldKey 15' }))
-if (-not $WeaponAudit) {
-    $scheduledList.Add('1054:ReleaseKey 15')
-}
-if ($WeaponAudit) {
-    $scheduledList.Add('1070:ClosePipBoyRenderedManagerOnce')
-}
 $scheduledList.AddRange([string[]]@(
     '1080:PipBoySnapshot lowering'
     '1140:PipBoySnapshot after-lower'
@@ -94,7 +83,7 @@ $scheduledList.AddRange([string[]]@(
 $scheduled = $scheduledList.ToArray()
 $screenshotFrames = @(
     if ($WeaponAudit) { 820 }
-    840..1150 | Where-Object { ($_ % 2) -eq 0 }
+    850, 920, 960, 1040, 1060, 1070, 1080, 1140
 )
 
 & $oracle `
@@ -103,7 +92,6 @@ $screenshotFrames = @(
     -SaveFixture $SavePath `
     -ScheduledCommand $scheduled `
     -PipBoyProbe `
-    -BackgroundDataMode `
     -VisibleGame `
     -IsolateFromFNVXR `
     -SampleEvery 2 `
@@ -118,6 +106,8 @@ $screenshotFrames = @(
 $events = @(Get-Content -LiteralPath $telemetry | ForEach-Object { $_ | ConvertFrom-Json })
 $snapshots = @($events | Where-Object event -eq 'retail-pipboy-snapshot')
 $commands = @($events | Where-Object event -eq 'scheduled-console-command')
+$renderedOpenDispatches = @($events | Where-Object event -eq 'retail-pipboy-rendered-open-dispatched')
+$backgroundModeEvents = @($events | Where-Object event -eq 'background-game-mode')
 $rejected = @($commands | Where-Object { -not [bool]$_.accepted })
 $nativeFrames = @(Get-ChildItem -LiteralPath $frames -Filter '*.bmp' -File | Sort-Object Name)
 
@@ -156,6 +146,18 @@ $firstPersonSnapshots = @($snapshots | Where-Object {
     [bool]$_.player.firstPerson.available -and
     @($_.player.firstPerson.nodes).Count -gt 0
 })
+$messageDismissCommands = @($commands | Where-Object {
+    $_.command -eq 'DismissBlockingMessageMenuOnce' -and [bool]$_.accepted
+})
+$beforeRaiseSnapshots = @($snapshots | Where-Object { $_.label -eq 'before-raise' })
+$beforeRaiseHudOnly = $beforeRaiseSnapshots.Count -eq 1 -and
+    [int]$beforeRaiseSnapshots[0].interface.pipBoyMode -eq 0 -and
+    @($beforeRaiseSnapshots[0].interface.menuStack).Count -eq 0 -and
+    @($beforeRaiseSnapshots[0].interface.visibleMenus).Count -eq 1 -and
+    [int]$beforeRaiseSnapshots[0].interface.visibleMenus[0].type -eq 1004
+$messageNeutralizationPass = $messageDismissCommands.Count -eq 1 -and
+    [int]$messageDismissCommands[0].frame -lt 900 -and
+    $backgroundModeEvents.Count -eq 0 -and $beforeRaiseHudOnly
 $openSnapshots = @($snapshots | Where-Object {
     [int]$_.interface.pipBoyMode -eq 3 -and
     @($_.interface.visibleMenus | Where-Object { $_.type -eq 1003 }).Count -gt 0
@@ -175,16 +177,44 @@ $heldFrameEvidence = @($heldPipBoySnapshots | Where-Object { $_.label -eq 'held'
 $heldVisualPass = $heldFrameEvidence.Count -gt 0 -and
     @($heldFrameEvidence | Where-Object { -not $_.screenDominant }).Count -eq 0
 $closedSnapshots = @($snapshots | Where-Object {
-    [int]$_.interface.pipBoyMode -ne 3
+    [int]$_.frame -ge 1050 -and [int]$_.interface.pipBoyMode -eq 0
 })
 $afterLowerSnapshots = @($snapshots | Where-Object {
     $_.label -eq 'after-lower' -and
-    [int]$_.interface.pipBoyMode -ne 3 -and
-    -not [bool]$_.interface.physical.renderedOpen
+    [int]$_.interface.pipBoyMode -eq 0 -and
+    @($_.interface.visibleMenus | Where-Object { $_.type -eq 1003 }).Count -eq 0 -and
+    @($_.player.firstPerson.animDataSequences | Where-Object {
+        $null -ne $_ -and [string]$_.file -match '(?i)pipboy.*\.kf$'
+    }).Count -eq 0
 })
-$navigationSnapshots = @($snapshots | Where-Object {
-    $_.label -in @('items', 'items-down', 'data', 'held')
+$afterLowerFrameEvidence = @($afterLowerSnapshots | ForEach-Object {
+    $afterLowerFramePath = Join-Path $frames ('frame-{0:D6}.bmp' -f [int]$_.frame)
+    if (Test-Path -LiteralPath $afterLowerFramePath -PathType Leaf) {
+        Measure-PipBoyHeldFrame $afterLowerFramePath
+    }
 })
+$afterLowerVisualPass = $afterLowerFrameEvidence.Count -gt 0 -and
+    @($afterLowerFrameEvidence | Where-Object { $_.screenDominant }).Count -eq 0
+$heldStateSnapshots = @($snapshots | Where-Object {
+    $_.label -in @('naturally-held', 'held')
+})
+$lowerMode4Snapshots = @($snapshots | Where-Object {
+    [int]$_.frame -ge 1050 -and [int]$_.interface.pipBoyMode -eq 4
+} | Sort-Object frame)
+$lowerMode5Snapshots = @(if ($lowerMode4Snapshots.Count -gt 0) {
+    $snapshots | Where-Object {
+        [int]$_.frame -gt [int]$lowerMode4Snapshots[0].frame -and
+        [int]$_.interface.pipBoyMode -eq 5
+    } | Sort-Object frame
+})
+$lowerMode0Snapshots = @(if ($lowerMode5Snapshots.Count -gt 0) {
+    $snapshots | Where-Object {
+        [int]$_.frame -gt [int]$lowerMode5Snapshots[0].frame -and
+        [int]$_.interface.pipBoyMode -eq 0
+    } | Sort-Object frame
+})
+$nativeLowerLifecyclePass = $lowerMode4Snapshots.Count -gt 0 -and
+    $lowerMode5Snapshots.Count -gt 0 -and $lowerMode0Snapshots.Count -gt 0
 $weaponSnapshots = @($snapshots | Where-Object { $_.label -eq 'weapon-drawn' })
 $weaponEquipCommands = @($commands | Where-Object {
     $_.targetForm -eq 0x14 -and $_.command -eq "EquipExact $weaponFormHex" -and [bool]$_.accepted
@@ -201,21 +231,20 @@ $weaponAuditPass = -not $WeaponAudit -or
     ($weaponSnapshots.Count -eq 1 -and $weaponEquipCommands.Count -eq 1 -and
         $weaponOutCommands.Count -ge 1 -and $weaponSnapshotEquipped -eq $weaponFormValue -and
         $weaponSnapshotFirstPerson)
-$afterLowerPass = $afterLowerSnapshots.Count -gt 0
+$afterLowerPass = $afterLowerSnapshots.Count -gt 0 -and $afterLowerVisualPass
 
-# A weapon-reference run proves the drawn retail pose plus the native opened
-# Pip-Boy/navigation surface. It deliberately does not promote the lower
-# callback as a complete lifecycle assertion; the ordinary no-WeaponAudit
-# route remains the full raise/close reference.
 $passed = $rejected.Count -eq 0 -and
     $nativeFrames.Count -eq $screenshotFrames.Count -and
+    $messageNeutralizationPass -and
+    $renderedOpenDispatches.Count -eq 1 -and
     $firstPersonSnapshots.Count -gt 0 -and
     $openSnapshots.Count -gt 0 -and
     $heldPipBoySnapshots.Count -gt 0 -and
     $heldVisualPass -and
     $closedSnapshots.Count -gt 0 -and
-    ($WeaponAudit -or $afterLowerPass) -and
-    $navigationSnapshots.Count -eq 4 -and
+    $afterLowerPass -and
+    $nativeLowerLifecyclePass -and
+    $heldStateSnapshots.Count -eq 2 -and
     $weaponAuditPass
 
 $artifacts = [Collections.Generic.List[object]]::new()
@@ -241,7 +270,7 @@ $report = [pscustomobject][ordered]@{
     schema = 'nikami-retail-pipboy-state-capture/v1'
     status = if ($passed) { 'pass' } else { 'fail' }
     capture = [pscustomobject][ordered]@{
-        method = 'xNVSE-scheduled retail input plus native Direct3D 9 backbuffer and per-frame first-person scene graph'
+        method = 'xNVSE-scheduled native lifecycle calls plus Direct3D 9 backbuffer and per-frame first-person scene graph'
         driver = 'in-process xNVSE call to native InterfaceManager OpenPipboy/ClosePipboy; retail-owned lifecycle'
         windowsAppControlUsed = $false
         foregroundActivationUsed = $false
@@ -255,6 +284,14 @@ $report = [pscustomobject][ordered]@{
         rejectedCommands = $rejected.Count
         requestedNativeFrames = $screenshotFrames.Count
         retainedNativeFrames = $nativeFrames.Count
+        messageMenuNeutralization = [ordered]@{
+            acceptedCommands = $messageDismissCommands.Count
+            frame = if ($messageDismissCommands.Count -eq 1) { [int]$messageDismissCommands[0].frame } else { $null }
+            backgroundCloseEvents = $backgroundModeEvents.Count
+            beforeRaiseHudOnly = [bool]$beforeRaiseHudOnly
+            passed = [bool]$messageNeutralizationPass
+        }
+        renderedOpenCallbackDispatches = $renderedOpenDispatches.Count
         firstPersonSnapshots = $firstPersonSnapshots.Count
         renderedStatsOpenSnapshots = $openSnapshots.Count
         nativeRenderedPipBoySnapshots = $heldPipBoySnapshots.Count
@@ -262,9 +299,17 @@ $report = [pscustomobject][ordered]@{
         heldVisualPass = [bool]$heldVisualPass
         closedSnapshots = $closedSnapshots.Count
         verifiedAfterLowerSnapshots = $afterLowerSnapshots.Count
-        afterLowerRequired = -not [bool]$WeaponAudit
+        afterLowerVisualEvidence = @($afterLowerFrameEvidence)
+        afterLowerVisualPass = [bool]$afterLowerVisualPass
+        afterLowerRequired = $true
         completePipBoyLowerVerified = [bool]$afterLowerPass
-        namedNavigationSnapshots = $navigationSnapshots.Count
+        nativeLowerLifecycle = [ordered]@{
+            mode4Frame = if ($lowerMode4Snapshots.Count -gt 0) { [int]$lowerMode4Snapshots[0].frame } else { $null }
+            mode5Frame = if ($lowerMode5Snapshots.Count -gt 0) { [int]$lowerMode5Snapshots[0].frame } else { $null }
+            mode0Frame = if ($lowerMode0Snapshots.Count -gt 0) { [int]$lowerMode0Snapshots[0].frame } else { $null }
+            passed = [bool]$nativeLowerLifecyclePass
+        }
+        namedHeldStateSnapshots = $heldStateSnapshots.Count
         weaponAudit = [ordered]@{
             requested = [bool]$WeaponAudit
             form = ('0x{0:X8}' -f $weaponFormValue)
