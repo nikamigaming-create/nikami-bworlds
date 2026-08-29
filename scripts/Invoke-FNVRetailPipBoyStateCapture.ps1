@@ -2,6 +2,7 @@
 param(
     [string]$OutputRoot,
     [string]$WorldsRoot = "D:\code\nikami-worlds",
+    [string]$GameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
     [string]$SavePath =
         "D:\code\nikami-worlds\local\retail-pipboy-fixtures\NikamiCleanPipBoyOracle-20260802.fos",
     # Capture a real retail first-person weapon pose before the ordinary
@@ -57,46 +58,53 @@ $scheduledList.AddRange([string[]]@(
     '860:PipBoyTreeSnapshot before-raise'
     '900:OpenPipBoyRetail'
     '920:PipBoySnapshot raising'
-    # In an unattended background session the animation reaches retail mode 3,
-    # but its terminal animation event is not dispatched. Invoke only that
-    # missed retail rendered-menu callback once; lifecycle state remains native.
-    '944:OpenPipBoyRenderedManagerOnce'
-    '946:PipBoySnapshot rendered-held'
-    '950:PipBoySnapshot naturally-held'
-    '970:MenuTapKey 60' # F2 / ITEMS through retail buffered menu input
-    '980:PipBoySnapshot items'
-    '982:PipBoyTreeSnapshot items'
-    '990:MenuTapKey 208' # Down / list scroll
-    '1000:PipBoySnapshot items-down'
-    '1002:PipBoyTreeSnapshot items-down'
-    '1010:MenuTapKey 61' # F3 / DATA
-    '1020:PipBoySnapshot data'
-    '1022:PipBoyTreeSnapshot data'
-    '1030:MenuTapKey 59' # F1 / STATS
-    '1040:PipBoySnapshot held'
-    '1042:PipBoyTreeSnapshot held'
+    # The owned pipboy.kf raise is 0.733 seconds long. Observe the naturally
+    # completed retail state after that terminal time; do not invoke the
+    # rendered-manager diagnostic callback or write menu visibility.
+    '980:PipBoySnapshot naturally-held'
+    '1000:MenuTapKey 60' # F2 / ITEMS through retail buffered menu input
+    '1020:PipBoySnapshot items'
+    '1022:PipBoyTreeSnapshot items'
+    '1040:MenuTapKey 208' # Down / list scroll
+    '1060:PipBoySnapshot items-down'
+    '1062:PipBoyTreeSnapshot items-down'
+    '1080:MenuTapKey 61' # F3 / DATA
+    '1100:PipBoySnapshot data'
+    '1102:PipBoyTreeSnapshot data'
+    '1120:MenuTapKey 59' # F1 / STATS
+    '1140:PipBoySnapshot held'
+    '1142:PipBoyTreeSnapshot held'
     # The audit route uses retail's native close entrypoint after the reference
     # frame. The normal Pip-Boy reference retains its native Tab-key lifecycle.
 ))
-$scheduledList.Add($(if ($WeaponAudit) { '1050:ClosePipBoyRetail' } else { '1050:HoldKey 15' }))
+$scheduledList.Add($(if ($WeaponAudit) { '1160:ClosePipBoyRetail' } else { '1160:HoldKey 15' }))
 if (-not $WeaponAudit) {
-    $scheduledList.Add('1054:ReleaseKey 15')
+    $scheduledList.Add('1164:ReleaseKey 15')
 }
 if ($WeaponAudit) {
-    $scheduledList.Add('1070:ClosePipBoyRenderedManagerOnce')
+    $scheduledList.Add('1180:ClosePipBoyRenderedManagerOnce')
 }
 $scheduledList.AddRange([string[]]@(
-    '1080:PipBoySnapshot lowering'
-    '1140:PipBoySnapshot after-lower'
-    '1142:PipBoyTreeSnapshot after-lower'
+    '1200:PipBoySnapshot lowering'
+    '1260:PipBoySnapshot after-lower'
+    '1262:PipBoyTreeSnapshot after-lower'
 ))
 $scheduled = $scheduledList.ToArray()
 $screenshotFrames = @(
     if ($WeaponAudit) { 820 }
-    840..1150 | Where-Object { ($_ % 2) -eq 0 }
+    850 # before-raise
+    920 # raising
+    980 # naturally-held
+    1020 # items
+    1060 # items-down
+    1100 # data
+    1140 # held
+    1200 # lowering
+    1260 # after-lower
 )
 
 & $oracle `
+    -GameRoot $GameRoot `
     -OutputPath $telemetry `
     -SaveFixture $SavePath `
     -ScheduledCommand $scheduled `
@@ -104,13 +112,13 @@ $screenshotFrames = @(
     -BackgroundDataMode `
     -VisibleGame `
     -IsolateFromFNVXR `
-    -SampleEvery 2 `
+    -SampleEvery 10 `
     -BeforeFrame 830 `
     -CommandFrame 900 `
-    -AfterFrame 1160 `
+    -AfterFrame 1280 `
     -ScreenshotFrame $screenshotFrames `
     -ScreenshotDirectory $frames `
-    -MaxFrames 1170 `
+    -MaxFrames 1290 `
     -TimeoutSeconds $TimeoutSeconds
 
 $events = @(Get-Content -LiteralPath $telemetry | ForEach-Object { $_ | ConvertFrom-Json })

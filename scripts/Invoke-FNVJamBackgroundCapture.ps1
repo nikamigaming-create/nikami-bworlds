@@ -49,6 +49,10 @@ param(
     # Optional isolated retail fixture for the Pip-Boy interaction oracle.
     # The source save is copied by Invoke-FNVRetailOracle and never modified.
     [string]$RetailPipBoySavePath = "",
+    # Optional private retail shadow. The canonical Pip-Boy lane forwards this
+    # to the retail oracle and validates the matching owned Data directory.
+    [string]$RetailGameRoot = "",
+    [string]$OpeningNewVegasData = "",
     # Request a retail xNVSE first-person weapon reference before the normal
     # Pip-Boy sequence. This remains a retail-only, public-entry capture.
     [switch]$RetailPipBoyWeaponAudit,
@@ -94,6 +98,12 @@ if ([string]::IsNullOrWhiteSpace($WorldsRoot)) {
     $WorldsRoot = Split-Path -Parent $PSScriptRoot
 }
 $WorldsRoot = [IO.Path]::GetFullPath($WorldsRoot)
+if (-not [string]::IsNullOrWhiteSpace($RetailGameRoot)) {
+    $RetailGameRoot = [IO.Path]::GetFullPath($RetailGameRoot)
+    if ([string]::IsNullOrWhiteSpace($OpeningNewVegasData)) {
+        $OpeningNewVegasData = Join-Path $RetailGameRoot 'Data'
+    }
+}
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 $preflight = Join-Path $PSScriptRoot "Test-FNVJamBackgroundCapture.ps1"
@@ -201,6 +211,7 @@ $preflightTarget = if ($Target -eq "Both") { "All" } else { $Target }
     -Scenario $Scenario `
     -OpeningCampaign $OpeningCampaign `
     -OpeningRuntimeRoot $OpeningRuntimeRoot `
+    -OpeningNewVegasData $OpeningNewVegasData `
     -SavePath $SavePath `
     -RealSaveRouteId $RealSaveRouteId `
     -RealSaveCaptureSeconds $RealSaveCaptureSeconds `
@@ -558,6 +569,9 @@ if ($Scenario -eq "PipBoy") {
         }
         if (-not [string]::IsNullOrWhiteSpace($RetailPipBoySavePath)) {
             $retailPipBoyArgs.SavePath = [IO.Path]::GetFullPath($RetailPipBoySavePath)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($RetailGameRoot)) {
+            $retailPipBoyArgs.GameRoot = $RetailGameRoot
         }
         if ($RetailPipBoyWeaponAudit) {
             $retailPipBoyArgs.WeaponAudit = $true
