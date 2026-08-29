@@ -2,7 +2,7 @@
 param(
     [ValidateSet("All", "Retail", "OpenMW", "Godot")]
     [string]$Target = "All",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "RetailContainer", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [ValidateSet("TTW", "NewVegas")]
     [string]$OpeningCampaign = "TTW",
@@ -13,6 +13,7 @@ param(
     [string]$ParityRoot = "",
     [string]$EngineRoot = "",
     [string]$RetailShadowRoot = "",
+    [string]$RetailContainerRuntimeRoot = "",
     [string]$JamRoot = "",
     [string]$JamArchive = "",
     [string]$OpeningRuntimeRoot = "",
@@ -52,6 +53,9 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
     elseif ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence")) {
         Join-Path $WorldsRoot "profiles\fallout_new_vegas\userdata\saves\ - 1\Autosave.omwsave"
     }
+    elseif ($Scenario -eq "RetailContainer") {
+        Join-Path $WorldsRoot "local\retail-pipboy-fixtures\NikamiCleanPipBoyOracle-20260802.fos"
+    }
     else { "" }
 }
 if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) {
@@ -66,6 +70,10 @@ if ($Target -ne "Godot" -and [string]::IsNullOrWhiteSpace($OpeningRuntimeRoot)) 
 if ($Target -ne "Godot") {
     $OpeningRuntimeRoot = [IO.Path]::GetFullPath($OpeningRuntimeRoot)
 }
+if ([string]::IsNullOrWhiteSpace($RetailContainerRuntimeRoot)) {
+    $RetailContainerRuntimeRoot = Join-Path $WorldsRoot "local\xnvse-retail-container-oracle"
+}
+$RetailContainerRuntimeRoot = [IO.Path]::GetFullPath($RetailContainerRuntimeRoot)
 
 # Pip-Boy and opening checks need the installed FNV Data root. Resolve it
 # from an explicit parameter/env/local config first; otherwise inspect the
@@ -110,6 +118,9 @@ if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
 }
 if ($Scenario -eq "PipBoyVR" -and $Target -ne "OpenMW") {
     throw "PipBoyVR is an OpenMW-only native OpenXR lane. Use -Target OpenMW."
+}
+if ($Scenario -eq "RetailContainer" -and $Target -ne "Retail") {
+    throw "RetailContainer is a retail-only native state-contract lane. Use -Target Retail."
 }
 if ($Scenario -in @("FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence") -and $Target -ne "OpenMW") {
     throw "FirstSmoke and Chet persistent routes are OpenMW-only lanes. Use -Target OpenMW."
@@ -181,6 +192,10 @@ $vrControllerPosePath = Join-Path $WorldsRoot "scripts\Invoke-OpenXRSimulatorCon
 $vrNativeFramePath = Join-Path $WorldsRoot "scripts\Request-OpenXRSimulatorNativeEyeFrame.ps1"
 $terminalRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-OpenNVTerminalCapture.ps1"
 $retailPipBoyRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailPipBoyStateCapture.ps1"
+$retailContainerRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailDocContainerCapture.ps1"
+$retailContainerValidatorPath = Join-Path $WorldsRoot "scripts\Test-FNVRetailDocContainerEvidence.ps1"
+$retailShadowBuilderPath = Join-Path $WorldsRoot "scripts\New-FNVRetailShadowGameRoot.ps1"
+$retailOracleRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRetailOracle.ps1"
 $realSaveRunnerPath = Join-Path $WorldsRoot "scripts\Invoke-FNVRealSaveCapture.ps1"
 $ttwInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-TTWCompatibilityProfile.ps1"
 $newVegasInitializerPath = Join-Path $WorldsRoot "scripts\Initialize-OpenNVBaseProfile.ps1"
@@ -193,6 +208,8 @@ $oracleRuntimeManifestPath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $n
 $oracleDllPath = if ([string]::IsNullOrWhiteSpace($ParityRoot)) { $null } else {
     Join-Path $ParityRoot "local\xnvse-retail-oracle\plugins\nvse_retail_oracle.dll"
 }
+$retailContainerRuntimeManifestPath = Join-Path $RetailContainerRuntimeRoot "oracle-runtime-manifest.json"
+$retailContainerDllPath = Join-Path $RetailContainerRuntimeRoot "plugins\nvse_retail_oracle.dll"
 
 if ($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits")) {
 	$isCinematic = $Scenario -eq "GodotCinematics"
@@ -335,6 +352,17 @@ elseif ($Scenario -eq "RealSave") {
     }
     if ($Target -eq "OpenMW") {
         $canonicalFiles.Add($newVegasInitializerPath)
+    }
+}
+elseif ($Scenario -eq "RetailContainer") {
+    foreach ($path in @(
+        $retailContainerRunnerPath,
+        $retailContainerValidatorPath,
+        $retailOracleRunnerPath,
+        $retailShadowBuilderPath,
+        $oracleSourcePath
+    )) {
+        $canonicalFiles.Add($path)
     }
 }
 elseif ($Scenario -eq "FirstSmoke") {
@@ -492,6 +520,30 @@ if ($null -ne $catalog) {
         Add-Check "Terminal capture is restricted to OpenMW" `
             ($Target -eq "OpenMW") "target=$Target"
     }
+    if ($Scenario -eq "RetailContainer") {
+        Add-Check "RetailContainer capture is restricted to retail" ($Target -eq "Retail") "target=$Target"
+        [void](Test-File "RetailContainer immutable save exists" $SavePath)
+        $containerRunnerText = Get-Content -Raw -LiteralPath $retailContainerRunnerPath -ErrorAction SilentlyContinue
+        $containerValidatorText = Get-Content -Raw -LiteralPath $retailContainerValidatorPath -ErrorAction SilentlyContinue
+        $oracleRunnerText = Get-Content -Raw -LiteralPath $retailOracleRunnerPath -ErrorAction SilentlyContinue
+        $oracleSourceText = Get-Content -Raw -LiteralPath $oracleSourcePath -ErrorAction SilentlyContinue
+        foreach ($forbidden in @("AppActivate", "SetForegroundWindow", "BringWindowToTop", "SetFocus", "SendInput", "MenuTapKey", "HoldKey")) {
+            Add-Check "Retail container path excludes $forbidden" (
+                $containerRunnerText -notmatch [regex]::Escape($forbidden) -and
+                $oracleRunnerText -notmatch [regex]::Escape($forbidden)
+            ) "$retailContainerRunnerPath; $retailOracleRunnerPath"
+        }
+        Add-Check "Retail container runner discloses proof staging and rejects UI-row claims" (
+            $containerRunnerText -match 'COC is disclosed proof staging only' -and
+            $containerValidatorText -match 'naturalRouteClaimed = \$false' -and
+            $containerValidatorText -match 'menuRowSelectionClaimed = \$false'
+        ) "$retailContainerRunnerPath; $retailContainerValidatorPath"
+        Add-Check "Retail container oracle exposes native activation, transfer, and merged store contracts" (
+            $oracleSourceText -match 'CALL_MEMBER_FN\(target, Activate\)' -and
+            $oracleSourceText -match 'target->RemoveItem\(' -and
+            $oracleSourceText -match 'nikami-retail-container-store/v1'
+        ) $oracleSourcePath
+    }
     $selectedRecipes = @($(if ($Scenario -eq "Jam") { $catalog.recipes } elseif ($Scenario -eq "Opening") {
         @($catalog.openingRecipes | Where-Object {
             ($Target -eq "All" -or $_.target -eq $Target) -and
@@ -511,6 +563,8 @@ if ($null -ne $catalog) {
         @($catalog.realSaveRecipes | Where-Object {
             $_.target -eq $Target
         })
+    } elseif ($Scenario -eq "RetailContainer") {
+        @($catalog.retailContainerRecipes | Where-Object { $_.target -eq $Target })
     } elseif ($Scenario -eq "FirstSmoke") {
         @($catalog.firstSmokeRecipes | Where-Object { $_.target -eq $Target })
     } elseif ($Scenario -eq "ChetObservation") {
@@ -545,6 +599,9 @@ if ($null -ne $catalog) {
     }
     elseif ($Scenario -eq "RealSave") {
         if ($Target -eq "OpenMW") { 2 } elseif ($Target -eq "Retail") { 1 } else { 0 }
+    }
+    elseif ($Scenario -eq "RetailContainer") {
+        if ($Target -eq "Retail") { 1 } else { 0 }
     }
     elseif ($Scenario -eq "FirstSmoke") {
         if ($Target -eq "OpenMW") { 1 } else { 0 }
@@ -661,6 +718,12 @@ elseif ($Scenario -eq "Terminal") {
 elseif ($Scenario -eq "RealSave") {
     $scriptsToParse.Add($realSaveRunnerPath)
 }
+elseif ($Scenario -eq "RetailContainer") {
+    $scriptsToParse.Add($retailContainerRunnerPath)
+    $scriptsToParse.Add($retailContainerValidatorPath)
+    $scriptsToParse.Add($retailOracleRunnerPath)
+    $scriptsToParse.Add($retailShadowBuilderPath)
+}
 elseif ($Scenario -eq "FirstSmoke") {
     $scriptsToParse.Add($firstSmokeRunnerPath)
 }
@@ -739,6 +802,14 @@ if (Test-Path -LiteralPath $entryPointPath -PathType Leaf) {
                 $entryText -match '\$Scenario\s+-eq\s+"RealSave"' -and
                 $entryText -match '(?s)&\s+\$preflight.*?-RuntimeReady.*?-RequireIdle') `
             $entryPointPath
+    }
+    elseif ($Scenario -eq "RetailContainer") {
+        Add-Check "RetailContainer invocation routes through the canonical private retail runner" (
+            $Target -eq "Retail" -and
+            $entryText -match 'Invoke-FNVRetailDocContainerCapture' -and
+            $entryText -match '\$Scenario\s+-eq\s+"RetailContainer"' -and
+            $entryText -match '(?s)&\s+\$preflight.*?-RuntimeReady.*?-RequireIdle'
+        ) $entryPointPath
     }
     elseif ($Scenario -eq "FirstSmoke") {
         Add-Check "FirstSmoke invocation routes to the declared OpenMW runner" `
@@ -1428,6 +1499,37 @@ if ($RuntimeReady) {
         if ($OutputRoot) {
             Add-Check "RealSave output root is unused" `
                 (-not (Test-Path -LiteralPath $OutputRoot)) $OutputRoot
+        }
+    }
+    elseif ($Scenario -eq "RetailContainer") {
+        [void](Test-Directory "Verified private flat retail shadow exists" $RetailShadowRoot)
+        [void](Test-File "Retail shadow FalloutNV executable exists" (Join-Path $RetailShadowRoot "FalloutNV.exe"))
+        [void](Test-File "Retail shadow FalloutNV master exists" (Join-Path $RetailShadowRoot "Data\FalloutNV.esm"))
+        $shadowPluginRoot = Join-Path $RetailShadowRoot "Data\NVSE\Plugins"
+        $shadowPlugins = @(if (Test-Path -LiteralPath $shadowPluginRoot -PathType Container) {
+            Get-ChildItem -LiteralPath $shadowPluginRoot -File -ErrorAction Stop
+        })
+        Add-Check "Retail shadow has no installed Data NVSE plugins" ($shadowPlugins.Count -eq 0) $shadowPluginRoot
+        [void](Test-File "Retail container oracle runtime manifest exists" $retailContainerRuntimeManifestPath)
+        [void](Test-File "Retail container oracle DLL exists" $retailContainerDllPath)
+        [void](Test-File "Retail container save fixture exists" $SavePath)
+        if ((Test-Path -LiteralPath $retailContainerRuntimeManifestPath -PathType Leaf) -and
+            (Test-Path -LiteralPath $retailContainerDllPath -PathType Leaf)) {
+            try {
+                $runtimeManifest = Get-Content -Raw -LiteralPath $retailContainerRuntimeManifestPath | ConvertFrom-Json
+                $expectedHash = ([string]$runtimeManifest.files.plugin.sha256).ToLowerInvariant()
+                $actualHash = (Get-FileHash -LiteralPath $retailContainerDllPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                Add-Check "Retail container oracle DLL matches its manifest" (
+                    [string]$runtimeManifest.schema -eq 'nikami-xnvse-isolated-runtime/v1' -and
+                    $actualHash -eq $expectedHash
+                ) "expected=$expectedHash actual=$actualHash"
+            }
+            catch {
+                Add-Check "Retail container oracle DLL matches its manifest" $false $_.Exception.Message
+            }
+        }
+        if ($OutputRoot) {
+            Add-Check "RetailContainer output root is unused" (-not (Test-Path -LiteralPath $OutputRoot)) $OutputRoot
         }
     }
     elseif ($Scenario -eq "TestMap") {

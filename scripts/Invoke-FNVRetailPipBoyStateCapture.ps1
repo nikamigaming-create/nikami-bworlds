@@ -2,6 +2,7 @@
 param(
     [string]$OutputRoot,
     [string]$WorldsRoot = "D:\code\nikami-worlds",
+    [string]$GameRoot = "D:\SteamLibrary\steamapps\common\Fallout New Vegas",
     [string]$SavePath =
         "D:\code\nikami-worlds\local\retail-pipboy-fixtures\NikamiCleanPipBoyOracle-20260802.fos",
     # Capture a real retail first-person weapon pose before the ordinary
@@ -97,6 +98,7 @@ $screenshotFrames = @(
 )
 
 & $oracle `
+    -GameRoot $GameRoot `
     -OutputPath $telemetry `
     -SaveFixture $SavePath `
     -ScheduledCommand $scheduled `

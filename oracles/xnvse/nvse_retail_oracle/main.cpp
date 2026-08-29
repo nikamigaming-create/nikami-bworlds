@@ -5004,6 +5004,28 @@ namespace
         bool worn = false;
     };
 
+    struct SidecarContainerStoreItem
+    {
+        TESForm* form = nullptr;
+        ExtraContainerChanges::EntryData* runtimeEntry = nullptr;
+        SInt64 authoredCount = 0;
+        SInt64 changeDelta = 0;
+        SInt64 count = 0;
+        bool runtimeEntryAvailable = false;
+        bool resolvedFromLeveledList = false;
+    };
+
+    struct SidecarContainerStore
+    {
+        bool available = false;
+        UInt8 baseType = 0xff;
+        UInt32 baseForm = 0;
+        UInt32 parentCell = 0;
+        UInt32 authoredLeveledListRows = 0;
+        bool runtimeChangesAvailable = false;
+        std::map<UInt32, SidecarContainerStoreItem> items;
+    };
+
     struct SidecarExtraDataHeader
     {
         void* vtable = nullptr;
@@ -5435,7 +5457,29 @@ namespace
             && (snapshot.m_presenceBitfield[byteIndex] & (1u << (type & 7))) != 0;
     }
 
-    bool sidecarEntryIsWorn(const ExtraContainerChanges::ExtendDataList* extendData)
+    SInt32 sidecarExtraListCount(const ExtraDataList* list)
+    {
+        BSExtraData* address = nullptr;
+        if (list == nullptr || !safeRead(&list->m_data, address))
+            return 1;
+        for (UInt32 visited = 0; address != nullptr && visited < 256; ++visited)
+        {
+            SidecarExtraDataHeader header;
+            if (!safeRead(address, header))
+                break;
+            if (header.type == kExtraData_Count)
+            {
+                SInt16 count = 0;
+                const ExtraCount* extraCount = reinterpret_cast<const ExtraCount*>(address);
+                return safeRead(&extraCount->count, count) ? static_cast<SInt32>(count) : 0;
+            }
+            address = header.next;
+        }
+        return 1;
+    }
+
+    bool sidecarExtendDataHasType(
+        const ExtraContainerChanges::ExtendDataList* extendData, UInt8 type)
     {
         if (extendData == nullptr)
             return false;
@@ -5445,19 +5489,23 @@ namespace
             ListNode<ExtraDataList> node;
             if (!safeRead(address, node))
                 break;
-            if (node.data != nullptr
-                && (sidecarExtraListHasType(node.data, kExtraData_Worn)
-                    || sidecarExtraListHasType(node.data, kExtraData_WornLeft)))
+            if (node.data != nullptr && sidecarExtraListHasType(node.data, type))
                 return true;
             address = node.next;
         }
         return false;
     }
 
-    ExtraContainerChanges* sidecarFindContainerChanges(Actor* actor)
+    bool sidecarEntryIsWorn(const ExtraContainerChanges::ExtendDataList* extendData)
+    {
+        return sidecarExtendDataHasType(extendData, kExtraData_Worn)
+            || sidecarExtendDataHasType(extendData, kExtraData_WornLeft);
+    }
+
+    ExtraContainerChanges* sidecarFindContainerChanges(TESObjectREFR* reference)
     {
         BSExtraData* address = nullptr;
-        if (actor == nullptr || !safeRead(&actor->extraDataList.m_data, address))
+        if (reference == nullptr || !safeRead(&reference->extraDataList.m_data, address))
             return nullptr;
         for (UInt32 visited = 0; address != nullptr && visited < 256; ++visited)
         {
@@ -5469,6 +5517,99 @@ namespace
             address = snapshot.next;
         }
         return nullptr;
+    }
+
+    // Mirrors xNVSE TESObjectREFR::GetInventoryItems: authored LVLI rows are
+    // not store items, and ExtraLeveledItem makes the live count authoritative.
+    bool sidecarReadContainerStore(
+        TESObjectREFR* reference, SidecarContainerStore& result)
+    {
+        result = {};
+        TESForm* baseForm = nullptr;
+        if (reference == nullptr || !safeRead(&reference->baseForm, baseForm)
+            || baseForm == nullptr || !safeRead(&baseForm->typeID, result.baseType)
+            || !safeRead(&baseForm->refID, result.baseForm))
+            return false;
+        TESObjectCELL* parentCell = nullptr;
+        if (safeRead(&reference->parentCell, parentCell) && parentCell != nullptr)
+            safeRead(&parentCell->refID, result.parentCell);
+
+        TESContainer* container = nullptr;
+        if (result.baseType == kFormType_TESNPC || result.baseType == kFormType_TESCreature)
+            container = &static_cast<TESActorBase*>(baseForm)->container;
+        else if (result.baseType == kFormType_TESObjectCONT)
+            container = &static_cast<TESObjectCONT*>(baseForm)->container;
+        if (container == nullptr)
+            return false;
+
+        auto* baseAddress = &container->formCountList.m_listHead;
+        for (UInt32 visited = 0; baseAddress != nullptr && visited < 4096; ++visited)
+        {
+            ListNode<TESContainer::FormCount> node;
+            if (!safeRead(baseAddress, node))
+                return false;
+            TESContainer::FormCount entry = {};
+            UInt32 form = 0;
+            UInt8 type = 0xff;
+            if (node.data != nullptr && safeRead(node.data, entry) && entry.form != nullptr
+                && safeRead(&entry.form->refID, form) && form != 0
+                && safeRead(&entry.form->typeID, type))
+            {
+                if (type == kFormType_TESLevItem)
+                    ++result.authoredLeveledListRows;
+                else
+                {
+                    SidecarContainerStoreItem& item = result.items[form];
+                    item.form = entry.form;
+                    item.authoredCount += entry.count;
+                    item.count += entry.count;
+                }
+            }
+            baseAddress = node.next;
+        }
+
+        ExtraContainerChanges* changes = sidecarFindContainerChanges(reference);
+        ExtraContainerChanges::Data* changesData = nullptr;
+        if (changes == nullptr || !safeRead(&changes->data, changesData)
+            || changesData == nullptr)
+        {
+            result.available = true;
+            return true;
+        }
+        ExtraContainerChanges::Data data = {};
+        if (!safeRead(changesData, data) || data.objList == nullptr)
+        {
+            result.available = true;
+            return true;
+        }
+        result.runtimeChangesAvailable = true;
+        auto* changeAddress = &data.objList->m_listHead;
+        for (UInt32 visited = 0; changeAddress != nullptr && visited < 4096; ++visited)
+        {
+            ListNode<ExtraContainerChanges::EntryData> node;
+            if (!safeRead(changeAddress, node))
+                return false;
+            ExtraContainerChanges::EntryData entry = {};
+            UInt32 form = 0;
+            if (node.data != nullptr && safeRead(node.data, entry) && entry.type != nullptr
+                && safeRead(&entry.type->refID, form) && form != 0)
+            {
+                SidecarContainerStoreItem& item = result.items[form];
+                item.form = entry.type;
+                item.runtimeEntry = node.data;
+                item.runtimeEntryAvailable = true;
+                item.changeDelta += entry.countDelta;
+                item.resolvedFromLeveledList = item.resolvedFromLeveledList
+                    || sidecarExtendDataHasType(entry.extendData, kExtraData_LeveledItem);
+                if (item.resolvedFromLeveledList && item.authoredCount != 0)
+                    item.count = item.changeDelta;
+                else
+                    item.count = item.authoredCount + item.changeDelta;
+            }
+            changeAddress = node.next;
+        }
+        result.available = true;
+        return true;
     }
 
     bool sidecarReadInventory(Actor* actor, std::map<UInt32, SidecarInventoryItem>& result)
@@ -6606,6 +6747,275 @@ namespace
             ++emitted;
         }
         out << "]}";
+    }
+
+    SInt64 sidecarContainerStoreCount(
+        const SidecarContainerStore& store, UInt32 form)
+    {
+        const auto found = store.items.find(form);
+        return found != store.items.end() ? found->second.count : 0;
+    }
+
+    void sidecarWriteContainerStore(
+        std::ostringstream& out, const SidecarContainerStore& store)
+    {
+        constexpr UInt32 maximumItems = 1024;
+        UInt32 positiveRecords = 0;
+        for (const auto& pair : store.items)
+        {
+            if (pair.second.form != nullptr && pair.second.count > 0)
+                ++positiveRecords;
+        }
+        out << "{\"contractSchema\":\"nikami-retail-container-store/v1\""
+            << ",\"available\":" << (store.available ? "true" : "false")
+            << ",\"baseForm\":" << store.baseForm
+            << ",\"baseType\":" << static_cast<UInt32>(store.baseType)
+            << ",\"parentCell\":" << store.parentCell
+            << ",\"authoredLeveledListRows\":" << store.authoredLeveledListRows
+            << ",\"runtimeChangesAvailable\":"
+            << (store.runtimeChangesAvailable ? "true" : "false")
+            << ",\"distinctPositiveRecords\":" << positiveRecords
+            << ",\"truncated\":" << (positiveRecords > maximumItems ? "true" : "false")
+            << ",\"items\":[";
+        UInt32 emitted = 0;
+        bool first = true;
+        for (const auto& pair : store.items)
+        {
+            const SidecarContainerStoreItem& item = pair.second;
+            if (item.form == nullptr || item.count <= 0 || emitted >= maximumItems)
+                continue;
+            UInt8 type = 0xff;
+            const bool typeReadable = safeRead(&item.form->typeID, type);
+            const std::string editorId = safeRuntimeString(safeGetFormEditorId(item.form), 256);
+            if (!first)
+                out << ',';
+            first = false;
+            out << "{\"form\":" << pair.first << ",\"type\":";
+            if (typeReadable)
+                out << static_cast<UInt32>(type);
+            else
+                out << "null";
+            out << ",\"editorId\":"
+                << (editorId.empty() ? "null" : jsonString(editorId.c_str()))
+                << ",\"count\":" << item.count
+                << ",\"authoredCount\":" << item.authoredCount
+                << ",\"changeDelta\":" << item.changeDelta
+                << ",\"runtimeEntryAvailable\":"
+                << (item.runtimeEntryAvailable ? "true" : "false")
+                << ",\"resolvedFromLeveledList\":"
+                << (item.resolvedFromLeveledList ? "true" : "false") << '}';
+            ++emitted;
+        }
+        out << "]}";
+    }
+
+    bool sidecarSelectContainerStack(
+        const SidecarContainerStoreItem& item, ExtraDataList*& extraData, SInt32& stackCount)
+    {
+        extraData = nullptr;
+        stackCount = 0;
+        if (item.form == nullptr || item.count <= 0)
+            return false;
+
+        SInt64 remaining = item.count;
+        ExtraContainerChanges::EntryData entry = {};
+        if (item.runtimeEntry != nullptr && safeRead(item.runtimeEntry, entry)
+            && entry.extendData != nullptr)
+        {
+            auto* address = &entry.extendData->m_listHead;
+            for (UInt32 visited = 0; address != nullptr && visited < 4096; ++visited)
+            {
+                ListNode<ExtraDataList> node;
+                if (!safeRead(address, node))
+                    return false;
+                if (node.data != nullptr)
+                {
+                    SInt32 count = sidecarExtraListCount(node.data);
+                    if (count > 0)
+                    {
+                        if (count > remaining)
+                            count = static_cast<SInt32>(remaining);
+                        extraData = node.data;
+                        stackCount = count;
+                        return true;
+                    }
+                }
+                address = node.next;
+            }
+        }
+        stackCount = static_cast<SInt32>((std::min)(remaining, static_cast<SInt64>(INT_MAX)));
+        return stackCount > 0;
+    }
+
+    bool sidecarActivateContainerUnsafe(TESObjectREFR* target, PlayerCharacter* player)
+    {
+        bool accepted = false;
+        __try
+        {
+            accepted = CALL_MEMBER_FN(target, Activate)(player, 0, 0, 1);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            accepted = false;
+        }
+        return accepted;
+    }
+
+    bool sidecarRemoveOneUnsafe(
+        TESObjectREFR* target, TESForm* item, ExtraDataList* extraData, PlayerCharacter* player)
+    {
+        bool invoked = false;
+        __try
+        {
+            // Public xNVSE InventoryReference::DeferredAction uses this exact
+            // virtual call shape for a container-to-container transfer.
+            target->RemoveItem(item, extraData, 1, 0, 0, player, 0, 0, 1, 0);
+            invoked = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            invoked = false;
+        }
+        return invoked;
+    }
+
+    bool scheduledRetailContainerSnapshot(
+        TESObjectREFR* target, const std::string& command)
+    {
+        constexpr char prefix[] = "RetailContainerSnapshot";
+        constexpr std::size_t prefixLength = sizeof(prefix) - 1;
+        if (command.compare(0, prefixLength, prefix) != 0
+            || (command.size() != prefixLength && command[prefixLength] != ' '))
+            return false;
+        std::string label = command.size() == prefixLength ? "scheduled"
+            : command.substr(prefixLength + 1, 128);
+        const std::size_t firstLabel = label.find_first_not_of(" \t");
+        label = firstLabel == std::string::npos ? "scheduled" : label.substr(firstLabel);
+
+        SidecarContainerStore store;
+        const bool readable = sidecarReadContainerStore(target, store);
+        InterfaceManager* interfaceManager = nullptr;
+        safeRead(reinterpret_cast<InterfaceManager**>(0x011D8A80), interfaceManager);
+        Menu* activeMenu = nullptr;
+        UInt32 activeMenuId = 0;
+        bool activeMenuReadable = interfaceManager != nullptr
+            && safeRead(&interfaceManager->activeMenu, activeMenu) && activeMenu != nullptr
+            && safeRead(&activeMenu->id, activeMenuId);
+        bool containerMenuReadable = false;
+        const bool containerMenuVisible
+            = retailMenuVisible(kMenuType_Container, containerMenuReadable);
+
+        std::ostringstream out;
+        out << "{\"schema\":" << sSchemaJson
+            << ",\"event\":\"retail-container-store-snapshot\""
+            << ",\"label\":" << jsonString(label.c_str())
+            << ",\"frame\":" << gFrame
+            << ",\"targetReference\":" << sidecarSafeFormId(target)
+            << ",\"targetBinding\":\"scheduled-reference\""
+            << ",\"interface\":{\"activeMenuReadable\":"
+            << (activeMenuReadable ? "true" : "false") << ",\"activeMenuId\":";
+        if (activeMenuReadable)
+            out << activeMenuId;
+        else
+            out << "null";
+        out << ",\"containerMenuReadable\":"
+            << (containerMenuReadable ? "true" : "false")
+            << ",\"containerMenuVisible\":"
+            << (containerMenuVisible ? "true" : "false") << "},\"store\":";
+        sidecarWriteContainerStore(out, store);
+        out << "}\n";
+        gOutput << out.str();
+        gOutput.flush();
+        return readable && store.available;
+    }
+
+    bool scheduledActivateRetailContainer(TESObjectREFR* target)
+    {
+        PlayerCharacter* player = nullptr;
+        safeRead(reinterpret_cast<PlayerCharacter**>(0x011DEA3C), player);
+        const bool accepted = target != nullptr && player != nullptr
+            && sidecarActivateContainerUnsafe(target, player);
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"retail-container-native-activation\""
+                << ",\"frame\":" << gFrame
+                << ",\"targetReference\":" << sidecarSafeFormId(target)
+                << ",\"actionReference\":" << sidecarSafeFormId(player)
+                << ",\"entryPoint\":5714288"
+                << ",\"signature\":\"TESObjectREFR::Activate(player,0,0,1)\""
+                << ",\"accepted\":" << (accepted ? "true" : "false") << "}\n";
+        gOutput.flush();
+        return accepted;
+    }
+
+    bool scheduledTakeOneRetailContainer(TESObjectREFR* target)
+    {
+        PlayerCharacter* player = nullptr;
+        safeRead(reinterpret_cast<PlayerCharacter**>(0x011DEA3C), player);
+        SidecarContainerStore containerBefore;
+        SidecarContainerStore playerBefore;
+        const bool beforeReadable = player != nullptr
+            && sidecarReadContainerStore(target, containerBefore)
+            && sidecarReadContainerStore(player, playerBefore);
+
+        UInt32 selectedForm = 0;
+        const SidecarContainerStoreItem* selected = nullptr;
+        if (beforeReadable)
+        {
+            for (const auto& pair : containerBefore.items)
+            {
+                if (pair.second.form != nullptr && pair.second.count > 0)
+                {
+                    selectedForm = pair.first;
+                    selected = &pair.second;
+                    break;
+                }
+            }
+        }
+
+        ExtraDataList* extraData = nullptr;
+        SInt32 selectedStackCount = 0;
+        const bool stackSelected = selected != nullptr
+            && sidecarSelectContainerStack(*selected, extraData, selectedStackCount);
+        const bool invoked = stackSelected
+            && sidecarRemoveOneUnsafe(target, selected->form, extraData, player);
+
+        SidecarContainerStore containerAfter;
+        SidecarContainerStore playerAfter;
+        const bool afterReadable = invoked
+            && sidecarReadContainerStore(target, containerAfter)
+            && sidecarReadContainerStore(player, playerAfter);
+        const SInt64 containerBeforeCount
+            = sidecarContainerStoreCount(containerBefore, selectedForm);
+        const SInt64 containerAfterCount
+            = sidecarContainerStoreCount(containerAfter, selectedForm);
+        const SInt64 playerBeforeCount = sidecarContainerStoreCount(playerBefore, selectedForm);
+        const SInt64 playerAfterCount = sidecarContainerStoreCount(playerAfter, selectedForm);
+        const SInt64 containerDelta = containerAfterCount - containerBeforeCount;
+        const SInt64 playerDelta = playerAfterCount - playerBeforeCount;
+        const bool transferred = beforeReadable && afterReadable && invoked
+            && selectedForm != 0 && containerDelta == -1 && playerDelta == 1;
+
+        gOutput << "{\"schema\":" << sSchemaJson
+                << ",\"event\":\"retail-container-native-transfer\""
+                << ",\"contractSchema\":\"nikami-retail-container-transfer/v1\""
+                << ",\"frame\":" << gFrame
+                << ",\"sourceReference\":" << sidecarSafeFormId(target)
+                << ",\"destinationReference\":" << sidecarSafeFormId(player)
+                << ",\"selectedForm\":" << selectedForm
+                << ",\"selectionPolicy\":\"lowest-positive-runtime-form-id\""
+                << ",\"selectedStackCount\":" << selectedStackCount
+                << ",\"selectedExtraData\":" << (extraData != nullptr ? "true" : "false")
+                << ",\"nativeCall\":\"TESObjectREFR::RemoveItem(item,xData,1,0,0,player,0,0,1,0)\""
+                << ",\"invoked\":" << (invoked ? "true" : "false")
+                << ",\"containerBefore\":" << containerBeforeCount
+                << ",\"containerAfter\":" << containerAfterCount
+                << ",\"containerDelta\":" << containerDelta
+                << ",\"playerBefore\":" << playerBeforeCount
+                << ",\"playerAfter\":" << playerAfterCount
+                << ",\"playerDelta\":" << playerDelta
+                << ",\"transferred\":" << (transferred ? "true" : "false") << "}\n";
+        gOutput.flush();
+        return transferred;
     }
 
     void writeRetailAnimationSequenceSummary(
@@ -8032,6 +8442,14 @@ namespace
             return scheduledSpawnActor(spawnBaseForm);
         if (scheduled.targetForm == 0 && scheduled.command == "ResolveSpawnedActor")
             return scheduledResolveSpawnedActor();
+        if (target != nullptr
+            && scheduled.command.compare(0, sizeof("RetailContainerSnapshot") - 1,
+                   "RetailContainerSnapshot") == 0)
+            return scheduledRetailContainerSnapshot(target, scheduled.command);
+        if (target != nullptr && scheduled.command == "ActivateRetailContainer")
+            return scheduledActivateRetailContainer(target);
+        if (target != nullptr && scheduled.command == "TakeOneRetailContainer")
+            return scheduledTakeOneRetailContainer(target);
         float stageDistance = 0.f;
         if (target != nullptr
             && sscanf_s(scheduled.command.c_str(), "StageInFrontOfPlayer %f", &stageDistance) == 1)

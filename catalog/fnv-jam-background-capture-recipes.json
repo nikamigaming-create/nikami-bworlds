@@ -447,6 +447,39 @@
       "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target OpenMW -Scenario PipBoyVR -OpeningRuntimeRoot '<staged VR runtime>' -OutputRoot .\\run\\opennv-vr-pipboy-weapons-<unique>"
     }
   ],
+  "retailContainerRecipes": [
+    {
+      "id": "fnv-retail-doc-container-native-contract-v1",
+      "target": "Retail",
+      "diagnosticOnly": false,
+      "runner": "scripts/Invoke-FNVRetailDocContainerCapture.ps1",
+      "captureMethod": "The private xNVSE oracle resolves 00103E37, reports its merged base plus ExtraContainerChanges store, invokes retail-native Activate and one RemoveItem transfer, then verifies the resulting player/container deltas through a generated save reload.",
+      "driverMethod": "COC GSDocMitchellHouse is explicitly disclosed proof staging only; the bounded behavior contract then uses TESObjectREFR::Activate and TESObjectREFR::RemoveItem through public xNVSE runtime entrypoints.",
+      "backgroundInputMethod": "no host keyboard or mouse input, menu-key injection, binding hold, foreground activation, or Windows app control is used",
+      "foregroundRequired": false,
+      "windowsAppControlUsed": false,
+      "proofStateMutationUsed": true,
+      "naturalRouteClaimed": false,
+      "presentationParityClaimed": false,
+      "menuRowSelectionClaimed": false,
+      "sourceFramePattern": "none; this is a neutral state-contract capture, not presentation evidence",
+      "telemetryPattern": "retail/retail-doc-container.jsonl",
+      "manifestPattern": "retail/retail-doc-container-report.json; background-capture-summary.json",
+      "requiredTelemetry": [
+        "00103E37 resolves as base 0002FCC3 in cell 00103DF9",
+        "the active container store includes live ExtraContainerChanges-resolved leveled items",
+        "native Activate succeeds and the container menu becomes visible without injected input",
+        "one native RemoveItem transfer produces container delta -1 and player delta +1",
+        "the post-transfer container count survives a generated save reload and the generated save is removed",
+        "no natural-route, presentation-parity, or UI-row selection claim is made",
+        "capture.windowsAppControlUsed=false",
+        "capture.foregroundActivationUsed=false",
+        "capture.foregroundInputInjected=false"
+      ],
+      "preflightCommand": "& .\\scripts\\Test-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario RetailContainer -RetailShadowRoot '<verified private flat retail shadow>' -RetailContainerRuntimeRoot '<repo-local isolated container oracle runtime>' -RuntimeReady -RequireIdle",
+      "releaseCommand": "& .\\scripts\\Invoke-FNVJamBackgroundCapture.ps1 -Target Retail -Scenario RetailContainer -RetailGameRoot '<verified private flat retail shadow>' -RetailContainerRuntimeRoot '<repo-local isolated container oracle runtime>' -OutputRoot .\\run\\fnv-retail-doc-container-<unique>"
+    }
+  ],
   "godotRecipes": [
     {
       "id": "opennv-godot-goodsprings-strip-v1",

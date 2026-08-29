@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Retail", "OpenMW", "Both", "Godot")]
     [string]$Target = "Both",
-    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "GodotRoute", "GodotCinematics", "GodotPortraits")]
+    [ValidateSet("Jam", "FirstSmoke", "ChetObservation", "ChetPersistent", "ChetTransaction", "ChetPersistence", "Canyon", "Opening", "TestMap", "PipBoy", "PipBoyVR", "Terminal", "RealSave", "RetailContainer", "GodotRoute", "GodotCinematics", "GodotPortraits")]
     [string]$Scenario = "Jam",
     [string]$OutputRoot = "",
     [switch]$SmokeTest,
@@ -49,6 +49,13 @@ param(
     # Optional isolated retail fixture for the Pip-Boy interaction oracle.
     # The source save is copied by Invoke-FNVRetailOracle and never modified.
     [string]$RetailPipBoySavePath = "",
+    [string]$RetailContainerSavePath = "",
+    # Isolate the container-contract build from other retail oracle lanes.
+    [string]$RetailContainerRuntimeRoot = "",
+    # Optional private retail shadow. Retail-only oracle lanes forward this
+    # as their GameRoot while preflight validates the matching owned Data.
+    [string]$RetailGameRoot = "",
+    [string]$OpeningNewVegasData = "",
     # Request a retail xNVSE first-person weapon reference before the normal
     # Pip-Boy sequence. This remains a retail-only, public-entry capture.
     [switch]$RetailPipBoyWeaponAudit,
@@ -94,6 +101,16 @@ if ([string]::IsNullOrWhiteSpace($WorldsRoot)) {
     $WorldsRoot = Split-Path -Parent $PSScriptRoot
 }
 $WorldsRoot = [IO.Path]::GetFullPath($WorldsRoot)
+if (-not [string]::IsNullOrWhiteSpace($RetailGameRoot)) {
+    $RetailGameRoot = [IO.Path]::GetFullPath($RetailGameRoot)
+    if ([string]::IsNullOrWhiteSpace($OpeningNewVegasData)) {
+        $OpeningNewVegasData = Join-Path $RetailGameRoot 'Data'
+    }
+}
+if ([string]::IsNullOrWhiteSpace($RetailContainerRuntimeRoot)) {
+    $RetailContainerRuntimeRoot = Join-Path $WorldsRoot "local\xnvse-retail-container-oracle"
+}
+$RetailContainerRuntimeRoot = [IO.Path]::GetFullPath($RetailContainerRuntimeRoot)
 
 . (Join-Path $PSScriptRoot "WorldViewerPaths.ps1")
 $preflight = Join-Path $PSScriptRoot "Test-FNVJamBackgroundCapture.ps1"
@@ -108,6 +125,7 @@ $pipBoyRunner = Join-Path $PSScriptRoot "Invoke-OpenNVPipBoyShowcaseCapture.ps1"
 $pipBoyVrRunner = Join-Path $PSScriptRoot "Invoke-OpenNVPipBoyVRCapture.ps1"
 $terminalRunner = Join-Path $PSScriptRoot "Invoke-OpenNVTerminalCapture.ps1"
 $retailPipBoyRunner = Join-Path $PSScriptRoot "Invoke-FNVRetailPipBoyStateCapture.ps1"
+$retailContainerRunner = Join-Path $PSScriptRoot "Invoke-FNVRetailDocContainerCapture.ps1"
 $realSaveRunner = Join-Path $PSScriptRoot "Invoke-FNVRealSaveCapture.ps1"
 $godotRouteRunner = Join-Path $PSScriptRoot "Invoke-OpenNVGodotShowcaseCapture.ps1"
 $godotCinematicRunner = Join-Path $PSScriptRoot "Invoke-OpenNVCinematicReelCapture.ps1"
@@ -137,7 +155,7 @@ if ($Target -ne "Godot") {
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } elseif ($Scenario -eq "GodotRoute") { "opennv-godot-route" } elseif ($Scenario -eq "GodotCinematics") { "opennv-godot-cinematics" } elseif ($Scenario -eq "GodotPortraits") { "opennv-godot-portraits" } else { "jam-background-$($Target.ToLowerInvariant())" }
+    $outputPrefix = if ($Scenario -eq "RealSave") { "fnv-real-save-$($Target.ToLowerInvariant())" } elseif ($Scenario -eq "RetailContainer") { "fnv-retail-doc-container" } elseif ($Scenario -eq "GodotRoute") { "opennv-godot-route" } elseif ($Scenario -eq "GodotCinematics") { "opennv-godot-cinematics" } elseif ($Scenario -eq "GodotPortraits") { "opennv-godot-portraits" } else { "jam-background-$($Target.ToLowerInvariant())" }
     $OutputRoot = Join-Path $WorldsRoot "run\$outputPrefix-$stamp"
 }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
@@ -169,6 +187,12 @@ if ($Scenario -eq "Terminal" -and $Target -ne "OpenMW") {
 if ($Scenario -eq "PipBoy" -and $Target -eq "Both") {
     throw "Pip-Boy state captures are intentionally single-engine. Run Retail first, then OpenMW."
 }
+if ($Scenario -eq "RetailContainer" -and $Target -ne "Retail") {
+    throw "RetailContainer is a retail-only native state-contract lane. Use -Target Retail."
+}
+if ($Scenario -eq "RetailContainer" -and [string]::IsNullOrWhiteSpace($RetailGameRoot)) {
+    throw "RetailContainer requires -RetailGameRoot pointing at the verified private flat retail shadow."
+}
 if ($Scenario -eq "PipBoyVR" -and $Target -ne "OpenMW") {
     throw "PipBoyVR is an OpenMW-only native OpenXR capture. Use -Target OpenMW."
 }
@@ -196,12 +220,29 @@ if ($Scenario -eq "Jam" -and $SmokeTest -and $Target -ne "Retail") {
 }
 
 $preflightTarget = if ($Target -eq "Both") { "All" } else { $Target }
+$preflightSavePath = if ($Scenario -eq "RetailContainer") {
+    if ([string]::IsNullOrWhiteSpace($RetailContainerSavePath)) {
+        Join-Path $WorldsRoot "local\retail-pipboy-fixtures\NikamiCleanPipBoyOracle-20260802.fos"
+    } else {
+        [IO.Path]::GetFullPath($RetailContainerSavePath)
+    }
+} elseif (
+    $Scenario -eq "PipBoy" -and $Target -eq "Retail" -and
+    -not [string]::IsNullOrWhiteSpace($RetailPipBoySavePath)
+) {
+    [IO.Path]::GetFullPath($RetailPipBoySavePath)
+} else {
+    $SavePath
+}
 & $preflight `
     -Target $preflightTarget `
     -Scenario $Scenario `
     -OpeningCampaign $OpeningCampaign `
     -OpeningRuntimeRoot $OpeningRuntimeRoot `
-    -SavePath $SavePath `
+    -OpeningNewVegasData $OpeningNewVegasData `
+    -RetailShadowRoot $RetailGameRoot `
+    -RetailContainerRuntimeRoot $RetailContainerRuntimeRoot `
+    -SavePath $preflightSavePath `
     -RealSaveRouteId $RealSaveRouteId `
     -RealSaveCaptureSeconds $RealSaveCaptureSeconds `
     -TerminalCaptureSeconds $TerminalCaptureSeconds `
@@ -223,6 +264,7 @@ $terminalResult = $null
 $realSaveResult = $null
 $godotRouteResult = $null
 $firstSmokeResult = $null
+$retailContainerResult = $null
 $chetObservationResult = $null
 $chetPersistentResult = $null
 $canyonResult = $null
@@ -559,6 +601,9 @@ if ($Scenario -eq "PipBoy") {
         if (-not [string]::IsNullOrWhiteSpace($RetailPipBoySavePath)) {
             $retailPipBoyArgs.SavePath = [IO.Path]::GetFullPath($RetailPipBoySavePath)
         }
+        if (-not [string]::IsNullOrWhiteSpace($RetailGameRoot)) {
+            $retailPipBoyArgs.GameRoot = $RetailGameRoot
+        }
         if ($RetailPipBoyWeaponAudit) {
             $retailPipBoyArgs.WeaponAudit = $true
             $retailPipBoyArgs.WeaponForm = $RetailPipBoyWeaponForm
@@ -622,6 +667,40 @@ if ($Scenario -eq "PipBoy") {
         }
         $openMwResult = $pipBoyResult
     }
+}
+
+if ($Scenario -eq "RetailContainer") {
+    $retailContainerOutput = Join-Path $OutputRoot "retail"
+    $retailContainerPlugin = Join-Path $RetailContainerRuntimeRoot "plugins\nvse_retail_oracle.dll"
+    & $retailContainerRunner `
+        -WorldsRoot $WorldsRoot `
+        -GameRoot $RetailGameRoot `
+        -RuntimeRoot $RetailContainerRuntimeRoot `
+        -PluginDll $retailContainerPlugin `
+        -SavePath $preflightSavePath `
+        -OutputRoot $retailContainerOutput `
+        -TimeoutSeconds $TimeoutSeconds
+    $retailContainerResult =
+        Get-Content -Raw -LiteralPath (Join-Path $retailContainerOutput "retail-doc-container-report.json") |
+        ConvertFrom-Json
+    if ($retailContainerResult.status -ne "pass" -or
+        [bool]$retailContainerResult.scope.naturalRouteClaimed -or
+        [bool]$retailContainerResult.scope.presentationParityClaimed -or
+        [bool]$retailContainerResult.scope.menuRowSelectionClaimed -or
+        [bool]$retailContainerResult.capture.windowsAppControlUsed -or
+        [bool]$retailContainerResult.capture.foregroundActivationUsed -or
+        [bool]$retailContainerResult.capture.foregroundInputInjected -or
+        [bool]$retailContainerResult.capture.menuKeyInjectionUsed -or
+        [bool]$retailContainerResult.capture.bindingHoldInjectionUsed -or
+        -not [bool]$retailContainerResult.assertions.targetContractPass -or
+        -not [bool]$retailContainerResult.assertions.nativeActivationPass -or
+        -not [bool]$retailContainerResult.assertions.activeContainerStorePass -or
+        -not [bool]$retailContainerResult.assertions.nativeTransferPass -or
+        -not [bool]$retailContainerResult.assertions.persistencePass -or
+        -not [bool]$retailContainerResult.assertions.generatedSaveRemoved) {
+        throw "Canonical retail Doc-container capture did not pass its native state, persistence, or no-control gates."
+    }
+    $retailResult = $retailContainerResult
 }
 
 if ($Scenario -eq "PipBoyVR") {
@@ -875,6 +954,13 @@ if ($Scenario -in @("GodotRoute", "GodotCinematics", "GodotPortraits") -and $nul
         }
     }
 }
+if ($Scenario -eq "RetailContainer" -and $null -ne $retailContainerResult) {
+    foreach ($artifact in @($retailContainerResult.artifacts)) {
+        if ($null -ne $artifact -and -not [string]::IsNullOrWhiteSpace([string]$artifact.path)) {
+            $artifactPaths.Add([string]$artifact.path)
+        }
+    }
+}
 foreach ($artifact in $artifactPaths) {
     if (-not [string]::IsNullOrWhiteSpace([string]$artifact) -and
         (Test-Path -LiteralPath $artifact -PathType Leaf)) {
@@ -915,6 +1001,7 @@ $summary = [ordered]@{
     terminalCapture = $terminalResult
     realSave = $realSaveResult
     firstSmoke = $firstSmokeResult
+    retailContainer = $retailContainerResult
     chetPersistent = $chetPersistentResult
     canyonCrawl = $canyonResult
     godotRoute = $godotRouteResult
